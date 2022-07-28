@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<title></title>
+	<style>
+		*{
+			padding: 0;
+			margin: 0;
+			font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Microsoft Yahei",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
+		}
+		html,body{
+			height: 100%;
+		}
+		.body-main{
+			display: flex;
+			align-content: flex-start;
+			justify-content: space-between;
+			height: 100%;
+		}
+		.menu-main,.content-main{
+			padding: 10px;
+			height: calc(100% - 20px);
+		}
+		.menu-main{
+			width: 300px;
+			border-right: 1px solid #d7d7d7;
+			height: calc(100% - 20px);
+			overflow: auto;
+		}
+		.content-main{
+			padding: 0 0 0 10px;
+			min-width: calc(100% - 300px);
+			height: calc(100% - 5px);
+		}
+		.menu-icon{
+			width: 15px;
+			height: 15px;
+			display: flex;
+			align-items: center;
+			opacity: 0.5;
+		}
+		.menu-title{
+			padding-left: 10px;
+		}
+		.menu-icon:hover{
+			background-color: #e1e1e1;
+		}
+		.menu-icon img{
+			width: 15px;
+			height: 10px;
+			transform: rotate(0deg);
+			transition: transform .5s;
+		}
+		.menu-title-main{
+			display: flex;
+			align-items: center;
+			padding: 10px 0;
+			border-radius: 4px;
+			flex-wrap: wrap;
+		}
+		.menu-title-main:hover{
+			background-color: #f5f5f5;
+			cursor: pointer;
+		}
+		.menu-main ul{
+			font-size: 14px;
+			color: #181819B3;
+			height: 100%;
+		}
+		.menu-icon-img {
+			transform: rotate(90deg) !important;
+			transition: transform .5s !important;
+		}
+		.menu-request-main{
+			border-radius: 4px;
+			display: none;
+			width: 100%;
+		}
+		.request-title{
+			width: calc(100% - 80px);
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			overflow: hidden;
+			display: inline-block;
+			vertical-align: middle;
+		}
+		.menu-request-main li{
+			padding: 10px 0;
+			border-radius: 4px;
+		}
+		.menu-request-main li:hover{
+			background-color: #f5f5f5;
+			cursor: pointer;
+		}
+		.method-type{
+			margin-left: 25px;
+			margin-right: 4px;
+			font-weight: 700;
+			font-size: 12px;
+			border-radius: 4px;
+			display: inline-block;
+			width: 30px;
+			vertical-align: middle;
+		}
+		.method-get{
+			color: #41ca9d;
+		}
+		.method-post{
+			color: #ed8936;
+		}
+		.method-put{
+			color: #1890ff;
+		}
+		.method-delete{
+			color: #fa541c;
+		}
+		ul{
+			padding: 0;
+			margin: 0;
+		}
+		li{
+			padding: 0;
+			margin: 0;
+			list-style: none;
+		}
+		.menu-selected{
+			background-color: #eee8fc;
+		}
+		iframe{
+			height: 100%;
+			width: 100%;
+		}
+	</style>
+</head>
+<body>
+<div class="body-main" id="body-main">
+	<div class="menu-main" id="menu-main">
+		<ul class="base-ul">
+			{menu-content}
+		</ul>
+	</div>
+	<div class="content-main" id="content-main">
+		<iframe id="content-main-iframe" onload="adjustIframe();" src="" frameborder="0"></iframe>
+	</div>
+</div>
+</body>
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script>
+	const animationTime = 200;
+
+	/**
+	 * 显示隐藏菜单的request
+	 * @param node
+	 */
+	function toggleRequest(node) {
+		const id = "#" + node.id;
+		if(id != window.location.hash){
+			window.location.hash = id;
+			console.log(id)
+		}
+		let img = node.querySelector('.menu-icon > img');
+		let $img = $(img);
+		let $menu_request_main = $(node).next();
+		if($img.hasClass("menu-icon-img")){
+			$img.removeClass("menu-icon-img");
+			$menu_request_main.slideUp(animationTime);
+		}else{
+			$img.addClass("menu-icon-img");
+			$menu_request_main.slideDown(animationTime);
+		}
+	}
+
+	$(function () {
+		const hash = window.location.hash;
+		console.log("hash", hash)
+		if(hash){
+			const $hash = $(hash);
+			if($hash.hasClass("method-request-item")){
+				$hash.parent().parent().prev().click();
+				$hash.click();
+			}else if($hash.hasClass("menu-title-main")){
+				$hash.click();
+			}
+			const targetOffset = $hash.offset().top;
+			$('#menu-main').animate({   //滑动效果主要用到jq的animate函数
+				scrollTop: targetOffset
+			}, 500);
+		}
+	})
+	function adjustIframe(){
+		const pTar = document.getElementById("content-main-iframe");
+		if (pTar) {  //ff
+			pTar.height = pTar.contentDocument.body.scrollHeight;
+			pTar.width = pTar.contentDocument.body.scrollWidth;
+		}
+		console.log(document.getElementById("content-main").style)
+	}
+	function showPage(node, page) {
+		const id = "#" + node.id;
+		if(id != window.location.hash){
+			window.location.hash = id;
+			console.log(id)
+		}
+		window.location.hash = id;
+		const selected = $(".menu-selected");
+		for(let i = 0; i < selected.length; i++){
+			$(selected[i]).removeClass("menu-selected");
+		}
+		$(node).addClass("menu-selected");
+		$("#content-main-iframe").attr("src", page)
+	}
+</script>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title></title>
+		<style>
+			*{
+				padding: 0;
+				margin: 0;
+				font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Microsoft Yahei",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
+			}
+			body{
+				padding: 10px;
+			}
+			h1{
+				color: #606060;
+				margin-top: 0;
+				margin-bottom: 0.5em;
+				font-weight: 500;
+				font-size: 28px;
+			}
+			h3{
+				margin-top: 2rem;
+				margin-bottom: 1rem;
+				font-size: 20px;
+				font-weight: 500;
+				color: #606060;
+			}
+
+			.method-type-main{
+				padding-bottom: 10px;
+			}
+
+			.method-type{
+				margin-right: 10px;
+				font-weight: 700;
+				font-size: 12px;
+				border-radius: 4px;
+				display: inline-block;
+				width: 30px;
+				vertical-align: middle;
+				color: #ffffff;
+				text-align: center;
+				padding: 2px 4px;
+			}
+			.method-get{
+				background-color: #41ca9d;
+			}
+			.method-post{
+				background-color: #ed8936;
+			}
+			.method-put{
+				background-color: #1890ff;
+			}
+			.method-delete{
+				background-color: #fa541c;
+			}
+
+			table{
+				width: 100%;
+			}
+			th{
+				padding: 10px 0px;
+			}
+			td{
+				padding: 10px 0px;
+				text-align: center;
+			}
+			.table{
+				border: 1px solid #d3d3d3;
+				text-align: center;
+			}
+			.table-tr{
+				/*border-bottom: 1px solid #d3d3d3;*/
+				display: flex;
+				text-align: center;
+			}
+			.border-bottom{
+				border-bottom: 1px solid #d3d3d3;
+			}
+			.table-header{
+				display: inline-block;
+				font-size: 16px;
+				line-height: 30px;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				overflow: hidden;
+			}
+			.table-header-1{
+				width: 20%;
+				border-right: 1px solid #d3d3d3;
+			}
+			.table-header-2{
+				width: 30%;
+				font-size: 12px;
+				border-right: 1px solid #d3d3d3;
+			}
+			.table-header-3{
+				width: 30%;
+				font-size: 12px;
+				border-right: 1px solid #d3d3d3;
+			}
+			.table-header-4{
+				width: 10%;
+				border-right: 1px solid #d3d3d3;
+			}
+			.table-header-5{
+				width: 10%;
+			}
+			.hide{
+				display: none;
+			}
+			.div-flex{
+				display: flex;
+			}
+			.pointer:hover{
+				cursor: pointer;
+			}
+		</style>
+	</head>
+	<body>
+	<div>
+		<h1>{uriName}</h1>
+		<div class="method-type-main">
+			<span class="method-type method-{methodTypeLower}">{methodType}</span>
+			<span>{uri}</span>
+		</div>
+		<h3>请求参数</h3>
+		<div class="table">
+			<div class="table-tr border-bottom">
+				<div class="table-header table-header-1">参数名</div>
+				<div class="table-header table-header-2">参数类型</div>
+				<div class="table-header table-header-3">描述</div>
+				<div class="table-header table-header-4">是否是对象</div>
+				<div class="table-header table-header-5">是否是数组</div>
+			</div>
+			{param}
+		</div>
+		<h3>返回结果</h3>
+
+		<div class="table">
+			<div class="table-tr border-bottom">
+				<div class="table-header table-header-1">参数名</div>
+				<div class="table-header table-header-2">参数类型</div>
+				<div class="table-header table-header-3">描述</div>
+				<div class="table-header table-header-4">是否是对象</div>
+				<div class="table-header table-header-5">是否是数组</div>
+			</div>
+			{result}
+		</div>
+	</div>
+	</body>
+	<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script>
+	function showApi(id, node, showStr, hideStr) {
+		console.log(id)
+		const idNode = $("#" + id);
+		idNode.slideToggle(200);
+		if(node){
+			if(idNode.is(':visible')){
+				$(node).text(hideStr);
+			}else{
+				$(node).text(showStr);
+			}
+		}
+	}
+
+	$(function(){
+	    //复选框只读
+	    $("input[class='readonly']").click(function () {
+	        this.checked = !this.checked;
+	        console.log(this.checked)
+	    })
+	})
+</script>
+</html>
