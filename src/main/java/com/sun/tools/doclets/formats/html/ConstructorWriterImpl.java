@@ -1,330 +1,324 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.ConstructorDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.ExecutableMemberDoc;
-/*     */ import com.sun.javadoc.MemberDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlConstants;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.formats.html.markup.StringContent;
-/*     */ import com.sun.tools.doclets.internal.toolkit.ConstructorWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.MemberSummaryWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.VisibleMemberMap;
-/*     */ import java.io.IOException;
-/*     */ import java.util.ArrayList;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class ConstructorWriterImpl
-/*     */   extends AbstractExecutableMemberWriter
-/*     */   implements ConstructorWriter, MemberSummaryWriter
-/*     */ {
-/*     */   private boolean foundNonPubConstructor = false;
-/*     */   
-/*     */   public ConstructorWriterImpl(SubWriterHolderWriter paramSubWriterHolderWriter, ClassDoc paramClassDoc) {
-/*  61 */     super(paramSubWriterHolderWriter, paramClassDoc);
-/*  62 */     VisibleMemberMap visibleMemberMap = new VisibleMemberMap(paramClassDoc, 3, this.configuration);
-/*     */     
-/*  64 */     ArrayList<ProgramElementDoc> arrayList = new ArrayList(visibleMemberMap.getMembersFor(paramClassDoc));
-/*  65 */     for (byte b = 0; b < arrayList.size(); b++) {
-/*  66 */       if (((ProgramElementDoc)arrayList.get(b)).isProtected() || ((ProgramElementDoc)arrayList
-/*  67 */         .get(b)).isPrivate()) {
-/*  68 */         setFoundNonPubConstructor(true);
-/*     */       }
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ConstructorWriterImpl(SubWriterHolderWriter paramSubWriterHolderWriter) {
-/*  79 */     super(paramSubWriterHolderWriter);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMemberSummaryHeader(ClassDoc paramClassDoc, Content paramContent) {
-/*  87 */     paramContent.addContent(HtmlConstants.START_OF_CONSTRUCTOR_SUMMARY);
-/*  88 */     Content content = this.writer.getMemberTreeHeader();
-/*  89 */     this.writer.addSummaryHeader(this, paramClassDoc, content);
-/*  90 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getConstructorDetailsTreeHeader(ClassDoc paramClassDoc, Content paramContent) {
-/*  98 */     paramContent.addContent(HtmlConstants.START_OF_CONSTRUCTOR_DETAILS);
-/*  99 */     Content content = this.writer.getMemberTreeHeader();
-/* 100 */     content.addContent(this.writer.getMarkerAnchor(SectionName.CONSTRUCTOR_DETAIL));
-/*     */     
-/* 102 */     HtmlTree htmlTree = HtmlTree.HEADING(HtmlConstants.DETAILS_HEADING, this.writer.constructorDetailsLabel);
-/*     */     
-/* 104 */     content.addContent((Content)htmlTree);
-/* 105 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getConstructorDocTreeHeader(ConstructorDoc paramConstructorDoc, Content paramContent) {
-/*     */     String str;
-/* 114 */     if ((str = getErasureAnchor((ExecutableMemberDoc)paramConstructorDoc)) != null) {
-/* 115 */       paramContent.addContent(this.writer.getMarkerAnchor(str));
-/*     */     }
-/* 117 */     paramContent.addContent(this.writer
-/* 118 */         .getMarkerAnchor(this.writer.getAnchor((ExecutableMemberDoc)paramConstructorDoc)));
-/* 119 */     Content content = this.writer.getMemberTreeHeader();
-/* 120 */     HtmlTree htmlTree = new HtmlTree(HtmlConstants.MEMBER_HEADING);
-/* 121 */     htmlTree.addContent(paramConstructorDoc.name());
-/* 122 */     content.addContent((Content)htmlTree);
-/* 123 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getSignature(ConstructorDoc paramConstructorDoc) {
-/* 130 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.PRE);
-/* 131 */     this.writer.addAnnotationInfo((ProgramElementDoc)paramConstructorDoc, (Content)htmlTree);
-/* 132 */     addModifiers((MemberDoc)paramConstructorDoc, (Content)htmlTree);
-/* 133 */     if (this.configuration.linksource) {
-/* 134 */       StringContent stringContent = new StringContent(paramConstructorDoc.name());
-/* 135 */       this.writer.addSrcLink((ProgramElementDoc)paramConstructorDoc, (Content)stringContent, (Content)htmlTree);
-/*     */     } else {
-/* 137 */       addName(paramConstructorDoc.name(), (Content)htmlTree);
-/*     */     } 
-/* 139 */     int i = htmlTree.charCount();
-/* 140 */     addParameters((ExecutableMemberDoc)paramConstructorDoc, (Content)htmlTree, i);
-/* 141 */     addExceptions((ExecutableMemberDoc)paramConstructorDoc, (Content)htmlTree, i);
-/* 142 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void setSummaryColumnStyle(HtmlTree paramHtmlTree) {
-/* 150 */     if (this.foundNonPubConstructor) {
-/* 151 */       paramHtmlTree.addStyle(HtmlStyle.colLast);
-/*     */     } else {
-/* 153 */       paramHtmlTree.addStyle(HtmlStyle.colOne);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addDeprecated(ConstructorDoc paramConstructorDoc, Content paramContent) {
-/* 160 */     addDeprecatedInfo((ProgramElementDoc)paramConstructorDoc, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addComments(ConstructorDoc paramConstructorDoc, Content paramContent) {
-/* 167 */     addComment((ProgramElementDoc)paramConstructorDoc, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addTags(ConstructorDoc paramConstructorDoc, Content paramContent) {
-/* 174 */     this.writer.addTagsInfo((Doc)paramConstructorDoc, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getConstructorDetails(Content paramContent) {
-/* 181 */     return getMemberTree(paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getConstructorDoc(Content paramContent, boolean paramBoolean) {
-/* 189 */     return getMemberTree(paramContent, paramBoolean);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void close() throws IOException {
-/* 196 */     this.writer.close();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void setFoundNonPubConstructor(boolean paramBoolean) {
-/* 205 */     this.foundNonPubConstructor = paramBoolean;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryLabel(Content paramContent) {
-/* 212 */     HtmlTree htmlTree = HtmlTree.HEADING(HtmlConstants.SUMMARY_HEADING, this.writer
-/* 213 */         .getResource("doclet.Constructor_Summary"));
-/* 214 */     paramContent.addContent((Content)htmlTree);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getTableSummary() {
-/* 221 */     return this.configuration.getText("doclet.Member_Table_Summary", this.configuration
-/* 222 */         .getText("doclet.Constructor_Summary"), this.configuration
-/* 223 */         .getText("doclet.constructors"));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getCaption() {
-/* 230 */     return this.configuration.getResource("doclet.Constructors");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String[] getSummaryTableHeader(ProgramElementDoc paramProgramElementDoc) {
-/*     */     String[] arrayOfString;
-/* 238 */     if (this.foundNonPubConstructor) {
-/*     */ 
-/*     */       
-/* 241 */       arrayOfString = new String[] { this.configuration.getText("doclet.Modifier"), this.configuration.getText("doclet.0_and_1", this.configuration
-/* 242 */             .getText("doclet.Constructor"), this.configuration
-/* 243 */             .getText("doclet.Description")) };
-/*     */     
-/*     */     }
-/*     */     else {
-/*     */       
-/* 248 */       arrayOfString = new String[] { this.configuration.getText("doclet.0_and_1", this.configuration
-/* 249 */             .getText("doclet.Constructor"), this.configuration
-/* 250 */             .getText("doclet.Description")) };
-/*     */     } 
-/*     */     
-/* 253 */     return arrayOfString;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryAnchor(ClassDoc paramClassDoc, Content paramContent) {
-/* 260 */     paramContent.addContent(this.writer.getMarkerAnchor(SectionName.CONSTRUCTOR_SUMMARY));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addInheritedSummaryAnchor(ClassDoc paramClassDoc, Content paramContent) {}
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addInheritedSummaryLabel(ClassDoc paramClassDoc, Content paramContent) {}
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public int getMemberKind() {
-/* 277 */     return 3;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getNavSummaryLink(ClassDoc paramClassDoc, boolean paramBoolean) {
-/* 284 */     if (paramBoolean) {
-/* 285 */       return this.writer.getHyperLink(SectionName.CONSTRUCTOR_SUMMARY, this.writer
-/* 286 */           .getResource("doclet.navConstructor"));
-/*     */     }
-/* 288 */     return this.writer.getResource("doclet.navConstructor");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addNavDetailLink(boolean paramBoolean, Content paramContent) {
-/* 296 */     if (paramBoolean) {
-/* 297 */       paramContent.addContent(this.writer.getHyperLink(SectionName.CONSTRUCTOR_DETAIL, this.writer
-/*     */             
-/* 299 */             .getResource("doclet.navConstructor")));
-/*     */     } else {
-/* 301 */       paramContent.addContent(this.writer.getResource("doclet.navConstructor"));
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addSummaryType(ProgramElementDoc paramProgramElementDoc, Content paramContent) {
-/* 309 */     if (this.foundNonPubConstructor) {
-/* 310 */       HtmlTree htmlTree = new HtmlTree(HtmlTag.CODE);
-/* 311 */       if (paramProgramElementDoc.isProtected()) {
-/* 312 */         htmlTree.addContent("protected ");
-/* 313 */       } else if (paramProgramElementDoc.isPrivate()) {
-/* 314 */         htmlTree.addContent("private ");
-/* 315 */       } else if (paramProgramElementDoc.isPublic()) {
-/* 316 */         htmlTree.addContent(this.writer.getSpace());
-/*     */       } else {
-/* 318 */         htmlTree.addContent(this.configuration
-/* 319 */             .getText("doclet.Package_private"));
-/*     */       } 
-/* 321 */       paramContent.addContent((Content)htmlTree);
-/*     */     } 
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\ConstructorWriterImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+import java.util.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Writes constructor documentation.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Robert Field
+ * @author Atul M Dambalkar
+ * @author Bhavesh Patel (Modified)
+ */
+public class ConstructorWriterImpl extends AbstractExecutableMemberWriter
+    implements ConstructorWriter, MemberSummaryWriter {
+
+    private boolean foundNonPubConstructor = false;
+
+    /**
+     * Construct a new ConstructorWriterImpl.
+     *
+     * @param writer The writer for the class that the constructors belong to.
+     * @param classDoc the class being documented.
+     */
+    public ConstructorWriterImpl(SubWriterHolderWriter writer,
+            ClassDoc classDoc) {
+        super(writer, classDoc);
+        VisibleMemberMap visibleMemberMap = new VisibleMemberMap(classDoc,
+            VisibleMemberMap.CONSTRUCTORS, configuration);
+        List<ProgramElementDoc> constructors = new ArrayList<ProgramElementDoc>(visibleMemberMap.getMembersFor(classDoc));
+        for (int i = 0; i < constructors.size(); i++) {
+            if ((constructors.get(i)).isProtected() ||
+                (constructors.get(i)).isPrivate()) {
+                setFoundNonPubConstructor(true);
+            }
+        }
+    }
+
+    /**
+     * Construct a new ConstructorWriterImpl.
+     *
+     * @param writer The writer for the class that the constructors belong to.
+     */
+    public ConstructorWriterImpl(SubWriterHolderWriter writer) {
+        super(writer);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getMemberSummaryHeader(ClassDoc classDoc,
+            Content memberSummaryTree) {
+        memberSummaryTree.addContent(HtmlConstants.START_OF_CONSTRUCTOR_SUMMARY);
+        Content memberTree = writer.getMemberTreeHeader();
+        writer.addSummaryHeader(this, classDoc, memberTree);
+        return memberTree;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getConstructorDetailsTreeHeader(ClassDoc classDoc,
+            Content memberDetailsTree) {
+        memberDetailsTree.addContent(HtmlConstants.START_OF_CONSTRUCTOR_DETAILS);
+        Content constructorDetailsTree = writer.getMemberTreeHeader();
+        constructorDetailsTree.addContent(writer.getMarkerAnchor(
+                SectionName.CONSTRUCTOR_DETAIL));
+        Content heading = HtmlTree.HEADING(HtmlConstants.DETAILS_HEADING,
+                writer.constructorDetailsLabel);
+        constructorDetailsTree.addContent(heading);
+        return constructorDetailsTree;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getConstructorDocTreeHeader(ConstructorDoc constructor,
+            Content constructorDetailsTree) {
+        String erasureAnchor;
+        if ((erasureAnchor = getErasureAnchor(constructor)) != null) {
+            constructorDetailsTree.addContent(writer.getMarkerAnchor((erasureAnchor)));
+        }
+        constructorDetailsTree.addContent(
+                writer.getMarkerAnchor(writer.getAnchor(constructor)));
+        Content constructorDocTree = writer.getMemberTreeHeader();
+        Content heading = new HtmlTree(HtmlConstants.MEMBER_HEADING);
+        heading.addContent(constructor.name());
+        constructorDocTree.addContent(heading);
+        return constructorDocTree;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getSignature(ConstructorDoc constructor) {
+        Content pre = new HtmlTree(HtmlTag.PRE);
+        writer.addAnnotationInfo(constructor, pre);
+        addModifiers(constructor, pre);
+        if (configuration.linksource) {
+            Content constructorName = new StringContent(constructor.name());
+            writer.addSrcLink(constructor, constructorName, pre);
+        } else {
+            addName(constructor.name(), pre);
+        }
+        int indent = pre.charCount();
+        addParameters(constructor, pre, indent);
+        addExceptions(constructor, pre, indent);
+        return pre;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setSummaryColumnStyle(HtmlTree tdTree) {
+        if (foundNonPubConstructor)
+            tdTree.addStyle(HtmlStyle.colLast);
+        else
+            tdTree.addStyle(HtmlStyle.colOne);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addDeprecated(ConstructorDoc constructor, Content constructorDocTree) {
+        addDeprecatedInfo(constructor, constructorDocTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addComments(ConstructorDoc constructor, Content constructorDocTree) {
+        addComment(constructor, constructorDocTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addTags(ConstructorDoc constructor, Content constructorDocTree) {
+        writer.addTagsInfo(constructor, constructorDocTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getConstructorDetails(Content constructorDetailsTree) {
+        return getMemberTree(constructorDetailsTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getConstructorDoc(Content constructorDocTree,
+            boolean isLastContent) {
+        return getMemberTree(constructorDocTree, isLastContent);
+    }
+
+    /**
+     * Close the writer.
+     */
+    public void close() throws IOException {
+        writer.close();
+    }
+
+    /**
+     * Let the writer know whether a non public constructor was found.
+     *
+     * @param foundNonPubConstructor true if we found a non public constructor.
+     */
+    public void setFoundNonPubConstructor(boolean foundNonPubConstructor) {
+        this.foundNonPubConstructor = foundNonPubConstructor;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addSummaryLabel(Content memberTree) {
+        Content label = HtmlTree.HEADING(HtmlConstants.SUMMARY_HEADING,
+                writer.getResource("doclet.Constructor_Summary"));
+        memberTree.addContent(label);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String getTableSummary() {
+        return configuration.getText("doclet.Member_Table_Summary",
+                configuration.getText("doclet.Constructor_Summary"),
+                configuration.getText("doclet.constructors"));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getCaption() {
+        return configuration.getResource("doclet.Constructors");
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String[] getSummaryTableHeader(ProgramElementDoc member) {
+        String[] header;
+        if (foundNonPubConstructor) {
+            header = new String[] {
+                configuration.getText("doclet.Modifier"),
+                configuration.getText("doclet.0_and_1",
+                        configuration.getText("doclet.Constructor"),
+                        configuration.getText("doclet.Description"))
+            };
+        }
+        else {
+            header = new String[] {
+                configuration.getText("doclet.0_and_1",
+                        configuration.getText("doclet.Constructor"),
+                        configuration.getText("doclet.Description"))
+            };
+        }
+        return header;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addSummaryAnchor(ClassDoc cd, Content memberTree) {
+        memberTree.addContent(writer.getMarkerAnchor(
+                SectionName.CONSTRUCTOR_SUMMARY));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addInheritedSummaryAnchor(ClassDoc cd, Content inheritedTree) {
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addInheritedSummaryLabel(ClassDoc cd, Content inheritedTree) {
+    }
+
+    public int getMemberKind() {
+        return VisibleMemberMap.CONSTRUCTORS;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected Content getNavSummaryLink(ClassDoc cd, boolean link) {
+        if (link) {
+            return writer.getHyperLink(SectionName.CONSTRUCTOR_SUMMARY,
+                    writer.getResource("doclet.navConstructor"));
+        } else {
+            return writer.getResource("doclet.navConstructor");
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected void addNavDetailLink(boolean link, Content liNav) {
+        if (link) {
+            liNav.addContent(writer.getHyperLink(
+                    SectionName.CONSTRUCTOR_DETAIL,
+                    writer.getResource("doclet.navConstructor")));
+        } else {
+            liNav.addContent(writer.getResource("doclet.navConstructor"));
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected void addSummaryType(ProgramElementDoc member, Content tdSummaryType) {
+        if (foundNonPubConstructor) {
+            Content code = new HtmlTree(HtmlTag.CODE);
+            if (member.isProtected()) {
+                code.addContent("protected ");
+            } else if (member.isPrivate()) {
+                code.addContent("private ");
+            } else if (member.isPublic()) {
+                code.addContent(writer.getSpace());
+            } else {
+                code.addContent(
+                        configuration.getText("doclet.Package_private"));
+            }
+            tdSummaryType.addContent(code);
+        }
+    }
+}

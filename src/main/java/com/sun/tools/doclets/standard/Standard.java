@@ -1,56 +1,51 @@
-/*    */ package com.sun.tools.doclets.standard;
-/*    */ 
-/*    */ import com.sun.javadoc.DocErrorReporter;
-/*    */ import com.sun.javadoc.LanguageVersion;
-/*    */ import com.sun.javadoc.RootDoc;
-/*    */ import com.sun.tools.doclets.formats.html.HtmlDoclet;
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ public class Standard
-/*    */ {
-/*    */   public static int optionLength(String paramString) {
-/* 35 */     return HtmlDoclet.optionLength(paramString);
-/*    */   }
-/*    */   
-/*    */   public static boolean start(RootDoc paramRootDoc) {
-/* 39 */     return HtmlDoclet.start(paramRootDoc);
-/*    */   }
-/*    */ 
-/*    */   
-/*    */   public static boolean validOptions(String[][] paramArrayOfString, DocErrorReporter paramDocErrorReporter) {
-/* 44 */     return HtmlDoclet.validOptions(paramArrayOfString, paramDocErrorReporter);
-/*    */   }
-/*    */   
-/*    */   public static LanguageVersion languageVersion() {
-/* 48 */     return HtmlDoclet.languageVersion();
-/*    */   }
-/*    */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\standard\Standard.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.standard;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.*;
+
+
+public class Standard {
+
+    public static int optionLength(String option) {
+        return HtmlDoclet.optionLength(option);
+    }
+
+    public static boolean start(RootDoc root) {
+        return HtmlDoclet.start(root);
+    }
+
+    public static boolean validOptions(String[][] options,
+                                   DocErrorReporter reporter) {
+        return HtmlDoclet.validOptions(options, reporter);
+    }
+
+    public static LanguageVersion languageVersion() {
+        return HtmlDoclet.languageVersion();
+    }
+
+}

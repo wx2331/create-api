@@ -1,251 +1,246 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlConstants;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DeprecatedAPIListBuilder;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPath;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPaths;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocletAbortException;
-/*     */ import java.io.IOException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class DeprecatedListWriter
-/*     */   extends SubWriterHolderWriter
-/*     */ {
-/*  49 */   private static final String[] ANCHORS = new String[] { "package", "interface", "class", "enum", "exception", "error", "annotation.type", "field", "method", "constructor", "enum.constant", "annotation.type.member" };
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*  55 */   private static final String[] HEADING_KEYS = new String[] { "doclet.Deprecated_Packages", "doclet.Deprecated_Interfaces", "doclet.Deprecated_Classes", "doclet.Deprecated_Enums", "doclet.Deprecated_Exceptions", "doclet.Deprecated_Errors", "doclet.Deprecated_Annotation_Types", "doclet.Deprecated_Fields", "doclet.Deprecated_Methods", "doclet.Deprecated_Constructors", "doclet.Deprecated_Enum_Constants", "doclet.Deprecated_Annotation_Type_Members" };
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*  66 */   private static final String[] SUMMARY_KEYS = new String[] { "doclet.deprecated_packages", "doclet.deprecated_interfaces", "doclet.deprecated_classes", "doclet.deprecated_enums", "doclet.deprecated_exceptions", "doclet.deprecated_errors", "doclet.deprecated_annotation_types", "doclet.deprecated_fields", "doclet.deprecated_methods", "doclet.deprecated_constructors", "doclet.deprecated_enum_constants", "doclet.deprecated_annotation_type_members" };
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*  77 */   private static final String[] HEADER_KEYS = new String[] { "doclet.Package", "doclet.Interface", "doclet.Class", "doclet.Enum", "doclet.Exceptions", "doclet.Errors", "doclet.AnnotationType", "doclet.Field", "doclet.Method", "doclet.Constructor", "doclet.Enum_Constant", "doclet.Annotation_Type_Member" };
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private AbstractMemberWriter[] writers;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private ConfigurationImpl configuration;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public DeprecatedListWriter(ConfigurationImpl paramConfigurationImpl, DocPath paramDocPath) throws IOException {
-/*  99 */     super(paramConfigurationImpl, paramDocPath);
-/* 100 */     this.configuration = paramConfigurationImpl;
-/* 101 */     NestedClassWriterImpl nestedClassWriterImpl = new NestedClassWriterImpl(this);
-/* 102 */     this.writers = new AbstractMemberWriter[] { nestedClassWriterImpl, nestedClassWriterImpl, nestedClassWriterImpl, nestedClassWriterImpl, nestedClassWriterImpl, nestedClassWriterImpl, new FieldWriterImpl(this), new MethodWriterImpl(this), new ConstructorWriterImpl(this), new EnumConstantWriterImpl(this), new AnnotationTypeOptionalMemberWriterImpl(this, null) };
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void generate(ConfigurationImpl paramConfigurationImpl) {
-/* 119 */     DocPath docPath = DocPaths.DEPRECATED_LIST;
-/*     */     try {
-/* 121 */       DeprecatedListWriter deprecatedListWriter = new DeprecatedListWriter(paramConfigurationImpl, docPath);
-/*     */       
-/* 123 */       deprecatedListWriter.generateDeprecatedListFile(new DeprecatedAPIListBuilder(paramConfigurationImpl));
-/*     */       
-/* 125 */       deprecatedListWriter.close();
-/* 126 */     } catch (IOException iOException) {
-/* 127 */       paramConfigurationImpl.standardmessage.error("doclet.exception_encountered", new Object[] { iOException
-/*     */             
-/* 129 */             .toString(), docPath });
-/* 130 */       throw new DocletAbortException(iOException);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void generateDeprecatedListFile(DeprecatedAPIListBuilder paramDeprecatedAPIListBuilder) throws IOException {
-/* 141 */     Content content = getHeader();
-/* 142 */     content.addContent(getContentsList(paramDeprecatedAPIListBuilder));
-/*     */     
-/* 144 */     String[] arrayOfString = new String[1];
-/* 145 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.DIV);
-/* 146 */     htmlTree.addStyle(HtmlStyle.contentContainer);
-/* 147 */     for (byte b = 0; b < 12; b++) {
-/* 148 */       if (paramDeprecatedAPIListBuilder.hasDocumentation(b)) {
-/* 149 */         addAnchor(paramDeprecatedAPIListBuilder, b, (Content)htmlTree);
-/*     */         
-/* 151 */         String str = this.configuration.getText("doclet.Member_Table_Summary", this.configuration
-/* 152 */             .getText(HEADING_KEYS[b]), this.configuration
-/* 153 */             .getText(SUMMARY_KEYS[b]));
-/* 154 */         arrayOfString[0] = this.configuration.getText("doclet.0_and_1", this.configuration
-/* 155 */             .getText(HEADER_KEYS[b]), this.configuration
-/* 156 */             .getText("doclet.Description"));
-/*     */ 
-/*     */         
-/* 159 */         if (b == 0) {
-/* 160 */           addPackageDeprecatedAPI(paramDeprecatedAPIListBuilder.getList(b), HEADING_KEYS[b], str, arrayOfString, (Content)htmlTree);
-/*     */         } else {
-/*     */           
-/* 163 */           this.writers[b - 1].addDeprecatedAPI(paramDeprecatedAPIListBuilder.getList(b), HEADING_KEYS[b], str, arrayOfString, (Content)htmlTree);
-/*     */         } 
-/*     */       } 
-/*     */     } 
-/* 167 */     content.addContent((Content)htmlTree);
-/* 168 */     addNavLinks(false, content);
-/* 169 */     addBottom(content);
-/* 170 */     printHtmlDocument((String[])null, true, content);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void addIndexLink(DeprecatedAPIListBuilder paramDeprecatedAPIListBuilder, int paramInt, Content paramContent) {
-/* 182 */     if (paramDeprecatedAPIListBuilder.hasDocumentation(paramInt)) {
-/* 183 */       HtmlTree htmlTree = HtmlTree.LI(getHyperLink(ANCHORS[paramInt], 
-/* 184 */             getResource(HEADING_KEYS[paramInt])));
-/* 185 */       paramContent.addContent((Content)htmlTree);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getContentsList(DeprecatedAPIListBuilder paramDeprecatedAPIListBuilder) {
-/* 196 */     Content content1 = getResource("doclet.Deprecated_API");
-/* 197 */     HtmlTree htmlTree1 = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, true, HtmlStyle.title, content1);
-/*     */     
-/* 199 */     HtmlTree htmlTree2 = HtmlTree.DIV(HtmlStyle.header, (Content)htmlTree1);
-/* 200 */     Content content2 = getResource("doclet.Contents");
-/* 201 */     htmlTree2.addContent((Content)HtmlTree.HEADING(HtmlConstants.CONTENT_HEADING, true, content2));
-/*     */     
-/* 203 */     HtmlTree htmlTree3 = new HtmlTree(HtmlTag.UL);
-/* 204 */     for (byte b = 0; b < 12; b++) {
-/* 205 */       addIndexLink(paramDeprecatedAPIListBuilder, b, (Content)htmlTree3);
-/*     */     }
-/* 207 */     htmlTree2.addContent((Content)htmlTree3);
-/* 208 */     return (Content)htmlTree2;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void addAnchor(DeprecatedAPIListBuilder paramDeprecatedAPIListBuilder, int paramInt, Content paramContent) {
-/* 219 */     if (paramDeprecatedAPIListBuilder.hasDocumentation(paramInt)) {
-/* 220 */       paramContent.addContent(getMarkerAnchor(ANCHORS[paramInt]));
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getHeader() {
-/* 230 */     String str = this.configuration.getText("doclet.Window_Deprecated_List");
-/* 231 */     HtmlTree htmlTree = getBody(true, getWindowTitle(str));
-/* 232 */     addTop((Content)htmlTree);
-/* 233 */     addNavLinks(true, (Content)htmlTree);
-/* 234 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getNavLinkDeprecated() {
-/* 243 */     return (Content)HtmlTree.LI(HtmlStyle.navBarCell1Rev, this.deprecatedLabel);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\DeprecatedListWriter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Generate File to list all the deprecated classes and class members with the
+ * appropriate links.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @see java.util.List
+ * @author Atul M Dambalkar
+ * @author Bhavesh Patel (Modified)
+ */
+public class DeprecatedListWriter extends SubWriterHolderWriter {
+
+    private static final String[] ANCHORS = new String[] {
+        "package", "interface", "class", "enum", "exception", "error",
+        "annotation.type", "field", "method", "constructor", "enum.constant",
+        "annotation.type.member"
+    };
+
+    private static final String[] HEADING_KEYS = new String[] {
+        "doclet.Deprecated_Packages", "doclet.Deprecated_Interfaces",
+        "doclet.Deprecated_Classes", "doclet.Deprecated_Enums",
+        "doclet.Deprecated_Exceptions", "doclet.Deprecated_Errors",
+        "doclet.Deprecated_Annotation_Types",
+        "doclet.Deprecated_Fields",
+        "doclet.Deprecated_Methods", "doclet.Deprecated_Constructors",
+        "doclet.Deprecated_Enum_Constants",
+        "doclet.Deprecated_Annotation_Type_Members"
+    };
+
+    private static final String[] SUMMARY_KEYS = new String[] {
+        "doclet.deprecated_packages", "doclet.deprecated_interfaces",
+        "doclet.deprecated_classes", "doclet.deprecated_enums",
+        "doclet.deprecated_exceptions", "doclet.deprecated_errors",
+        "doclet.deprecated_annotation_types",
+        "doclet.deprecated_fields",
+        "doclet.deprecated_methods", "doclet.deprecated_constructors",
+        "doclet.deprecated_enum_constants",
+        "doclet.deprecated_annotation_type_members"
+    };
+
+    private static final String[] HEADER_KEYS = new String[] {
+        "doclet.Package", "doclet.Interface", "doclet.Class",
+        "doclet.Enum", "doclet.Exceptions",
+        "doclet.Errors",
+        "doclet.AnnotationType",
+        "doclet.Field",
+        "doclet.Method", "doclet.Constructor",
+        "doclet.Enum_Constant",
+        "doclet.Annotation_Type_Member"
+    };
+
+    private AbstractMemberWriter[] writers;
+
+    private ConfigurationImpl configuration;
+
+    /**
+     * Constructor.
+     *
+     * @param filename the file to be generated.
+     */
+    public DeprecatedListWriter(ConfigurationImpl configuration,
+                                DocPath filename) throws IOException {
+        super(configuration, filename);
+        this.configuration = configuration;
+        NestedClassWriterImpl classW = new NestedClassWriterImpl(this);
+        writers = new AbstractMemberWriter[]
+            {classW, classW, classW, classW, classW, classW,
+            new FieldWriterImpl(this),
+            new MethodWriterImpl(this),
+            new ConstructorWriterImpl(this),
+            new EnumConstantWriterImpl(this),
+            new AnnotationTypeOptionalMemberWriterImpl(this, null)};
+    }
+
+    /**
+     * Get list of all the deprecated classes and members in all the Packages
+     * specified on the Command Line.
+     * Then instantiate DeprecatedListWriter and generate File.
+     *
+     * @param configuration the current configuration of the doclet.
+     */
+    public static void generate(ConfigurationImpl configuration) {
+        DocPath filename = DocPaths.DEPRECATED_LIST;
+        try {
+            DeprecatedListWriter depr =
+                   new DeprecatedListWriter(configuration, filename);
+            depr.generateDeprecatedListFile(
+                   new DeprecatedAPIListBuilder(configuration));
+            depr.close();
+        } catch (IOException exc) {
+            configuration.standardmessage.error(
+                        "doclet.exception_encountered",
+                        exc.toString(), filename);
+            throw new DocletAbortException(exc);
+        }
+    }
+
+    /**
+     * Generate the deprecated API list.
+     *
+     * @param deprapi list of deprecated API built already.
+     */
+    protected void generateDeprecatedListFile(DeprecatedAPIListBuilder deprapi)
+            throws IOException {
+        Content body = getHeader();
+        body.addContent(getContentsList(deprapi));
+        String memberTableSummary;
+        String[] memberTableHeader = new String[1];
+        HtmlTree div = new HtmlTree(HtmlTag.DIV);
+        div.addStyle(HtmlStyle.contentContainer);
+        for (int i = 0; i < DeprecatedAPIListBuilder.NUM_TYPES; i++) {
+            if (deprapi.hasDocumentation(i)) {
+                addAnchor(deprapi, i, div);
+                memberTableSummary =
+                        configuration.getText("doclet.Member_Table_Summary",
+                        configuration.getText(HEADING_KEYS[i]),
+                        configuration.getText(SUMMARY_KEYS[i]));
+                memberTableHeader[0] = configuration.getText("doclet.0_and_1",
+                        configuration.getText(HEADER_KEYS[i]),
+                        configuration.getText("doclet.Description"));
+                // DeprecatedAPIListBuilder.PACKAGE == 0, so if i == 0, it is
+                // a PackageDoc.
+                if (i == DeprecatedAPIListBuilder.PACKAGE)
+                    addPackageDeprecatedAPI(deprapi.getList(i),
+                            HEADING_KEYS[i], memberTableSummary, memberTableHeader, div);
+                else
+                    writers[i - 1].addDeprecatedAPI(deprapi.getList(i),
+                            HEADING_KEYS[i], memberTableSummary, memberTableHeader, div);
+            }
+        }
+        body.addContent(div);
+        addNavLinks(false, body);
+        addBottom(body);
+        printHtmlDocument(null, true, body);
+    }
+
+    /**
+     * Add the index link.
+     *
+     * @param builder the deprecated list builder
+     * @param type the type of list being documented
+     * @param contentTree the content tree to which the index link will be added
+     */
+    private void addIndexLink(DeprecatedAPIListBuilder builder,
+            int type, Content contentTree) {
+        if (builder.hasDocumentation(type)) {
+            Content li = HtmlTree.LI(getHyperLink(ANCHORS[type],
+                    getResource(HEADING_KEYS[type])));
+            contentTree.addContent(li);
+        }
+    }
+
+    /**
+     * Get the contents list.
+     *
+     * @param deprapi the deprecated list builder
+     * @return a content tree for the contents list
+     */
+    public Content getContentsList(DeprecatedAPIListBuilder deprapi) {
+        Content headContent = getResource("doclet.Deprecated_API");
+        Content heading = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, true,
+                HtmlStyle.title, headContent);
+        Content div = HtmlTree.DIV(HtmlStyle.header, heading);
+        Content headingContent = getResource("doclet.Contents");
+        div.addContent(HtmlTree.HEADING(HtmlConstants.CONTENT_HEADING, true,
+                headingContent));
+        Content ul = new HtmlTree(HtmlTag.UL);
+        for (int i = 0; i < DeprecatedAPIListBuilder.NUM_TYPES; i++) {
+            addIndexLink(deprapi, i, ul);
+        }
+        div.addContent(ul);
+        return div;
+    }
+
+    /**
+     * Add the anchor.
+     *
+     * @param builder the deprecated list builder
+     * @param type the type of list being documented
+     * @param htmlTree the content tree to which the anchor will be added
+     */
+    private void addAnchor(DeprecatedAPIListBuilder builder, int type, Content htmlTree) {
+        if (builder.hasDocumentation(type)) {
+            htmlTree.addContent(getMarkerAnchor(ANCHORS[type]));
+        }
+    }
+
+    /**
+     * Get the header for the deprecated API Listing.
+     *
+     * @return a content tree for the header
+     */
+    public Content getHeader() {
+        String title = configuration.getText("doclet.Window_Deprecated_List");
+        Content bodyTree = getBody(true, getWindowTitle(title));
+        addTop(bodyTree);
+        addNavLinks(true, bodyTree);
+        return bodyTree;
+    }
+
+    /**
+     * Get the deprecated label.
+     *
+     * @return a content tree for the deprecated label
+     */
+    protected Content getNavLinkDeprecated() {
+        Content li = HtmlTree.LI(HtmlStyle.navBarCell1Rev, deprecatedLabel);
+        return li;
+    }
+}

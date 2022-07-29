@@ -1,778 +1,766 @@
-/*     */ package com.sun.tools.javac.code;
-/*     */
-/*     */ import com.sun.tools.javac.util.Assert;
-/*     */ import com.sun.tools.javac.util.Filter;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import com.sun.tools.javac.util.Name;
-/*     */ import java.util.Iterator;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class Scope
-/*     */ {
-/*     */   private int shared;
-/*     */   public Scope next;
-/*     */   public Symbol owner;
-/*     */   Entry[] table;
-/*     */   int hashMask;
-/*     */   public Entry elems;
-/*  74 */   int nelems = 0;
-/*     */
-/*     */
-/*     */
-/*  78 */   List<ScopeListener> listeners = List.nil();
-/*     */
-/*     */
-/*     */
-/*     */
-/*  83 */   private static final Entry sentinel = new Entry(null, null, null, null);
-/*     */
-/*     */
-/*     */
-/*     */   private static final int INITIAL_SIZE = 16;
-/*     */
-/*     */
-/*     */
-/*  91 */   public static final Scope emptyScope = new Scope(null, null, new Entry[0]);
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private Scope(Scope paramScope, Symbol paramSymbol, Entry[] paramArrayOfEntry) {
-/*  97 */     this.next = paramScope;
-/*  98 */     Assert.check((emptyScope == null || paramSymbol != null));
-/*  99 */     this.owner = paramSymbol;
-/* 100 */     this.table = paramArrayOfEntry;
-/* 101 */     this.hashMask = paramArrayOfEntry.length - 1;
-/*     */   }
-/*     */
-/*     */
-/*     */   private Scope(Scope paramScope, Symbol paramSymbol, Entry[] paramArrayOfEntry, int paramInt) {
-/* 106 */     this(paramScope, paramSymbol, paramArrayOfEntry);
-/* 107 */     this.nelems = paramInt;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Scope(Symbol paramSymbol) {
-/* 114 */     this(null, paramSymbol, new Entry[16]);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Scope dup() {
-/* 123 */     return dup(this.owner);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Scope dup(Symbol paramSymbol) {
-/* 132 */     Scope scope = new Scope(this, paramSymbol, this.table, this.nelems);
-/* 133 */     this.shared++;
-/*     */
-/*     */
-/* 136 */     return scope;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Scope dupUnshared() {
-/* 144 */     return new Scope(this, this.owner, (Entry[])this.table.clone(), this.nelems);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Scope leave() {
-/* 151 */     Assert.check((this.shared == 0));
-/* 152 */     if (this.table != this.next.table) return this.next;
-/* 153 */     while (this.elems != null) {
-/* 154 */       int i = getIndex(this.elems.sym.name);
-/* 155 */       Entry entry = this.table[i];
-/* 156 */       Assert.check((entry == this.elems), this.elems.sym);
-/* 157 */       this.table[i] = this.elems.shadowed;
-/* 158 */       this.elems = this.elems.sibling;
-/*     */     }
-/* 160 */     Assert.check((this.next.shared > 0));
-/* 161 */     this.next.shared--;
-/* 162 */     this.next.nelems = this.nelems;
-/*     */
-/*     */
-/* 165 */     return this.next;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   private void dble() {
-/* 171 */     Assert.check((this.shared == 0));
-/* 172 */     Entry[] arrayOfEntry1 = this.table;
-/* 173 */     Entry[] arrayOfEntry2 = new Entry[arrayOfEntry1.length * 2];
-/* 174 */     for (Scope scope = this; scope != null; scope = scope.next) {
-/* 175 */       if (scope.table == arrayOfEntry1) {
-/* 176 */         Assert.check((scope == this || scope.shared != 0));
-/* 177 */         scope.table = arrayOfEntry2;
-/* 178 */         scope.hashMask = arrayOfEntry2.length - 1;
-/*     */       }
-/*     */     }
-/* 181 */     byte b = 0;
-/* 182 */     for (int i = arrayOfEntry1.length; --i >= 0; ) {
-/* 183 */       Entry entry = arrayOfEntry1[i];
-/* 184 */       if (entry != null && entry != sentinel) {
-/* 185 */         this.table[getIndex(entry.sym.name)] = entry;
-/* 186 */         b++;
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/* 191 */     this.nelems = b;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public void enter(Symbol paramSymbol) {
-/* 197 */     Assert.check((this.shared == 0));
-/* 198 */     enter(paramSymbol, this);
-/*     */   }
-/*     */
-/*     */   public void enter(Symbol paramSymbol, Scope paramScope) {
-/* 202 */     enter(paramSymbol, paramScope, paramScope, false);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void enter(Symbol paramSymbol, Scope paramScope1, Scope paramScope2, boolean paramBoolean) {
-/* 211 */     Assert.check((this.shared == 0));
-/* 212 */     if (this.nelems * 3 >= this.hashMask * 2)
-/* 213 */       dble();
-/* 214 */     int i = getIndex(paramSymbol.name);
-/* 215 */     Entry entry1 = this.table[i];
-/* 216 */     if (entry1 == null) {
-/* 217 */       entry1 = sentinel;
-/* 218 */       this.nelems++;
-/*     */     }
-/* 220 */     Entry entry2 = makeEntry(paramSymbol, entry1, this.elems, paramScope1, paramScope2, paramBoolean);
-/* 221 */     this.table[i] = entry2;
-/* 222 */     this.elems = entry2;
-/*     */
-/*     */
-/* 225 */     for (List<ScopeListener> list = this.listeners; list.nonEmpty(); list = list.tail) {
-/* 226 */       ((ScopeListener)list.head).symbolAdded(paramSymbol, this);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   Entry makeEntry(Symbol paramSymbol, Entry paramEntry1, Entry paramEntry2, Scope paramScope1, Scope paramScope2, boolean paramBoolean) {
-/* 231 */     return new Entry(paramSymbol, paramEntry1, paramEntry2, paramScope1);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void addScopeListener(ScopeListener paramScopeListener) {
-/* 241 */     this.listeners = this.listeners.prepend(paramScopeListener);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public void remove(final Symbol sym) {
-/* 247 */     Assert.check((this.shared == 0));
-/* 248 */     Entry entry1 = lookup(sym.name, new Filter<Symbol>()
-/*     */         {
-/*     */           public boolean accepts(Symbol param1Symbol) {
-/* 251 */             return (param1Symbol == sym);
-/*     */           }
-/*     */         });
-/* 254 */     if (entry1.scope == null) {
-/*     */       return;
-/*     */     }
-/* 257 */     int i = getIndex(sym.name);
-/* 258 */     Entry entry2 = this.table[i];
-/* 259 */     if (entry2 == entry1)
-/* 260 */     { this.table[i] = entry1.shadowed; }
-/*     */     else { while (true) {
-/* 262 */         if (entry2.shadowed == entry1) {
-/* 263 */           entry2.shadowed = entry1.shadowed;
-/*     */           break;
-/*     */         }
-/* 266 */         entry2 = entry2.shadowed;
-/*     */       }  }
-/*     */
-/*     */
-/* 270 */     entry2 = this.elems;
-/* 271 */     if (entry2 == entry1)
-/* 272 */     { this.elems = entry1.sibling; }
-/*     */     else { while (true) {
-/* 274 */         if (entry2.sibling == entry1) {
-/* 275 */           entry2.sibling = entry1.sibling;
-/*     */           break;
-/*     */         }
-/* 278 */         entry2 = entry2.sibling;
-/*     */       }  }
-/*     */
-/*     */
-/* 282 */     for (List<ScopeListener> list = this.listeners; list.nonEmpty(); list = list.tail) {
-/* 283 */       ((ScopeListener)list.head).symbolRemoved(sym, this);
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public void enterIfAbsent(Symbol paramSymbol) {
-/* 290 */     Assert.check((this.shared == 0));
-/* 291 */     Entry entry = lookup(paramSymbol.name);
-/* 292 */     for (; entry.scope == this && entry.sym.kind != paramSymbol.kind; entry = entry.next());
-/* 293 */     if (entry.scope != this) enter(paramSymbol);
-/*     */
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public boolean includes(Symbol paramSymbol) {
-/* 300 */     Entry entry = lookup(paramSymbol.name);
-/* 301 */     for (; entry.scope == this;
-/* 302 */       entry = entry.next()) {
-/* 303 */       if (entry.sym == paramSymbol) return true;
-/*     */     }
-/* 305 */     return false;
-/*     */   }
-/*     */
-/* 308 */   static final Filter<Symbol> noFilter = new Filter<Symbol>() {
-/*     */       public boolean accepts(Symbol param1Symbol) {
-/* 310 */         return true;
-/*     */       }
-/*     */     };
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Entry lookup(Name paramName) {
-/* 321 */     return lookup(paramName, noFilter);
-/*     */   }
-/*     */
-/*     */   public Entry lookup(Name paramName, Filter<Symbol> paramFilter) {
-/* 325 */     Entry entry = this.table[getIndex(paramName)];
-/* 326 */     if (entry == null || entry == sentinel)
-/* 327 */       return sentinel;
-/* 328 */     while (entry.scope != null && (entry.sym.name != paramName || !paramFilter.accepts(entry.sym)))
-/* 329 */       entry = entry.shadowed;
-/* 330 */     return entry;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   int getIndex(Name paramName) {
-/* 348 */     int i = paramName.hashCode();
-/* 349 */     int j = i & this.hashMask;
-/*     */
-/*     */
-/* 352 */     int k = this.hashMask - (i + (i >> 16) << 1);
-/* 353 */     int m = -1;
-/*     */     while (true) {
-/* 355 */       Entry entry = this.table[j];
-/* 356 */       if (entry == null)
-/* 357 */         return (m >= 0) ? m : j;
-/* 358 */       if (entry == sentinel) {
-/*     */
-/*     */
-/* 361 */         if (m < 0)
-/* 362 */           m = j;
-/* 363 */       } else if (entry.sym.name == paramName) {
-/* 364 */         return j;
-/* 365 */       }  j = j + k & this.hashMask;
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public boolean anyMatch(Filter<Symbol> paramFilter) {
-/* 370 */     return getElements(paramFilter).iterator().hasNext();
-/*     */   }
-/*     */
-/*     */   public Iterable<Symbol> getElements() {
-/* 374 */     return getElements(noFilter);
-/*     */   }
-/*     */
-/*     */   public Iterable<Symbol> getElements(final Filter<Symbol> sf) {
-/* 378 */     return new Iterable<Symbol>() {
-/*     */         public Iterator<Symbol> iterator() {
-/* 380 */           return new Iterator<Symbol>()
-/*     */             {
-/*     */               private Scope currScope;
-/*     */
-/*     */               private Entry currEntry;
-/*     */
-/*     */
-/*     */               public boolean hasNext() {
-/* 388 */                 return (this.currEntry != null);
-/*     */               }
-/*     */
-/*     */               public Symbol next() {
-/* 392 */                 Symbol symbol = (this.currEntry == null) ? null : this.currEntry.sym;
-/* 393 */                 if (this.currEntry != null) {
-/* 394 */                   this.currEntry = this.currEntry.sibling;
-/*     */                 }
-/* 396 */                 update();
-/* 397 */                 return symbol;
-/*     */               }
-/*     */
-/*     */               public void remove() {
-/* 401 */                 throw new UnsupportedOperationException();
-/*     */               }
-/*     */
-/*     */               private void update() {
-/* 405 */                 skipToNextMatchingEntry();
-/* 406 */                 while (this.currEntry == null && this.currScope.next != null) {
-/* 407 */                   this.currScope = this.currScope.next;
-/* 408 */                   this.currEntry = this.currScope.elems;
-/* 409 */                   skipToNextMatchingEntry();
-/*     */                 }
-/*     */               }
-/*     */
-/*     */               void skipToNextMatchingEntry() {
-/* 414 */                 while (this.currEntry != null && !sf.accepts(this.currEntry.sym)) {
-/* 415 */                   this.currEntry = this.currEntry.sibling;
-/*     */                 }
-/*     */               }
-/*     */             };
-/*     */         }
-/*     */       };
-/*     */   }
-/*     */
-/*     */   public Iterable<Symbol> getElementsByName(Name paramName) {
-/* 424 */     return getElementsByName(paramName, noFilter);
-/*     */   }
-/*     */
-/*     */   public Iterable<Symbol> getElementsByName(final Name name, final Filter<Symbol> sf) {
-/* 428 */     return new Iterable<Symbol>() {
-/*     */         public Iterator<Symbol> iterator() {
-/* 430 */           return new Iterator<Symbol>() {
-/* 431 */               Entry currentEntry = Scope.this.lookup(name, sf);
-/*     */
-/*     */               public boolean hasNext() {
-/* 434 */                 return (this.currentEntry.scope != null);
-/*     */               }
-/*     */               public Symbol next() {
-/* 437 */                 Entry entry = this.currentEntry;
-/* 438 */                 this.currentEntry = this.currentEntry.next(sf);
-/* 439 */                 return entry.sym;
-/*     */               }
-/*     */               public void remove() {
-/* 442 */                 throw new UnsupportedOperationException();
-/*     */               }
-/*     */             };
-/*     */         }
-/*     */       };
-/*     */   }
-/*     */
-/*     */   public String toString() {
-/* 450 */     StringBuilder stringBuilder = new StringBuilder();
-/* 451 */     stringBuilder.append("Scope[");
-/* 452 */     for (Scope scope = this; scope != null; scope = scope.next) {
-/* 453 */       if (scope != this) stringBuilder.append(" | ");
-/* 454 */       for (Entry entry = scope.elems; entry != null; entry = entry.sibling) {
-/* 455 */         if (entry != scope.elems) stringBuilder.append(", ");
-/* 456 */         stringBuilder.append(entry.sym);
-/*     */       }
-/*     */     }
-/* 459 */     stringBuilder.append("]");
-/* 460 */     return stringBuilder.toString();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static class Entry
-/*     */   {
-/*     */     public Symbol sym;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     private Entry shadowed;
-/*     */
-/*     */
-/*     */
-/*     */     public Entry sibling;
-/*     */
-/*     */
-/*     */
-/*     */     public Scope scope;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public Entry(Symbol param1Symbol, Entry param1Entry1, Entry param1Entry2, Scope param1Scope) {
-/* 488 */       this.sym = param1Symbol;
-/* 489 */       this.shadowed = param1Entry1;
-/* 490 */       this.sibling = param1Entry2;
-/* 491 */       this.scope = param1Scope;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public Entry next() {
-/* 498 */       return this.shadowed;
-/*     */     }
-/*     */
-/*     */     public Entry next(Filter<Symbol> param1Filter) {
-/* 502 */       if (this.shadowed.sym == null || param1Filter.accepts(this.shadowed.sym)) return this.shadowed;
-/* 503 */       return this.shadowed.next(param1Filter);
-/*     */     }
-/*     */
-/*     */     public boolean isStaticallyImported() {
-/* 507 */       return false;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public Scope getOrigin() {
-/* 517 */       return this.scope;
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static class ImportScope
-/*     */     extends Scope {
-/*     */     public ImportScope(Symbol param1Symbol) {
-/* 524 */       super(param1Symbol);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */     Entry makeEntry(Symbol param1Symbol, Entry param1Entry1, Entry param1Entry2, Scope param1Scope1, final Scope origin, final boolean staticallyImported) {
-/* 530 */       return new Entry(param1Symbol, param1Entry1, param1Entry2, param1Scope1)
-/*     */         {
-/*     */           public Scope getOrigin() {
-/* 533 */             return origin;
-/*     */           }
-/*     */
-/*     */
-/*     */           public boolean isStaticallyImported() {
-/* 538 */             return staticallyImported;
-/*     */           }
-/*     */         };
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static class StarImportScope
-/*     */     extends ImportScope implements ScopeListener {
-/*     */     public StarImportScope(Symbol param1Symbol) {
-/* 547 */       super(param1Symbol);
-/*     */     }
-/*     */
-/*     */     public void importAll(Scope param1Scope) {
-/* 551 */       for (Entry entry = param1Scope.elems; entry != null; entry = entry.sibling) {
-/* 552 */         if (entry.sym.kind == 2 && !includes(entry.sym)) {
-/* 553 */           enter(entry.sym, param1Scope);
-/*     */         }
-/*     */       }
-/* 556 */       param1Scope.addScopeListener(this);
-/*     */     }
-/*     */
-/*     */     public void symbolRemoved(Symbol param1Symbol, Scope param1Scope) {
-/* 560 */       remove(param1Symbol);
-/*     */     }
-/*     */
-/*     */     public void symbolAdded(Symbol param1Symbol, Scope param1Scope) {}
-/*     */   }
-/*     */
-/*     */   public static class DelegatedScope
-/*     */     extends Scope
-/*     */   {
-/*     */     Scope delegatee;
-/* 570 */     public static final Entry[] emptyTable = new Entry[0];
-/*     */
-/*     */     public DelegatedScope(Scope param1Scope) {
-/* 573 */       super(param1Scope, param1Scope.owner, emptyTable);
-/* 574 */       this.delegatee = param1Scope;
-/*     */     }
-/*     */     public Scope dup() {
-/* 577 */       return new DelegatedScope(this.next);
-/*     */     }
-/*     */     public Scope dupUnshared() {
-/* 580 */       return new DelegatedScope(this.next);
-/*     */     }
-/*     */     public Scope leave() {
-/* 583 */       return this.next;
-/*     */     }
-/*     */
-/*     */
-/*     */     public void enter(Symbol param1Symbol) {}
-/*     */
-/*     */     public void enter(Symbol param1Symbol, Scope param1Scope) {}
-/*     */
-/*     */     public void remove(Symbol param1Symbol) {
-/* 592 */       throw new AssertionError(param1Symbol);
-/*     */     }
-/*     */     public Entry lookup(Name param1Name) {
-/* 595 */       return this.delegatee.lookup(param1Name);
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static class CompoundScope
-/*     */     extends Scope
-/*     */     implements ScopeListener
-/*     */   {
-/* 607 */     public static final Entry[] emptyTable = new Entry[0];
-/*     */
-/* 609 */     private List<Scope> subScopes = List.nil();
-/* 610 */     private int mark = 0;
-/*     */
-/*     */     public CompoundScope(Symbol param1Symbol) {
-/* 613 */       super(null, param1Symbol, emptyTable);
-/*     */     }
-/*     */
-/*     */     public void addSubScope(Scope param1Scope) {
-/* 617 */       if (param1Scope != null) {
-/* 618 */         this.subScopes = this.subScopes.prepend(param1Scope);
-/* 619 */         param1Scope.addScopeListener(this);
-/* 620 */         this.mark++;
-/* 621 */         for (ScopeListener scopeListener : this.listeners) {
-/* 622 */           scopeListener.symbolAdded(null, this);
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public void symbolAdded(Symbol param1Symbol, Scope param1Scope) {
-/* 628 */       this.mark++;
-/* 629 */       for (ScopeListener scopeListener : this.listeners) {
-/* 630 */         scopeListener.symbolAdded(param1Symbol, param1Scope);
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public void symbolRemoved(Symbol param1Symbol, Scope param1Scope) {
-/* 635 */       this.mark++;
-/* 636 */       for (ScopeListener scopeListener : this.listeners) {
-/* 637 */         scopeListener.symbolRemoved(param1Symbol, param1Scope);
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public int getMark() {
-/* 642 */       return this.mark;
-/*     */     }
-/*     */
-/*     */
-/*     */     public String toString() {
-/* 647 */       StringBuilder stringBuilder = new StringBuilder();
-/* 648 */       stringBuilder.append("CompoundScope{");
-/* 649 */       String str = "";
-/* 650 */       for (Scope scope : this.subScopes) {
-/* 651 */         stringBuilder.append(str);
-/* 652 */         stringBuilder.append(scope);
-/* 653 */         str = ",";
-/*     */       }
-/* 655 */       stringBuilder.append("}");
-/* 656 */       return stringBuilder.toString();
-/*     */     }
-/*     */
-/*     */
-/*     */     public Iterable<Symbol> getElements(final Filter<Symbol> sf) {
-/* 661 */       return new Iterable<Symbol>() {
-/*     */           public Iterator<Symbol> iterator() {
-/* 663 */             return new CompoundScopeIterator(CompoundScope.this.subScopes) {
-/*     */                 Iterator<Symbol> nextIterator(Scope param3Scope) {
-/* 665 */                   return param3Scope.getElements(sf).iterator();
-/*     */                 }
-/*     */               };
-/*     */           }
-/*     */         };
-/*     */     }
-/*     */
-/*     */
-/*     */     public Iterable<Symbol> getElementsByName(final Name name, final Filter<Symbol> sf) {
-/* 674 */       return new Iterable<Symbol>() {
-/*     */           public Iterator<Symbol> iterator() {
-/* 676 */             return new CompoundScopeIterator(CompoundScope.this.subScopes) {
-/*     */                 Iterator<Symbol> nextIterator(Scope param3Scope) {
-/* 678 */                   return param3Scope.getElementsByName(name, sf).iterator();
-/*     */                 }
-/*     */               };
-/*     */           }
-/*     */         };
-/*     */     }
-/*     */
-/*     */     abstract class CompoundScopeIterator
-/*     */       implements Iterator<Symbol> {
-/*     */       private Iterator<Symbol> currentIterator;
-/*     */       private List<Scope> scopesToScan;
-/*     */
-/*     */       public CompoundScopeIterator(List<Scope> param2List) {
-/* 691 */         this.scopesToScan = param2List;
-/* 692 */         update();
-/*     */       }
-/*     */
-/*     */
-/*     */
-/*     */       public boolean hasNext() {
-/* 698 */         return (this.currentIterator != null);
-/*     */       }
-/*     */
-/*     */       public Symbol next() {
-/* 702 */         Symbol symbol = this.currentIterator.next();
-/* 703 */         if (!this.currentIterator.hasNext()) {
-/* 704 */           update();
-/*     */         }
-/* 706 */         return symbol;
-/*     */       }
-/*     */
-/*     */       public void remove() {
-/* 710 */         throw new UnsupportedOperationException();
-/*     */       }
-/*     */
-/*     */       private void update() {
-/* 714 */         while (this.scopesToScan.nonEmpty()) {
-/* 715 */           this.currentIterator = nextIterator((Scope)this.scopesToScan.head);
-/* 716 */           this.scopesToScan = this.scopesToScan.tail;
-/* 717 */           if (this.currentIterator.hasNext())
-/*     */             return;
-/* 719 */         }  this.currentIterator = null;
-/*     */       }
-/*     */
-/*     */       abstract Iterator<Symbol> nextIterator(Scope param2Scope); }
-/*     */
-/*     */     public Entry lookup(Name param1Name, Filter<Symbol> param1Filter) {
-/* 725 */       throw new UnsupportedOperationException();
-/*     */     }
-/*     */
-/*     */
-/*     */     public Scope dup(Symbol param1Symbol) {
-/* 730 */       throw new UnsupportedOperationException();
-/*     */     }
-/*     */
-/*     */
-/*     */     public void enter(Symbol param1Symbol, Scope param1Scope1, Scope param1Scope2, boolean param1Boolean) {
-/* 735 */       throw new UnsupportedOperationException();
-/*     */     }
-/*     */
-/*     */
-/*     */     public void remove(Symbol param1Symbol) {
-/* 740 */       throw new UnsupportedOperationException();
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static class ErrorScope
-/*     */     extends Scope {
-/*     */     ErrorScope(Scope param1Scope, Symbol param1Symbol, Entry[] param1ArrayOfEntry) {
-/* 747 */       super(param1Scope, param1Symbol, param1ArrayOfEntry);
-/*     */     }
-/*     */     public ErrorScope(Symbol param1Symbol) {
-/* 750 */       super(param1Symbol);
-/*     */     }
-/*     */     public Scope dup() {
-/* 753 */       return new ErrorScope(this, this.owner, this.table);
-/*     */     }
-/*     */     public Scope dupUnshared() {
-/* 756 */       return new ErrorScope(this, this.owner, (Entry[])this.table.clone());
-/*     */     }
-/*     */     public Entry lookup(Name param1Name) {
-/* 759 */       Entry entry = super.lookup(param1Name);
-/* 760 */       if (entry.scope == null) {
-/* 761 */         return new Entry(this.owner, null, null, null);
-/*     */       }
-/* 763 */       return entry;
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static interface ScopeListener {
-/*     */     void symbolAdded(Symbol param1Symbol, Scope param1Scope);
-/*     */
-/*     */     void symbolRemoved(Symbol param1Symbol, Scope param1Scope);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\code\Scope.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2015, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.code;
+
+import java.util.Iterator;
+
+import com.sun.tools.javac.util.*;
+
+/** A scope represents an area of visibility in a Java program. The
+ *  Scope class is a container for symbols which provides
+ *  efficient access to symbols given their names. Scopes are implemented
+ *  as hash tables with "open addressing" and "double hashing".
+ *  Scopes can be nested; the next field of a scope points
+ *  to its next outer scope. Nested scopes can share their hash tables.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Scope {
+
+    /** The number of scopes that share this scope's hash table.
+     */
+    private int shared;
+
+    /** Next enclosing scope (with whom this scope may share a hashtable)
+     */
+    public Scope next;
+
+    /** The scope's owner.
+     */
+    public Symbol owner;
+
+    /** A hash table for the scope's entries.
+     */
+    Entry[] table;
+
+    /** Mask for hash codes, always equal to (table.length - 1).
+     */
+    int hashMask;
+
+    /** A linear list that also contains all entries in
+     *  reverse order of appearance (i.e later entries are pushed on top).
+     */
+    public Entry elems;
+
+    /** The number of elements in this scope.
+     * This includes deleted elements, whose value is the sentinel.
+     */
+    int nelems = 0;
+
+    /** A list of scopes to be notified if items are to be removed from this scope.
+     */
+    List<ScopeListener> listeners = List.nil();
+
+    /** Use as a "not-found" result for lookup.
+     * Also used to mark deleted entries in the table.
+     */
+    private static final Entry sentinel = new Entry(null, null, null, null);
+
+    /** The hash table's initial size.
+     */
+    private static final int INITIAL_SIZE = 0x10;
+
+    /** A value for the empty scope.
+     */
+    public static final Scope emptyScope = new Scope(null, null, new Entry[]{});
+
+    /** Construct a new scope, within scope next, with given owner, using
+     *  given table. The table's length must be an exponent of 2.
+     */
+    private Scope(Scope next, Symbol owner, Entry[] table) {
+        this.next = next;
+        Assert.check(emptyScope == null || owner != null);
+        this.owner = owner;
+        this.table = table;
+        this.hashMask = table.length - 1;
+    }
+
+    /** Convenience constructor used for dup and dupUnshared. */
+    private Scope(Scope next, Symbol owner, Entry[] table, int nelems) {
+        this(next, owner, table);
+        this.nelems = nelems;
+    }
+
+    /** Construct a new scope, within scope next, with given owner,
+     *  using a fresh table of length INITIAL_SIZE.
+     */
+    public Scope(Symbol owner) {
+        this(null, owner, new Entry[INITIAL_SIZE]);
+    }
+
+    /** Construct a fresh scope within this scope, with same owner,
+     *  which shares its table with the outer scope. Used in connection with
+     *  method leave if scope access is stack-like in order to avoid allocation
+     *  of fresh tables.
+     */
+    public Scope dup() {
+        return dup(this.owner);
+    }
+
+    /** Construct a fresh scope within this scope, with new owner,
+     *  which shares its table with the outer scope. Used in connection with
+     *  method leave if scope access is stack-like in order to avoid allocation
+     *  of fresh tables.
+     */
+    public Scope dup(Symbol newOwner) {
+        Scope result = new Scope(this, newOwner, this.table, this.nelems);
+        shared++;
+        // System.out.println("====> duping scope " + this.hashCode() + " owned by " + newOwner + " to " + result.hashCode());
+        // new Error().printStackTrace(System.out);
+        return result;
+    }
+
+    /** Construct a fresh scope within this scope, with same owner,
+     *  with a new hash table, whose contents initially are those of
+     *  the table of its outer scope.
+     */
+    public Scope dupUnshared() {
+        return new Scope(this, this.owner, this.table.clone(), this.nelems);
+    }
+
+    /** Remove all entries of this scope from its table, if shared
+     *  with next.
+     */
+    public Scope leave() {
+        Assert.check(shared == 0);
+        if (table != next.table) return next;
+        while (elems != null) {
+            int hash = getIndex(elems.sym.name);
+            Entry e = table[hash];
+            Assert.check(e == elems, elems.sym);
+            table[hash] = elems.shadowed;
+            elems = elems.sibling;
+        }
+        Assert.check(next.shared > 0);
+        next.shared--;
+        next.nelems = nelems;
+        // System.out.println("====> leaving scope " + this.hashCode() + " owned by " + this.owner + " to " + next.hashCode());
+        // new Error().printStackTrace(System.out);
+        return next;
+    }
+
+    /** Double size of hash table.
+     */
+    private void dble() {
+        Assert.check(shared == 0);
+        Entry[] oldtable = table;
+        Entry[] newtable = new Entry[oldtable.length * 2];
+        for (Scope s = this; s != null; s = s.next) {
+            if (s.table == oldtable) {
+                Assert.check(s == this || s.shared != 0);
+                s.table = newtable;
+                s.hashMask = newtable.length - 1;
+            }
+        }
+        int n = 0;
+        for (int i = oldtable.length; --i >= 0; ) {
+            Entry e = oldtable[i];
+            if (e != null && e != sentinel) {
+                table[getIndex(e.sym.name)] = e;
+                n++;
+            }
+        }
+        // We don't need to update nelems for shared inherited scopes,
+        // since that gets handled by leave().
+        nelems = n;
+    }
+
+    /** Enter symbol sym in this scope.
+     */
+    public void enter(Symbol sym) {
+        Assert.check(shared == 0);
+        enter(sym, this);
+    }
+
+    public void enter(Symbol sym, Scope s) {
+        enter(sym, s, s, false);
+    }
+
+    /**
+     * Enter symbol sym in this scope, but mark that it comes from
+     * given scope `s' accessed through `origin'.  The last two
+     * arguments are only used in import scopes.
+     */
+    public void enter(Symbol sym, Scope s, Scope origin, boolean staticallyImported) {
+        Assert.check(shared == 0);
+        if (nelems * 3 >= hashMask * 2)
+            dble();
+        int hash = getIndex(sym.name);
+        Entry old = table[hash];
+        if (old == null) {
+            old = sentinel;
+            nelems++;
+        }
+        Entry e = makeEntry(sym, old, elems, s, origin, staticallyImported);
+        table[hash] = e;
+        elems = e;
+
+        //notify listeners
+        for (List<ScopeListener> l = listeners; l.nonEmpty(); l = l.tail) {
+            l.head.symbolAdded(sym, this);
+        }
+    }
+
+    Entry makeEntry(Symbol sym, Entry shadowed, Entry sibling, Scope scope, Scope origin, boolean staticallyImported) {
+        return new Entry(sym, shadowed, sibling, scope);
+    }
+
+
+    public interface ScopeListener {
+        public void symbolAdded(Symbol sym, Scope s);
+        public void symbolRemoved(Symbol sym, Scope s);
+    }
+
+    public void addScopeListener(ScopeListener sl) {
+        listeners = listeners.prepend(sl);
+    }
+
+    /** Remove symbol from this scope.
+     */
+    public void remove(final Symbol sym) {
+        Assert.check(shared == 0);
+        Entry e = lookup(sym.name, new Filter<Symbol>() {
+            @Override
+            public boolean accepts(Symbol candidate) {
+                return candidate == sym;
+            }
+        });
+        if (e.scope == null) return;
+
+        // remove e from table and shadowed list;
+        int i = getIndex(sym.name);
+        Entry te = table[i];
+        if (te == e)
+            table[i] = e.shadowed;
+        else while (true) {
+            if (te.shadowed == e) {
+                te.shadowed = e.shadowed;
+                break;
+            }
+            te = te.shadowed;
+        }
+
+        // remove e from elems and sibling list
+        te = elems;
+        if (te == e)
+            elems = e.sibling;
+        else while (true) {
+            if (te.sibling == e) {
+                te.sibling = e.sibling;
+                break;
+            }
+            te = te.sibling;
+        }
+
+        //notify listeners
+        for (List<ScopeListener> l = listeners; l.nonEmpty(); l = l.tail) {
+            l.head.symbolRemoved(sym, this);
+        }
+    }
+
+    /** Enter symbol sym in this scope if not already there.
+     */
+    public void enterIfAbsent(Symbol sym) {
+        Assert.check(shared == 0);
+        Entry e = lookup(sym.name);
+        while (e.scope == this && e.sym.kind != sym.kind) e = e.next();
+        if (e.scope != this) enter(sym);
+    }
+
+    /** Given a class, is there already a class with same fully
+     *  qualified name in this (import) scope?
+     */
+    public boolean includes(Symbol c) {
+        for (Entry e = lookup(c.name);
+             e.scope == this;
+             e = e.next()) {
+            if (e.sym == c) return true;
+        }
+        return false;
+    }
+
+    static final Filter<Symbol> noFilter = new Filter<Symbol>() {
+        public boolean accepts(Symbol s) {
+            return true;
+        }
+    };
+
+    /** Return the entry associated with given name, starting in
+     *  this scope and proceeding outwards. If no entry was found,
+     *  return the sentinel, which is characterized by having a null in
+     *  both its scope and sym fields, whereas both fields are non-null
+     *  for regular entries.
+     */
+    public Entry lookup(Name name) {
+        return lookup(name, noFilter);
+    }
+
+    public Entry lookup(Name name, Filter<Symbol> sf) {
+        Entry e = table[getIndex(name)];
+        if (e == null || e == sentinel)
+            return sentinel;
+        while (e.scope != null && (e.sym.name != name || !sf.accepts(e.sym)))
+            e = e.shadowed;
+        return e;
+    }
+
+    /*void dump (java.io.PrintStream out) {
+        out.println(this);
+        for (int l=0; l < table.length; l++) {
+            Entry le = table[l];
+            out.print("#"+l+": ");
+            if (le==sentinel) out.println("sentinel");
+            else if(le == null) out.println("null");
+            else out.println(""+le+" s:"+le.sym);
+        }
+    }*/
+
+    /** Look for slot in the table.
+     *  We use open addressing with double hashing.
+     */
+    int getIndex (Name name) {
+        int h = name.hashCode();
+        int i = h & hashMask;
+        // The expression below is always odd, so it is guaranteed
+        // to be mutually prime with table.length, a power of 2.
+        int x = hashMask - ((h + (h >> 16)) << 1);
+        int d = -1; // Index of a deleted item.
+        for (;;) {
+            Entry e = table[i];
+            if (e == null)
+                return d >= 0 ? d : i;
+            if (e == sentinel) {
+                // We have to keep searching even if we see a deleted item.
+                // However, remember the index in case we fail to find the name.
+                if (d < 0)
+                    d = i;
+            } else if (e.sym.name == name)
+                return i;
+            i = (i + x) & hashMask;
+        }
+    }
+
+    public boolean anyMatch(Filter<Symbol> sf) {
+        return getElements(sf).iterator().hasNext();
+    }
+
+    public Iterable<Symbol> getElements() {
+        return getElements(noFilter);
+    }
+
+    public Iterable<Symbol> getElements(final Filter<Symbol> sf) {
+        return new Iterable<Symbol>() {
+            public Iterator<Symbol> iterator() {
+                return new Iterator<Symbol>() {
+                    private Scope currScope = Scope.this;
+                    private Entry currEntry = elems;
+                    {
+                        update();
+                    }
+
+                    public boolean hasNext() {
+                        return currEntry != null;
+                    }
+
+                    public Symbol next() {
+                        Symbol sym = (currEntry == null ? null : currEntry.sym);
+                        if (currEntry != null) {
+                            currEntry = currEntry.sibling;
+                        }
+                        update();
+                        return sym;
+                    }
+
+                    public void remove() {
+                        throw new UnsupportedOperationException();
+                    }
+
+                    private void update() {
+                        skipToNextMatchingEntry();
+                        while (currEntry == null && currScope.next != null) {
+                            currScope = currScope.next;
+                            currEntry = currScope.elems;
+                            skipToNextMatchingEntry();
+                        }
+                    }
+
+                    void skipToNextMatchingEntry() {
+                        while (currEntry != null && !sf.accepts(currEntry.sym)) {
+                            currEntry = currEntry.sibling;
+                        }
+                    }
+                };
+            }
+        };
+    }
+
+    public Iterable<Symbol> getElementsByName(Name name) {
+        return getElementsByName(name, noFilter);
+    }
+
+    public Iterable<Symbol> getElementsByName(final Name name, final Filter<Symbol> sf) {
+        return new Iterable<Symbol>() {
+            public Iterator<Symbol> iterator() {
+                 return new Iterator<Symbol>() {
+                    Entry currentEntry = lookup(name, sf);
+
+                    public boolean hasNext() {
+                        return currentEntry.scope != null;
+                    }
+                    public Symbol next() {
+                        Entry prevEntry = currentEntry;
+                        currentEntry = currentEntry.next(sf);
+                        return prevEntry.sym;
+                    }
+                    public void remove() {
+                        throw new UnsupportedOperationException();
+                    }
+                };
+            }
+        };
+    }
+
+    public String toString() {
+        StringBuilder result = new StringBuilder();
+        result.append("Scope[");
+        for (Scope s = this; s != null ; s = s.next) {
+            if (s != this) result.append(" | ");
+            for (Entry e = s.elems; e != null; e = e.sibling) {
+                if (e != s.elems) result.append(", ");
+                result.append(e.sym);
+            }
+        }
+        result.append("]");
+        return result.toString();
+    }
+
+    /** A class for scope entries.
+     */
+    public static class Entry {
+
+        /** The referenced symbol.
+         *  sym == null   iff   this == sentinel
+         */
+        public Symbol sym;
+
+        /** An entry with the same hash code, or sentinel.
+         */
+        private Entry shadowed;
+
+        /** Next entry in same scope.
+         */
+        public Entry sibling;
+
+        /** The entry's scope.
+         *  scope == null   iff   this == sentinel
+         *  for an entry in an import scope, this is the scope
+         *  where the entry came from (i.e. was imported from).
+         */
+        public Scope scope;
+
+        public Entry(Symbol sym, Entry shadowed, Entry sibling, Scope scope) {
+            this.sym = sym;
+            this.shadowed = shadowed;
+            this.sibling = sibling;
+            this.scope = scope;
+        }
+
+        /** Return next entry with the same name as this entry, proceeding
+         *  outwards if not found in this scope.
+         */
+        public Entry next() {
+            return shadowed;
+        }
+
+        public Entry next(Filter<Symbol> sf) {
+            if (shadowed.sym == null || sf.accepts(shadowed.sym)) return shadowed;
+            else return shadowed.next(sf);
+        }
+
+        public boolean isStaticallyImported() {
+            return false;
+        }
+
+        public Scope getOrigin() {
+            // The origin is only recorded for import scopes.  For all
+            // other scope entries, the "enclosing" type is available
+            // from other sources.  See Attr.visitSelect and
+            // Attr.visitIdent.  Rather than throwing an assertion
+            // error, we return scope which will be the same as origin
+            // in many cases.
+            return scope;
+        }
+    }
+
+    public static class ImportScope extends Scope {
+
+        public ImportScope(Symbol owner) {
+            super(owner);
+        }
+
+        @Override
+        Entry makeEntry(Symbol sym, Entry shadowed, Entry sibling, Scope scope,
+                final Scope origin, final boolean staticallyImported) {
+            return new Entry(sym, shadowed, sibling, scope) {
+                @Override
+                public Scope getOrigin() {
+                    return origin;
+                }
+
+                @Override
+                public boolean isStaticallyImported() {
+                    return staticallyImported;
+                }
+            };
+        }
+    }
+
+    public static class StarImportScope extends ImportScope implements ScopeListener {
+
+        public StarImportScope(Symbol owner) {
+            super(owner);
+        }
+
+        public void importAll (Scope fromScope) {
+            for (Entry e = fromScope.elems; e != null; e = e.sibling) {
+                if (e.sym.kind == Kinds.TYP && !includes(e.sym))
+                    enter(e.sym, fromScope);
+            }
+            // Register to be notified when imported items are removed
+            fromScope.addScopeListener(this);
+        }
+
+        public void symbolRemoved(Symbol sym, Scope s) {
+            remove(sym);
+        }
+        public void symbolAdded(Symbol sym, Scope s) { }
+    }
+
+    /** An empty scope, into which you can't place anything.  Used for
+     *  the scope for a variable initializer.
+     */
+    public static class DelegatedScope extends Scope {
+        Scope delegatee;
+        public static final Entry[] emptyTable = new Entry[0];
+
+        public DelegatedScope(Scope outer) {
+            super(outer, outer.owner, emptyTable);
+            delegatee = outer;
+        }
+        public Scope dup() {
+            return new DelegatedScope(next);
+        }
+        public Scope dupUnshared() {
+            return new DelegatedScope(next);
+        }
+        public Scope leave() {
+            return next;
+        }
+        public void enter(Symbol sym) {
+            // only anonymous classes could be put here
+        }
+        public void enter(Symbol sym, Scope s) {
+            // only anonymous classes could be put here
+        }
+        public void remove(Symbol sym) {
+            throw new AssertionError(sym);
+        }
+        public Entry lookup(Name name) {
+            return delegatee.lookup(name);
+        }
+    }
+
+    /** A class scope adds capabilities to keep track of changes in related
+     *  class scopes - this allows client to realize whether a class scope
+     *  has changed, either directly (because a new member has been added/removed
+     *  to this scope) or indirectly (i.e. because a new member has been
+     *  added/removed into a supertype scope)
+     */
+    public static class CompoundScope extends Scope implements ScopeListener {
+
+        public static final Entry[] emptyTable = new Entry[0];
+
+        private List<Scope> subScopes = List.nil();
+        private int mark = 0;
+
+        public CompoundScope(Symbol owner) {
+            super(null, owner, emptyTable);
+        }
+
+        public void addSubScope(Scope that) {
+           if (that != null) {
+                subScopes = subScopes.prepend(that);
+                that.addScopeListener(this);
+                mark++;
+                for (ScopeListener sl : listeners) {
+                    sl.symbolAdded(null, this); //propagate upwards in case of nested CompoundScopes
+                }
+           }
+         }
+
+        public void symbolAdded(Symbol sym, Scope s) {
+            mark++;
+            for (ScopeListener sl : listeners) {
+                sl.symbolAdded(sym, s);
+            }
+        }
+
+        public void symbolRemoved(Symbol sym, Scope s) {
+            mark++;
+            for (ScopeListener sl : listeners) {
+                sl.symbolRemoved(sym, s);
+            }
+        }
+
+        public int getMark() {
+            return mark;
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder buf = new StringBuilder();
+            buf.append("CompoundScope{");
+            String sep = "";
+            for (Scope s : subScopes) {
+                buf.append(sep);
+                buf.append(s);
+                sep = ",";
+            }
+            buf.append("}");
+            return buf.toString();
+        }
+
+        @Override
+        public Iterable<Symbol> getElements(final Filter<Symbol> sf) {
+            return new Iterable<Symbol>() {
+                public Iterator<Symbol> iterator() {
+                    return new CompoundScopeIterator(subScopes) {
+                        Iterator<Symbol> nextIterator(Scope s) {
+                            return s.getElements(sf).iterator();
+                        }
+                    };
+                }
+            };
+        }
+
+        @Override
+        public Iterable<Symbol> getElementsByName(final Name name, final Filter<Symbol> sf) {
+            return new Iterable<Symbol>() {
+                public Iterator<Symbol> iterator() {
+                    return new CompoundScopeIterator(subScopes) {
+                        Iterator<Symbol> nextIterator(Scope s) {
+                            return s.getElementsByName(name, sf).iterator();
+                        }
+                    };
+                }
+            };
+        }
+
+        abstract class CompoundScopeIterator implements Iterator<Symbol> {
+
+            private Iterator<Symbol> currentIterator;
+            private List<Scope> scopesToScan;
+
+            public CompoundScopeIterator(List<Scope> scopesToScan) {
+                this.scopesToScan = scopesToScan;
+                update();
+            }
+
+            abstract Iterator<Symbol> nextIterator(Scope s);
+
+            public boolean hasNext() {
+                return currentIterator != null;
+            }
+
+            public Symbol next() {
+                Symbol sym = currentIterator.next();
+                if (!currentIterator.hasNext()) {
+                    update();
+                }
+                return sym;
+            }
+
+            public void remove() {
+                throw new UnsupportedOperationException();
+            }
+
+            private void update() {
+                while (scopesToScan.nonEmpty()) {
+                    currentIterator = nextIterator(scopesToScan.head);
+                    scopesToScan = scopesToScan.tail;
+                    if (currentIterator.hasNext()) return;
+                }
+                currentIterator = null;
+            }
+        }
+
+        @Override
+        public Entry lookup(Name name, Filter<Symbol> sf) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Scope dup(Symbol newOwner) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void enter(Symbol sym, Scope s, Scope origin, boolean staticallyImported) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void remove(Symbol sym) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    /** An error scope, for which the owner should be an error symbol. */
+    public static class ErrorScope extends Scope {
+        ErrorScope(Scope next, Symbol errSymbol, Entry[] table) {
+            super(next, /*owner=*/errSymbol, table);
+        }
+        public ErrorScope(Symbol errSymbol) {
+            super(errSymbol);
+        }
+        public Scope dup() {
+            return new ErrorScope(this, owner, table);
+        }
+        public Scope dupUnshared() {
+            return new ErrorScope(this, owner, table.clone());
+        }
+        public Entry lookup(Name name) {
+            Entry e = super.lookup(name);
+            if (e.scope == null)
+                return new Entry(owner, null, null, null);
+            else
+                return e;
+        }
+    }
+}

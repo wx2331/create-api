@@ -1,2122 +1,2081 @@
-/*      */ package com.sun.tools.javac.code;
-/*      */
-/*      */ import com.sun.tools.javac.util.Assert;
-/*      */ import com.sun.tools.javac.util.Filter;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.Name;
-/*      */ import java.lang.reflect.Array;
-/*      */ import java.util.Collections;
-/*      */ import java.util.EnumMap;
-/*      */ import java.util.EnumSet;
-/*      */ import java.util.List;
-/*      */ import java.util.Map;
-/*      */ import java.util.Set;
-/*      */ import javax.lang.model.element.Element;
-/*      */ import javax.lang.model.type.DeclaredType;
-/*      */ import javax.lang.model.type.ExecutableType;
-/*      */ import javax.lang.model.type.IntersectionType;
-/*      */ import javax.lang.model.type.NoType;
-/*      */ import javax.lang.model.type.NullType;
-/*      */ import javax.lang.model.type.PrimitiveType;
-/*      */ import javax.lang.model.type.TypeKind;
-/*      */ import javax.lang.model.type.TypeMirror;
-/*      */ import javax.lang.model.type.TypeVariable;
-/*      */ import javax.lang.model.type.TypeVisitor;
-/*      */ import javax.lang.model.type.UnionType;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public abstract class Type
-/*      */   extends AnnoConstruct
-/*      */   implements TypeMirror
-/*      */ {
-/*   75 */   public static final JCNoType noType = new JCNoType()
-/*      */     {
-/*      */       public String toString() {
-/*   78 */         return "none";
-/*      */       }
-/*      */     };
-/*      */
-/*      */
-/*   83 */   public static final JCNoType recoveryType = new JCNoType()
-/*      */     {
-/*      */       public String toString() {
-/*   86 */         return "recovery";
-/*      */       }
-/*      */     };
-/*      */
-/*      */
-/*   91 */   public static final JCNoType stuckType = new JCNoType()
-/*      */     {
-/*      */       public String toString() {
-/*   94 */         return "stuck";
-/*      */       }
-/*      */     };
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static boolean moreInfo = false;
-/*      */
-/*      */
-/*      */
-/*      */   public Symbol.TypeSymbol tsym;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean hasTag(TypeTag paramTypeTag) {
-/*  112 */     return (paramTypeTag == getTag());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isNumeric() {
-/*  122 */     return false;
-/*      */   }
-/*      */
-/*      */   public boolean isPrimitive() {
-/*  126 */     return false;
-/*      */   }
-/*      */
-/*      */   public boolean isPrimitiveOrVoid() {
-/*  130 */     return false;
-/*      */   }
-/*      */
-/*      */   public boolean isReference() {
-/*  134 */     return false;
-/*      */   }
-/*      */
-/*      */   public boolean isNullOrReference() {
-/*  138 */     return false;
-/*      */   }
-/*      */
-/*      */   public boolean isPartial() {
-/*  142 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public Object constValue() {
-/*  152 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isFalse() {
-/*  158 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isTrue() {
-/*  164 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public Type getModelType() {
-/*  173 */     return this;
-/*      */   }
-/*      */
-/*      */   public static List<Type> getModelTypes(List<Type> paramList) {
-/*  177 */     ListBuffer listBuffer = new ListBuffer();
-/*  178 */     for (Type type : paramList)
-/*  179 */       listBuffer.append(type.getModelType());
-/*  180 */     return listBuffer.toList();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public Type getOriginalType() {
-/*  186 */     return this;
-/*      */   }
-/*      */   public <R, S> R accept(Visitor<R, S> paramVisitor, S paramS) {
-/*  189 */     return paramVisitor.visitType(this, paramS);
-/*      */   }
-/*      */
-/*      */
-/*      */   public Type(Symbol.TypeSymbol paramTypeSymbol) {
-/*  194 */     this.tsym = paramTypeSymbol;
-/*      */   }
-/*      */
-/*      */   public static abstract class Mapping
-/*      */   {
-/*      */     private String name;
-/*      */
-/*      */     public Mapping(String param1String) {
-/*  202 */       this.name = param1String;
-/*      */     }
-/*      */     public abstract Type apply(Type param1Type);
-/*      */     public String toString() {
-/*  206 */       return this.name;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public Type map(Mapping paramMapping) {
-/*  213 */     return this;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public static List<Type> map(List<Type> paramList, Mapping paramMapping) {
-/*  219 */     if (paramList.nonEmpty()) {
-/*  220 */       List<Type> list = map(paramList.tail, paramMapping);
-/*  221 */       Type type = paramMapping.apply((Type)paramList.head);
-/*  222 */       if (list != paramList.tail || type != paramList.head)
-/*  223 */         return list.prepend(type);
-/*      */     }
-/*  225 */     return paramList;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public Type constType(Object paramObject) {
-/*  232 */     throw new AssertionError();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public Type baseType() {
-/*  240 */     return this;
-/*      */   }
-/*      */
-/*      */   public Type annotatedType(List<Attribute.TypeCompound> paramList) {
-/*  244 */     return new AnnotatedType(paramList, this);
-/*      */   }
-/*      */
-/*      */   public boolean isAnnotated() {
-/*  248 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public Type unannotatedType() {
-/*  256 */     return this;
-/*      */   }
-/*      */
-/*      */
-/*      */   public List<Attribute.TypeCompound> getAnnotationMirrors() {
-/*  261 */     return List.nil();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public <A extends java.lang.annotation.Annotation> A getAnnotation(Class<A> paramClass) {
-/*  267 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public <A extends java.lang.annotation.Annotation> A[] getAnnotationsByType(Class<A> paramClass) {
-/*  274 */     return (A[])Array.newInstance(paramClass, 0);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static List<Type> baseTypes(List<Type> paramList) {
-/*  281 */     if (paramList.nonEmpty()) {
-/*  282 */       Type type = ((Type)paramList.head).baseType();
-/*  283 */       List<Type> list = baseTypes(paramList.tail);
-/*  284 */       if (type != paramList.head || list != paramList.tail)
-/*  285 */         return list.prepend(type);
-/*      */     }
-/*  287 */     return paramList;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public String toString() {
-/*  295 */     String str = (this.tsym == null || this.tsym.name == null) ? "<none>" : this.tsym.name.toString();
-/*  296 */     if (moreInfo && hasTag(TypeTag.TYPEVAR)) {
-/*  297 */       str = str + hashCode();
-/*      */     }
-/*  299 */     return str;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static String toString(List<Type> paramList) {
-/*  308 */     if (paramList.isEmpty()) {
-/*  309 */       return "";
-/*      */     }
-/*  311 */     StringBuilder stringBuilder = new StringBuilder();
-/*  312 */     stringBuilder.append(((Type)paramList.head).toString());
-/*  313 */     for (List list = paramList.tail; list.nonEmpty(); list = list.tail)
-/*  314 */       stringBuilder.append(",").append(((Type)list.head).toString());
-/*  315 */     return stringBuilder.toString();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public String stringValue() {
-/*  323 */     Object object = Assert.checkNonNull(constValue());
-/*  324 */     return object.toString();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean equals(Object paramObject) {
-/*  334 */     return super.equals(paramObject);
-/*      */   }
-/*      */
-/*      */
-/*      */   public int hashCode() {
-/*  339 */     return super.hashCode();
-/*      */   }
-/*      */
-/*      */   public String argtypes(boolean paramBoolean) {
-/*  343 */     List<Type> list = getParameterTypes();
-/*  344 */     if (!paramBoolean) return list.toString();
-/*  345 */     StringBuilder stringBuilder = new StringBuilder();
-/*  346 */     while (list.tail.nonEmpty()) {
-/*  347 */       stringBuilder.append(list.head);
-/*  348 */       list = list.tail;
-/*  349 */       stringBuilder.append(',');
-/*      */     }
-/*  351 */     if (((Type)list.head).unannotatedType().hasTag(TypeTag.ARRAY)) {
-/*  352 */       stringBuilder.append(((ArrayType)((Type)list.head).unannotatedType()).elemtype);
-/*  353 */       if (((Type)list.head).getAnnotationMirrors().nonEmpty()) {
-/*  354 */         stringBuilder.append(((Type)list.head).getAnnotationMirrors());
-/*      */       }
-/*  356 */       stringBuilder.append("...");
-/*      */     } else {
-/*  358 */       stringBuilder.append(list.head);
-/*      */     }
-/*  360 */     return stringBuilder.toString();
-/*      */   }
-/*      */
-/*      */   public List<Type> getTypeArguments()
-/*      */   {
-/*  365 */     return List.nil();
-/*  366 */   } public Type getEnclosingType() { return null; }
-/*  367 */   public List<Type> getParameterTypes() { return List.nil(); }
-/*  368 */   public Type getReturnType() { return null; }
-/*  369 */   public Type getReceiverType() { return null; }
-/*  370 */   public List<Type> getThrownTypes() { return List.nil(); }
-/*  371 */   public Type getUpperBound() { return null; } public Type getLowerBound() {
-/*  372 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public List<Type> allparams() {
-/*  381 */     return List.nil();
-/*      */   }
-/*      */
-/*      */
-/*      */   public boolean isErroneous() {
-/*  386 */     return false;
-/*      */   }
-/*      */
-/*      */   public static boolean isErroneous(List<Type> paramList) {
-/*  390 */     for (List<Type> list = paramList; list.nonEmpty(); list = list.tail) {
-/*  391 */       if (((Type)list.head).isErroneous()) return true;
-/*  392 */     }  return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isParameterized() {
-/*  401 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isRaw() {
-/*  412 */     return false;
-/*      */   }
-/*      */
-/*      */   public boolean isCompound() {
-/*  416 */     return (this.tsym.completer == null && (this.tsym
-/*      */
-/*      */
-/*      */
-/*      */
-/*  421 */       .flags() & 0x1000000L) != 0L);
-/*      */   }
-/*      */
-/*      */   public boolean isIntersection() {
-/*  425 */     return false;
-/*      */   }
-/*      */
-/*      */   public boolean isUnion() {
-/*  429 */     return false;
-/*      */   }
-/*      */
-/*      */   public boolean isInterface() {
-/*  433 */     return ((this.tsym.flags() & 0x200L) != 0L);
-/*      */   }
-/*      */
-/*      */   public boolean isFinal() {
-/*  437 */     return ((this.tsym.flags() & 0x10L) != 0L);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean contains(Type paramType) {
-/*  444 */     return (paramType == this);
-/*      */   }
-/*      */
-/*      */   public static boolean contains(List<Type> paramList, Type paramType) {
-/*  448 */     List<Type> list = paramList;
-/*  449 */     for (; list.tail != null;
-/*  450 */       list = list.tail) {
-/*  451 */       if (((Type)list.head).contains(paramType)) return true;
-/*  452 */     }  return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public boolean containsAny(List<Type> paramList) {
-/*  458 */     for (Type type : paramList) {
-/*  459 */       if (contains(type)) return true;
-/*  460 */     }  return false;
-/*      */   }
-/*      */
-/*      */   public static boolean containsAny(List<Type> paramList1, List<Type> paramList2) {
-/*  464 */     for (Type type : paramList1) {
-/*  465 */       if (type.containsAny(paramList2)) return true;
-/*  466 */     }  return false;
-/*      */   }
-/*      */
-/*      */   public static List<Type> filter(List<Type> paramList, Filter<Type> paramFilter) {
-/*  470 */     ListBuffer listBuffer = new ListBuffer();
-/*  471 */     for (Type type : paramList) {
-/*  472 */       if (paramFilter.accepts(type)) {
-/*  473 */         listBuffer.append(type);
-/*      */       }
-/*      */     }
-/*  476 */     return listBuffer.toList();
-/*      */   }
-/*      */
-/*  479 */   public boolean isSuperBound() { return false; }
-/*  480 */   public boolean isExtendsBound() { return false; }
-/*  481 */   public boolean isUnbound() { return false; } public Type withTypeVar(Type paramType) {
-/*  482 */     return this;
-/*      */   }
-/*      */
-/*      */   public MethodType asMethodType() {
-/*  486 */     throw new AssertionError();
-/*      */   }
-/*      */
-/*      */
-/*      */   public void complete() {}
-/*      */
-/*      */   public Symbol.TypeSymbol asElement() {
-/*  493 */     return this.tsym;
-/*      */   }
-/*      */
-/*      */
-/*      */   public TypeKind getKind() {
-/*  498 */     return TypeKind.OTHER;
-/*      */   }
-/*      */
-/*      */
-/*      */   public <R, P> R accept(TypeVisitor<R, P> paramTypeVisitor, P paramP) {
-/*  503 */     throw new AssertionError();
-/*      */   }
-/*      */
-/*      */   public abstract TypeTag getTag();
-/*      */
-/*      */   public static class JCPrimitiveType extends Type implements PrimitiveType {
-/*      */     TypeTag tag;
-/*      */
-/*      */     public JCPrimitiveType(TypeTag param1TypeTag, Symbol.TypeSymbol param1TypeSymbol) {
-/*  512 */       super(param1TypeSymbol);
-/*  513 */       this.tag = param1TypeTag;
-/*  514 */       Assert.check(param1TypeTag.isPrimitive);
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isNumeric() {
-/*  519 */       return (this.tag != TypeTag.BOOLEAN);
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isPrimitive() {
-/*  524 */       return true;
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeTag getTag() {
-/*  529 */       return this.tag;
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isPrimitiveOrVoid() {
-/*  534 */       return true;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public Type constType(Object param1Object) {
-/*  542 */       final Object value = param1Object;
-/*  543 */       return new JCPrimitiveType(this.tag, this.tsym)
-/*      */         {
-/*      */           public Object constValue() {
-/*  546 */             return value;
-/*      */           }
-/*      */
-/*      */           public Type baseType() {
-/*  550 */             return this.tsym.type;
-/*      */           }
-/*      */         };
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public String stringValue() {
-/*  560 */       Object object = Assert.checkNonNull(constValue());
-/*  561 */       if (this.tag == TypeTag.BOOLEAN) {
-/*  562 */         return (((Integer)object).intValue() == 0) ? "false" : "true";
-/*      */       }
-/*  564 */       if (this.tag == TypeTag.CHAR) {
-/*  565 */         return String.valueOf((char)((Integer)object).intValue());
-/*      */       }
-/*      */
-/*  568 */       return object.toString();
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public boolean isFalse() {
-/*  576 */       return (this.tag == TypeTag.BOOLEAN &&
-/*      */
-/*  578 */         constValue() != null && ((Integer)
-/*  579 */         constValue()).intValue() == 0);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public boolean isTrue() {
-/*  586 */       return (this.tag == TypeTag.BOOLEAN &&
-/*      */
-/*  588 */         constValue() != null && ((Integer)
-/*  589 */         constValue()).intValue() != 0);
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/*  594 */       return param1TypeVisitor.visitPrimitive(this, param1P);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     public TypeKind getKind() {
-/*      */       // Byte code:
-/*      */       //   0: getstatic com/sun/tools/javac/code/Type$4.$SwitchMap$com$sun$tools$javac$code$TypeTag : [I
-/*      */       //   3: aload_0
-/*      */       //   4: getfield tag : Lcom/sun/tools/javac/code/TypeTag;
-/*      */       //   7: invokevirtual ordinal : ()I
-/*      */       //   10: iaload
-/*      */       //   11: tableswitch default -> 88, 1 -> 56, 2 -> 60, 3 -> 64, 4 -> 68, 5 -> 72, 6 -> 76, 7 -> 80, 8 -> 84
-/*      */       //   56: getstatic javax/lang/model/type/TypeKind.BYTE : Ljavax/lang/model/type/TypeKind;
-/*      */       //   59: areturn
-/*      */       //   60: getstatic javax/lang/model/type/TypeKind.CHAR : Ljavax/lang/model/type/TypeKind;
-/*      */       //   63: areturn
-/*      */       //   64: getstatic javax/lang/model/type/TypeKind.SHORT : Ljavax/lang/model/type/TypeKind;
-/*      */       //   67: areturn
-/*      */       //   68: getstatic javax/lang/model/type/TypeKind.INT : Ljavax/lang/model/type/TypeKind;
-/*      */       //   71: areturn
-/*      */       //   72: getstatic javax/lang/model/type/TypeKind.LONG : Ljavax/lang/model/type/TypeKind;
-/*      */       //   75: areturn
-/*      */       //   76: getstatic javax/lang/model/type/TypeKind.FLOAT : Ljavax/lang/model/type/TypeKind;
-/*      */       //   79: areturn
-/*      */       //   80: getstatic javax/lang/model/type/TypeKind.DOUBLE : Ljavax/lang/model/type/TypeKind;
-/*      */       //   83: areturn
-/*      */       //   84: getstatic javax/lang/model/type/TypeKind.BOOLEAN : Ljavax/lang/model/type/TypeKind;
-/*      */       //   87: areturn
-/*      */       //   88: new java/lang/AssertionError
-/*      */       //   91: dup
-/*      */       //   92: invokespecial <init> : ()V
-/*      */       //   95: athrow
-/*      */       // Line number table:
-/*      */       //   Java source line number -> byte code offset
-/*      */       //   #599	-> 0
-/*      */       //   #600	-> 56
-/*      */       //   #601	-> 60
-/*      */       //   #602	-> 64
-/*      */       //   #603	-> 68
-/*      */       //   #604	-> 72
-/*      */       //   #605	-> 76
-/*      */       //   #606	-> 80
-/*      */       //   #607	-> 84
-/*      */       //   #609	-> 88
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public static class WildcardType
-/*      */     extends Type
-/*      */     implements javax.lang.model.type.WildcardType
-/*      */   {
-/*      */     public Type type;
-/*      */
-/*      */
-/*      */     public BoundKind kind;
-/*      */
-/*      */
-/*      */     public TypeVar bound;
-/*      */
-/*      */
-/*      */     boolean isPrintingBound;
-/*      */
-/*      */
-/*      */     public <R, S> R accept(Visitor<R, S> param1Visitor, S param1S) {
-/*  623 */       return param1Visitor.visitWildcardType(this, param1S);
-/*      */     }
-/*      */
-/*      */     public WildcardType(Type param1Type, BoundKind param1BoundKind, Symbol.TypeSymbol param1TypeSymbol) {
-/*  627 */       super(param1TypeSymbol);
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  681 */       this.isPrintingBound = false; this.type = (Type)Assert.checkNonNull(param1Type); this.kind = param1BoundKind;
-/*      */     } public WildcardType(WildcardType param1WildcardType, TypeVar param1TypeVar) { this(param1WildcardType.type, param1WildcardType.kind, param1WildcardType.tsym, param1TypeVar); } public WildcardType(Type param1Type, BoundKind param1BoundKind, Symbol.TypeSymbol param1TypeSymbol, TypeVar param1TypeVar) { this(param1Type, param1BoundKind, param1TypeSymbol); this.bound = param1TypeVar; } public TypeTag getTag() { return TypeTag.WILDCARD; } public boolean contains(Type param1Type) { return (this.kind != BoundKind.UNBOUND && this.type.contains(param1Type)); } public boolean isSuperBound() { return (this.kind == BoundKind.SUPER || this.kind == BoundKind.UNBOUND); } public boolean isExtendsBound() { return (this.kind == BoundKind.EXTENDS || this.kind == BoundKind.UNBOUND); } public boolean isUnbound() { return (this.kind == BoundKind.UNBOUND); } public boolean isReference() { return true; } public boolean isNullOrReference() { return true; } public Type withTypeVar(Type param1Type) { if (this.bound == param1Type) return this;  this.bound = (TypeVar)param1Type; return this; }
-/*  683 */     public String toString() { StringBuilder stringBuilder = new StringBuilder();
-/*  684 */       stringBuilder.append(this.kind.toString());
-/*  685 */       if (this.kind != BoundKind.UNBOUND)
-/*  686 */         stringBuilder.append(this.type);
-/*  687 */       if (moreInfo && this.bound != null && !this.isPrintingBound)
-/*      */         try {
-/*  689 */           this.isPrintingBound = true;
-/*  690 */           stringBuilder.append("{:").append(this.bound.bound).append(":}");
-/*      */         } finally {
-/*  692 */           this.isPrintingBound = false;
-/*      */         }
-/*  694 */       return stringBuilder.toString(); }
-/*      */
-/*      */
-/*      */
-/*      */     public Type map(Mapping param1Mapping) {
-/*  699 */       Type type = this.type;
-/*  700 */       if (type != null)
-/*  701 */         type = param1Mapping.apply(type);
-/*  702 */       if (type == this.type) {
-/*  703 */         return this;
-/*      */       }
-/*  705 */       return new WildcardType(type, this.kind, this.tsym, this.bound);
-/*      */     }
-/*      */
-/*      */     public Type getExtendsBound() {
-/*  709 */       if (this.kind == BoundKind.EXTENDS) {
-/*  710 */         return this.type;
-/*      */       }
-/*  712 */       return null;
-/*      */     }
-/*      */
-/*      */     public Type getSuperBound() {
-/*  716 */       if (this.kind == BoundKind.SUPER) {
-/*  717 */         return this.type;
-/*      */       }
-/*  719 */       return null;
-/*      */     }
-/*      */
-/*      */     public TypeKind getKind() {
-/*  723 */       return TypeKind.WILDCARD;
-/*      */     }
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/*  727 */       return param1TypeVisitor.visitWildcard(this, param1P);
-/*      */     } }
-/*      */   public static class ClassType extends Type implements DeclaredType { private Type outer_field; public List<Type> typarams_field; public List<Type> allparams_field; public Type supertype_field; public List<Type> interfaces_field; public List<Type> all_interfaces_field; int rank_field;
-/*      */     public TypeTag getTag() {
-/*      */       return TypeTag.CLASS;
-/*      */     }
-/*      */     public <R, S> R accept(Visitor<R, S> param1Visitor, S param1S) {
-/*      */       return param1Visitor.visitClassType(this, param1S);
-/*      */     }
-/*      */     public Type constType(Object param1Object) {
-/*      */       final Object value = param1Object;
-/*      */       return new ClassType(getEnclosingType(), this.typarams_field, this.tsym) { public Object constValue() {
-/*      */             return value;
-/*      */           }
-/*      */           public Type baseType() {
-/*      */             return this.tsym.type;
-/*      */           } }
-/*      */         ;
-/*      */     }
-/*      */     public String toString() {
-/*      */       StringBuilder stringBuilder = new StringBuilder();
-/*      */       if (getEnclosingType().hasTag(TypeTag.CLASS) && this.tsym.owner.kind == 2) {
-/*      */         stringBuilder.append(getEnclosingType().toString());
-/*      */         stringBuilder.append(".");
-/*      */         stringBuilder.append(className(this.tsym, false));
-/*      */       } else {
-/*      */         stringBuilder.append(className(this.tsym, true));
-/*      */       }
-/*      */       if (getTypeArguments().nonEmpty()) {
-/*      */         stringBuilder.append('<');
-/*      */         stringBuilder.append(getTypeArguments().toString());
-/*      */         stringBuilder.append(">");
-/*      */       }
-/*      */       return stringBuilder.toString();
-/*      */     }
-/*  762 */     public ClassType(Type param1Type, List<Type> param1List, Symbol.TypeSymbol param1TypeSymbol) { super(param1TypeSymbol);
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  903 */       this.rank_field = -1; this.outer_field = param1Type; this.typarams_field = param1List; this.allparams_field = null; this.supertype_field = null; this.interfaces_field = null; } private String className(Symbol param1Symbol, boolean param1Boolean) { if (param1Symbol.name.isEmpty() && (param1Symbol.flags() & 0x1000000L) != 0L) { StringBuilder stringBuilder = new StringBuilder(this.supertype_field.toString()); for (List<Type> list = this.interfaces_field; list.nonEmpty(); list = list.tail) { stringBuilder.append("&"); stringBuilder.append(((Type)list.head).toString()); }  return stringBuilder.toString(); }  if (param1Symbol.name.isEmpty()) { String str; ClassType classType = (ClassType)this.tsym.type.unannotatedType(); if (classType == null) { str = Log.getLocalizedString("anonymous.class", new Object[] { null }); } else if (classType.interfaces_field != null && classType.interfaces_field.nonEmpty()) { str = Log.getLocalizedString("anonymous.class", new Object[] { classType.interfaces_field.head }); } else { str = Log.getLocalizedString("anonymous.class", new Object[] { classType.supertype_field }); }  if (moreInfo)
-/*      */           str = str + String.valueOf(param1Symbol.hashCode());  return str; }
-/*      */        if (param1Boolean)
-/*      */         return param1Symbol.getQualifiedName().toString();  return param1Symbol.name.toString(); }
-/*      */     public List<Type> getTypeArguments() { if (this.typarams_field == null) { complete(); if (this.typarams_field == null)
-/*      */           this.typarams_field = List.nil();  }
-/*      */        return this.typarams_field; }
-/*      */     public boolean hasErasedSupertypes() { return isRaw(); }
-/*  911 */     public boolean isRaw() { return (this != this.tsym.type && this.tsym.type
-/*      */
-/*  913 */         .allparams().nonEmpty() &&
-/*  914 */         allparams().isEmpty()); } public Type getEnclosingType() { return this.outer_field; } public void setEnclosingType(Type param1Type) { this.outer_field = param1Type; } public List<Type> allparams() { if (this.allparams_field == null) this.allparams_field = getTypeArguments().prependList(getEnclosingType().allparams());  return this.allparams_field; } public boolean isErroneous() { return (getEnclosingType().isErroneous() || isErroneous(getTypeArguments()) || (this != this.tsym.type.unannotatedType() && this.tsym.type.isErroneous())); }
-/*      */     public boolean isParameterized() { return ((allparams()).tail != null); }
-/*      */     public boolean isReference() { return true; }
-/*      */     public boolean isNullOrReference() { return true; }
-/*  918 */     public Type map(Mapping param1Mapping) { Type type1 = getEnclosingType();
-/*  919 */       Type type2 = param1Mapping.apply(type1);
-/*  920 */       List<Type> list1 = getTypeArguments();
-/*  921 */       List<Type> list2 = map(list1, param1Mapping);
-/*  922 */       if (type2 == type1 && list2 == list1) return this;
-/*  923 */       return new ClassType(type2, list2, this.tsym); }
-/*      */
-/*      */
-/*      */     public boolean contains(Type param1Type) {
-/*  927 */       return (param1Type == this || (
-/*      */
-/*  929 */         isParameterized() && (
-/*  930 */         getEnclosingType().contains(param1Type) || contains(getTypeArguments(), param1Type))) || (
-/*  931 */         isCompound() && (this.supertype_field
-/*  932 */         .contains(param1Type) || contains(this.interfaces_field, param1Type))));
-/*      */     }
-/*      */
-/*      */     public void complete() {
-/*  936 */       if (this.tsym.completer != null) this.tsym.complete();
-/*      */     }
-/*      */
-/*      */     public TypeKind getKind() {
-/*  940 */       return TypeKind.DECLARED;
-/*      */     }
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/*  944 */       return param1TypeVisitor.visitDeclared(this, param1P);
-/*      */     } }
-/*      */
-/*      */
-/*      */   public static class ErasedClassType extends ClassType {
-/*      */     public ErasedClassType(Type param1Type, Symbol.TypeSymbol param1TypeSymbol) {
-/*  950 */       super(param1Type, List.nil(), param1TypeSymbol);
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean hasErasedSupertypes() {
-/*  955 */       return true;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public static class UnionClassType
-/*      */     extends ClassType implements UnionType {
-/*      */     final List<? extends Type> alternatives_field;
-/*      */
-/*      */     public UnionClassType(ClassType param1ClassType, List<? extends Type> param1List) {
-/*  964 */       super(param1ClassType.outer_field, param1ClassType.typarams_field, param1ClassType.tsym);
-/*  965 */       this.allparams_field = param1ClassType.allparams_field;
-/*  966 */       this.supertype_field = param1ClassType.supertype_field;
-/*  967 */       this.interfaces_field = param1ClassType.interfaces_field;
-/*  968 */       this.all_interfaces_field = param1ClassType.interfaces_field;
-/*  969 */       this.alternatives_field = param1List;
-/*      */     }
-/*      */
-/*      */     public Type getLub() {
-/*  973 */       return this.tsym.type;
-/*      */     }
-/*      */
-/*      */     public List<? extends TypeMirror> getAlternatives() {
-/*  977 */       return Collections.unmodifiableList((List)this.alternatives_field);
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isUnion() {
-/*  982 */       return true;
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeKind getKind() {
-/*  987 */       return TypeKind.UNION;
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/*  992 */       return param1TypeVisitor.visitUnion(this, param1P);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public static class IntersectionClassType
-/*      */     extends ClassType
-/*      */     implements IntersectionType {
-/*      */     public boolean allInterfaces;
-/*      */
-/*      */     public IntersectionClassType(List<Type> param1List, Symbol.ClassSymbol param1ClassSymbol, boolean param1Boolean) {
-/* 1002 */       super(Type.noType, List.nil(), param1ClassSymbol);
-/* 1003 */       this.allInterfaces = param1Boolean;
-/* 1004 */       Assert.check(((param1ClassSymbol.flags() & 0x1000000L) != 0L));
-/* 1005 */       this.supertype_field = (Type)param1List.head;
-/* 1006 */       this.interfaces_field = param1List.tail;
-/* 1007 */       Assert.check((this.supertype_field.tsym.completer != null ||
-/* 1008 */           !this.supertype_field.isInterface()), this.supertype_field);
-/*      */     }
-/*      */
-/*      */     public List<? extends TypeMirror> getBounds() {
-/* 1012 */       return Collections.unmodifiableList((List)getExplicitComponents());
-/*      */     }
-/*      */
-/*      */     public List<Type> getComponents() {
-/* 1016 */       return this.interfaces_field.prepend(this.supertype_field);
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isIntersection() {
-/* 1021 */       return true;
-/*      */     }
-/*      */
-/*      */     public List<Type> getExplicitComponents() {
-/* 1025 */       return this.allInterfaces ? this.interfaces_field :
-/*      */
-/* 1027 */         getComponents();
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeKind getKind() {
-/* 1032 */       return TypeKind.INTERSECTION;
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 1037 */       return param1TypeVisitor.visitIntersection(this, param1P);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public static class ArrayType
-/*      */     extends Type
-/*      */     implements javax.lang.model.type.ArrayType {
-/*      */     public Type elemtype;
-/*      */
-/*      */     public ArrayType(Type param1Type, Symbol.TypeSymbol param1TypeSymbol) {
-/* 1047 */       super(param1TypeSymbol);
-/* 1048 */       this.elemtype = param1Type;
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeTag getTag() {
-/* 1053 */       return TypeTag.ARRAY;
-/*      */     }
-/*      */
-/*      */     public <R, S> R accept(Visitor<R, S> param1Visitor, S param1S) {
-/* 1057 */       return param1Visitor.visitArrayType(this, param1S);
-/*      */     }
-/*      */
-/*      */     public String toString() {
-/* 1061 */       return this.elemtype + "[]";
-/*      */     }
-/*      */
-/*      */     public boolean equals(Object param1Object) {
-/* 1065 */       return (this == param1Object || (param1Object instanceof ArrayType && this.elemtype
-/*      */
-/*      */
-/* 1068 */         .equals(((ArrayType)param1Object).elemtype)));
-/*      */     }
-/*      */
-/*      */     public int hashCode() {
-/* 1072 */       return (TypeTag.ARRAY.ordinal() << 5) + this.elemtype.hashCode();
-/*      */     }
-/*      */
-/*      */     public boolean isVarargs() {
-/* 1076 */       return false;
-/*      */     }
-/*      */     public List<Type> allparams() {
-/* 1079 */       return this.elemtype.allparams();
-/*      */     }
-/*      */     public boolean isErroneous() {
-/* 1082 */       return this.elemtype.isErroneous();
-/*      */     }
-/*      */
-/*      */     public boolean isParameterized() {
-/* 1086 */       return this.elemtype.isParameterized();
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isReference() {
-/* 1091 */       return true;
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isNullOrReference() {
-/* 1096 */       return true;
-/*      */     }
-/*      */
-/*      */     public boolean isRaw() {
-/* 1100 */       return this.elemtype.isRaw();
-/*      */     }
-/*      */
-/*      */     public ArrayType makeVarargs() {
-/* 1104 */       return new ArrayType(this.elemtype, this.tsym)
-/*      */         {
-/*      */           public boolean isVarargs() {
-/* 1107 */             return true;
-/*      */           }
-/*      */         };
-/*      */     }
-/*      */
-/*      */     public Type map(Mapping param1Mapping) {
-/* 1113 */       Type type = param1Mapping.apply(this.elemtype);
-/* 1114 */       if (type == this.elemtype) return this;
-/* 1115 */       return new ArrayType(type, this.tsym);
-/*      */     }
-/*      */
-/*      */     public boolean contains(Type param1Type) {
-/* 1119 */       return (param1Type == this || this.elemtype.contains(param1Type));
-/*      */     }
-/*      */
-/*      */     public void complete() {
-/* 1123 */       this.elemtype.complete();
-/*      */     }
-/*      */
-/*      */     public Type getComponentType() {
-/* 1127 */       return this.elemtype;
-/*      */     }
-/*      */
-/*      */     public TypeKind getKind() {
-/* 1131 */       return TypeKind.ARRAY;
-/*      */     }
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 1135 */       return param1TypeVisitor.visitArray(this, param1P);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public static class MethodType
-/*      */     extends Type
-/*      */     implements ExecutableType
-/*      */   {
-/*      */     public List<Type> argtypes;
-/*      */
-/*      */     public Type restype;
-/*      */
-/*      */     public List<Type> thrown;
-/*      */
-/*      */     public Type recvtype;
-/*      */
-/*      */     public MethodType(List<Type> param1List1, Type param1Type, List<Type> param1List2, Symbol.TypeSymbol param1TypeSymbol) {
-/* 1153 */       super(param1TypeSymbol);
-/* 1154 */       this.argtypes = param1List1;
-/* 1155 */       this.restype = param1Type;
-/* 1156 */       this.thrown = param1List2;
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeTag getTag() {
-/* 1161 */       return TypeTag.METHOD;
-/*      */     }
-/*      */
-/*      */     public <R, S> R accept(Visitor<R, S> param1Visitor, S param1S) {
-/* 1165 */       return param1Visitor.visitMethodType(this, param1S);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public String toString() {
-/* 1174 */       return "(" + this.argtypes + ")" + this.restype;
-/*      */     }
-/*      */
-/* 1177 */     public List<Type> getParameterTypes() { return this.argtypes; }
-/* 1178 */     public Type getReturnType() { return this.restype; }
-/* 1179 */     public Type getReceiverType() { return this.recvtype; } public List<Type> getThrownTypes() {
-/* 1180 */       return this.thrown;
-/*      */     }
-/*      */     public boolean isErroneous() {
-/* 1183 */       return (
-/* 1184 */         isErroneous(this.argtypes) || (this.restype != null && this.restype
-/* 1185 */         .isErroneous()));
-/*      */     }
-/*      */
-/*      */     public Type map(Mapping param1Mapping) {
-/* 1189 */       List<Type> list1 = map(this.argtypes, param1Mapping);
-/* 1190 */       Type type = param1Mapping.apply(this.restype);
-/* 1191 */       List<Type> list2 = map(this.thrown, param1Mapping);
-/* 1192 */       if (list1 == this.argtypes && type == this.restype && list2 == this.thrown)
-/*      */       {
-/* 1194 */         return this; }
-/* 1195 */       return new MethodType(list1, type, list2, this.tsym);
-/*      */     }
-/*      */
-/*      */     public boolean contains(Type param1Type) {
-/* 1199 */       return (param1Type == this || contains(this.argtypes, param1Type) || this.restype.contains(param1Type) || contains(this.thrown, param1Type));
-/*      */     }
-/*      */     public MethodType asMethodType() {
-/* 1202 */       return this;
-/*      */     } public void complete() {
-/*      */       List<Type> list;
-/* 1205 */       for (list = this.argtypes; list.nonEmpty(); list = list.tail)
-/* 1206 */         ((Type)list.head).complete();
-/* 1207 */       this.restype.complete();
-/* 1208 */       this.recvtype.complete();
-/* 1209 */       for (list = this.thrown; list.nonEmpty(); list = list.tail)
-/* 1210 */         ((Type)list.head).complete();
-/*      */     }
-/*      */
-/*      */     public List<TypeVar> getTypeVariables() {
-/* 1214 */       return List.nil();
-/*      */     }
-/*      */
-/*      */     public Symbol.TypeSymbol asElement() {
-/* 1218 */       return null;
-/*      */     }
-/*      */
-/*      */     public TypeKind getKind() {
-/* 1222 */       return TypeKind.EXECUTABLE;
-/*      */     }
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 1226 */       return param1TypeVisitor.visitExecutable(this, param1P);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public static class PackageType
-/*      */     extends Type implements NoType {
-/*      */     PackageType(Symbol.TypeSymbol param1TypeSymbol) {
-/* 1233 */       super(param1TypeSymbol);
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeTag getTag() {
-/* 1238 */       return TypeTag.PACKAGE;
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, S> R accept(Visitor<R, S> param1Visitor, S param1S) {
-/* 1243 */       return param1Visitor.visitPackageType(this, param1S);
-/*      */     }
-/*      */
-/*      */     public String toString() {
-/* 1247 */       return this.tsym.getQualifiedName().toString();
-/*      */     }
-/*      */
-/*      */     public TypeKind getKind() {
-/* 1251 */       return TypeKind.PACKAGE;
-/*      */     }
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 1255 */       return param1TypeVisitor.visitNoType(this, param1P);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static class TypeVar
-/*      */     extends Type
-/*      */     implements TypeVariable
-/*      */   {
-/* 1271 */     public Type bound = null;
-/*      */
-/*      */
-/*      */     public Type lower;
-/*      */
-/*      */     int rank_field;
-/*      */
-/*      */
-/*      */     public TypeVar(Name param1Name, Symbol param1Symbol, Type param1Type)
-/*      */     {
-/* 1281 */       super((Symbol.TypeSymbol)null);
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1310 */       this.rank_field = -1; this.tsym = new Symbol.TypeVariableSymbol(0L, param1Name, this, param1Symbol); this.lower = param1Type; } public TypeVar(Symbol.TypeSymbol param1TypeSymbol, Type param1Type1, Type param1Type2) { super(param1TypeSymbol); this.rank_field = -1; this.bound = param1Type1; this.lower = param1Type2; } public TypeTag getTag() { return TypeTag.TYPEVAR; }
-/*      */     public <R, S> R accept(Visitor<R, S> param1Visitor, S param1S) { return param1Visitor.visitTypeVar(this, param1S); }
-/*      */     public Type getUpperBound() { if ((this.bound == null || this.bound.hasTag(TypeTag.NONE)) && this != this.tsym.type)
-/*      */         this.bound = this.tsym.type.getUpperBound();  return this.bound; }
-/* 1314 */     public Type getLowerBound() { return this.lower; }
-/*      */
-/*      */
-/*      */     public TypeKind getKind() {
-/* 1318 */       return TypeKind.TYPEVAR;
-/*      */     }
-/*      */
-/*      */     public boolean isCaptured() {
-/* 1322 */       return false;
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isReference() {
-/* 1327 */       return true;
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isNullOrReference() {
-/* 1332 */       return true;
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 1337 */       return param1TypeVisitor.visitTypeVariable(this, param1P);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static class CapturedType
-/*      */     extends TypeVar
-/*      */   {
-/*      */     public WildcardType wildcard;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public CapturedType(Name param1Name, Symbol param1Symbol, Type param1Type1, Type param1Type2, WildcardType param1WildcardType) {
-/* 1354 */       super(param1Name, param1Symbol, param1Type2);
-/* 1355 */       this.lower = (Type)Assert.checkNonNull(param1Type2);
-/* 1356 */       this.bound = param1Type1;
-/* 1357 */       this.wildcard = param1WildcardType;
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, S> R accept(Visitor<R, S> param1Visitor, S param1S) {
-/* 1362 */       return param1Visitor.visitCapturedType(this, param1S);
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isCaptured() {
-/* 1367 */       return true;
-/*      */     }
-/*      */
-/*      */
-/*      */     public String toString() {
-/* 1372 */       return "capture#" + ((
-/* 1373 */         hashCode() & 0xFFFFFFFFL) % 997L) + " of " + this.wildcard;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public static abstract class DelegatedType
-/*      */     extends Type {
-/*      */     public Type qtype;
-/*      */     public TypeTag tag;
-/*      */
-/*      */     public DelegatedType(TypeTag param1TypeTag, Type param1Type) {
-/* 1383 */       super(param1Type.tsym);
-/* 1384 */       this.tag = param1TypeTag;
-/* 1385 */       this.qtype = param1Type;
-/*      */     }
-/* 1387 */     public TypeTag getTag() { return this.tag; }
-/* 1388 */     public String toString() { return this.qtype.toString(); }
-/* 1389 */     public List<Type> getTypeArguments() { return this.qtype.getTypeArguments(); }
-/* 1390 */     public Type getEnclosingType() { return this.qtype.getEnclosingType(); }
-/* 1391 */     public List<Type> getParameterTypes() { return this.qtype.getParameterTypes(); }
-/* 1392 */     public Type getReturnType() { return this.qtype.getReturnType(); }
-/* 1393 */     public Type getReceiverType() { return this.qtype.getReceiverType(); }
-/* 1394 */     public List<Type> getThrownTypes() { return this.qtype.getThrownTypes(); }
-/* 1395 */     public List<Type> allparams() { return this.qtype.allparams(); }
-/* 1396 */     public Type getUpperBound() { return this.qtype.getUpperBound(); } public boolean isErroneous() {
-/* 1397 */       return this.qtype.isErroneous();
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public static class ForAll
-/*      */     extends DelegatedType
-/*      */     implements ExecutableType
-/*      */   {
-/*      */     public List<Type> tvars;
-/*      */
-/*      */     public ForAll(List<Type> param1List, Type param1Type) {
-/* 1409 */       super(TypeTag.FORALL, param1Type);
-/* 1410 */       this.tvars = param1List;
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, S> R accept(Visitor<R, S> param1Visitor, S param1S) {
-/* 1415 */       return param1Visitor.visitForAll(this, param1S);
-/*      */     }
-/*      */
-/*      */     public String toString() {
-/* 1419 */       return "<" + this.tvars + ">" + this.qtype;
-/*      */     }
-/*      */     public List<Type> getTypeArguments() {
-/* 1422 */       return this.tvars;
-/*      */     }
-/*      */     public boolean isErroneous() {
-/* 1425 */       return this.qtype.isErroneous();
-/*      */     }
-/*      */
-/*      */     public Type map(Mapping param1Mapping) {
-/* 1429 */       return param1Mapping.apply(this.qtype);
-/*      */     }
-/*      */
-/*      */     public boolean contains(Type param1Type) {
-/* 1433 */       return this.qtype.contains(param1Type);
-/*      */     }
-/*      */
-/*      */     public MethodType asMethodType() {
-/* 1437 */       return (MethodType)this.qtype;
-/*      */     }
-/*      */
-/*      */     public void complete() {
-/* 1441 */       for (List<Type> list = this.tvars; list.nonEmpty(); list = list.tail) {
-/* 1442 */         ((TypeVar)list.head).bound.complete();
-/*      */       }
-/* 1444 */       this.qtype.complete();
-/*      */     }
-/*      */
-/*      */     public List<TypeVar> getTypeVariables() {
-/* 1448 */       return List.convert(TypeVar.class, getTypeArguments());
-/*      */     }
-/*      */
-/*      */     public TypeKind getKind() {
-/* 1452 */       return TypeKind.EXECUTABLE;
-/*      */     }
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 1456 */       return param1TypeVisitor.visitExecutable(this, param1P);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static class UndetVar
-/*      */     extends DelegatedType
-/*      */   {
-/*      */     protected Map<InferenceBound, List<Type>> bounds;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public enum InferenceBound
-/*      */     {
-/* 1481 */       UPPER { public InferenceBound complement() {
-/* 1482 */           return LOWER;
-/*      */         } }
-/*      */       ,
-/* 1485 */       LOWER { public InferenceBound complement() {
-/* 1486 */           return UPPER;
-/*      */         } }
-/*      */       ,
-/* 1489 */       EQ { public InferenceBound complement() {
-/* 1490 */           return EQ;
-/*      */         } }
-/*      */       ;
-/*      */
-/*      */
-/*      */
-/*      */       public abstract InferenceBound complement();
-/*      */     }
-/*      */
-/*      */
-/* 1500 */     public Type inst = null;
-/*      */
-/*      */
-/*      */     public int declaredCount;
-/*      */
-/*      */
-/* 1506 */     public UndetVarListener listener = null;
-/*      */     Mapping toTypeVarMap;
-/*      */
-/*      */     public <R, S> R accept(Visitor<R, S> param1Visitor, S param1S) {
-/* 1510 */       return param1Visitor.visitUndetVar(this, param1S);
-/*      */     }
-/*      */
-/*      */     public UndetVar(TypeVar param1TypeVar, Types param1Types) {
-/* 1514 */       super(TypeTag.UNDETVAR, param1TypeVar);
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1593 */       this.toTypeVarMap = new Mapping("toTypeVarMap")
-/*      */         {
-/*      */           public Type apply(Type param2Type) {
-/* 1596 */             if (param2Type.hasTag(TypeTag.UNDETVAR)) {
-/* 1597 */               UndetVar undetVar = (UndetVar)param2Type;
-/* 1598 */               return (undetVar.inst != null) ? undetVar.inst : undetVar.qtype;
-/*      */             }
-/* 1600 */             return param2Type.map(this);
-/*      */           }
-/*      */         }; this.bounds = new EnumMap<>(InferenceBound.class); List<Type> list = param1Types.getBounds(param1TypeVar); this.declaredCount = list.length(); this.bounds.put(InferenceBound.UPPER, list); this.bounds.put(InferenceBound.LOWER, List.nil()); this.bounds.put(InferenceBound.EQ, List.nil());
-/*      */     }
-/*      */     public String toString() { return (this.inst == null) ? (this.qtype + "?") : this.inst.toString(); } public String debugString() { String str = "inference var = " + this.qtype + "\n"; if (this.inst != null)
-/*      */         str = str + "inst = " + this.inst + '\n';  for (InferenceBound inferenceBound : InferenceBound.values()) { List list = this.bounds.get(inferenceBound); if (list.size() > 0)
-/*      */           str = str + inferenceBound + " = " + list + '\n';  }
-/* 1607 */        return str; } public boolean isPartial() { return true; } public Type baseType() { return (this.inst == null) ? this : this.inst.baseType(); } public void substBounds(List<Type> param1List1, List<Type> param1List2, Types param1Types) { List<Type> list = param1List1.diff(param1List2);
-/*      */
-/* 1609 */       if (list.isEmpty())
-/* 1610 */         return;  final EnumSet<InferenceBound> boundsChanged = EnumSet.noneOf(InferenceBound.class);
-/* 1611 */       UndetVarListener undetVarListener = this.listener;
-/*      */
-/*      */
-/* 1614 */       try { this.listener = new UndetVarListener() {
-/*      */             public void varChanged(UndetVar param2UndetVar, Set<InferenceBound> param2Set) {
-/* 1616 */               boundsChanged.addAll(param2Set);
-/*      */             }
-/*      */           };
-/* 1619 */         for (Map.Entry<InferenceBound, List<Type>> entry : this.bounds.entrySet()) {
-/* 1620 */           InferenceBound inferenceBound = (InferenceBound)entry.getKey();
-/* 1621 */           List list1 = (List)entry.getValue();
-/* 1622 */           ListBuffer listBuffer1 = new ListBuffer();
-/* 1623 */           ListBuffer listBuffer2 = new ListBuffer();
-/*      */
-/* 1625 */           for (Type type : list1) {
-/* 1626 */             if (!type.containsAny(list)) {
-/* 1627 */               listBuffer1.append(type); continue;
-/*      */             }
-/* 1629 */             listBuffer2.append(type);
-/*      */           }
-/*      */
-/*      */
-/* 1633 */           this.bounds.put(inferenceBound, listBuffer1.toList());
-/*      */
-/* 1635 */           for (Type type : listBuffer2) {
-/* 1636 */             addBound(inferenceBound, param1Types.subst(type, param1List1, param1List2), param1Types, true);
-/*      */           }
-/*      */         }  }
-/*      */       finally
-/* 1640 */       { this.listener = undetVarListener;
-/* 1641 */         if (!enumSet.isEmpty())
-/* 1642 */           notifyChange(enumSet);  }  }
-/*      */     public List<Type> getBounds(InferenceBound... param1VarArgs) { ListBuffer listBuffer = new ListBuffer(); for (InferenceBound inferenceBound : param1VarArgs) listBuffer.appendList(this.bounds.get(inferenceBound));  return listBuffer.toList(); }
-/*      */     public List<Type> getDeclaredBounds() { ListBuffer listBuffer = new ListBuffer(); byte b = 0; for (Type type : getBounds(new InferenceBound[] { InferenceBound.UPPER })) { if (b++ == this.declaredCount) break;  listBuffer.append(type); }  return listBuffer.toList(); }
-/*      */     public void setBounds(InferenceBound param1InferenceBound, List<Type> param1List) { this.bounds.put(param1InferenceBound, param1List); }
-/*      */     public final void addBound(InferenceBound param1InferenceBound, Type param1Type, Types param1Types) { addBound(param1InferenceBound, param1Type, param1Types, false); }
-/*      */     protected void addBound(InferenceBound param1InferenceBound, Type param1Type, Types param1Types, boolean param1Boolean) { Type type = this.toTypeVarMap.apply(param1Type).baseType(); List list = this.bounds.get(param1InferenceBound); for (Type type1 : list) { if (param1Types.isSameType(type1, type, true) || param1Type == this.qtype)
-/* 1648 */           return;  }  this.bounds.put(param1InferenceBound, list.prepend(type)); notifyChange(EnumSet.of(param1InferenceBound)); } private void notifyChange(EnumSet<InferenceBound> param1EnumSet) { if (this.listener != null) {
-/* 1649 */         this.listener.varChanged(this, param1EnumSet);
-/*      */       } }
-/*      */
-/*      */
-/*      */     public boolean isCaptured() {
-/* 1654 */       return false;
-/*      */     }
-/*      */
-/*      */     public static interface UndetVarListener
-/*      */     {
-/*      */       void varChanged(UndetVar param2UndetVar, Set<InferenceBound> param2Set);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public static class CapturedUndetVar
-/*      */     extends UndetVar
-/*      */   {
-/*      */     public CapturedUndetVar(CapturedType param1CapturedType, Types param1Types) {
-/* 1667 */       super(param1CapturedType, param1Types);
-/* 1668 */       if (!param1CapturedType.lower.hasTag(TypeTag.BOT)) {
-/* 1669 */         this.bounds.put(InferenceBound.LOWER, List.of(param1CapturedType.lower));
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void addBound(InferenceBound param1InferenceBound, Type param1Type, Types param1Types, boolean param1Boolean) {
-/* 1675 */       if (param1Boolean)
-/*      */       {
-/* 1677 */         super.addBound(param1InferenceBound, param1Type, param1Types, param1Boolean);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isCaptured() {
-/* 1683 */       return true;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public static class JCNoType
-/*      */     extends Type
-/*      */     implements NoType {
-/*      */     public JCNoType() {
-/* 1691 */       super((Symbol.TypeSymbol)null);
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeTag getTag() {
-/* 1696 */       return TypeTag.NONE;
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeKind getKind() {
-/* 1701 */       return TypeKind.NONE;
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 1706 */       return param1TypeVisitor.visitNoType(this, param1P);
-/*      */     }
-/*      */
-/*      */     public boolean isCompound() {
-/* 1710 */       return false;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public static class JCVoidType
-/*      */     extends Type
-/*      */     implements NoType {
-/*      */     public JCVoidType() {
-/* 1718 */       super((Symbol.TypeSymbol)null);
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeTag getTag() {
-/* 1723 */       return TypeTag.VOID;
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeKind getKind() {
-/* 1728 */       return TypeKind.VOID;
-/*      */     }
-/*      */
-/*      */     public boolean isCompound() {
-/* 1732 */       return false;
-/*      */     }
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 1736 */       return param1TypeVisitor.visitNoType(this, param1P);
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isPrimitiveOrVoid() {
-/* 1741 */       return true;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   static class BottomType extends Type implements NullType {
-/*      */     public BottomType() {
-/* 1747 */       super((Symbol.TypeSymbol)null);
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeTag getTag() {
-/* 1752 */       return TypeTag.BOT;
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeKind getKind() {
-/* 1757 */       return TypeKind.NULL;
-/*      */     }
-/*      */
-/*      */     public boolean isCompound() {
-/* 1761 */       return false;
-/*      */     }
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 1765 */       return param1TypeVisitor.visitNull(this, param1P);
-/*      */     }
-/*      */
-/*      */
-/*      */     public Type constType(Object param1Object) {
-/* 1770 */       return this;
-/*      */     }
-/*      */
-/*      */
-/*      */     public String stringValue() {
-/* 1775 */       return "null";
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isNullOrReference() {
-/* 1780 */       return true;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public static class ErrorType
-/*      */     extends ClassType
-/*      */     implements javax.lang.model.type.ErrorType
-/*      */   {
-/* 1788 */     private Type originalType = null;
-/*      */
-/*      */     public ErrorType(Type param1Type, Symbol.TypeSymbol param1TypeSymbol) {
-/* 1791 */       super(noType, List.nil(), (Symbol.TypeSymbol)null);
-/* 1792 */       this.tsym = param1TypeSymbol;
-/* 1793 */       this.originalType = (param1Type == null) ? noType : param1Type;
-/*      */     }
-/*      */
-/*      */     public ErrorType(Symbol.ClassSymbol param1ClassSymbol, Type param1Type) {
-/* 1797 */       this(param1Type, param1ClassSymbol);
-/* 1798 */       param1ClassSymbol.type = this;
-/* 1799 */       param1ClassSymbol.kind = 63;
-/* 1800 */       param1ClassSymbol.members_field = new Scope.ErrorScope(param1ClassSymbol);
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeTag getTag() {
-/* 1805 */       return TypeTag.ERROR;
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isPartial() {
-/* 1810 */       return true;
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isReference() {
-/* 1815 */       return true;
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isNullOrReference() {
-/* 1820 */       return true;
-/*      */     }
-/*      */
-/*      */     public ErrorType(Name param1Name, Symbol.TypeSymbol param1TypeSymbol, Type param1Type) {
-/* 1824 */       this(new Symbol.ClassSymbol(1073741833L, param1Name, null, param1TypeSymbol), param1Type);
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, S> R accept(Visitor<R, S> param1Visitor, S param1S) {
-/* 1829 */       return param1Visitor.visitErrorType(this, param1S);
-/*      */     }
-/*      */
-/* 1832 */     public Type constType(Object param1Object) { return this; }
-/* 1833 */     public Type getEnclosingType() { return this; }
-/* 1834 */     public Type getReturnType() { return this; }
-/* 1835 */     public Type asSub(Symbol param1Symbol) { return this; } public Type map(Mapping param1Mapping) {
-/* 1836 */       return this;
-/*      */     }
-/* 1838 */     public boolean isGenType(Type param1Type) { return true; }
-/* 1839 */     public boolean isErroneous() { return true; }
-/* 1840 */     public boolean isCompound() { return false; } public boolean isInterface() {
-/* 1841 */       return false;
-/*      */     }
-/* 1843 */     public List<Type> allparams() { return List.nil(); } public List<Type> getTypeArguments() {
-/* 1844 */       return List.nil();
-/*      */     }
-/*      */     public TypeKind getKind() {
-/* 1847 */       return TypeKind.ERROR;
-/*      */     }
-/*      */
-/*      */     public Type getOriginalType() {
-/* 1851 */       return this.originalType;
-/*      */     }
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 1855 */       return param1TypeVisitor.visitError(this, param1P);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static class AnnotatedType
-/*      */     extends Type
-/*      */     implements javax.lang.model.type.ArrayType, DeclaredType, PrimitiveType, TypeVariable, javax.lang.model.type.WildcardType
-/*      */   {
-/*      */     private List<Attribute.TypeCompound> typeAnnotations;
-/*      */
-/*      */
-/*      */
-/*      */     private Type underlyingType;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     protected AnnotatedType(List<Attribute.TypeCompound> param1List, Type param1Type) {
-/* 1876 */       super(param1Type.tsym);
-/* 1877 */       this.typeAnnotations = param1List;
-/* 1878 */       this.underlyingType = param1Type;
-/* 1879 */       Assert.check((param1List != null && param1List.nonEmpty()), "Can't create AnnotatedType without annotations: " + param1Type);
-/*      */
-/* 1881 */       Assert.check(!param1Type.isAnnotated(), "Can't annotate already annotated type: " + param1Type + "; adding: " + param1List);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public TypeTag getTag() {
-/* 1888 */       return this.underlyingType.getTag();
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isAnnotated() {
-/* 1893 */       return true;
-/*      */     }
-/*      */
-/*      */
-/*      */     public List<Attribute.TypeCompound> getAnnotationMirrors() {
-/* 1898 */       return this.typeAnnotations;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     public TypeKind getKind() {
-/* 1904 */       return this.underlyingType.getKind();
-/*      */     }
-/*      */
-/*      */
-/*      */     public Type unannotatedType() {
-/* 1909 */       return this.underlyingType;
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, S> R accept(Visitor<R, S> param1Visitor, S param1S) {
-/* 1914 */       return param1Visitor.visitAnnotatedType(this, param1S);
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 1919 */       return this.underlyingType.accept(param1TypeVisitor, param1P);
-/*      */     }
-/*      */
-/*      */
-/*      */     public Type map(Mapping param1Mapping) {
-/* 1924 */       this.underlyingType.map(param1Mapping);
-/* 1925 */       return this;
-/*      */     }
-/*      */
-/*      */     public Type constType(Object param1Object) {
-/* 1929 */       return this.underlyingType.constType(param1Object);
-/*      */     } public Type getEnclosingType() {
-/* 1931 */       return this.underlyingType.getEnclosingType();
-/*      */     }
-/*      */     public Type getReturnType() {
-/* 1934 */       return this.underlyingType.getReturnType();
-/*      */     } public List<Type> getTypeArguments() {
-/* 1936 */       return this.underlyingType.getTypeArguments();
-/*      */     } public List<Type> getParameterTypes() {
-/* 1938 */       return this.underlyingType.getParameterTypes();
-/*      */     } public Type getReceiverType() {
-/* 1940 */       return this.underlyingType.getReceiverType();
-/*      */     } public List<Type> getThrownTypes() {
-/* 1942 */       return this.underlyingType.getThrownTypes();
-/*      */     } public Type getUpperBound() {
-/* 1944 */       return this.underlyingType.getUpperBound();
-/*      */     } public Type getLowerBound() {
-/* 1946 */       return this.underlyingType.getLowerBound();
-/*      */     }
-/*      */     public boolean isErroneous() {
-/* 1949 */       return this.underlyingType.isErroneous();
-/*      */     } public boolean isCompound() {
-/* 1951 */       return this.underlyingType.isCompound();
-/*      */     } public boolean isInterface() {
-/* 1953 */       return this.underlyingType.isInterface();
-/*      */     } public List<Type> allparams() {
-/* 1955 */       return this.underlyingType.allparams();
-/*      */     } public boolean isPrimitive() {
-/* 1957 */       return this.underlyingType.isPrimitive();
-/*      */     } public boolean isPrimitiveOrVoid() {
-/* 1959 */       return this.underlyingType.isPrimitiveOrVoid();
-/*      */     } public boolean isNumeric() {
-/* 1961 */       return this.underlyingType.isNumeric();
-/*      */     } public boolean isReference() {
-/* 1963 */       return this.underlyingType.isReference();
-/*      */     } public boolean isNullOrReference() {
-/* 1965 */       return this.underlyingType.isNullOrReference();
-/*      */     } public boolean isPartial() {
-/* 1967 */       return this.underlyingType.isPartial();
-/*      */     } public boolean isParameterized() {
-/* 1969 */       return this.underlyingType.isParameterized();
-/*      */     } public boolean isRaw() {
-/* 1971 */       return this.underlyingType.isRaw();
-/*      */     } public boolean isFinal() {
-/* 1973 */       return this.underlyingType.isFinal();
-/*      */     } public boolean isSuperBound() {
-/* 1975 */       return this.underlyingType.isSuperBound();
-/*      */     } public boolean isExtendsBound() {
-/* 1977 */       return this.underlyingType.isExtendsBound();
-/*      */     } public boolean isUnbound() {
-/* 1979 */       return this.underlyingType.isUnbound();
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public String toString() {
-/* 1987 */       if (this.typeAnnotations != null &&
-/* 1988 */         !this.typeAnnotations.isEmpty()) {
-/* 1989 */         return "(" + this.typeAnnotations.toString() + " :: " + this.underlyingType.toString() + ")";
-/*      */       }
-/* 1991 */       return "({} :: " + this.underlyingType.toString() + ")";
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean contains(Type param1Type) {
-/* 1996 */       return this.underlyingType.contains(param1Type);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     public Type withTypeVar(Type param1Type) {
-/* 2002 */       this.underlyingType = this.underlyingType.withTypeVar(param1Type);
-/* 2003 */       return this;
-/*      */     }
-/*      */
-/*      */
-/*      */     public Symbol.TypeSymbol asElement() {
-/* 2008 */       return this.underlyingType.asElement();
-/*      */     }
-/*      */
-/*      */     public MethodType asMethodType() {
-/* 2012 */       return this.underlyingType.asMethodType();
-/*      */     }
-/*      */     public void complete() {
-/* 2015 */       this.underlyingType.complete();
-/*      */     }
-/*      */     public TypeMirror getComponentType() {
-/* 2018 */       return ((ArrayType)this.underlyingType).getComponentType();
-/*      */     }
-/*      */
-/*      */     public Type makeVarargs() {
-/* 2022 */       return ((ArrayType)this.underlyingType).makeVarargs().annotatedType(this.typeAnnotations);
-/*      */     }
-/*      */
-/*      */     public TypeMirror getExtendsBound() {
-/* 2026 */       return ((WildcardType)this.underlyingType).getExtendsBound();
-/*      */     } public TypeMirror getSuperBound() {
-/* 2028 */       return ((WildcardType)this.underlyingType).getSuperBound();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public static class UnknownType extends Type {
-/*      */     public UnknownType() {
-/* 2034 */       super((Symbol.TypeSymbol)null);
-/*      */     }
-/*      */
-/*      */
-/*      */     public TypeTag getTag() {
-/* 2039 */       return TypeTag.UNKNOWN;
-/*      */     }
-/*      */
-/*      */
-/*      */     public <R, P> R accept(TypeVisitor<R, P> param1TypeVisitor, P param1P) {
-/* 2044 */       return param1TypeVisitor.visitUnknown(this, param1P);
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isPartial() {
-/* 2049 */       return true;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public static interface Visitor<R, S> {
-/*      */     R visitClassType(ClassType param1ClassType, S param1S);
-/*      */
-/*      */     R visitWildcardType(WildcardType param1WildcardType, S param1S);
-/*      */
-/*      */     R visitArrayType(ArrayType param1ArrayType, S param1S);
-/*      */
-/*      */     R visitMethodType(MethodType param1MethodType, S param1S);
-/*      */
-/*      */     R visitPackageType(PackageType param1PackageType, S param1S);
-/*      */
-/*      */     R visitTypeVar(TypeVar param1TypeVar, S param1S);
-/*      */
-/*      */     R visitCapturedType(CapturedType param1CapturedType, S param1S);
-/*      */
-/*      */     R visitForAll(ForAll param1ForAll, S param1S);
-/*      */
-/*      */     R visitUndetVar(UndetVar param1UndetVar, S param1S);
-/*      */
-/*      */     R visitErrorType(ErrorType param1ErrorType, S param1S);
-/*      */
-/*      */     R visitAnnotatedType(AnnotatedType param1AnnotatedType, S param1S);
-/*      */
-/*      */     R visitType(Type param1Type, S param1S);
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\code\Type.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2014, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.code;
+
+import java.lang.annotation.Annotation;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.Map;
+import java.util.Set;
+
+import javax.lang.model.type.*;
+
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.util.*;
+import static com.sun.tools.javac.code.BoundKind.*;
+import static com.sun.tools.javac.code.Flags.*;
+import static com.sun.tools.javac.code.Kinds.*;
+import static com.sun.tools.javac.code.TypeTag.*;
+
+/** This class represents Java types. The class itself defines the behavior of
+ *  the following types:
+ *  <pre>
+ *  base types (tags: BYTE, CHAR, SHORT, INT, LONG, FLOAT, DOUBLE, BOOLEAN),
+ *  type `void' (tag: VOID),
+ *  the bottom type (tag: BOT),
+ *  the missing type (tag: NONE).
+ *  </pre>
+ *  <p>The behavior of the following types is defined in subclasses, which are
+ *  all static inner classes of this class:
+ *  <pre>
+ *  class types (tag: CLASS, class: ClassType),
+ *  array types (tag: ARRAY, class: ArrayType),
+ *  method types (tag: METHOD, class: MethodType),
+ *  package types (tag: PACKAGE, class: PackageType),
+ *  type variables (tag: TYPEVAR, class: TypeVar),
+ *  type arguments (tag: WILDCARD, class: WildcardType),
+ *  generic method types (tag: FORALL, class: ForAll),
+ *  the error type (tag: ERROR, class: ErrorType).
+ *  </pre>
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ *  @see TypeTag
+ */
+public abstract class Type extends AnnoConstruct implements TypeMirror {
+
+    /** Constant type: no type at all. */
+    public static final JCNoType noType = new JCNoType() {
+        @Override
+        public String toString() {
+            return "none";
+        }
+    };
+
+    /** Constant type: special type to be used during recovery of deferred expressions. */
+    public static final JCNoType recoveryType = new JCNoType(){
+        @Override
+        public String toString() {
+            return "recovery";
+        }
+    };
+
+    /** Constant type: special type to be used for marking stuck trees. */
+    public static final JCNoType stuckType = new JCNoType() {
+        @Override
+        public String toString() {
+            return "stuck";
+        }
+    };
+
+    /** If this switch is turned on, the names of type variables
+     *  and anonymous classes are printed with hashcodes appended.
+     */
+    public static boolean moreInfo = false;
+
+    /** The defining class / interface / package / type variable.
+     */
+    public TypeSymbol tsym;
+
+    /**
+     * Checks if the current type tag is equal to the given tag.
+     * @return true if tag is equal to the current type tag.
+     */
+    public boolean hasTag(TypeTag tag) {
+        return tag == getTag();
+    }
+
+    /**
+     * Returns the current type tag.
+     * @return the value of the current type tag.
+     */
+    public abstract TypeTag getTag();
+
+    public boolean isNumeric() {
+        return false;
+    }
+
+    public boolean isPrimitive() {
+        return false;
+    }
+
+    public boolean isPrimitiveOrVoid() {
+        return false;
+    }
+
+    public boolean isReference() {
+        return false;
+    }
+
+    public boolean isNullOrReference() {
+        return false;
+    }
+
+    public boolean isPartial() {
+        return false;
+    }
+
+    /**
+     * The constant value of this type, null if this type does not
+     * have a constant value attribute. Only primitive types and
+     * strings (ClassType) can have a constant value attribute.
+     * @return the constant value attribute of this type
+     */
+    public Object constValue() {
+        return null;
+    }
+
+    /** Is this a constant type whose value is false?
+     */
+    public boolean isFalse() {
+        return false;
+    }
+
+    /** Is this a constant type whose value is true?
+     */
+    public boolean isTrue() {
+        return false;
+    }
+
+    /**
+     * Get the representation of this type used for modelling purposes.
+     * By default, this is itself. For ErrorType, a different value
+     * may be provided.
+     */
+    public Type getModelType() {
+        return this;
+    }
+
+    public static List<Type> getModelTypes(List<Type> ts) {
+        ListBuffer<Type> lb = new ListBuffer<>();
+        for (Type t: ts)
+            lb.append(t.getModelType());
+        return lb.toList();
+    }
+
+    /**For ErrorType, returns the original type, otherwise returns the type itself.
+     */
+    public Type getOriginalType() {
+        return this;
+    }
+
+    public <R,S> R accept(Visitor<R,S> v, S s) { return v.visitType(this, s); }
+
+    /** Define a type given its tag and type symbol
+     */
+    public Type(TypeSymbol tsym) {
+        this.tsym = tsym;
+    }
+
+    /** An abstract class for mappings from types to types
+     */
+    public static abstract class Mapping {
+        private String name;
+        public Mapping(String name) {
+            this.name = name;
+        }
+        public abstract Type apply(Type t);
+        public String toString() {
+            return name;
+        }
+    }
+
+    /** map a type function over all immediate descendants of this type
+     */
+    public Type map(Mapping f) {
+        return this;
+    }
+
+    /** map a type function over a list of types
+     */
+    public static List<Type> map(List<Type> ts, Mapping f) {
+        if (ts.nonEmpty()) {
+            List<Type> tail1 = map(ts.tail, f);
+            Type t = f.apply(ts.head);
+            if (tail1 != ts.tail || t != ts.head)
+                return tail1.prepend(t);
+        }
+        return ts;
+    }
+
+    /** Define a constant type, of the same kind as this type
+     *  and with given constant value
+     */
+    public Type constType(Object constValue) {
+        throw new AssertionError();
+    }
+
+    /**
+     * If this is a constant type, return its underlying type.
+     * Otherwise, return the type itself.
+     */
+    public Type baseType() {
+        return this;
+    }
+
+    public Type annotatedType(List<Attribute.TypeCompound> annos) {
+        return new AnnotatedType(annos, this);
+    }
+
+    public boolean isAnnotated() {
+        return false;
+    }
+
+    /**
+     * If this is an annotated type, return the underlying type.
+     * Otherwise, return the type itself.
+     */
+    public Type unannotatedType() {
+        return this;
+    }
+
+    @Override
+    public List<Attribute.TypeCompound> getAnnotationMirrors() {
+        return List.nil();
+    }
+
+
+    @Override
+    public <A extends Annotation> A getAnnotation(Class<A> annotationType) {
+        return null;
+    }
+
+
+    @Override
+    public <A extends Annotation> A[] getAnnotationsByType(Class<A> annotationType) {
+        @SuppressWarnings("unchecked")
+        A[] tmp = (A[]) java.lang.reflect.Array.newInstance(annotationType, 0);
+        return tmp;
+    }
+
+    /** Return the base types of a list of types.
+     */
+    public static List<Type> baseTypes(List<Type> ts) {
+        if (ts.nonEmpty()) {
+            Type t = ts.head.baseType();
+            List<Type> baseTypes = baseTypes(ts.tail);
+            if (t != ts.head || baseTypes != ts.tail)
+                return baseTypes.prepend(t);
+        }
+        return ts;
+    }
+
+    /** The Java source which this type represents.
+     */
+    public String toString() {
+        String s = (tsym == null || tsym.name == null)
+            ? "<none>"
+            : tsym.name.toString();
+        if (moreInfo && hasTag(TYPEVAR)) {
+            s = s + hashCode();
+        }
+        return s;
+    }
+
+    /**
+     * The Java source which this type list represents.  A List is
+     * represented as a comma-spearated listing of the elements in
+     * that list.
+     */
+    public static String toString(List<Type> ts) {
+        if (ts.isEmpty()) {
+            return "";
+        } else {
+            StringBuilder buf = new StringBuilder();
+            buf.append(ts.head.toString());
+            for (List<Type> l = ts.tail; l.nonEmpty(); l = l.tail)
+                buf.append(",").append(l.head.toString());
+            return buf.toString();
+        }
+    }
+
+    /**
+     * The constant value of this type, converted to String
+     */
+    public String stringValue() {
+        Object cv = Assert.checkNonNull(constValue());
+        return cv.toString();
+    }
+
+    /**
+     * This method is analogous to isSameType, but weaker, since we
+     * never complete classes. Where isSameType would complete a
+     * class, equals assumes that the two types are different.
+     */
+    @Override
+    public boolean equals(Object t) {
+        return super.equals(t);
+    }
+
+    @Override
+    public int hashCode() {
+        return super.hashCode();
+    }
+
+    public String argtypes(boolean varargs) {
+        List<Type> args = getParameterTypes();
+        if (!varargs) return args.toString();
+        StringBuilder buf = new StringBuilder();
+        while (args.tail.nonEmpty()) {
+            buf.append(args.head);
+            args = args.tail;
+            buf.append(',');
+        }
+        if (args.head.unannotatedType().hasTag(ARRAY)) {
+            buf.append(((ArrayType)args.head.unannotatedType()).elemtype);
+            if (args.head.getAnnotationMirrors().nonEmpty()) {
+                buf.append(args.head.getAnnotationMirrors());
+            }
+            buf.append("...");
+        } else {
+            buf.append(args.head);
+        }
+        return buf.toString();
+    }
+
+    /** Access methods.
+     */
+    public List<Type>        getTypeArguments()  { return List.nil(); }
+    public Type              getEnclosingType()  { return null; }
+    public List<Type>        getParameterTypes() { return List.nil(); }
+    public Type              getReturnType()     { return null; }
+    public Type              getReceiverType()   { return null; }
+    public List<Type>        getThrownTypes()    { return List.nil(); }
+    public Type              getUpperBound()     { return null; }
+    public Type              getLowerBound()     { return null; }
+
+    /** Navigation methods, these will work for classes, type variables,
+     *  foralls, but will return null for arrays and methods.
+     */
+
+   /** Return all parameters of this type and all its outer types in order
+    *  outer (first) to inner (last).
+    */
+    public List<Type> allparams() { return List.nil(); }
+
+    /** Does this type contain "error" elements?
+     */
+    public boolean isErroneous() {
+        return false;
+    }
+
+    public static boolean isErroneous(List<Type> ts) {
+        for (List<Type> l = ts; l.nonEmpty(); l = l.tail)
+            if (l.head.isErroneous()) return true;
+        return false;
+    }
+
+    /** Is this type parameterized?
+     *  A class type is parameterized if it has some parameters.
+     *  An array type is parameterized if its element type is parameterized.
+     *  All other types are not parameterized.
+     */
+    public boolean isParameterized() {
+        return false;
+    }
+
+    /** Is this type a raw type?
+     *  A class type is a raw type if it misses some of its parameters.
+     *  An array type is a raw type if its element type is raw.
+     *  All other types are not raw.
+     *  Type validation will ensure that the only raw types
+     *  in a program are types that miss all their type variables.
+     */
+    public boolean isRaw() {
+        return false;
+    }
+
+    public boolean isCompound() {
+        return tsym.completer == null
+            // Compound types can't have a completer.  Calling
+            // flags() will complete the symbol causing the
+            // compiler to load classes unnecessarily.  This led
+            // to regression 6180021.
+            && (tsym.flags() & COMPOUND) != 0;
+    }
+
+    public boolean isIntersection() {
+        return false;
+    }
+
+    public boolean isUnion() {
+        return false;
+    }
+
+    public boolean isInterface() {
+        return (tsym.flags() & INTERFACE) != 0;
+    }
+
+    public boolean isFinal() {
+        return (tsym.flags() & FINAL) != 0;
+    }
+
+    /**
+     * Does this type contain occurrences of type t?
+     */
+    public boolean contains(Type t) {
+        return t == this;
+    }
+
+    public static boolean contains(List<Type> ts, Type t) {
+        for (List<Type> l = ts;
+             l.tail != null /*inlined: l.nonEmpty()*/;
+             l = l.tail)
+            if (l.head.contains(t)) return true;
+        return false;
+    }
+
+    /** Does this type contain an occurrence of some type in 'ts'?
+     */
+    public boolean containsAny(List<Type> ts) {
+        for (Type t : ts)
+            if (this.contains(t)) return true;
+        return false;
+    }
+
+    public static boolean containsAny(List<Type> ts1, List<Type> ts2) {
+        for (Type t : ts1)
+            if (t.containsAny(ts2)) return true;
+        return false;
+    }
+
+    public static List<Type> filter(List<Type> ts, Filter<Type> tf) {
+        ListBuffer<Type> buf = new ListBuffer<>();
+        for (Type t : ts) {
+            if (tf.accepts(t)) {
+                buf.append(t);
+            }
+        }
+        return buf.toList();
+    }
+
+    public boolean isSuperBound() { return false; }
+    public boolean isExtendsBound() { return false; }
+    public boolean isUnbound() { return false; }
+    public Type withTypeVar(Type t) { return this; }
+
+    /** The underlying method type of this type.
+     */
+    public MethodType asMethodType() { throw new AssertionError(); }
+
+    /** Complete loading all classes in this type.
+     */
+    public void complete() {}
+
+    public TypeSymbol asElement() {
+        return tsym;
+    }
+
+    @Override
+    public TypeKind getKind() {
+        return TypeKind.OTHER;
+    }
+
+    @Override
+    public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+        throw new AssertionError();
+    }
+
+    public static class JCPrimitiveType extends Type
+            implements PrimitiveType {
+
+        TypeTag tag;
+
+        public JCPrimitiveType(TypeTag tag, TypeSymbol tsym) {
+            super(tsym);
+            this.tag = tag;
+            Assert.check(tag.isPrimitive);
+        }
+
+        @Override
+        public boolean isNumeric() {
+            return tag != BOOLEAN;
+        }
+
+        @Override
+        public boolean isPrimitive() {
+            return true;
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return tag;
+        }
+
+        @Override
+        public boolean isPrimitiveOrVoid() {
+            return true;
+        }
+
+        /** Define a constant type, of the same kind as this type
+         *  and with given constant value
+         */
+        @Override
+        public Type constType(Object constValue) {
+            final Object value = constValue;
+            return new JCPrimitiveType(tag, tsym) {
+                    @Override
+                    public Object constValue() {
+                        return value;
+                    }
+                    @Override
+                    public Type baseType() {
+                        return tsym.type;
+                    }
+                };
+        }
+
+        /**
+         * The constant value of this type, converted to String
+         */
+        @Override
+        public String stringValue() {
+            Object cv = Assert.checkNonNull(constValue());
+            if (tag == BOOLEAN) {
+                return ((Integer) cv).intValue() == 0 ? "false" : "true";
+            }
+            else if (tag == CHAR) {
+                return String.valueOf((char) ((Integer) cv).intValue());
+            }
+            else {
+                return cv.toString();
+            }
+        }
+
+        /** Is this a constant type whose value is false?
+         */
+        @Override
+        public boolean isFalse() {
+            return
+                tag == BOOLEAN &&
+                constValue() != null &&
+                ((Integer)constValue()).intValue() == 0;
+        }
+
+        /** Is this a constant type whose value is true?
+         */
+        @Override
+        public boolean isTrue() {
+            return
+                tag == BOOLEAN &&
+                constValue() != null &&
+                ((Integer)constValue()).intValue() != 0;
+        }
+
+        @Override
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitPrimitive(this, p);
+        }
+
+        @Override
+        public TypeKind getKind() {
+            switch (tag) {
+                case BYTE:      return TypeKind.BYTE;
+                case CHAR:      return TypeKind.CHAR;
+                case SHORT:     return TypeKind.SHORT;
+                case INT:       return TypeKind.INT;
+                case LONG:      return TypeKind.LONG;
+                case FLOAT:     return TypeKind.FLOAT;
+                case DOUBLE:    return TypeKind.DOUBLE;
+                case BOOLEAN:   return TypeKind.BOOLEAN;
+            }
+            throw new AssertionError();
+        }
+
+    }
+
+    public static class WildcardType extends Type
+            implements javax.lang.model.type.WildcardType {
+
+        public Type type;
+        public BoundKind kind;
+        public TypeVar bound;
+
+        @Override
+        public <R,S> R accept(Visitor<R,S> v, S s) {
+            return v.visitWildcardType(this, s);
+        }
+
+        public WildcardType(Type type, BoundKind kind, TypeSymbol tsym) {
+            super(tsym);
+            this.type = Assert.checkNonNull(type);
+            this.kind = kind;
+        }
+        public WildcardType(WildcardType t, TypeVar bound) {
+            this(t.type, t.kind, t.tsym, bound);
+        }
+
+        public WildcardType(Type type, BoundKind kind, TypeSymbol tsym, TypeVar bound) {
+            this(type, kind, tsym);
+            this.bound = bound;
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return WILDCARD;
+        }
+
+        @Override
+        public boolean contains(Type t) {
+            return kind != UNBOUND && type.contains(t);
+        }
+
+        public boolean isSuperBound() {
+            return kind == SUPER ||
+                kind == UNBOUND;
+        }
+        public boolean isExtendsBound() {
+            return kind == EXTENDS ||
+                kind == UNBOUND;
+        }
+        public boolean isUnbound() {
+            return kind == UNBOUND;
+        }
+
+        @Override
+        public boolean isReference() {
+            return true;
+        }
+
+        @Override
+        public boolean isNullOrReference() {
+            return true;
+        }
+
+        @Override
+        public Type withTypeVar(Type t) {
+            //-System.err.println(this+".withTypeVar("+t+");");//DEBUG
+            if (bound == t)
+                return this;
+            bound = (TypeVar)t;
+            return this;
+        }
+
+        boolean isPrintingBound = false;
+        public String toString() {
+            StringBuilder s = new StringBuilder();
+            s.append(kind.toString());
+            if (kind != UNBOUND)
+                s.append(type);
+            if (moreInfo && bound != null && !isPrintingBound)
+                try {
+                    isPrintingBound = true;
+                    s.append("{:").append(bound.bound).append(":}");
+                } finally {
+                    isPrintingBound = false;
+                }
+            return s.toString();
+        }
+
+        public Type map(Mapping f) {
+            //- System.err.println("   (" + this + ").map(" + f + ")");//DEBUG
+            Type t = type;
+            if (t != null)
+                t = f.apply(t);
+            if (t == type)
+                return this;
+            else
+                return new WildcardType(t, kind, tsym, bound);
+        }
+
+        public Type getExtendsBound() {
+            if (kind == EXTENDS)
+                return type;
+            else
+                return null;
+        }
+
+        public Type getSuperBound() {
+            if (kind == SUPER)
+                return type;
+            else
+                return null;
+        }
+
+        public TypeKind getKind() {
+            return TypeKind.WILDCARD;
+        }
+
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitWildcard(this, p);
+        }
+    }
+
+    public static class ClassType extends Type implements DeclaredType {
+
+        /** The enclosing type of this type. If this is the type of an inner
+         *  class, outer_field refers to the type of its enclosing
+         *  instance class, in all other cases it refers to noType.
+         */
+        private Type outer_field;
+
+        /** The type parameters of this type (to be set once class is loaded).
+         */
+        public List<Type> typarams_field;
+
+        /** A cache variable for the type parameters of this type,
+         *  appended to all parameters of its enclosing class.
+         *  @see #allparams
+         */
+        public List<Type> allparams_field;
+
+        /** The supertype of this class (to be set once class is loaded).
+         */
+        public Type supertype_field;
+
+        /** The interfaces of this class (to be set once class is loaded).
+         */
+        public List<Type> interfaces_field;
+
+        /** All the interfaces of this class, including missing ones.
+         */
+        public List<Type> all_interfaces_field;
+
+        public ClassType(Type outer, List<Type> typarams, TypeSymbol tsym) {
+            super(tsym);
+            this.outer_field = outer;
+            this.typarams_field = typarams;
+            this.allparams_field = null;
+            this.supertype_field = null;
+            this.interfaces_field = null;
+            /*
+            // this can happen during error recovery
+            assert
+                outer.isParameterized() ?
+                typarams.length() == tsym.type.typarams().length() :
+                outer.isRaw() ?
+                typarams.length() == 0 :
+                true;
+            */
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return CLASS;
+        }
+
+        @Override
+        public <R,S> R accept(Visitor<R,S> v, S s) {
+            return v.visitClassType(this, s);
+        }
+
+        public Type constType(Object constValue) {
+            final Object value = constValue;
+            return new ClassType(getEnclosingType(), typarams_field, tsym) {
+                    @Override
+                    public Object constValue() {
+                        return value;
+                    }
+                    @Override
+                    public Type baseType() {
+                        return tsym.type;
+                    }
+                };
+        }
+
+        /** The Java source which this type represents.
+         */
+        public String toString() {
+            StringBuilder buf = new StringBuilder();
+            if (getEnclosingType().hasTag(CLASS) && tsym.owner.kind == TYP) {
+                buf.append(getEnclosingType().toString());
+                buf.append(".");
+                buf.append(className(tsym, false));
+            } else {
+                buf.append(className(tsym, true));
+            }
+            if (getTypeArguments().nonEmpty()) {
+                buf.append('<');
+                buf.append(getTypeArguments().toString());
+                buf.append(">");
+            }
+            return buf.toString();
+        }
+//where
+            private String className(Symbol sym, boolean longform) {
+                if (sym.name.isEmpty() && (sym.flags() & COMPOUND) != 0) {
+                    StringBuilder s = new StringBuilder(supertype_field.toString());
+                    for (List<Type> is=interfaces_field; is.nonEmpty(); is = is.tail) {
+                        s.append("&");
+                        s.append(is.head.toString());
+                    }
+                    return s.toString();
+                } else if (sym.name.isEmpty()) {
+                    String s;
+                    ClassType norm = (ClassType) tsym.type.unannotatedType();
+                    if (norm == null) {
+                        s = Log.getLocalizedString("anonymous.class", (Object)null);
+                    } else if (norm.interfaces_field != null && norm.interfaces_field.nonEmpty()) {
+                        s = Log.getLocalizedString("anonymous.class",
+                                                   norm.interfaces_field.head);
+                    } else {
+                        s = Log.getLocalizedString("anonymous.class",
+                                                   norm.supertype_field);
+                    }
+                    if (moreInfo)
+                        s += String.valueOf(sym.hashCode());
+                    return s;
+                } else if (longform) {
+                    return sym.getQualifiedName().toString();
+                } else {
+                    return sym.name.toString();
+                }
+            }
+
+        public List<Type> getTypeArguments() {
+            if (typarams_field == null) {
+                complete();
+                if (typarams_field == null)
+                    typarams_field = List.nil();
+            }
+            return typarams_field;
+        }
+
+        public boolean hasErasedSupertypes() {
+            return isRaw();
+        }
+
+        public Type getEnclosingType() {
+            return outer_field;
+        }
+
+        public void setEnclosingType(Type outer) {
+            outer_field = outer;
+        }
+
+        public List<Type> allparams() {
+            if (allparams_field == null) {
+                allparams_field = getTypeArguments().prependList(getEnclosingType().allparams());
+            }
+            return allparams_field;
+        }
+
+        public boolean isErroneous() {
+            return
+                getEnclosingType().isErroneous() ||
+                isErroneous(getTypeArguments()) ||
+                this != tsym.type.unannotatedType() && tsym.type.isErroneous();
+        }
+
+        public boolean isParameterized() {
+            return allparams().tail != null;
+            // optimization, was: allparams().nonEmpty();
+        }
+
+        @Override
+        public boolean isReference() {
+            return true;
+        }
+
+        @Override
+        public boolean isNullOrReference() {
+            return true;
+        }
+
+        /** A cache for the rank. */
+        int rank_field = -1;
+
+        /** A class type is raw if it misses some
+         *  of its type parameter sections.
+         *  After validation, this is equivalent to:
+         *  {@code allparams.isEmpty() && tsym.type.allparams.nonEmpty(); }
+         */
+        public boolean isRaw() {
+            return
+                this != tsym.type && // necessary, but not sufficient condition
+                tsym.type.allparams().nonEmpty() &&
+                allparams().isEmpty();
+        }
+
+        public Type map(Mapping f) {
+            Type outer = getEnclosingType();
+            Type outer1 = f.apply(outer);
+            List<Type> typarams = getTypeArguments();
+            List<Type> typarams1 = map(typarams, f);
+            if (outer1 == outer && typarams1 == typarams) return this;
+            else return new ClassType(outer1, typarams1, tsym);
+        }
+
+        public boolean contains(Type elem) {
+            return
+                elem == this
+                || (isParameterized()
+                    && (getEnclosingType().contains(elem) || contains(getTypeArguments(), elem)))
+                || (isCompound()
+                    && (supertype_field.contains(elem) || contains(interfaces_field, elem)));
+        }
+
+        public void complete() {
+            if (tsym.completer != null) tsym.complete();
+        }
+
+        public TypeKind getKind() {
+            return TypeKind.DECLARED;
+        }
+
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitDeclared(this, p);
+        }
+    }
+
+    public static class ErasedClassType extends ClassType {
+        public ErasedClassType(Type outer, TypeSymbol tsym) {
+            super(outer, List.<Type>nil(), tsym);
+        }
+
+        @Override
+        public boolean hasErasedSupertypes() {
+            return true;
+        }
+    }
+
+    // a clone of a ClassType that knows about the alternatives of a union type.
+    public static class UnionClassType extends ClassType implements UnionType {
+        final List<? extends Type> alternatives_field;
+
+        public UnionClassType(ClassType ct, List<? extends Type> alternatives) {
+            super(ct.outer_field, ct.typarams_field, ct.tsym);
+            allparams_field = ct.allparams_field;
+            supertype_field = ct.supertype_field;
+            interfaces_field = ct.interfaces_field;
+            all_interfaces_field = ct.interfaces_field;
+            alternatives_field = alternatives;
+        }
+
+        public Type getLub() {
+            return tsym.type;
+        }
+
+        public java.util.List<? extends TypeMirror> getAlternatives() {
+            return Collections.unmodifiableList(alternatives_field);
+        }
+
+        @Override
+        public boolean isUnion() {
+            return true;
+        }
+
+        @Override
+        public TypeKind getKind() {
+            return TypeKind.UNION;
+        }
+
+        @Override
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitUnion(this, p);
+        }
+    }
+
+    // a clone of a ClassType that knows about the bounds of an intersection type.
+    public static class IntersectionClassType extends ClassType implements IntersectionType {
+
+        public boolean allInterfaces;
+
+        public IntersectionClassType(List<Type> bounds, ClassSymbol csym, boolean allInterfaces) {
+            super(Type.noType, List.<Type>nil(), csym);
+            this.allInterfaces = allInterfaces;
+            Assert.check((csym.flags() & COMPOUND) != 0);
+            supertype_field = bounds.head;
+            interfaces_field = bounds.tail;
+            Assert.check(supertype_field.tsym.completer != null ||
+                    !supertype_field.isInterface(), supertype_field);
+        }
+
+        public java.util.List<? extends TypeMirror> getBounds() {
+            return Collections.unmodifiableList(getExplicitComponents());
+        }
+
+        public List<Type> getComponents() {
+            return interfaces_field.prepend(supertype_field);
+        }
+
+        @Override
+        public boolean isIntersection() {
+            return true;
+        }
+
+        public List<Type> getExplicitComponents() {
+            return allInterfaces ?
+                    interfaces_field :
+                    getComponents();
+        }
+
+        @Override
+        public TypeKind getKind() {
+            return TypeKind.INTERSECTION;
+        }
+
+        @Override
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitIntersection(this, p);
+        }
+    }
+
+    public static class ArrayType extends Type
+            implements javax.lang.model.type.ArrayType {
+
+        public Type elemtype;
+
+        public ArrayType(Type elemtype, TypeSymbol arrayClass) {
+            super(arrayClass);
+            this.elemtype = elemtype;
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return ARRAY;
+        }
+
+        public <R,S> R accept(Visitor<R,S> v, S s) {
+            return v.visitArrayType(this, s);
+        }
+
+        public String toString() {
+            return elemtype + "[]";
+        }
+
+        public boolean equals(Object obj) {
+            return
+                this == obj ||
+                (obj instanceof ArrayType &&
+                 this.elemtype.equals(((ArrayType)obj).elemtype));
+        }
+
+        public int hashCode() {
+            return (ARRAY.ordinal() << 5) + elemtype.hashCode();
+        }
+
+        public boolean isVarargs() {
+            return false;
+        }
+
+        public List<Type> allparams() { return elemtype.allparams(); }
+
+        public boolean isErroneous() {
+            return elemtype.isErroneous();
+        }
+
+        public boolean isParameterized() {
+            return elemtype.isParameterized();
+        }
+
+        @Override
+        public boolean isReference() {
+            return true;
+        }
+
+        @Override
+        public boolean isNullOrReference() {
+            return true;
+        }
+
+        public boolean isRaw() {
+            return elemtype.isRaw();
+        }
+
+        public ArrayType makeVarargs() {
+            return new ArrayType(elemtype, tsym) {
+                @Override
+                public boolean isVarargs() {
+                    return true;
+                }
+            };
+        }
+
+        public Type map(Mapping f) {
+            Type elemtype1 = f.apply(elemtype);
+            if (elemtype1 == elemtype) return this;
+            else return new ArrayType(elemtype1, tsym);
+        }
+
+        public boolean contains(Type elem) {
+            return elem == this || elemtype.contains(elem);
+        }
+
+        public void complete() {
+            elemtype.complete();
+        }
+
+        public Type getComponentType() {
+            return elemtype;
+        }
+
+        public TypeKind getKind() {
+            return TypeKind.ARRAY;
+        }
+
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitArray(this, p);
+        }
+    }
+
+    public static class MethodType extends Type implements ExecutableType {
+
+        public List<Type> argtypes;
+        public Type restype;
+        public List<Type> thrown;
+
+        /** The type annotations on the method receiver.
+         */
+        public Type recvtype;
+
+        public MethodType(List<Type> argtypes,
+                          Type restype,
+                          List<Type> thrown,
+                          TypeSymbol methodClass) {
+            super(methodClass);
+            this.argtypes = argtypes;
+            this.restype = restype;
+            this.thrown = thrown;
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return METHOD;
+        }
+
+        public <R,S> R accept(Visitor<R,S> v, S s) {
+            return v.visitMethodType(this, s);
+        }
+
+        /** The Java source which this type represents.
+         *
+         *  XXX 06/09/99 iris This isn't correct Java syntax, but it probably
+         *  should be.
+         */
+        public String toString() {
+            return "(" + argtypes + ")" + restype;
+        }
+
+        public List<Type>        getParameterTypes() { return argtypes; }
+        public Type              getReturnType()     { return restype; }
+        public Type              getReceiverType()   { return recvtype; }
+        public List<Type>        getThrownTypes()    { return thrown; }
+
+        public boolean isErroneous() {
+            return
+                isErroneous(argtypes) ||
+                restype != null && restype.isErroneous();
+        }
+
+        public Type map(Mapping f) {
+            List<Type> argtypes1 = map(argtypes, f);
+            Type restype1 = f.apply(restype);
+            List<Type> thrown1 = map(thrown, f);
+            if (argtypes1 == argtypes &&
+                restype1 == restype &&
+                thrown1 == thrown) return this;
+            else return new MethodType(argtypes1, restype1, thrown1, tsym);
+        }
+
+        public boolean contains(Type elem) {
+            return elem == this || contains(argtypes, elem) || restype.contains(elem) || contains(thrown, elem);
+        }
+
+        public MethodType asMethodType() { return this; }
+
+        public void complete() {
+            for (List<Type> l = argtypes; l.nonEmpty(); l = l.tail)
+                l.head.complete();
+            restype.complete();
+            recvtype.complete();
+            for (List<Type> l = thrown; l.nonEmpty(); l = l.tail)
+                l.head.complete();
+        }
+
+        public List<TypeVar> getTypeVariables() {
+            return List.nil();
+        }
+
+        public TypeSymbol asElement() {
+            return null;
+        }
+
+        public TypeKind getKind() {
+            return TypeKind.EXECUTABLE;
+        }
+
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitExecutable(this, p);
+        }
+    }
+
+    public static class PackageType extends Type implements NoType {
+
+        PackageType(TypeSymbol tsym) {
+            super(tsym);
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return PACKAGE;
+        }
+
+        @Override
+        public <R,S> R accept(Visitor<R,S> v, S s) {
+            return v.visitPackageType(this, s);
+        }
+
+        public String toString() {
+            return tsym.getQualifiedName().toString();
+        }
+
+        public TypeKind getKind() {
+            return TypeKind.PACKAGE;
+        }
+
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitNoType(this, p);
+        }
+    }
+
+    public static class TypeVar extends Type implements TypeVariable {
+
+        /** The upper bound of this type variable; set from outside.
+         *  Must be nonempty once it is set.
+         *  For a bound, `bound' is the bound type itself.
+         *  Multiple bounds are expressed as a single class type which has the
+         *  individual bounds as superclass, respectively interfaces.
+         *  The class type then has as `tsym' a compiler generated class `c',
+         *  which has a flag COMPOUND and whose owner is the type variable
+         *  itself. Furthermore, the erasure_field of the class
+         *  points to the first class or interface bound.
+         */
+        public Type bound = null;
+
+        /** The lower bound of this type variable.
+         *  TypeVars don't normally have a lower bound, so it is normally set
+         *  to syms.botType.
+         *  Subtypes, such as CapturedType, may provide a different value.
+         */
+        public Type lower;
+
+        public TypeVar(Name name, Symbol owner, Type lower) {
+            super(null);
+            tsym = new TypeVariableSymbol(0, name, this, owner);
+            this.lower = lower;
+        }
+
+        public TypeVar(TypeSymbol tsym, Type bound, Type lower) {
+            super(tsym);
+            this.bound = bound;
+            this.lower = lower;
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return TYPEVAR;
+        }
+
+        @Override
+        public <R,S> R accept(Visitor<R,S> v, S s) {
+            return v.visitTypeVar(this, s);
+        }
+
+        @Override
+        public Type getUpperBound() {
+            if ((bound == null || bound.hasTag(NONE)) && this != tsym.type) {
+                bound = tsym.type.getUpperBound();
+            }
+            return bound;
+        }
+
+        int rank_field = -1;
+
+        @Override
+        public Type getLowerBound() {
+            return lower;
+        }
+
+        public TypeKind getKind() {
+            return TypeKind.TYPEVAR;
+        }
+
+        public boolean isCaptured() {
+            return false;
+        }
+
+        @Override
+        public boolean isReference() {
+            return true;
+        }
+
+        @Override
+        public boolean isNullOrReference() {
+            return true;
+        }
+
+        @Override
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitTypeVariable(this, p);
+        }
+    }
+
+    /** A captured type variable comes from wildcards which can have
+     *  both upper and lower bound.  CapturedType extends TypeVar with
+     *  a lower bound.
+     */
+    public static class CapturedType extends TypeVar {
+
+        public WildcardType wildcard;
+
+        public CapturedType(Name name,
+                            Symbol owner,
+                            Type upper,
+                            Type lower,
+                            WildcardType wildcard) {
+            super(name, owner, lower);
+            this.lower = Assert.checkNonNull(lower);
+            this.bound = upper;
+            this.wildcard = wildcard;
+        }
+
+        @Override
+        public <R,S> R accept(Visitor<R,S> v, S s) {
+            return v.visitCapturedType(this, s);
+        }
+
+        @Override
+        public boolean isCaptured() {
+            return true;
+        }
+
+        @Override
+        public String toString() {
+            return "capture#"
+                + (hashCode() & 0xFFFFFFFFL) % Printer.PRIME
+                + " of "
+                + wildcard;
+        }
+    }
+
+    public static abstract class DelegatedType extends Type {
+        public Type qtype;
+        public TypeTag tag;
+        public DelegatedType(TypeTag tag, Type qtype) {
+            super(qtype.tsym);
+            this.tag = tag;
+            this.qtype = qtype;
+        }
+        public TypeTag getTag() { return tag; }
+        public String toString() { return qtype.toString(); }
+        public List<Type> getTypeArguments() { return qtype.getTypeArguments(); }
+        public Type getEnclosingType() { return qtype.getEnclosingType(); }
+        public List<Type> getParameterTypes() { return qtype.getParameterTypes(); }
+        public Type getReturnType() { return qtype.getReturnType(); }
+        public Type getReceiverType() { return qtype.getReceiverType(); }
+        public List<Type> getThrownTypes() { return qtype.getThrownTypes(); }
+        public List<Type> allparams() { return qtype.allparams(); }
+        public Type getUpperBound() { return qtype.getUpperBound(); }
+        public boolean isErroneous() { return qtype.isErroneous(); }
+    }
+
+    /**
+     * The type of a generic method type. It consists of a method type and
+     * a list of method type-parameters that are used within the method
+     * type.
+     */
+    public static class ForAll extends DelegatedType implements ExecutableType {
+        public List<Type> tvars;
+
+        public ForAll(List<Type> tvars, Type qtype) {
+            super(FORALL, (MethodType)qtype);
+            this.tvars = tvars;
+        }
+
+        @Override
+        public <R,S> R accept(Visitor<R,S> v, S s) {
+            return v.visitForAll(this, s);
+        }
+
+        public String toString() {
+            return "<" + tvars + ">" + qtype;
+        }
+
+        public List<Type> getTypeArguments()   { return tvars; }
+
+        public boolean isErroneous()  {
+            return qtype.isErroneous();
+        }
+
+        public Type map(Mapping f) {
+            return f.apply(qtype);
+        }
+
+        public boolean contains(Type elem) {
+            return qtype.contains(elem);
+        }
+
+        public MethodType asMethodType() {
+            return (MethodType)qtype;
+        }
+
+        public void complete() {
+            for (List<Type> l = tvars; l.nonEmpty(); l = l.tail) {
+                ((TypeVar)l.head).bound.complete();
+            }
+            qtype.complete();
+        }
+
+        public List<TypeVar> getTypeVariables() {
+            return List.convert(TypeVar.class, getTypeArguments());
+        }
+
+        public TypeKind getKind() {
+            return TypeKind.EXECUTABLE;
+        }
+
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitExecutable(this, p);
+        }
+    }
+
+    /** A class for inference variables, for use during method/diamond type
+     *  inference. An inference variable has upper/lower bounds and a set
+     *  of equality constraints. Such bounds are set during subtyping, type-containment,
+     *  type-equality checks, when the types being tested contain inference variables.
+     *  A change listener can be attached to an inference variable, to receive notifications
+     *  whenever the bounds of an inference variable change.
+     */
+    public static class UndetVar extends DelegatedType {
+
+        /** Inference variable change listener. The listener method is called
+         *  whenever a change to the inference variable's bounds occurs
+         */
+        public interface UndetVarListener {
+            /** called when some inference variable bounds (of given kinds ibs) change */
+            void varChanged(UndetVar uv, Set<InferenceBound> ibs);
+        }
+
+        /**
+         * Inference variable bound kinds
+         */
+        public enum InferenceBound {
+            UPPER {
+                public InferenceBound complement() { return LOWER; }
+            },
+             /** lower bounds */
+            LOWER {
+                public InferenceBound complement() { return UPPER; }
+            },
+             /** equality constraints */
+            EQ {
+                public InferenceBound complement() { return EQ; }
+            };
+
+            public abstract InferenceBound complement();
+        }
+
+        /** inference variable bounds */
+        protected Map<InferenceBound, List<Type>> bounds;
+
+        /** inference variable's inferred type (set from Infer.java) */
+        public Type inst = null;
+
+        /** number of declared (upper) bounds */
+        public int declaredCount;
+
+        /** inference variable's change listener */
+        public UndetVarListener listener = null;
+
+        @Override
+        public <R,S> R accept(Visitor<R,S> v, S s) {
+            return v.visitUndetVar(this, s);
+        }
+
+        public UndetVar(TypeVar origin, Types types) {
+            super(UNDETVAR, origin);
+            bounds = new EnumMap<InferenceBound, List<Type>>(InferenceBound.class);
+            List<Type> declaredBounds = types.getBounds(origin);
+            declaredCount = declaredBounds.length();
+            bounds.put(InferenceBound.UPPER, declaredBounds);
+            bounds.put(InferenceBound.LOWER, List.<Type>nil());
+            bounds.put(InferenceBound.EQ, List.<Type>nil());
+        }
+
+        public String toString() {
+            return (inst == null) ? qtype + "?" : inst.toString();
+        }
+
+        public String debugString() {
+            String result = "inference var = " + qtype + "\n";
+            if (inst != null) {
+                result += "inst = " + inst + '\n';
+            }
+            for (InferenceBound bound: InferenceBound.values()) {
+                List<Type> aboundList = bounds.get(bound);
+                if (aboundList.size() > 0) {
+                    result += bound + " = " + aboundList + '\n';
+                }
+            }
+            return result;
+        }
+
+        @Override
+        public boolean isPartial() {
+            return true;
+        }
+
+        @Override
+        public Type baseType() {
+            return (inst == null) ? this : inst.baseType();
+        }
+
+        /** get all bounds of a given kind */
+        public List<Type> getBounds(InferenceBound... ibs) {
+            ListBuffer<Type> buf = new ListBuffer<>();
+            for (InferenceBound ib : ibs) {
+                buf.appendList(bounds.get(ib));
+            }
+            return buf.toList();
+        }
+
+        /** get the list of declared (upper) bounds */
+        public List<Type> getDeclaredBounds() {
+            ListBuffer<Type> buf = new ListBuffer<>();
+            int count = 0;
+            for (Type b : getBounds(InferenceBound.UPPER)) {
+                if (count++ == declaredCount) break;
+                buf.append(b);
+            }
+            return buf.toList();
+        }
+
+        /** internal method used to override an undetvar bounds */
+        public void setBounds(InferenceBound ib, List<Type> newBounds) {
+            bounds.put(ib, newBounds);
+        }
+
+        /** add a bound of a given kind - this might trigger listener notification */
+        public final void addBound(InferenceBound ib, Type bound, Types types) {
+            addBound(ib, bound, types, false);
+        }
+
+        protected void addBound(InferenceBound ib, Type bound, Types types, boolean update) {
+            Type bound2 = toTypeVarMap.apply(bound).baseType();
+            List<Type> prevBounds = bounds.get(ib);
+            for (Type b : prevBounds) {
+                //check for redundancy - use strict version of isSameType on tvars
+                //(as the standard version will lead to false positives w.r.t. clones ivars)
+                if (types.isSameType(b, bound2, true) || bound == qtype) return;
+            }
+            bounds.put(ib, prevBounds.prepend(bound2));
+            notifyChange(EnumSet.of(ib));
+        }
+        //where
+            Mapping toTypeVarMap = new Mapping("toTypeVarMap") {
+                @Override
+                public Type apply(Type t) {
+                    if (t.hasTag(UNDETVAR)) {
+                        UndetVar uv = (UndetVar)t;
+                        return uv.inst != null ? uv.inst : uv.qtype;
+                    } else {
+                        return t.map(this);
+                    }
+                }
+            };
+
+        /** replace types in all bounds - this might trigger listener notification */
+        public void substBounds(List<Type> from, List<Type> to, Types types) {
+            List<Type> instVars = from.diff(to);
+            //if set of instantiated ivars is empty, there's nothing to do!
+            if (instVars.isEmpty()) return;
+            final EnumSet<InferenceBound> boundsChanged = EnumSet.noneOf(InferenceBound.class);
+            UndetVarListener prevListener = listener;
+            try {
+                //setup new listener for keeping track of changed bounds
+                listener = new UndetVarListener() {
+                    public void varChanged(UndetVar uv, Set<InferenceBound> ibs) {
+                        boundsChanged.addAll(ibs);
+                    }
+                };
+                for (Map.Entry<InferenceBound, List<Type>> _entry : bounds.entrySet()) {
+                    InferenceBound ib = _entry.getKey();
+                    List<Type> prevBounds = _entry.getValue();
+                    ListBuffer<Type> newBounds = new ListBuffer<>();
+                    ListBuffer<Type> deps = new ListBuffer<>();
+                    //step 1 - re-add bounds that are not dependent on ivars
+                    for (Type t : prevBounds) {
+                        if (!t.containsAny(instVars)) {
+                            newBounds.append(t);
+                        } else {
+                            deps.append(t);
+                        }
+                    }
+                    //step 2 - replace bounds
+                    bounds.put(ib, newBounds.toList());
+                    //step 3 - for each dependency, add new replaced bound
+                    for (Type dep : deps) {
+                        addBound(ib, types.subst(dep, from, to), types, true);
+                    }
+                }
+            } finally {
+                listener = prevListener;
+                if (!boundsChanged.isEmpty()) {
+                    notifyChange(boundsChanged);
+                }
+            }
+        }
+
+        private void notifyChange(EnumSet<InferenceBound> ibs) {
+            if (listener != null) {
+                listener.varChanged(this, ibs);
+            }
+        }
+
+        public boolean isCaptured() {
+            return false;
+        }
+    }
+
+    /**
+     * This class is used to represent synthetic captured inference variables
+     * that can be generated during nested generic method calls. The only difference
+     * between these inference variables and ordinary ones is that captured inference
+     * variables cannot get new bounds through incorporation.
+     */
+    public static class CapturedUndetVar extends UndetVar {
+
+        public CapturedUndetVar(CapturedType origin, Types types) {
+            super(origin, types);
+            if (!origin.lower.hasTag(BOT)) {
+                bounds.put(InferenceBound.LOWER, List.of(origin.lower));
+            }
+        }
+
+        @Override
+        public void addBound(InferenceBound ib, Type bound, Types types, boolean update) {
+            if (update) {
+                //only change bounds if request comes from substBounds
+                super.addBound(ib, bound, types, update);
+            }
+        }
+
+        @Override
+        public boolean isCaptured() {
+            return true;
+        }
+    }
+
+    /** Represents NONE.
+     */
+    public static class JCNoType extends Type implements NoType {
+        public JCNoType() {
+            super(null);
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return NONE;
+        }
+
+        @Override
+        public TypeKind getKind() {
+            return TypeKind.NONE;
+        }
+
+        @Override
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitNoType(this, p);
+        }
+
+        @Override
+        public boolean isCompound() { return false; }
+    }
+
+    /** Represents VOID.
+     */
+    public static class JCVoidType extends Type implements NoType {
+
+        public JCVoidType() {
+            super(null);
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return VOID;
+        }
+
+        @Override
+        public TypeKind getKind() {
+            return TypeKind.VOID;
+        }
+
+        @Override
+        public boolean isCompound() { return false; }
+
+        @Override
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitNoType(this, p);
+        }
+
+        @Override
+        public boolean isPrimitiveOrVoid() {
+            return true;
+        }
+    }
+
+    static class BottomType extends Type implements NullType {
+        public BottomType() {
+            super(null);
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return BOT;
+        }
+
+        @Override
+        public TypeKind getKind() {
+            return TypeKind.NULL;
+        }
+
+        @Override
+        public boolean isCompound() { return false; }
+
+        @Override
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitNull(this, p);
+        }
+
+        @Override
+        public Type constType(Object value) {
+            return this;
+        }
+
+        @Override
+        public String stringValue() {
+            return "null";
+        }
+
+        @Override
+        public boolean isNullOrReference() {
+            return true;
+        }
+
+    }
+
+    public static class ErrorType extends ClassType
+            implements javax.lang.model.type.ErrorType {
+
+        private Type originalType = null;
+
+        public ErrorType(Type originalType, TypeSymbol tsym) {
+            super(noType, List.<Type>nil(), null);
+            this.tsym = tsym;
+            this.originalType = (originalType == null ? noType : originalType);
+        }
+
+        public ErrorType(ClassSymbol c, Type originalType) {
+            this(originalType, c);
+            c.type = this;
+            c.kind = ERR;
+            c.members_field = new Scope.ErrorScope(c);
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return ERROR;
+        }
+
+        @Override
+        public boolean isPartial() {
+            return true;
+        }
+
+        @Override
+        public boolean isReference() {
+            return true;
+        }
+
+        @Override
+        public boolean isNullOrReference() {
+            return true;
+        }
+
+        public ErrorType(Name name, TypeSymbol container, Type originalType) {
+            this(new ClassSymbol(PUBLIC|STATIC|ACYCLIC, name, null, container), originalType);
+        }
+
+        @Override
+        public <R,S> R accept(Visitor<R,S> v, S s) {
+            return v.visitErrorType(this, s);
+        }
+
+        public Type constType(Object constValue) { return this; }
+        public Type getEnclosingType()           { return this; }
+        public Type getReturnType()              { return this; }
+        public Type asSub(Symbol sym)            { return this; }
+        public Type map(Mapping f)               { return this; }
+
+        public boolean isGenType(Type t)         { return true; }
+        public boolean isErroneous()             { return true; }
+        public boolean isCompound()              { return false; }
+        public boolean isInterface()             { return false; }
+
+        public List<Type> allparams()            { return List.nil(); }
+        public List<Type> getTypeArguments()     { return List.nil(); }
+
+        public TypeKind getKind() {
+            return TypeKind.ERROR;
+        }
+
+        public Type getOriginalType() {
+            return originalType;
+        }
+
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitError(this, p);
+        }
+    }
+
+    public static class AnnotatedType extends Type
+            implements
+                javax.lang.model.type.ArrayType,
+                DeclaredType,
+                PrimitiveType,
+                TypeVariable,
+                javax.lang.model.type.WildcardType {
+        /** The type annotations on this type.
+         */
+        private List<Attribute.TypeCompound> typeAnnotations;
+
+        /** The underlying type that is annotated.
+         */
+        private Type underlyingType;
+
+        protected AnnotatedType(List<Attribute.TypeCompound> typeAnnotations,
+                Type underlyingType) {
+            super(underlyingType.tsym);
+            this.typeAnnotations = typeAnnotations;
+            this.underlyingType = underlyingType;
+            Assert.check(typeAnnotations != null && typeAnnotations.nonEmpty(),
+                    "Can't create AnnotatedType without annotations: " + underlyingType);
+            Assert.check(!underlyingType.isAnnotated(),
+                    "Can't annotate already annotated type: " + underlyingType +
+                    "; adding: " + typeAnnotations);
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return underlyingType.getTag();
+        }
+
+        @Override
+        public boolean isAnnotated() {
+            return true;
+        }
+
+        @Override
+        public List<Attribute.TypeCompound> getAnnotationMirrors() {
+            return typeAnnotations;
+        }
+
+
+        @Override
+        public TypeKind getKind() {
+            return underlyingType.getKind();
+        }
+
+        @Override
+        public Type unannotatedType() {
+            return underlyingType;
+        }
+
+        @Override
+        public <R,S> R accept(Visitor<R,S> v, S s) {
+            return v.visitAnnotatedType(this, s);
+        }
+
+        @Override
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return underlyingType.accept(v, p);
+        }
+
+        @Override
+        public Type map(Mapping f) {
+            underlyingType.map(f);
+            return this;
+        }
+
+        @Override
+        public Type constType(Object constValue) { return underlyingType.constType(constValue); }
+        @Override
+        public Type getEnclosingType()           { return underlyingType.getEnclosingType(); }
+
+        @Override
+        public Type getReturnType()              { return underlyingType.getReturnType(); }
+        @Override
+        public List<Type> getTypeArguments()     { return underlyingType.getTypeArguments(); }
+        @Override
+        public List<Type> getParameterTypes()    { return underlyingType.getParameterTypes(); }
+        @Override
+        public Type getReceiverType()            { return underlyingType.getReceiverType(); }
+        @Override
+        public List<Type> getThrownTypes()       { return underlyingType.getThrownTypes(); }
+        @Override
+        public Type getUpperBound()              { return underlyingType.getUpperBound(); }
+        @Override
+        public Type getLowerBound()              { return underlyingType.getLowerBound(); }
+
+        @Override
+        public boolean isErroneous()             { return underlyingType.isErroneous(); }
+        @Override
+        public boolean isCompound()              { return underlyingType.isCompound(); }
+        @Override
+        public boolean isInterface()             { return underlyingType.isInterface(); }
+        @Override
+        public List<Type> allparams()            { return underlyingType.allparams(); }
+        @Override
+        public boolean isPrimitive()             { return underlyingType.isPrimitive(); }
+        @Override
+        public boolean isPrimitiveOrVoid()       { return underlyingType.isPrimitiveOrVoid(); }
+        @Override
+        public boolean isNumeric()               { return underlyingType.isNumeric(); }
+        @Override
+        public boolean isReference()             { return underlyingType.isReference(); }
+        @Override
+        public boolean isNullOrReference()       { return underlyingType.isNullOrReference(); }
+        @Override
+        public boolean isPartial()               { return underlyingType.isPartial(); }
+        @Override
+        public boolean isParameterized()         { return underlyingType.isParameterized(); }
+        @Override
+        public boolean isRaw()                   { return underlyingType.isRaw(); }
+        @Override
+        public boolean isFinal()                 { return underlyingType.isFinal(); }
+        @Override
+        public boolean isSuperBound()            { return underlyingType.isSuperBound(); }
+        @Override
+        public boolean isExtendsBound()          { return underlyingType.isExtendsBound(); }
+        @Override
+        public boolean isUnbound()               { return underlyingType.isUnbound(); }
+
+        @Override
+        public String toString() {
+            // This method is only used for internal debugging output.
+            // See
+            // com.sun.tools.javac.code.Printer.visitAnnotatedType(AnnotatedType, Locale)
+            // for the user-visible logic.
+            if (typeAnnotations != null &&
+                    !typeAnnotations.isEmpty()) {
+                return "(" + typeAnnotations.toString() + " :: " + underlyingType.toString() + ")";
+            } else {
+                return "({} :: " + underlyingType.toString() +")";
+            }
+        }
+
+        @Override
+        public boolean contains(Type t)          { return underlyingType.contains(t); }
+
+        @Override
+        public Type withTypeVar(Type t) {
+            // Don't create a new AnnotatedType, as 'this' will
+            // get its annotations set later.
+            underlyingType = underlyingType.withTypeVar(t);
+            return this;
+        }
+
+        // TODO: attach annotations?
+        @Override
+        public TypeSymbol asElement()            { return underlyingType.asElement(); }
+
+        // TODO: attach annotations?
+        @Override
+        public MethodType asMethodType()         { return underlyingType.asMethodType(); }
+
+        @Override
+        public void complete()                   { underlyingType.complete(); }
+
+        @Override
+        public TypeMirror getComponentType()     { return ((ArrayType)underlyingType).getComponentType(); }
+
+        // The result is an ArrayType, but only in the model sense, not the Type sense.
+        public Type makeVarargs() {
+            return ((ArrayType) underlyingType).makeVarargs().annotatedType(typeAnnotations);
+        }
+
+        @Override
+        public TypeMirror getExtendsBound()      { return ((WildcardType)underlyingType).getExtendsBound(); }
+        @Override
+        public TypeMirror getSuperBound()        { return ((WildcardType)underlyingType).getSuperBound(); }
+    }
+
+    public static class UnknownType extends Type {
+
+        public UnknownType() {
+            super(null);
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return UNKNOWN;
+        }
+
+        @Override
+        public <R, P> R accept(TypeVisitor<R, P> v, P p) {
+            return v.visitUnknown(this, p);
+        }
+
+        @Override
+        public boolean isPartial() {
+            return true;
+        }
+    }
+
+    /**
+     * A visitor for types.  A visitor is used to implement operations
+     * (or relations) on types.  Most common operations on types are
+     * binary relations and this interface is designed for binary
+     * relations, that is, operations of the form
+     * Type&nbsp;&times;&nbsp;S&nbsp;&rarr;&nbsp;R.
+     * <!-- In plain text: Type x S -> R -->
+     *
+     * @param <R> the return type of the operation implemented by this
+     * visitor; use Void if no return type is needed.
+     * @param <S> the type of the second argument (the first being the
+     * type itself) of the operation implemented by this visitor; use
+     * Void if a second argument is not needed.
+     */
+    public interface Visitor<R,S> {
+        R visitClassType(ClassType t, S s);
+        R visitWildcardType(WildcardType t, S s);
+        R visitArrayType(ArrayType t, S s);
+        R visitMethodType(MethodType t, S s);
+        R visitPackageType(PackageType t, S s);
+        R visitTypeVar(TypeVar t, S s);
+        R visitCapturedType(CapturedType t, S s);
+        R visitForAll(ForAll t, S s);
+        R visitUndetVar(UndetVar t, S s);
+        R visitErrorType(ErrorType t, S s);
+        R visitAnnotatedType(AnnotatedType t, S s);
+        R visitType(Type t, S s);
+    }
+}

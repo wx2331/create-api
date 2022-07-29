@@ -1,1337 +1,1333 @@
-/*      */ package com.sun.tools.javadoc;
-/*      */
-/*      */ import com.sun.javadoc.AnnotatedType;
-/*      */ import com.sun.javadoc.AnnotationTypeDoc;
-/*      */ import com.sun.javadoc.ClassDoc;
-/*      */ import com.sun.javadoc.ConstructorDoc;
-/*      */ import com.sun.javadoc.FieldDoc;
-/*      */ import com.sun.javadoc.MethodDoc;
-/*      */ import com.sun.javadoc.PackageDoc;
-/*      */ import com.sun.javadoc.ParamTag;
-/*      */ import com.sun.javadoc.ParameterizedType;
-/*      */ import com.sun.javadoc.SourcePosition;
-/*      */ import com.sun.javadoc.Type;
-/*      */ import com.sun.javadoc.TypeVariable;
-/*      */ import com.sun.javadoc.WildcardType;
-/*      */ import com.sun.source.util.TreePath;
-/*      */ import com.sun.tools.javac.code.Scope;
-/*      */ import com.sun.tools.javac.code.Symbol;
-/*      */ import com.sun.tools.javac.code.Type;
-/*      */ import com.sun.tools.javac.code.TypeTag;
-/*      */ import com.sun.tools.javac.comp.Env;
-/*      */ import com.sun.tools.javac.tree.JCTree;
-/*      */ import com.sun.tools.javac.tree.TreeInfo;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Name;
-/*      */ import com.sun.tools.javac.util.Names;
-/*      */ import java.io.File;
-/*      */ import java.io.IOException;
-/*      */ import java.lang.reflect.Modifier;
-/*      */ import java.net.URI;
-/*      */ import java.util.HashSet;
-/*      */ import java.util.Set;
-/*      */ import javax.tools.FileObject;
-/*      */ import javax.tools.StandardJavaFileManager;
-/*      */ import javax.tools.StandardLocation;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class ClassDocImpl
-/*      */   extends ProgramElementDocImpl
-/*      */   implements ClassDoc
-/*      */ {
-/*      */   public final Type.ClassType type;
-/*      */   protected final Symbol.ClassSymbol tsym;
-/*      */   boolean isIncluded = false;
-/*      */   private SerializedForm serializedForm;
-/*      */   private String name;
-/*      */   private String qualifiedName;
-/*      */   private String simpleTypeName;
-/*      */
-/*      */   public ClassDocImpl(DocEnv paramDocEnv, Symbol.ClassSymbol paramClassSymbol) {
-/*  100 */     this(paramDocEnv, paramClassSymbol, (TreePath)null);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ClassDocImpl(DocEnv paramDocEnv, Symbol.ClassSymbol paramClassSymbol, TreePath paramTreePath) {
-/*  107 */     super(paramDocEnv, (Symbol)paramClassSymbol, paramTreePath);
-/*  108 */     this.type = (Type.ClassType)paramClassSymbol.type;
-/*  109 */     this.tsym = paramClassSymbol;
-/*      */   }
-/*      */
-/*      */   public Type getElementType() {
-/*  113 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected long getFlags() {
-/*  120 */     return getFlags(this.tsym);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   static long getFlags(Symbol.ClassSymbol paramClassSymbol) {
-/*      */     try {
-/*  128 */       return paramClassSymbol.flags();
-/*  129 */     } catch (Symbol.CompletionFailure completionFailure) {
-/*      */
-/*      */
-/*      */
-/*      */
-/*  134 */       return getFlags(paramClassSymbol);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   static boolean isAnnotationType(Symbol.ClassSymbol paramClassSymbol) {
-/*  142 */     return ((getFlags(paramClassSymbol) & 0x2000L) != 0L);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected Symbol.ClassSymbol getContainingClass() {
-/*  149 */     return this.tsym.owner.enclClass();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isClass() {
-/*  157 */     return !Modifier.isInterface(getModifiers());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isOrdinaryClass() {
-/*  166 */     if (isEnum() || isInterface() || isAnnotationType()) {
-/*  167 */       return false;
-/*      */     }
-/*  169 */     for (Type.ClassType classType = this.type; classType.hasTag(TypeTag.CLASS); type = this.env.types.supertype((Type)classType)) {
-/*  170 */       Type type; if (((Type)classType).tsym == this.env.syms.errorType.tsym || ((Type)classType).tsym == this.env.syms.exceptionType.tsym)
-/*      */       {
-/*  172 */         return false;
-/*      */       }
-/*      */     }
-/*  175 */     return true;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isEnum() {
-/*  184 */     return ((getFlags() & 0x4000L) != 0L && !this.env.legacyDoclet);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isInterface() {
-/*  195 */     return Modifier.isInterface(getModifiers());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isException() {
-/*  203 */     if (isEnum() || isInterface() || isAnnotationType()) {
-/*  204 */       return false;
-/*      */     }
-/*  206 */     for (Type.ClassType classType = this.type; classType.hasTag(TypeTag.CLASS); type = this.env.types.supertype((Type)classType)) {
-/*  207 */       Type type; if (((Type)classType).tsym == this.env.syms.exceptionType.tsym) {
-/*  208 */         return true;
-/*      */       }
-/*      */     }
-/*  211 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isError() {
-/*  219 */     if (isEnum() || isInterface() || isAnnotationType()) {
-/*  220 */       return false;
-/*      */     }
-/*  222 */     for (Type.ClassType classType = this.type; classType.hasTag(TypeTag.CLASS); type = this.env.types.supertype((Type)classType)) {
-/*  223 */       Type type; if (((Type)classType).tsym == this.env.syms.errorType.tsym) {
-/*  224 */         return true;
-/*      */       }
-/*      */     }
-/*  227 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isThrowable() {
-/*  234 */     if (isEnum() || isInterface() || isAnnotationType()) {
-/*  235 */       return false;
-/*      */     }
-/*  237 */     for (Type.ClassType classType = this.type; classType.hasTag(TypeTag.CLASS); type = this.env.types.supertype((Type)classType)) {
-/*  238 */       Type type; if (((Type)classType).tsym == this.env.syms.throwableType.tsym) {
-/*  239 */         return true;
-/*      */       }
-/*      */     }
-/*  242 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isAbstract() {
-/*  249 */     return Modifier.isAbstract(getModifiers());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isSynthetic() {
-/*  256 */     return ((getFlags() & 0x1000L) != 0L);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isIncluded() {
-/*  268 */     if (this.isIncluded) {
-/*  269 */       return true;
-/*      */     }
-/*  271 */     if (this.env.shouldDocument(this.tsym)) {
-/*      */
-/*      */
-/*      */
-/*  275 */       if (containingPackage().isIncluded()) {
-/*  276 */         return this.isIncluded = true;
-/*      */       }
-/*  278 */       ClassDoc classDoc = containingClass();
-/*  279 */       if (classDoc != null && classDoc.isIncluded()) {
-/*  280 */         return this.isIncluded = true;
-/*      */       }
-/*      */     }
-/*  283 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public PackageDoc containingPackage() {
-/*  291 */     PackageDocImpl packageDocImpl = this.env.getPackageDoc(this.tsym.packge());
-/*  292 */     if (!packageDocImpl.setDocPath) {
-/*      */       FileObject fileObject;
-/*      */       try {
-/*  295 */         StandardLocation standardLocation = this.env.fileManager.hasLocation(StandardLocation.SOURCE_PATH) ? StandardLocation.SOURCE_PATH : StandardLocation.CLASS_PATH;
-/*      */
-/*      */
-/*  298 */         fileObject = this.env.fileManager.getFileForInput(standardLocation, packageDocImpl
-/*  299 */             .qualifiedName(), "package.html");
-/*  300 */       } catch (IOException iOException) {
-/*  301 */         fileObject = null;
-/*      */       }
-/*      */
-/*  304 */       if (fileObject == null) {
-/*      */
-/*      */
-/*  307 */         SourcePosition sourcePosition = position();
-/*  308 */         if (this.env.fileManager instanceof StandardJavaFileManager && sourcePosition instanceof SourcePositionImpl) {
-/*      */
-/*  310 */           URI uRI = ((SourcePositionImpl)sourcePosition).filename.toUri();
-/*  311 */           if ("file".equals(uRI.getScheme())) {
-/*  312 */             File file1 = new File(uRI);
-/*  313 */             File file2 = file1.getParentFile();
-/*  314 */             if (file2 != null) {
-/*  315 */               File file = new File(file2, "package.html");
-/*  316 */               if (file.exists()) {
-/*  317 */                 StandardJavaFileManager standardJavaFileManager = (StandardJavaFileManager)this.env.fileManager;
-/*  318 */                 fileObject = standardJavaFileManager.getJavaFileObjects(new File[] { file }).iterator().next();
-/*      */               }
-/*      */             }
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */
-/*      */
-/*  326 */       packageDocImpl.setDocPath(fileObject);
-/*      */     }
-/*  328 */     return packageDocImpl;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public String name() {
-/*  343 */     if (this.name == null) {
-/*  344 */       this.name = getClassName(this.tsym, false);
-/*      */     }
-/*  346 */     return this.name;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public String qualifiedName() {
-/*  361 */     if (this.qualifiedName == null) {
-/*  362 */       this.qualifiedName = getClassName(this.tsym, true);
-/*      */     }
-/*  364 */     return this.qualifiedName;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public String typeName() {
-/*  375 */     return name();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public String qualifiedTypeName() {
-/*  385 */     return qualifiedName();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public String simpleTypeName() {
-/*  392 */     if (this.simpleTypeName == null) {
-/*  393 */       this.simpleTypeName = this.tsym.name.toString();
-/*      */     }
-/*  395 */     return this.simpleTypeName;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public String toString() {
-/*  406 */     return classToString(this.env, this.tsym, true);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   static String getClassName(Symbol.ClassSymbol paramClassSymbol, boolean paramBoolean) {
-/*  414 */     if (paramBoolean) {
-/*  415 */       return paramClassSymbol.getQualifiedName().toString();
-/*      */     }
-/*  417 */     String str = "";
-/*  418 */     for (; paramClassSymbol != null; paramClassSymbol = paramClassSymbol.owner.enclClass()) {
-/*  419 */       str = paramClassSymbol.name + (str.equals("") ? "" : ".") + str;
-/*      */     }
-/*  421 */     return str;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   static String classToString(DocEnv paramDocEnv, Symbol.ClassSymbol paramClassSymbol, boolean paramBoolean) {
-/*  432 */     StringBuilder stringBuilder = new StringBuilder();
-/*  433 */     if (!paramClassSymbol.isInner()) {
-/*  434 */       stringBuilder.append(getClassName(paramClassSymbol, paramBoolean));
-/*      */     } else {
-/*      */
-/*  437 */       Symbol.ClassSymbol classSymbol = paramClassSymbol.owner.enclClass();
-/*  438 */       stringBuilder.append(classToString(paramDocEnv, classSymbol, paramBoolean))
-/*  439 */         .append('.')
-/*  440 */         .append((CharSequence)paramClassSymbol.name);
-/*      */     }
-/*  442 */     stringBuilder.append(TypeMaker.typeParametersString(paramDocEnv, (Symbol)paramClassSymbol, paramBoolean));
-/*  443 */     return stringBuilder.toString();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   static boolean isGeneric(Symbol.ClassSymbol paramClassSymbol) {
-/*  451 */     return paramClassSymbol.type.allparams().nonEmpty();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public TypeVariable[] typeParameters() {
-/*  459 */     if (this.env.legacyDoclet) {
-/*  460 */       return new TypeVariable[0];
-/*      */     }
-/*  462 */     TypeVariable[] arrayOfTypeVariable = new TypeVariable[this.type.getTypeArguments().length()];
-/*  463 */     TypeMaker.getTypes(this.env, this.type.getTypeArguments(), (Type[])arrayOfTypeVariable);
-/*  464 */     return arrayOfTypeVariable;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ParamTag[] typeParamTags() {
-/*  471 */     return this.env.legacyDoclet ? new ParamTag[0] :
-/*      */
-/*  473 */       comment().typeParamTags();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public String modifiers() {
-/*  482 */     return Modifier.toString(modifierSpecifier());
-/*      */   }
-/*      */
-/*      */
-/*      */   public int modifierSpecifier() {
-/*  487 */     int i = getModifiers();
-/*  488 */     return (isInterface() || isAnnotationType()) ? (i & 0xFFFFFBFF) : i;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ClassDoc superclass() {
-/*  500 */     if (isInterface() || isAnnotationType()) return null;
-/*  501 */     if (this.tsym == this.env.syms.objectType.tsym) return null;
-/*  502 */     Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)(this.env.types.supertype((Type)this.type)).tsym;
-/*  503 */     if (classSymbol == null || classSymbol == this.tsym) classSymbol = (Symbol.ClassSymbol)this.env.syms.objectType.tsym;
-/*  504 */     return this.env.getClassDoc(classSymbol);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public Type superclassType() {
-/*  513 */     if (isInterface() || isAnnotationType() || this.tsym == this.env.syms.objectType.tsym)
-/*      */     {
-/*  515 */       return null; }
-/*  516 */     Type type = this.env.types.supertype((Type)this.type);
-/*  517 */     return TypeMaker.getType(this.env,
-/*  518 */         type.hasTag(TypeTag.NONE) ? this.env.syms.objectType : type);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean subclassOf(ClassDoc paramClassDoc) {
-/*  528 */     return this.tsym.isSubClass((Symbol)((ClassDocImpl)paramClassDoc).tsym, this.env.types);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ClassDoc[] interfaces() {
-/*  539 */     ListBuffer listBuffer = new ListBuffer();
-/*  540 */     for (Type type : this.env.types.interfaces((Type)this.type)) {
-/*  541 */       listBuffer.append(this.env.getClassDoc((Symbol.ClassSymbol)type.tsym));
-/*      */     }
-/*      */
-/*  544 */     return (ClassDoc[])listBuffer.toArray((Object[])new ClassDocImpl[listBuffer.length()]);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public Type[] interfaceTypes() {
-/*  555 */     return TypeMaker.getTypes(this.env, this.env.types.interfaces((Type)this.type));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public FieldDoc[] fields(boolean paramBoolean) {
-/*  563 */     return fields(paramBoolean, false);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public FieldDoc[] fields() {
-/*  570 */     return fields(true, false);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public FieldDoc[] enumConstants() {
-/*  577 */     return fields(false, true);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private FieldDoc[] fields(boolean paramBoolean1, boolean paramBoolean2) {
-/*  586 */     List list = List.nil();
-/*  587 */     for (Scope.Entry entry = (this.tsym.members()).elems; entry != null; entry = entry.sibling) {
-/*  588 */       if (entry.sym != null && entry.sym.kind == 4) {
-/*  589 */         Symbol.VarSymbol varSymbol = (Symbol.VarSymbol)entry.sym;
-/*  590 */         boolean bool = ((varSymbol.flags() & 0x4000L) != 0L && !this.env.legacyDoclet);
-/*      */
-/*  592 */         if (bool == paramBoolean2 && (!paramBoolean1 || this.env
-/*  593 */           .shouldDocument(varSymbol))) {
-/*  594 */           list = list.prepend(this.env.getFieldDoc(varSymbol));
-/*      */         }
-/*      */       }
-/*      */     }
-/*  598 */     return (FieldDoc[])list.toArray((Object[])new FieldDocImpl[list.length()]);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public MethodDoc[] methods(boolean paramBoolean) {
-/*  610 */     Names names = this.tsym.name.table.names;
-/*  611 */     List list = List.nil();
-/*  612 */     for (Scope.Entry entry = (this.tsym.members()).elems; entry != null; entry = entry.sibling) {
-/*  613 */       if (entry.sym != null && entry.sym.kind == 16 && entry.sym.name != names.init && entry.sym.name != names.clinit) {
-/*      */
-/*      */
-/*      */
-/*  617 */         Symbol.MethodSymbol methodSymbol = (Symbol.MethodSymbol)entry.sym;
-/*  618 */         if (!paramBoolean || this.env.shouldDocument(methodSymbol)) {
-/*  619 */           list = list.prepend(this.env.getMethodDoc(methodSymbol));
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*  624 */     return (MethodDoc[])list.toArray((Object[])new MethodDocImpl[list.length()]);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public MethodDoc[] methods() {
-/*  634 */     return methods(true);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ConstructorDoc[] constructors(boolean paramBoolean) {
-/*  645 */     Names names = this.tsym.name.table.names;
-/*  646 */     List list = List.nil();
-/*  647 */     for (Scope.Entry entry = (this.tsym.members()).elems; entry != null; entry = entry.sibling) {
-/*  648 */       if (entry.sym != null && entry.sym.kind == 16 && entry.sym.name == names.init) {
-/*      */
-/*  650 */         Symbol.MethodSymbol methodSymbol = (Symbol.MethodSymbol)entry.sym;
-/*  651 */         if (!paramBoolean || this.env.shouldDocument(methodSymbol)) {
-/*  652 */           list = list.prepend(this.env.getConstructorDoc(methodSymbol));
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*  657 */     return (ConstructorDoc[])list.toArray((Object[])new ConstructorDocImpl[list.length()]);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ConstructorDoc[] constructors() {
-/*  667 */     return constructors(true);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void addAllClasses(ListBuffer<ClassDocImpl> paramListBuffer, boolean paramBoolean) {
-/*      */     try {
-/*  676 */       if (isSynthetic())
-/*      */         return;
-/*  678 */       if (!JavadocTool.isValidClassName(this.tsym.name.toString()))
-/*  679 */         return;  if (paramBoolean && !this.env.shouldDocument(this.tsym))
-/*  680 */         return;  if (paramListBuffer.contains(this))
-/*  681 */         return;  paramListBuffer.append(this);
-/*  682 */       List list = List.nil();
-/*  683 */       for (Scope.Entry entry = (this.tsym.members()).elems; entry != null;
-/*  684 */         entry = entry.sibling) {
-/*  685 */         if (entry.sym != null && entry.sym.kind == 2) {
-/*  686 */           Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)entry.sym;
-/*  687 */           ClassDocImpl classDocImpl = this.env.getClassDoc(classSymbol);
-/*  688 */           if (!classDocImpl.isSynthetic() &&
-/*  689 */             classDocImpl != null) list = list.prepend(classDocImpl);
-/*      */
-/*      */         }
-/*      */       }
-/*  693 */       for (; list.nonEmpty(); list = list.tail) {
-/*  694 */         ((ClassDocImpl)list.head).addAllClasses(paramListBuffer, paramBoolean);
-/*      */       }
-/*  696 */     } catch (Symbol.CompletionFailure completionFailure) {}
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ClassDoc[] innerClasses(boolean paramBoolean) {
-/*  710 */     ListBuffer listBuffer = new ListBuffer();
-/*  711 */     for (Scope.Entry entry = (this.tsym.members()).elems; entry != null; entry = entry.sibling) {
-/*  712 */       if (entry.sym != null && entry.sym.kind == 2) {
-/*  713 */         Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)entry.sym;
-/*  714 */         if ((classSymbol.flags_field & 0x1000L) == 0L && (
-/*  715 */           !paramBoolean || this.env.isVisible(classSymbol))) {
-/*  716 */           listBuffer.prepend(this.env.getClassDoc(classSymbol));
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*  721 */     return (ClassDoc[])listBuffer.toArray((Object[])new ClassDocImpl[listBuffer.length()]);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ClassDoc[] innerClasses() {
-/*  732 */     return innerClasses(true);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ClassDoc findClass(String paramString) {
-/*  745 */     ClassDoc classDoc = searchClass(paramString);
-/*  746 */     if (classDoc == null) {
-/*  747 */       ClassDocImpl classDocImpl = (ClassDocImpl)containingClass();
-/*      */
-/*  749 */       while (classDocImpl != null && classDocImpl.containingClass() != null) {
-/*  750 */         classDocImpl = (ClassDocImpl)classDocImpl.containingClass();
-/*      */       }
-/*      */
-/*  753 */       classDoc = (classDocImpl == null) ? null : classDocImpl.searchClass(paramString);
-/*      */     }
-/*  755 */     return classDoc;
-/*      */   }
-/*      */
-/*      */   private ClassDoc searchClass(String paramString) {
-/*  759 */     Names names = this.tsym.name.table.names;
-/*      */
-/*      */
-/*  762 */     ClassDocImpl classDocImpl = this.env.lookupClass(paramString);
-/*  763 */     if (classDocImpl != null) {
-/*  764 */       return classDocImpl;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*  770 */     for (ClassDoc classDoc1 : innerClasses()) {
-/*  771 */       if (classDoc1.name().equals(paramString) || classDoc1
-/*      */
-/*      */
-/*      */
-/*      */
-/*  776 */         .name().endsWith("." + paramString)) {
-/*  777 */         return classDoc1;
-/*      */       }
-/*  779 */       ClassDoc classDoc2 = ((ClassDocImpl)classDoc1).searchClass(paramString);
-/*  780 */       if (classDoc2 != null) {
-/*  781 */         return classDoc2;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*  787 */     ClassDoc classDoc = containingPackage().findClass(paramString);
-/*  788 */     if (classDoc != null) {
-/*  789 */       return classDoc;
-/*      */     }
-/*      */
-/*      */
-/*  793 */     if (this.tsym.completer != null) {
-/*  794 */       this.tsym.complete();
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*  799 */     if (this.tsym.sourcefile != null) {
-/*      */
-/*      */
-/*      */
-/*  803 */       Env env = this.env.enter.getEnv((Symbol.TypeSymbol)this.tsym);
-/*  804 */       if (env == null) return null;
-/*      */
-/*  806 */       Scope.ImportScope importScope = env.toplevel.namedImportScope; Scope.Entry entry;
-/*  807 */       for (entry = importScope.lookup(names.fromString(paramString)); entry.scope != null; entry = entry.next()) {
-/*  808 */         if (entry.sym.kind == 2) {
-/*  809 */           return this.env.getClassDoc((Symbol.ClassSymbol)entry.sym);
-/*      */         }
-/*      */       }
-/*      */
-/*      */
-/*  814 */       Scope.StarImportScope starImportScope = env.toplevel.starImportScope;
-/*  815 */       for (entry = starImportScope.lookup(names.fromString(paramString)); entry.scope != null; entry = entry.next()) {
-/*  816 */         if (entry.sym.kind == 2) {
-/*  817 */           return this.env.getClassDoc((Symbol.ClassSymbol)entry.sym);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*  823 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private boolean hasParameterTypes(Symbol.MethodSymbol paramMethodSymbol, String[] paramArrayOfString) {
-/*  829 */     if (paramArrayOfString == null)
-/*      */     {
-/*  831 */       return true;
-/*      */     }
-/*      */
-/*  834 */     byte b = 0;
-/*  835 */     List list = paramMethodSymbol.type.getParameterTypes();
-/*      */
-/*  837 */     if (paramArrayOfString.length != list.length()) {
-/*  838 */       return false;
-/*      */     }
-/*      */
-/*  841 */     for (Type type : list) {
-/*  842 */       String str = paramArrayOfString[b++];
-/*      */
-/*  844 */       if (b == paramArrayOfString.length) {
-/*  845 */         str = str.replace("...", "[]");
-/*      */       }
-/*  847 */       if (!hasTypeName(this.env.types.erasure(type), str)) {
-/*  848 */         return false;
-/*      */       }
-/*      */     }
-/*  851 */     return true;
-/*      */   }
-/*      */
-/*      */   private boolean hasTypeName(Type paramType, String paramString) {
-/*  855 */     return (paramString
-/*  856 */       .equals(TypeMaker.getTypeName(paramType, true)) || paramString
-/*      */
-/*  858 */       .equals(TypeMaker.getTypeName(paramType, false)) || (
-/*      */
-/*  860 */       qualifiedName() + "." + paramString).equals(TypeMaker.getTypeName(paramType, true)));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public MethodDocImpl findMethod(String paramString, String[] paramArrayOfString) {
-/*  877 */     return searchMethod(paramString, paramArrayOfString, new HashSet<>());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private MethodDocImpl searchMethod(String paramString, String[] paramArrayOfString, Set<ClassDocImpl> paramSet) {
-/*  884 */     Names names = this.tsym.name.table.names;
-/*      */
-/*  886 */     if (names.init.contentEquals(paramString)) {
-/*  887 */       return null;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*  893 */     if (paramSet.contains(this)) {
-/*  894 */       return null;
-/*      */     }
-/*  896 */     paramSet.add(this);
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  916 */     Scope.Entry entry = this.tsym.members().lookup(names.fromString(paramString));
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  922 */     if (paramArrayOfString == null) {
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  928 */       Symbol.MethodSymbol methodSymbol = null;
-/*  929 */       for (; entry.scope != null; entry = entry.next()) {
-/*  930 */         if (entry.sym.kind == 16)
-/*      */         {
-/*  932 */           if (entry.sym.name.toString().equals(paramString)) {
-/*  933 */             methodSymbol = (Symbol.MethodSymbol)entry.sym;
-/*      */           }
-/*      */         }
-/*      */       }
-/*  937 */       if (methodSymbol != null) {
-/*  938 */         return this.env.getMethodDoc(methodSymbol);
-/*      */       }
-/*      */     } else {
-/*  941 */       for (; entry.scope != null; entry = entry.next()) {
-/*  942 */         if (entry.sym != null && entry.sym.kind == 16)
-/*      */         {
-/*      */
-/*  945 */           if (hasParameterTypes((Symbol.MethodSymbol)entry.sym, paramArrayOfString)) {
-/*  946 */             return this.env.getMethodDoc((Symbol.MethodSymbol)entry.sym);
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  956 */     ClassDocImpl classDocImpl = (ClassDocImpl)superclass();
-/*  957 */     if (classDocImpl != null) {
-/*  958 */       MethodDocImpl methodDocImpl = classDocImpl.searchMethod(paramString, paramArrayOfString, paramSet);
-/*  959 */       if (methodDocImpl != null) {
-/*  960 */         return methodDocImpl;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*  965 */     ClassDoc[] arrayOfClassDoc = interfaces();
-/*  966 */     for (byte b = 0; b < arrayOfClassDoc.length; b++) {
-/*  967 */       classDocImpl = (ClassDocImpl)arrayOfClassDoc[b];
-/*  968 */       MethodDocImpl methodDocImpl = classDocImpl.searchMethod(paramString, paramArrayOfString, paramSet);
-/*  969 */       if (methodDocImpl != null) {
-/*  970 */         return methodDocImpl;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*  975 */     classDocImpl = (ClassDocImpl)containingClass();
-/*  976 */     if (classDocImpl != null) {
-/*  977 */       MethodDocImpl methodDocImpl = classDocImpl.searchMethod(paramString, paramArrayOfString, paramSet);
-/*  978 */       if (methodDocImpl != null) {
-/*  979 */         return methodDocImpl;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  991 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ConstructorDoc findConstructor(String paramString, String[] paramArrayOfString) {
-/* 1003 */     Names names = this.tsym.name.table.names;
-/* 1004 */     for (Scope.Entry entry = this.tsym.members().lookup(names.fromString("<init>")); entry.scope != null; entry = entry.next()) {
-/* 1005 */       if (entry.sym.kind == 16 &&
-/* 1006 */         hasParameterTypes((Symbol.MethodSymbol)entry.sym, paramArrayOfString)) {
-/* 1007 */         return this.env.getConstructorDoc((Symbol.MethodSymbol)entry.sym);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1020 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public FieldDoc findField(String paramString) {
-/* 1036 */     return searchField(paramString, new HashSet<>());
-/*      */   }
-/*      */
-/*      */   private FieldDocImpl searchField(String paramString, Set<ClassDocImpl> paramSet) {
-/* 1040 */     Names names = this.tsym.name.table.names;
-/* 1041 */     if (paramSet.contains(this)) {
-/* 1042 */       return null;
-/*      */     }
-/* 1044 */     paramSet.add(this);
-/*      */
-/* 1046 */     for (Scope.Entry entry = this.tsym.members().lookup(names.fromString(paramString)); entry.scope != null; entry = entry.next()) {
-/* 1047 */       if (entry.sym.kind == 4)
-/*      */       {
-/* 1049 */         return this.env.getFieldDoc((Symbol.VarSymbol)entry.sym);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1056 */     ClassDocImpl classDocImpl = (ClassDocImpl)containingClass();
-/* 1057 */     if (classDocImpl != null) {
-/* 1058 */       FieldDocImpl fieldDocImpl = classDocImpl.searchField(paramString, paramSet);
-/* 1059 */       if (fieldDocImpl != null) {
-/* 1060 */         return fieldDocImpl;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/* 1065 */     classDocImpl = (ClassDocImpl)superclass();
-/* 1066 */     if (classDocImpl != null) {
-/* 1067 */       FieldDocImpl fieldDocImpl = classDocImpl.searchField(paramString, paramSet);
-/* 1068 */       if (fieldDocImpl != null) {
-/* 1069 */         return fieldDocImpl;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/* 1074 */     ClassDoc[] arrayOfClassDoc = interfaces();
-/* 1075 */     for (byte b = 0; b < arrayOfClassDoc.length; b++) {
-/* 1076 */       classDocImpl = (ClassDocImpl)arrayOfClassDoc[b];
-/* 1077 */       FieldDocImpl fieldDocImpl = classDocImpl.searchField(paramString, paramSet);
-/* 1078 */       if (fieldDocImpl != null) {
-/* 1079 */         return fieldDocImpl;
-/*      */       }
-/*      */     }
-/*      */
-/* 1083 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   @Deprecated
-/*      */   public ClassDoc[] importedClasses() {
-/* 1100 */     if (this.tsym.sourcefile == null) return new ClassDoc[0];
-/*      */
-/* 1102 */     ListBuffer listBuffer = new ListBuffer();
-/*      */
-/* 1104 */     Env env = this.env.enter.getEnv((Symbol.TypeSymbol)this.tsym);
-/* 1105 */     if (env == null) return (ClassDoc[])new ClassDocImpl[0];
-/*      */
-/* 1107 */     Name name = this.tsym.name.table.names.asterisk;
-/* 1108 */     for (JCTree jCTree : env.toplevel.defs) {
-/* 1109 */       if (jCTree.hasTag(JCTree.Tag.IMPORT)) {
-/* 1110 */         JCTree jCTree1 = ((JCTree.JCImport)jCTree).qualid;
-/* 1111 */         if (TreeInfo.name(jCTree1) != name && (jCTree1.type.tsym.kind & 0x2) != 0)
-/*      */         {
-/* 1113 */           listBuffer.append(this.env
-/* 1114 */               .getClassDoc((Symbol.ClassSymbol)jCTree1.type.tsym));
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/* 1119 */     return (ClassDoc[])listBuffer.toArray((Object[])new ClassDocImpl[listBuffer.length()]);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   @Deprecated
-/*      */   public PackageDoc[] importedPackages() {
-/* 1138 */     if (this.tsym.sourcefile == null) return new PackageDoc[0];
-/*      */
-/* 1140 */     ListBuffer listBuffer = new ListBuffer();
-/*      */
-/*      */
-/* 1143 */     Names names = this.tsym.name.table.names;
-/* 1144 */     listBuffer.append(this.env.getPackageDoc(this.env.reader.enterPackage(names.java_lang)));
-/*      */
-/* 1146 */     Env env = this.env.enter.getEnv((Symbol.TypeSymbol)this.tsym);
-/* 1147 */     if (env == null) return (PackageDoc[])new PackageDocImpl[0];
-/*      */
-/* 1149 */     for (JCTree jCTree : env.toplevel.defs) {
-/* 1150 */       if (jCTree.hasTag(JCTree.Tag.IMPORT)) {
-/* 1151 */         JCTree jCTree1 = ((JCTree.JCImport)jCTree).qualid;
-/* 1152 */         if (TreeInfo.name(jCTree1) == names.asterisk) {
-/* 1153 */           JCTree.JCFieldAccess jCFieldAccess = (JCTree.JCFieldAccess)jCTree1;
-/* 1154 */           Symbol.TypeSymbol typeSymbol = jCFieldAccess.selected.type.tsym;
-/* 1155 */           PackageDocImpl packageDocImpl = this.env.getPackageDoc(typeSymbol.packge());
-/* 1156 */           if (!listBuffer.contains(packageDocImpl)) {
-/* 1157 */             listBuffer.append(packageDocImpl);
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     }
-/* 1162 */     return (PackageDoc[])listBuffer.toArray((Object[])new PackageDocImpl[listBuffer.length()]);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public String dimension() {
-/* 1170 */     return "";
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ClassDoc asClassDoc() {
-/* 1177 */     return this;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public AnnotationTypeDoc asAnnotationTypeDoc() {
-/* 1184 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public ParameterizedType asParameterizedType() {
-/* 1191 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public TypeVariable asTypeVariable() {
-/* 1198 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public WildcardType asWildcardType() {
-/* 1205 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public AnnotatedType asAnnotatedType() {
-/* 1212 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isPrimitive() {
-/* 1219 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isSerializable() {
-/*      */     try {
-/* 1235 */       return this.env.types.isSubtype((Type)this.type, this.env.syms.serializableType);
-/* 1236 */     } catch (Symbol.CompletionFailure completionFailure) {
-/*      */
-/* 1238 */       return false;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isExternalizable() {
-/*      */     try {
-/* 1248 */       return this.env.types.isSubtype((Type)this.type, this.env.externalizableSym.type);
-/* 1249 */     } catch (Symbol.CompletionFailure completionFailure) {
-/*      */
-/* 1251 */       return false;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public MethodDoc[] serializationMethods() {
-/* 1262 */     if (this.serializedForm == null) {
-/* 1263 */       this.serializedForm = new SerializedForm(this.env, this.tsym, this);
-/*      */     }
-/*      */
-/* 1266 */     return this.serializedForm.methods();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public FieldDoc[] serializableFields() {
-/* 1287 */     if (this.serializedForm == null) {
-/* 1288 */       this.serializedForm = new SerializedForm(this.env, this.tsym, this);
-/*      */     }
-/*      */
-/* 1291 */     return this.serializedForm.fields();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean definesSerializableFields() {
-/* 1302 */     if (!isSerializable() || isExternalizable()) {
-/* 1303 */       return false;
-/*      */     }
-/* 1305 */     if (this.serializedForm == null) {
-/* 1306 */       this.serializedForm = new SerializedForm(this.env, this.tsym, this);
-/*      */     }
-/*      */
-/* 1309 */     return this.serializedForm.definesSerializableFields();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   boolean isRuntimeException() {
-/* 1319 */     return this.tsym.isSubClass((Symbol)this.env.syms.runtimeExceptionType.tsym, this.env.types);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public SourcePosition position() {
-/* 1328 */     if (this.tsym.sourcefile == null) return null;
-/* 1329 */     return SourcePositionImpl.make(this.tsym.sourcefile, (this.tree == null) ? -1 : this.tree.pos, this.lineMap);
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javadoc\ClassDocImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javadoc;
+
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.Modifier;
+import java.net.URI;
+import java.util.HashSet;
+import java.util.Set;
+
+import javax.tools.FileObject;
+import javax.tools.JavaFileManager.Location;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.StandardLocation;
+
+import com.sun.javadoc.*;
+import com.sun.source.util.TreePath;
+import com.sun.tools.javac.code.Flags;
+import com.sun.tools.javac.code.Kinds;
+import com.sun.tools.javac.code.Scope;
+import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.code.Type;
+import com.sun.tools.javac.code.Type.ClassType;
+import com.sun.tools.javac.code.TypeTag;
+import com.sun.tools.javac.comp.AttrContext;
+import com.sun.tools.javac.comp.Env;
+import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.JCFieldAccess;
+import com.sun.tools.javac.tree.JCTree.JCImport;
+import com.sun.tools.javac.tree.TreeInfo;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.ListBuffer;
+import com.sun.tools.javac.util.Name;
+import com.sun.tools.javac.util.Names;
+import com.sun.tools.javac.util.Position;
+import static com.sun.tools.javac.code.Kinds.*;
+import static com.sun.tools.javac.code.TypeTag.CLASS;
+import static com.sun.tools.javac.tree.JCTree.Tag.*;
+
+/**
+ * Represents a java class and provides access to information
+ * about the class, the class' comment and tags, and the
+ * members of the class.  A ClassDocImpl only exists if it was
+ * processed in this run of javadoc.  References to classes
+ * which may or may not have been processed in this run are
+ * referred to using Type (which can be converted to ClassDocImpl,
+ * if possible).
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @see Type
+ *
+ * @since 1.2
+ * @author Robert Field
+ * @author Neal Gafter (rewrite)
+ * @author Scott Seligman (generics, enums, annotations)
+ */
+
+public class ClassDocImpl extends ProgramElementDocImpl implements ClassDoc {
+
+    public final ClassType type;        // protected->public for debugging
+    protected final ClassSymbol tsym;
+
+    boolean isIncluded = false;         // Set in RootDocImpl
+
+    private SerializedForm serializedForm;
+
+    /**
+     * Constructor
+     */
+    public ClassDocImpl(DocEnv env, ClassSymbol sym) {
+        this(env, sym, null);
+    }
+
+    /**
+     * Constructor
+     */
+    public ClassDocImpl(DocEnv env, ClassSymbol sym, TreePath treePath) {
+        super(env, sym, treePath);
+        this.type = (ClassType)sym.type;
+        this.tsym = sym;
+    }
+
+    public com.sun.javadoc.Type getElementType() {
+        return null;
+    }
+
+    /**
+     * Returns the flags in terms of javac's flags
+     */
+    protected long getFlags() {
+        return getFlags(tsym);
+    }
+
+    /**
+     * Returns the flags of a ClassSymbol in terms of javac's flags
+     */
+    static long getFlags(ClassSymbol clazz) {
+        try {
+            return clazz.flags();
+        } catch (CompletionFailure ex) {
+            /* Quietly ignore completion failures and try again - the type
+             * for which the CompletionFailure was thrown shouldn't be completed
+             * again by the completer that threw the CompletionFailure.
+             */
+            return getFlags(clazz);
+        }
+    }
+
+    /**
+     * Is a ClassSymbol an annotation type?
+     */
+    static boolean isAnnotationType(ClassSymbol clazz) {
+        return (getFlags(clazz) & Flags.ANNOTATION) != 0;
+    }
+
+    /**
+     * Identify the containing class
+     */
+    protected ClassSymbol getContainingClass() {
+        return tsym.owner.enclClass();
+    }
+
+    /**
+     * Return true if this is a class, not an interface.
+     */
+    @Override
+    public boolean isClass() {
+        return !Modifier.isInterface(getModifiers());
+    }
+
+    /**
+     * Return true if this is a ordinary class,
+     * not an enumeration, exception, an error, or an interface.
+     */
+    @Override
+    public boolean isOrdinaryClass() {
+        if (isEnum() || isInterface() || isAnnotationType()) {
+            return false;
+        }
+        for (Type t = type; t.hasTag(CLASS); t = env.types.supertype(t)) {
+            if (t.tsym == env.syms.errorType.tsym ||
+                t.tsym == env.syms.exceptionType.tsym) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Return true if this is an enumeration.
+     * (For legacy doclets, return false.)
+     */
+    @Override
+    public boolean isEnum() {
+        return (getFlags() & Flags.ENUM) != 0
+               &&
+               !env.legacyDoclet;
+    }
+
+    /**
+     * Return true if this is an interface, but not an annotation type.
+     * Overridden by AnnotationTypeDocImpl.
+     */
+    @Override
+    public boolean isInterface() {
+        return Modifier.isInterface(getModifiers());
+    }
+
+    /**
+     * Return true if this is an exception class
+     */
+    @Override
+    public boolean isException() {
+        if (isEnum() || isInterface() || isAnnotationType()) {
+            return false;
+        }
+        for (Type t = type; t.hasTag(CLASS); t = env.types.supertype(t)) {
+            if (t.tsym == env.syms.exceptionType.tsym) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Return true if this is an error class
+     */
+    @Override
+    public boolean isError() {
+        if (isEnum() || isInterface() || isAnnotationType()) {
+            return false;
+        }
+        for (Type t = type; t.hasTag(CLASS); t = env.types.supertype(t)) {
+            if (t.tsym == env.syms.errorType.tsym) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Return true if this is a throwable class
+     */
+    public boolean isThrowable() {
+        if (isEnum() || isInterface() || isAnnotationType()) {
+            return false;
+        }
+        for (Type t = type; t.hasTag(CLASS); t = env.types.supertype(t)) {
+            if (t.tsym == env.syms.throwableType.tsym) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Return true if this class is abstract
+     */
+    public boolean isAbstract() {
+        return Modifier.isAbstract(getModifiers());
+    }
+
+    /**
+     * Returns true if this class was synthesized by the compiler.
+     */
+    public boolean isSynthetic() {
+        return (getFlags() & Flags.SYNTHETIC) != 0;
+    }
+
+    /**
+     * Return true if this class is included in the active set.
+     * A ClassDoc is included iff either it is specified on the
+     * commandline, or if it's containing package is specified
+     * on the command line, or if it is a member class of an
+     * included class.
+     */
+
+    public boolean isIncluded() {
+        if (isIncluded) {
+            return true;
+        }
+        if (env.shouldDocument(tsym)) {
+            // Class is nameable from top-level and
+            // the class and all enclosing classes
+            // pass the modifier filter.
+            if (containingPackage().isIncluded()) {
+                return isIncluded=true;
+            }
+            ClassDoc outer = containingClass();
+            if (outer != null && outer.isIncluded()) {
+                return isIncluded=true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Return the package that this class is contained in.
+     */
+    @Override
+    public PackageDoc containingPackage() {
+        PackageDocImpl p = env.getPackageDoc(tsym.packge());
+        if (p.setDocPath == false) {
+            FileObject docPath;
+            try {
+                Location location = env.fileManager.hasLocation(StandardLocation.SOURCE_PATH)
+                    ? StandardLocation.SOURCE_PATH : StandardLocation.CLASS_PATH;
+
+                docPath = env.fileManager.getFileForInput(
+                        location, p.qualifiedName(), "package.html");
+            } catch (IOException e) {
+                docPath = null;
+            }
+
+            if (docPath == null) {
+                // fall back on older semantics of looking in same directory as
+                // source file for this class
+                SourcePosition po = position();
+                if (env.fileManager instanceof StandardJavaFileManager &&
+                        po instanceof SourcePositionImpl) {
+                    URI uri = ((SourcePositionImpl) po).filename.toUri();
+                    if ("file".equals(uri.getScheme())) {
+                        File f = new File(uri);
+                        File dir = f.getParentFile();
+                        if (dir != null) {
+                            File pf = new File(dir, "package.html");
+                            if (pf.exists()) {
+                                StandardJavaFileManager sfm = (StandardJavaFileManager) env.fileManager;
+                                docPath = sfm.getJavaFileObjects(pf).iterator().next();
+                            }
+                        }
+
+                    }
+                }
+            }
+
+            p.setDocPath(docPath);
+        }
+        return p;
+    }
+
+    /**
+     * Return the class name without package qualifier - but with
+     * enclosing class qualifier - as a String.
+     * <pre>
+     * Examples:
+     *  for java.util.Hashtable
+     *  return Hashtable
+     *  for java.util.Map.Entry
+     *  return Map.Entry
+     * </pre>
+     */
+    public String name() {
+        if (name == null) {
+            name = getClassName(tsym, false);
+        }
+        return name;
+    }
+
+    private String name;
+
+    /**
+     * Return the qualified class name as a String.
+     * <pre>
+     * Example:
+     *  for java.util.Hashtable
+     *  return java.util.Hashtable
+     *  if no qualifier, just return flat name
+     * </pre>
+     */
+    public String qualifiedName() {
+        if (qualifiedName == null) {
+            qualifiedName = getClassName(tsym, true);
+        }
+        return qualifiedName;
+    }
+
+    private String qualifiedName;
+
+    /**
+     * Return unqualified name of type excluding any dimension information.
+     * <p>
+     * For example, a two dimensional array of String returns 'String'.
+     */
+    public String typeName() {
+        return name();
+    }
+
+    /**
+     * Return qualified name of type excluding any dimension information.
+     *<p>
+     * For example, a two dimensional array of String
+     * returns 'java.lang.String'.
+     */
+    public String qualifiedTypeName() {
+        return qualifiedName();
+    }
+
+    /**
+     * Return the simple name of this type.
+     */
+    public String simpleTypeName() {
+        if (simpleTypeName == null) {
+            simpleTypeName = tsym.name.toString();
+        }
+        return simpleTypeName;
+    }
+
+    private String simpleTypeName;
+
+    /**
+     * Return the qualified name and any type parameters.
+     * Each parameter is a type variable with optional bounds.
+     */
+    @Override
+    public String toString() {
+        return classToString(env, tsym, true);
+    }
+
+    /**
+     * Return the class name as a string.  If "full" is true the name is
+     * qualified, otherwise it is qualified by its enclosing class(es) only.
+     */
+    static String getClassName(ClassSymbol c, boolean full) {
+        if (full) {
+            return c.getQualifiedName().toString();
+        } else {
+            String n = "";
+            for ( ; c != null; c = c.owner.enclClass()) {
+                n = c.name + (n.equals("") ? "" : ".") + n;
+            }
+            return n;
+        }
+    }
+
+    /**
+     * Return the class name with any type parameters as a string.
+     * Each parameter is a type variable with optional bounds.
+     * If "full" is true all names are qualified, otherwise they are
+     * qualified by their enclosing class(es) only.
+     */
+    static String classToString(DocEnv env, ClassSymbol c, boolean full) {
+        StringBuilder s = new StringBuilder();
+        if (!c.isInner()) {             // if c is not an inner class
+            s.append(getClassName(c, full));
+        } else {
+            // c is an inner class, so include type params of outer.
+            ClassSymbol encl = c.owner.enclClass();
+            s.append(classToString(env, encl, full))
+             .append('.')
+             .append(c.name);
+        }
+        s.append(TypeMaker.typeParametersString(env, c, full));
+        return s.toString();
+    }
+
+    /**
+     * Is this class (or any enclosing class) generic?  That is, does
+     * it have type parameters?
+     */
+    static boolean isGeneric(ClassSymbol c) {
+        return c.type.allparams().nonEmpty();
+    }
+
+    /**
+     * Return the formal type parameters of this class or interface.
+     * Return an empty array if there are none.
+     */
+    public TypeVariable[] typeParameters() {
+        if (env.legacyDoclet) {
+            return new TypeVariable[0];
+        }
+        TypeVariable res[] = new TypeVariable[type.getTypeArguments().length()];
+        TypeMaker.getTypes(env, type.getTypeArguments(), res);
+        return res;
+    }
+
+    /**
+     * Return the type parameter tags of this class or interface.
+     */
+    public ParamTag[] typeParamTags() {
+        return (env.legacyDoclet)
+            ? new ParamTag[0]
+            : comment().typeParamTags();
+    }
+
+    /**
+     * Return the modifier string for this class. If it's an interface
+     * exclude 'abstract' keyword from the modifier string
+     */
+    @Override
+    public String modifiers() {
+        return Modifier.toString(modifierSpecifier());
+    }
+
+    @Override
+    public int modifierSpecifier() {
+        int modifiers = getModifiers();
+        return (isInterface() || isAnnotationType())
+                ? modifiers & ~Modifier.ABSTRACT
+                : modifiers;
+    }
+
+    /**
+     * Return the superclass of this class
+     *
+     * @return the ClassDocImpl for the superclass of this class, null
+     * if there is no superclass.
+     */
+    public ClassDoc superclass() {
+        if (isInterface() || isAnnotationType()) return null;
+        if (tsym == env.syms.objectType.tsym) return null;
+        ClassSymbol c = (ClassSymbol)env.types.supertype(type).tsym;
+        if (c == null || c == tsym) c = (ClassSymbol)env.syms.objectType.tsym;
+        return env.getClassDoc(c);
+    }
+
+    /**
+     * Return the superclass of this class.  Return null if this is an
+     * interface.  A superclass is represented by either a
+     * <code>ClassDoc</code> or a <code>ParameterizedType</code>.
+     */
+    public com.sun.javadoc.Type superclassType() {
+        if (isInterface() || isAnnotationType() ||
+                (tsym == env.syms.objectType.tsym))
+            return null;
+        Type sup = env.types.supertype(type);
+        return TypeMaker.getType(env,
+                                 (sup.hasTag(TypeTag.NONE)) ? env.syms.objectType : sup);
+    }
+
+    /**
+     * Test whether this class is a subclass of the specified class.
+     *
+     * @param cd the candidate superclass.
+     * @return true if cd is a superclass of this class.
+     */
+    public boolean subclassOf(ClassDoc cd) {
+        return tsym.isSubClass(((ClassDocImpl)cd).tsym, env.types);
+    }
+
+    /**
+     * Return interfaces implemented by this class or interfaces
+     * extended by this interface.
+     *
+     * @return An array of ClassDocImpl representing the interfaces.
+     * Return an empty array if there are no interfaces.
+     */
+    public ClassDoc[] interfaces() {
+        ListBuffer<ClassDocImpl> ta = new ListBuffer<ClassDocImpl>();
+        for (Type t : env.types.interfaces(type)) {
+            ta.append(env.getClassDoc((ClassSymbol)t.tsym));
+        }
+        //### Cache ta here?
+        return ta.toArray(new ClassDocImpl[ta.length()]);
+    }
+
+    /**
+     * Return interfaces implemented by this class or interfaces extended
+     * by this interface. Includes only directly-declared interfaces, not
+     * inherited interfaces.
+     * Return an empty array if there are no interfaces.
+     */
+    public com.sun.javadoc.Type[] interfaceTypes() {
+        //### Cache result here?
+        return TypeMaker.getTypes(env, env.types.interfaces(type));
+    }
+
+    /**
+     * Return fields in class.
+     * @param filter include only the included fields if filter==true
+     */
+    public FieldDoc[] fields(boolean filter) {
+        return fields(filter, false);
+    }
+
+    /**
+     * Return included fields in class.
+     */
+    public FieldDoc[] fields() {
+        return fields(true, false);
+    }
+
+    /**
+     * Return the enum constants if this is an enum type.
+     */
+    public FieldDoc[] enumConstants() {
+        return fields(false, true);
+    }
+
+    /**
+     * Return fields in class.
+     * @param filter  if true, return only the included fields
+     * @param enumConstants  if true, return the enum constants instead
+     */
+    private FieldDoc[] fields(boolean filter, boolean enumConstants) {
+        List<FieldDocImpl> fields = List.nil();
+        for (Scope.Entry e = tsym.members().elems; e != null; e = e.sibling) {
+            if (e.sym != null && e.sym.kind == VAR) {
+                VarSymbol s = (VarSymbol)e.sym;
+                boolean isEnum = ((s.flags() & Flags.ENUM) != 0) &&
+                                 !env.legacyDoclet;
+                if (isEnum == enumConstants &&
+                        (!filter || env.shouldDocument(s))) {
+                    fields = fields.prepend(env.getFieldDoc(s));
+                }
+            }
+        }
+        return fields.toArray(new FieldDocImpl[fields.length()]);
+    }
+
+    /**
+     * Return methods in class.
+     * This method is overridden by AnnotationTypeDocImpl.
+     *
+     * @param filter include only the included methods if filter==true
+     * @return an array of MethodDocImpl for representing the visible
+     * methods in this class.  Does not include constructors.
+     */
+    public MethodDoc[] methods(boolean filter) {
+        Names names = tsym.name.table.names;
+        List<MethodDocImpl> methods = List.nil();
+        for (Scope.Entry e = tsym.members().elems; e != null; e = e.sibling) {
+            if (e.sym != null
+                && e.sym.kind == Kinds.MTH
+                && e.sym.name != names.init
+                && e.sym.name != names.clinit) {
+                MethodSymbol s = (MethodSymbol)e.sym;
+                if (!filter || env.shouldDocument(s)) {
+                    methods = methods.prepend(env.getMethodDoc(s));
+                }
+            }
+        }
+        //### Cache methods here?
+        return methods.toArray(new MethodDocImpl[methods.length()]);
+    }
+
+    /**
+     * Return included methods in class.
+     *
+     * @return an array of MethodDocImpl for representing the visible
+     * methods in this class.  Does not include constructors.
+     */
+    public MethodDoc[] methods() {
+        return methods(true);
+    }
+
+    /**
+     * Return constructors in class.
+     *
+     * @param filter include only the included constructors if filter==true
+     * @return an array of ConstructorDocImpl for representing the visible
+     * constructors in this class.
+     */
+    public ConstructorDoc[] constructors(boolean filter) {
+        Names names = tsym.name.table.names;
+        List<ConstructorDocImpl> constructors = List.nil();
+        for (Scope.Entry e = tsym.members().elems; e != null; e = e.sibling) {
+            if (e.sym != null &&
+                e.sym.kind == Kinds.MTH && e.sym.name == names.init) {
+                MethodSymbol s = (MethodSymbol)e.sym;
+                if (!filter || env.shouldDocument(s)) {
+                    constructors = constructors.prepend(env.getConstructorDoc(s));
+                }
+            }
+        }
+        //### Cache constructors here?
+        return constructors.toArray(new ConstructorDocImpl[constructors.length()]);
+    }
+
+    /**
+     * Return included constructors in class.
+     *
+     * @return an array of ConstructorDocImpl for representing the visible
+     * constructors in this class.
+     */
+    public ConstructorDoc[] constructors() {
+        return constructors(true);
+    }
+
+    /**
+     * Adds all inner classes of this class, and their
+     * inner classes recursively, to the list l.
+     */
+    void addAllClasses(ListBuffer<ClassDocImpl> l, boolean filtered) {
+        try {
+            if (isSynthetic()) return;
+            // sometimes synthetic classes are not marked synthetic
+            if (!JavadocTool.isValidClassName(tsym.name.toString())) return;
+            if (filtered && !env.shouldDocument(tsym)) return;
+            if (l.contains(this)) return;
+            l.append(this);
+            List<ClassDocImpl> more = List.nil();
+            for (Scope.Entry e = tsym.members().elems; e != null;
+                 e = e.sibling) {
+                if (e.sym != null && e.sym.kind == Kinds.TYP) {
+                    ClassSymbol s = (ClassSymbol)e.sym;
+                    ClassDocImpl c = env.getClassDoc(s);
+                    if (c.isSynthetic()) continue;
+                    if (c != null) more = more.prepend(c);
+                }
+            }
+            // this extra step preserves the ordering from oldjavadoc
+            for (; more.nonEmpty(); more=more.tail) {
+                more.head.addAllClasses(l, filtered);
+            }
+        } catch (CompletionFailure e) {
+            // quietly ignore completion failures
+        }
+    }
+
+    /**
+     * Return inner classes within this class.
+     *
+     * @param filter include only the included inner classes if filter==true.
+     * @return an array of ClassDocImpl for representing the visible
+     * classes defined in this class. Anonymous and local classes
+     * are not included.
+     */
+    public ClassDoc[] innerClasses(boolean filter) {
+        ListBuffer<ClassDocImpl> innerClasses = new ListBuffer<ClassDocImpl>();
+        for (Scope.Entry e = tsym.members().elems; e != null; e = e.sibling) {
+            if (e.sym != null && e.sym.kind == Kinds.TYP) {
+                ClassSymbol s = (ClassSymbol)e.sym;
+                if ((s.flags_field & Flags.SYNTHETIC) != 0) continue;
+                if (!filter || env.isVisible(s)) {
+                    innerClasses.prepend(env.getClassDoc(s));
+                }
+            }
+        }
+        //### Cache classes here?
+        return innerClasses.toArray(new ClassDocImpl[innerClasses.length()]);
+    }
+
+    /**
+     * Return included inner classes within this class.
+     *
+     * @return an array of ClassDocImpl for representing the visible
+     * classes defined in this class. Anonymous and local classes
+     * are not included.
+     */
+    public ClassDoc[] innerClasses() {
+        return innerClasses(true);
+    }
+
+    /**
+     * Find a class within the context of this class.
+     * Search order: qualified name, in this class (inner),
+     * in this package, in the class imports, in the package
+     * imports.
+     * Return the ClassDocImpl if found, null if not found.
+     */
+    //### The specified search order is not the normal rule the
+    //### compiler would use.  Leave as specified or change it?
+    public ClassDoc findClass(String className) {
+        ClassDoc searchResult = searchClass(className);
+        if (searchResult == null) {
+            ClassDocImpl enclosingClass = (ClassDocImpl)containingClass();
+            //Expand search space to include enclosing class.
+            while (enclosingClass != null && enclosingClass.containingClass() != null) {
+                enclosingClass = (ClassDocImpl)enclosingClass.containingClass();
+            }
+            searchResult = enclosingClass == null ?
+                null : enclosingClass.searchClass(className);
+        }
+        return searchResult;
+    }
+
+    private ClassDoc searchClass(String className) {
+        Names names = tsym.name.table.names;
+
+        // search by qualified name first
+        ClassDoc cd = env.lookupClass(className);
+        if (cd != null) {
+            return cd;
+        }
+
+        // search inner classes
+        //### Add private entry point to avoid creating array?
+        //### Replicate code in innerClasses here to avoid consing?
+        for (ClassDoc icd : innerClasses()) {
+            if (icd.name().equals(className) ||
+                    //### This is from original javadoc but it looks suspicious to me...
+                    //### I believe it is attempting to compensate for the confused
+                    //### convention of including the nested class qualifiers in the
+                    //### 'name' of the inner class, rather than the true simple name.
+                    icd.name().endsWith("." + className)) {
+                return icd;
+            } else {
+                ClassDoc innercd = ((ClassDocImpl) icd).searchClass(className);
+                if (innercd != null) {
+                    return innercd;
+                }
+            }
+        }
+
+        // check in this package
+        cd = containingPackage().findClass(className);
+        if (cd != null) {
+            return cd;
+        }
+
+        // make sure that this symbol has been completed
+        if (tsym.completer != null) {
+            tsym.complete();
+        }
+
+        // search imports
+
+        if (tsym.sourcefile != null) {
+
+            //### This information is available only for source classes.
+
+            Env<AttrContext> compenv = env.enter.getEnv(tsym);
+            if (compenv == null) return null;
+
+            Scope s = compenv.toplevel.namedImportScope;
+            for (Scope.Entry e = s.lookup(names.fromString(className)); e.scope != null; e = e.next()) {
+                if (e.sym.kind == Kinds.TYP) {
+                    ClassDoc c = env.getClassDoc((ClassSymbol)e.sym);
+                    return c;
+                }
+            }
+
+            s = compenv.toplevel.starImportScope;
+            for (Scope.Entry e = s.lookup(names.fromString(className)); e.scope != null; e = e.next()) {
+                if (e.sym.kind == Kinds.TYP) {
+                    ClassDoc c = env.getClassDoc((ClassSymbol)e.sym);
+                    return c;
+                }
+            }
+        }
+
+        return null; // not found
+    }
+
+
+    private boolean hasParameterTypes(MethodSymbol method, String[] argTypes) {
+
+        if (argTypes == null) {
+            // wildcard
+            return true;
+        }
+
+        int i = 0;
+        List<Type> types = method.type.getParameterTypes();
+
+        if (argTypes.length != types.length()) {
+            return false;
+        }
+
+        for (Type t : types) {
+            String argType = argTypes[i++];
+            // For vararg method, "T..." matches type T[].
+            if (i == argTypes.length) {
+                argType = argType.replace("...", "[]");
+            }
+            if (!hasTypeName(env.types.erasure(t), argType)) {  //###(gj)
+                return false;
+            }
+        }
+        return true;
+    }
+    // where
+    private boolean hasTypeName(Type t, String name) {
+        return
+            name.equals(TypeMaker.getTypeName(t, true))
+            ||
+            name.equals(TypeMaker.getTypeName(t, false))
+            ||
+            (qualifiedName() + "." + name).equals(TypeMaker.getTypeName(t, true));
+    }
+
+
+
+    /**
+     * Find a method in this class scope.
+     * Search order: this class, interfaces, superclasses, outerclasses.
+     * Note that this is not necessarily what the compiler would do!
+     *
+     * @param methodName the unqualified name to search for.
+     * @param paramTypes the array of Strings for method parameter types.
+     * @return the first MethodDocImpl which matches, null if not found.
+     */
+    public MethodDocImpl findMethod(String methodName, String[] paramTypes) {
+        // Use hash table 'searched' to avoid searching same class twice.
+        //### It is not clear how this could happen.
+        return searchMethod(methodName, paramTypes, new HashSet<ClassDocImpl>());
+    }
+
+    private MethodDocImpl searchMethod(String methodName,
+                                       String[] paramTypes, Set<ClassDocImpl> searched) {
+        //### Note that this search is not necessarily what the compiler would do!
+
+        Names names = tsym.name.table.names;
+        // do not match constructors
+        if (names.init.contentEquals(methodName)) {
+            return null;
+        }
+
+        ClassDocImpl cdi;
+        MethodDocImpl mdi;
+
+        if (searched.contains(this)) {
+            return null;
+        }
+        searched.add(this);
+
+        //DEBUG
+        /*---------------------------------*
+         System.out.print("searching " + this + " for " + methodName);
+         if (paramTypes == null) {
+         System.out.println("()");
+         } else {
+         System.out.print("(");
+         for (int k=0; k < paramTypes.length; k++) {
+         System.out.print(paramTypes[k]);
+         if ((k + 1) < paramTypes.length) {
+         System.out.print(", ");
+         }
+         }
+         System.out.println(")");
+         }
+         *---------------------------------*/
+
+        // search current class
+        Scope.Entry e = tsym.members().lookup(names.fromString(methodName));
+
+        //### Using modifier filter here isn't really correct,
+        //### but emulates the old behavior.  Instead, we should
+        //### apply the normal rules of visibility and inheritance.
+
+        if (paramTypes == null) {
+            // If no parameters specified, we are allowed to return
+            // any method with a matching name.  In practice, the old
+            // code returned the first method, which is now the last!
+            // In order to provide textually identical results, we
+            // attempt to emulate the old behavior.
+            MethodSymbol lastFound = null;
+            for (; e.scope != null; e = e.next()) {
+                if (e.sym.kind == Kinds.MTH) {
+                    //### Should intern methodName as Name.
+                    if (e.sym.name.toString().equals(methodName)) {
+                        lastFound = (MethodSymbol)e.sym;
+                    }
+                }
+            }
+            if (lastFound != null) {
+                return env.getMethodDoc(lastFound);
+            }
+        } else {
+            for (; e.scope != null; e = e.next()) {
+                if (e.sym != null &&
+                    e.sym.kind == Kinds.MTH) {
+                    //### Should intern methodName as Name.
+                    if (hasParameterTypes((MethodSymbol)e.sym, paramTypes)) {
+                        return env.getMethodDoc((MethodSymbol)e.sym);
+                    }
+                }
+            }
+        }
+
+        //### If we found a MethodDoc above, but which did not pass
+        //### the modifier filter, we should return failure here!
+
+        // search superclass
+        cdi = (ClassDocImpl)superclass();
+        if (cdi != null) {
+            mdi = cdi.searchMethod(methodName, paramTypes, searched);
+            if (mdi != null) {
+                return mdi;
+            }
+        }
+
+        // search interfaces
+        ClassDoc intf[] = interfaces();
+        for (int i = 0; i < intf.length; i++) {
+            cdi = (ClassDocImpl)intf[i];
+            mdi = cdi.searchMethod(methodName, paramTypes, searched);
+            if (mdi != null) {
+                return mdi;
+            }
+        }
+
+        // search enclosing class
+        cdi = (ClassDocImpl)containingClass();
+        if (cdi != null) {
+            mdi = cdi.searchMethod(methodName, paramTypes, searched);
+            if (mdi != null) {
+                return mdi;
+            }
+        }
+
+        //###(gj) As a temporary measure until type variables are better
+        //### handled, try again without the parameter types.
+        //### This should most often find the right method, and occassionally
+        //### find the wrong one.
+        //if (paramTypes != null) {
+        //    return findMethod(methodName, null);
+        //}
+
+        return null;
+    }
+
+    /**
+     * Find constructor in this class.
+     *
+     * @param constrName the unqualified name to search for.
+     * @param paramTypes the array of Strings for constructor parameters.
+     * @return the first ConstructorDocImpl which matches, null if not found.
+     */
+    public ConstructorDoc findConstructor(String constrName,
+                                          String[] paramTypes) {
+        Names names = tsym.name.table.names;
+        for (Scope.Entry e = tsym.members().lookup(names.fromString("<init>")); e.scope != null; e = e.next()) {
+            if (e.sym.kind == Kinds.MTH) {
+                if (hasParameterTypes((MethodSymbol)e.sym, paramTypes)) {
+                    return env.getConstructorDoc((MethodSymbol)e.sym);
+                }
+            }
+        }
+
+        //###(gj) As a temporary measure until type variables are better
+        //### handled, try again without the parameter types.
+        //### This will often find the right constructor, and occassionally
+        //### find the wrong one.
+        //if (paramTypes != null) {
+        //    return findConstructor(constrName, null);
+        //}
+
+        return null;
+    }
+
+    /**
+     * Find a field in this class scope.
+     * Search order: this class, outerclasses, interfaces,
+     * superclasses. IMP: If see tag is defined in an inner class,
+     * which extends a super class and if outerclass and the super
+     * class have a visible field in common then Java compiler cribs
+     * about the ambiguity, but the following code will search in the
+     * above given search order.
+     *
+     * @param fieldName the unqualified name to search for.
+     * @return the first FieldDocImpl which matches, null if not found.
+     */
+    public FieldDoc findField(String fieldName) {
+        return searchField(fieldName, new HashSet<ClassDocImpl>());
+    }
+
+    private FieldDocImpl searchField(String fieldName, Set<ClassDocImpl> searched) {
+        Names names = tsym.name.table.names;
+        if (searched.contains(this)) {
+            return null;
+        }
+        searched.add(this);
+
+        for (Scope.Entry e = tsym.members().lookup(names.fromString(fieldName)); e.scope != null; e = e.next()) {
+            if (e.sym.kind == Kinds.VAR) {
+                //### Should intern fieldName as Name.
+                return env.getFieldDoc((VarSymbol)e.sym);
+            }
+        }
+
+        //### If we found a FieldDoc above, but which did not pass
+        //### the modifier filter, we should return failure here!
+
+        ClassDocImpl cdi = (ClassDocImpl)containingClass();
+        if (cdi != null) {
+            FieldDocImpl fdi = cdi.searchField(fieldName, searched);
+            if (fdi != null) {
+                return fdi;
+            }
+        }
+
+        // search superclass
+        cdi = (ClassDocImpl)superclass();
+        if (cdi != null) {
+            FieldDocImpl fdi = cdi.searchField(fieldName, searched);
+            if (fdi != null) {
+                return fdi;
+            }
+        }
+
+        // search interfaces
+        ClassDoc intf[] = interfaces();
+        for (int i = 0; i < intf.length; i++) {
+            cdi = (ClassDocImpl)intf[i];
+            FieldDocImpl fdi = cdi.searchField(fieldName, searched);
+            if (fdi != null) {
+                return fdi;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get the list of classes declared as imported.
+     * These are called "single-type-import declarations" in the JLS.
+     * This method is deprecated in the ClassDoc interface.
+     *
+     * @return an array of ClassDocImpl representing the imported classes.
+     *
+     * @deprecated  Import declarations are implementation details that
+     *          should not be exposed here.  In addition, not all imported
+     *          classes are imported through single-type-import declarations.
+     */
+    @Deprecated
+    public ClassDoc[] importedClasses() {
+        // information is not available for binary classfiles
+        if (tsym.sourcefile == null) return new ClassDoc[0];
+
+        ListBuffer<ClassDocImpl> importedClasses = new ListBuffer<ClassDocImpl>();
+
+        Env<AttrContext> compenv = env.enter.getEnv(tsym);
+        if (compenv == null) return new ClassDocImpl[0];
+
+        Name asterisk = tsym.name.table.names.asterisk;
+        for (JCTree t : compenv.toplevel.defs) {
+            if (t.hasTag(IMPORT)) {
+                JCTree imp = ((JCImport) t).qualid;
+                if ((TreeInfo.name(imp) != asterisk) &&
+                        (imp.type.tsym.kind & Kinds.TYP) != 0) {
+                    importedClasses.append(
+                            env.getClassDoc((ClassSymbol)imp.type.tsym));
+                }
+            }
+        }
+
+        return importedClasses.toArray(new ClassDocImpl[importedClasses.length()]);
+    }
+
+    /**
+     * Get the list of packages declared as imported.
+     * These are called "type-import-on-demand declarations" in the JLS.
+     * This method is deprecated in the ClassDoc interface.
+     *
+     * @return an array of PackageDocImpl representing the imported packages.
+     *
+     * ###NOTE: the syntax supports importing all inner classes from a class as well.
+     * @deprecated  Import declarations are implementation details that
+     *          should not be exposed here.  In addition, this method's
+     *          return type does not allow for all type-import-on-demand
+     *          declarations to be returned.
+     */
+    @Deprecated
+    public PackageDoc[] importedPackages() {
+        // information is not available for binary classfiles
+        if (tsym.sourcefile == null) return new PackageDoc[0];
+
+        ListBuffer<PackageDocImpl> importedPackages = new ListBuffer<PackageDocImpl>();
+
+        //### Add the implicit "import java.lang.*" to the result
+        Names names = tsym.name.table.names;
+        importedPackages.append(env.getPackageDoc(env.reader.enterPackage(names.java_lang)));
+
+        Env<AttrContext> compenv = env.enter.getEnv(tsym);
+        if (compenv == null) return new PackageDocImpl[0];
+
+        for (JCTree t : compenv.toplevel.defs) {
+            if (t.hasTag(IMPORT)) {
+                JCTree imp = ((JCImport) t).qualid;
+                if (TreeInfo.name(imp) == names.asterisk) {
+                    JCFieldAccess sel = (JCFieldAccess)imp;
+                    Symbol s = sel.selected.type.tsym;
+                    PackageDocImpl pdoc = env.getPackageDoc(s.packge());
+                    if (!importedPackages.contains(pdoc))
+                        importedPackages.append(pdoc);
+                }
+            }
+        }
+
+        return importedPackages.toArray(new PackageDocImpl[importedPackages.length()]);
+    }
+
+    /**
+     * Return the type's dimension information.
+     * Always return "", as this is not an array type.
+     */
+    public String dimension() {
+        return "";
+    }
+
+    /**
+     * Return this type as a class, which it already is.
+     */
+    public ClassDoc asClassDoc() {
+        return this;
+    }
+
+    /**
+     * Return null (unless overridden), as this is not an annotation type.
+     */
+    public AnnotationTypeDoc asAnnotationTypeDoc() {
+        return null;
+    }
+
+    /**
+     * Return null, as this is not a class instantiation.
+     */
+    public ParameterizedType asParameterizedType() {
+        return null;
+    }
+
+    /**
+     * Return null, as this is not a type variable.
+     */
+    public TypeVariable asTypeVariable() {
+        return null;
+    }
+
+    /**
+     * Return null, as this is not a wildcard type.
+     */
+    public WildcardType asWildcardType() {
+        return null;
+    }
+
+    /**
+     * Returns null, as this is not an annotated type.
+     */
+    public AnnotatedType asAnnotatedType() {
+        return null;
+    }
+
+    /**
+     * Return false, as this is not a primitive type.
+     */
+    public boolean isPrimitive() {
+        return false;
+    }
+
+    //--- Serialization ---
+
+    //### These methods ignore modifier filter.
+
+    /**
+     * Return true if this class implements <code>java.io.Serializable</code>.
+     *
+     * Since <code>java.io.Externalizable</code> extends
+     * <code>java.io.Serializable</code>,
+     * Externalizable objects are also Serializable.
+     */
+    public boolean isSerializable() {
+        try {
+            return env.types.isSubtype(type, env.syms.serializableType);
+        } catch (CompletionFailure ex) {
+            // quietly ignore completion failures
+            return false;
+        }
+    }
+
+    /**
+     * Return true if this class implements
+     * <code>java.io.Externalizable</code>.
+     */
+    public boolean isExternalizable() {
+        try {
+            return env.types.isSubtype(type, env.externalizableSym.type);
+        } catch (CompletionFailure ex) {
+            // quietly ignore completion failures
+            return false;
+        }
+    }
+
+    /**
+     * Return the serialization methods for this class.
+     *
+     * @return an array of <code>MethodDocImpl</code> that represents
+     * the serialization methods for this class.
+     */
+    public MethodDoc[] serializationMethods() {
+        if (serializedForm == null) {
+            serializedForm = new SerializedForm(env, tsym, this);
+        }
+        //### Clone this?
+        return serializedForm.methods();
+    }
+
+    /**
+     * Return the Serializable fields of class.<p>
+     *
+     * Return either a list of default fields documented by
+     * <code>serial</code> tag<br>
+     * or return a single <code>FieldDoc</code> for
+     * <code>serialPersistentField</code> member.
+     * There should be a <code>serialField</code> tag for
+     * each Serializable field defined by an <code>ObjectStreamField</code>
+     * array component of <code>serialPersistentField</code>.
+     *
+     * @returns an array of <code>FieldDoc</code> for the Serializable fields
+     * of this class.
+     *
+     * @see #definesSerializableFields()
+     * @see SerialFieldTagImpl
+     */
+    public FieldDoc[] serializableFields() {
+        if (serializedForm == null) {
+            serializedForm = new SerializedForm(env, tsym, this);
+        }
+        //### Clone this?
+        return serializedForm.fields();
+    }
+
+    /**
+     * Return true if Serializable fields are explicitly defined with
+     * the special class member <code>serialPersistentFields</code>.
+     *
+     * @see #serializableFields()
+     * @see SerialFieldTagImpl
+     */
+    public boolean definesSerializableFields() {
+        if (!isSerializable() || isExternalizable()) {
+            return false;
+        } else {
+            if (serializedForm == null) {
+                serializedForm = new SerializedForm(env, tsym, this);
+            }
+            //### Clone this?
+            return serializedForm.definesSerializableFields();
+        }
+    }
+
+    /**
+     * Determine if a class is a RuntimeException.
+     * <p>
+     * Used only by ThrowsTagImpl.
+     */
+    boolean isRuntimeException() {
+        return tsym.isSubClass(env.syms.runtimeExceptionType.tsym, env.types);
+    }
+
+    /**
+     * Return the source position of the entity, or null if
+     * no position is available.
+     */
+    @Override
+    public SourcePosition position() {
+        if (tsym.sourcefile == null) return null;
+        return SourcePositionImpl.make(tsym.sourcefile,
+                                       (tree==null) ? Position.NOPOS : tree.pos,
+                                       lineMap);
+    }
+}

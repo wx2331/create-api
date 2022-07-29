@@ -1,127 +1,100 @@
-/*    */ package com.sun.tools.javadoc.api;
-/*    */ 
-/*    */ import com.sun.tools.javac.util.ClientCodeException;
-/*    */ import com.sun.tools.javac.util.Context;
-/*    */ import com.sun.tools.javadoc.Start;
-/*    */ import java.util.Collections;
-/*    */ import java.util.Locale;
-/*    */ import java.util.concurrent.atomic.AtomicBoolean;
-/*    */ import javax.tools.DocumentationTool;
-/*    */ import javax.tools.JavaFileObject;
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ public class JavadocTaskImpl
-/*    */   implements DocumentationTool.DocumentationTask
-/*    */ {
-/* 48 */   private final AtomicBoolean used = new AtomicBoolean();
-/*    */   
-/*    */   private final Context context;
-/*    */   
-/*    */   private Class<?> docletClass;
-/*    */   private Iterable<String> options;
-/*    */   private Iterable<? extends JavaFileObject> fileObjects;
-/*    */   private Locale locale;
-/*    */   
-/*    */   public JavadocTaskImpl(Context paramContext, Class<?> paramClass, Iterable<String> paramIterable, Iterable<? extends JavaFileObject> paramIterable1) {
-/* 58 */     this.context = paramContext;
-/* 59 */     this.docletClass = paramClass;
-/*    */     
-/* 61 */     this
-/* 62 */       .options = (paramIterable == null) ? Collections.<String>emptySet() : nullCheck(paramIterable);
-/* 63 */     this
-/* 64 */       .fileObjects = (paramIterable1 == null) ? Collections.<JavaFileObject>emptySet() : nullCheck(paramIterable1);
-/* 65 */     setLocale(Locale.getDefault());
-/*    */   }
-/*    */   
-/*    */   public void setLocale(Locale paramLocale) {
-/* 69 */     if (this.used.get())
-/* 70 */       throw new IllegalStateException(); 
-/* 71 */     this.locale = paramLocale;
-/*    */   }
-/*    */   
-/*    */   public Boolean call() {
-/* 75 */     if (!this.used.getAndSet(true)) {
-/* 76 */       initContext();
-/* 77 */       Start start = new Start(this.context);
-/*    */       try {
-/* 79 */         return Boolean.valueOf(start.begin(this.docletClass, this.options, this.fileObjects));
-/* 80 */       } catch (ClientCodeException clientCodeException) {
-/* 81 */         throw new RuntimeException(clientCodeException.getCause());
-/*    */       } 
-/*    */     } 
-/* 84 */     throw new IllegalStateException("multiple calls to method 'call'");
-/*    */   }
-/*    */ 
-/*    */ 
-/*    */   
-/*    */   private void initContext() {
-/* 90 */     this.context.put(Locale.class, this.locale);
-/*    */   }
-/*    */   
-/*    */   private static <T> Iterable<T> nullCheck(Iterable<T> paramIterable) {
-/*    */     // Byte code:
-/*    */     //   0: aload_0
-/*    */     //   1: invokeinterface iterator : ()Ljava/util/Iterator;
-/*    */     //   6: astore_1
-/*    */     //   7: aload_1
-/*    */     //   8: invokeinterface hasNext : ()Z
-/*    */     //   13: ifeq -> 38
-/*    */     //   16: aload_1
-/*    */     //   17: invokeinterface next : ()Ljava/lang/Object;
-/*    */     //   22: astore_2
-/*    */     //   23: aload_2
-/*    */     //   24: ifnonnull -> 35
-/*    */     //   27: new java/lang/NullPointerException
-/*    */     //   30: dup
-/*    */     //   31: invokespecial <init> : ()V
-/*    */     //   34: athrow
-/*    */     //   35: goto -> 7
-/*    */     //   38: aload_0
-/*    */     //   39: areturn
-/*    */     // Line number table:
-/*    */     //   Java source line number -> byte code offset
-/*    */     //   #94	-> 0
-/*    */     //   #95	-> 23
-/*    */     //   #96	-> 27
-/*    */     //   #97	-> 35
-/*    */     //   #98	-> 38
-/*    */   }
-/*    */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javadoc\api\JavadocTaskImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+package com.sun.tools.javadoc.api;
+
+import com.sun.tools.javac.util.ClientCodeException;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import javax.tools.DocumentationTool.DocumentationTask;
+import javax.tools.JavaFileObject;
+
+import com.sun.tools.javac.util.Context;
+import com.sun.tools.javadoc.Start;
+import java.util.Collections;
+
+/**
+ * Provides access to functionality specific to the JDK documentation tool,
+ * javadoc.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own
+ * risk.  This code and its internal interfaces are subject to change
+ * or deletion without notice.</b></p>
+ */
+public class JavadocTaskImpl implements DocumentationTask {
+    private final AtomicBoolean used = new AtomicBoolean();
+
+    private final Context context;
+    private Class<?> docletClass;
+    private Iterable<String> options;
+    private Iterable<? extends JavaFileObject> fileObjects;
+    private Locale locale;
+
+    public JavadocTaskImpl(Context context, Class<?> docletClass,
+            Iterable<String> options, Iterable<? extends JavaFileObject> fileObjects) {
+        this.context = context;
+        this.docletClass = docletClass;
+
+        this.options = (options == null) ? Collections.<String>emptySet()
+                : nullCheck(options);
+        this.fileObjects = (fileObjects == null) ? Collections.<JavaFileObject>emptySet()
+                : nullCheck(fileObjects);
+        setLocale(Locale.getDefault());
+    }
+
+    public void setLocale(Locale locale) {
+        if (used.get())
+            throw new IllegalStateException();
+        this.locale = locale;
+    }
+
+    public Boolean call() {
+        if (!used.getAndSet(true)) {
+            initContext();
+            Start jdoc = new Start(context);
+            try {
+                return jdoc.begin(docletClass, options, fileObjects);
+            } catch (ClientCodeException e) {
+                throw new RuntimeException(e.getCause());
+            }
+        } else {
+            throw new IllegalStateException("multiple calls to method 'call'");
+        }
+    }
+
+    private void initContext() {
+        //initialize compiler's default locale
+        context.put(Locale.class, locale);
+    }
+
+    private static <T> Iterable<T> nullCheck(Iterable<T> items) {
+        for (T item: items) {
+            if (item == null)
+                throw new NullPointerException();
+        }
+        return items;
+    }
+}

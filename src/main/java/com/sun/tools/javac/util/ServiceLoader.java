@@ -1,442 +1,437 @@
-/*     */ package com.sun.tools.javac.util;
-/*     */ 
-/*     */ import java.io.BufferedReader;
-/*     */ import java.io.IOException;
-/*     */ import java.io.InputStream;
-/*     */ import java.io.InputStreamReader;
-/*     */ import java.net.URL;
-/*     */ import java.net.URLConnection;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Enumeration;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.LinkedHashMap;
-/*     */ import java.util.List;
-/*     */ import java.util.Map;
-/*     */ import java.util.NoSuchElementException;
-/*     */ import java.util.Objects;
-/*     */ import java.util.ServiceConfigurationError;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public final class ServiceLoader<S>
-/*     */   implements Iterable<S>
-/*     */ {
-/*     */   private static final String PREFIX = "META-INF/services/";
-/*     */   private Class<S> service;
-/*     */   private ClassLoader loader;
-/*  73 */   private LinkedHashMap<String, S> providers = new LinkedHashMap<>();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private LazyIterator lookupIterator;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void reload() {
-/*  90 */     this.providers.clear();
-/*  91 */     this.lookupIterator = new LazyIterator(this.service, this.loader);
-/*     */   }
-/*     */   
-/*     */   private ServiceLoader(Class<S> paramClass, ClassLoader paramClassLoader) {
-/*  95 */     this.service = Objects.<Class<S>>requireNonNull(paramClass, "Service interface cannot be null");
-/*  96 */     this.loader = (paramClassLoader == null) ? ClassLoader.getSystemClassLoader() : paramClassLoader;
-/*  97 */     reload();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static void fail(Class<?> paramClass, String paramString, Throwable paramThrowable) throws ServiceConfigurationError {
-/* 103 */     throw new ServiceConfigurationError(paramClass.getName() + ": " + paramString, paramThrowable);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static void fail(Class<?> paramClass, String paramString) throws ServiceConfigurationError {
-/* 110 */     throw new ServiceConfigurationError(paramClass.getName() + ": " + paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static void fail(Class<?> paramClass, URL paramURL, int paramInt, String paramString) throws ServiceConfigurationError {
-/* 116 */     fail(paramClass, paramURL + ":" + paramInt + ": " + paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private int parseLine(Class<?> paramClass, URL paramURL, BufferedReader paramBufferedReader, int paramInt, List<String> paramList) throws IOException, ServiceConfigurationError {
-/* 126 */     String str = paramBufferedReader.readLine();
-/* 127 */     if (str == null) {
-/* 128 */       return -1;
-/*     */     }
-/* 130 */     int i = str.indexOf('#');
-/* 131 */     if (i >= 0) str = str.substring(0, i); 
-/* 132 */     str = str.trim();
-/* 133 */     int j = str.length();
-/* 134 */     if (j != 0) {
-/* 135 */       if (str.indexOf(' ') >= 0 || str.indexOf('\t') >= 0)
-/* 136 */         fail(paramClass, paramURL, paramInt, "Illegal configuration-file syntax"); 
-/* 137 */       int k = str.codePointAt(0);
-/* 138 */       if (!Character.isJavaIdentifierStart(k))
-/* 139 */         fail(paramClass, paramURL, paramInt, "Illegal provider-class name: " + str);  int m;
-/* 140 */       for (m = Character.charCount(k); m < j; m += Character.charCount(k)) {
-/* 141 */         k = str.codePointAt(m);
-/* 142 */         if (!Character.isJavaIdentifierPart(k) && k != 46)
-/* 143 */           fail(paramClass, paramURL, paramInt, "Illegal provider-class name: " + str); 
-/*     */       } 
-/* 145 */       if (!this.providers.containsKey(str) && !paramList.contains(str))
-/* 146 */         paramList.add(str); 
-/*     */     } 
-/* 148 */     return paramInt + 1;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private Iterator<String> parse(Class<?> paramClass, URL paramURL) throws ServiceConfigurationError {
-/* 171 */     InputStream inputStream = null;
-/* 172 */     BufferedReader bufferedReader = null;
-/* 173 */     ArrayList<String> arrayList = new ArrayList();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */     
-/*     */     try {
-/* 185 */       URLConnection uRLConnection = paramURL.openConnection();
-/* 186 */       uRLConnection.setUseCaches(false);
-/* 187 */       inputStream = uRLConnection.getInputStream();
-/*     */       
-/* 189 */       bufferedReader = new BufferedReader(new InputStreamReader(inputStream, "utf-8"));
-/* 190 */       int i = 1;
-/* 191 */       while ((i = parseLine(paramClass, paramURL, bufferedReader, i, arrayList)) >= 0);
-/* 192 */     } catch (IOException iOException) {
-/* 193 */       fail(paramClass, "Error reading configuration file", iOException);
-/*     */     } finally {
-/*     */       try {
-/* 196 */         if (bufferedReader != null) bufferedReader.close(); 
-/* 197 */         if (inputStream != null) inputStream.close(); 
-/* 198 */       } catch (IOException iOException) {
-/* 199 */         fail(paramClass, "Error closing configuration file", iOException);
-/*     */       } 
-/*     */     } 
-/* 202 */     return arrayList.iterator();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   private class LazyIterator
-/*     */     implements Iterator<S>
-/*     */   {
-/*     */     Class<S> service;
-/*     */     
-/*     */     ClassLoader loader;
-/*     */     
-/* 213 */     Enumeration<URL> configs = null;
-/* 214 */     Iterator<String> pending = null;
-/* 215 */     String nextName = null;
-/*     */     
-/*     */     private LazyIterator(Class<S> param1Class, ClassLoader param1ClassLoader) {
-/* 218 */       this.service = param1Class;
-/* 219 */       this.loader = param1ClassLoader;
-/*     */     }
-/*     */     
-/*     */     public boolean hasNext() {
-/* 223 */       if (this.nextName != null) {
-/* 224 */         return true;
-/*     */       }
-/* 226 */       if (this.configs == null) {
-/*     */         try {
-/* 228 */           String str = "META-INF/services/" + this.service.getName();
-/* 229 */           if (this.loader == null)
-/* 230 */           { this.configs = ClassLoader.getSystemResources(str); }
-/*     */           else
-/* 232 */           { this.configs = this.loader.getResources(str); } 
-/* 233 */         } catch (IOException iOException) {
-/* 234 */           ServiceLoader.fail(this.service, "Error locating configuration files", iOException);
-/*     */         } 
-/*     */       }
-/* 237 */       while (this.pending == null || !this.pending.hasNext()) {
-/* 238 */         if (!this.configs.hasMoreElements()) {
-/* 239 */           return false;
-/*     */         }
-/* 241 */         this.pending = ServiceLoader.this.parse(this.service, this.configs.nextElement());
-/*     */       } 
-/* 243 */       this.nextName = this.pending.next();
-/* 244 */       return true;
-/*     */     }
-/*     */     
-/*     */     public S next() {
-/* 248 */       if (!hasNext()) {
-/* 249 */         throw new NoSuchElementException();
-/*     */       }
-/* 251 */       String str = this.nextName;
-/* 252 */       this.nextName = null;
-/* 253 */       Class<?> clazz = null;
-/*     */       try {
-/* 255 */         clazz = Class.forName(str, false, this.loader);
-/* 256 */       } catch (ClassNotFoundException classNotFoundException) {
-/* 257 */         ServiceLoader.fail(this.service, "Provider " + str + " not found");
-/*     */       } 
-/*     */       
-/* 260 */       if (!this.service.isAssignableFrom(clazz)) {
-/* 261 */         ServiceLoader.fail(this.service, "Provider " + str + " not a subtype");
-/*     */       }
-/*     */       
-/*     */       try {
-/* 265 */         S s = this.service.cast(clazz.newInstance());
-/* 266 */         ServiceLoader.this.providers.put(str, s);
-/* 267 */         return s;
-/* 268 */       } catch (Throwable throwable) {
-/* 269 */         ServiceLoader.fail(this.service, "Provider " + str + " could not be instantiated: " + throwable, throwable);
-/*     */ 
-/*     */ 
-/*     */         
-/* 273 */         throw new Error();
-/*     */       } 
-/*     */     }
-/*     */     public void remove() {
-/* 277 */       throw new UnsupportedOperationException();
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Iterator<S> iterator() {
-/* 323 */     return new Iterator<S>()
-/*     */       {
-/* 325 */         Iterator<Map.Entry<String, S>> knownProviders = ServiceLoader.this
-/* 326 */           .providers.entrySet().iterator();
-/*     */         
-/*     */         public boolean hasNext() {
-/* 329 */           if (this.knownProviders.hasNext())
-/* 330 */             return true; 
-/* 331 */           return ServiceLoader.this.lookupIterator.hasNext();
-/*     */         }
-/*     */         
-/*     */         public S next() {
-/* 335 */           if (this.knownProviders.hasNext())
-/* 336 */             return (S)((Map.Entry)this.knownProviders.next()).getValue(); 
-/* 337 */           return ServiceLoader.this.lookupIterator.next();
-/*     */         }
-/*     */         
-/*     */         public void remove() {
-/* 341 */           throw new UnsupportedOperationException();
-/*     */         }
-/*     */       };
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static <S> ServiceLoader<S> load(Class<S> paramClass, ClassLoader paramClassLoader) {
-/* 365 */     return new ServiceLoader<>(paramClass, paramClassLoader);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static <S> ServiceLoader<S> load(Class<S> paramClass) {
-/* 390 */     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-/* 391 */     return load(paramClass, classLoader);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static <S> ServiceLoader<S> loadInstalled(Class<S> paramClass) {
-/* 419 */     ClassLoader classLoader1 = ClassLoader.getSystemClassLoader();
-/* 420 */     ClassLoader classLoader2 = null;
-/* 421 */     while (classLoader1 != null) {
-/* 422 */       classLoader2 = classLoader1;
-/* 423 */       classLoader1 = classLoader1.getParent();
-/*     */     } 
-/* 425 */     return load(paramClass, classLoader2);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String toString() {
-/* 434 */     return "java.util.ServiceLoader[" + this.service.getName() + "]";
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\java\\util\ServiceLoader.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2005, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.util;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.net.URLConnection;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.ServiceConfigurationError;
+
+
+/**
+ * This is a temporary, modified copy of java.util.ServiceLoader, for use by
+ * javac, to work around bug JDK-8004082.
+ *
+ * The bug describes problems in the interaction between ServiceLoader and
+ * URLClassLoader, such that references to a jar file passed to URLClassLoader
+ * may be retained after calling URLClassLoader.close(), preventing the jar
+ * file from being deleted on Windows.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+
+public final class ServiceLoader<S>
+    implements Iterable<S>
+{
+
+    private static final String PREFIX = "META-INF/services/";
+
+    // The class or interface representing the service being loaded
+    private Class<S> service;
+
+    // The class loader used to locate, load, and instantiate providers
+    private ClassLoader loader;
+
+    // Cached providers, in instantiation order
+    private LinkedHashMap<String,S> providers = new LinkedHashMap<>();
+
+    // The current lazy-lookup iterator
+    private LazyIterator lookupIterator;
+
+    /**
+     * Clear this loader's provider cache so that all providers will be
+     * reloaded.
+     *
+     * <p> After invoking this method, subsequent invocations of the {@link
+     * #iterator() iterator} method will lazily look up and instantiate
+     * providers from scratch, just as is done by a newly-created loader.
+     *
+     * <p> This method is intended for use in situations in which new providers
+     * can be installed into a running Java virtual machine.
+     */
+    public void reload() {
+        providers.clear();
+        lookupIterator = new LazyIterator(service, loader);
+    }
+
+    private ServiceLoader(Class<S> svc, ClassLoader cl) {
+        service = Objects.requireNonNull(svc, "Service interface cannot be null");
+        loader = (cl == null) ? ClassLoader.getSystemClassLoader() : cl;
+        reload();
+    }
+
+    private static void fail(Class<?> service, String msg, Throwable cause)
+        throws ServiceConfigurationError
+    {
+        throw new ServiceConfigurationError(service.getName() + ": " + msg,
+                                            cause);
+    }
+
+    private static void fail(Class<?> service, String msg)
+        throws ServiceConfigurationError
+    {
+        throw new ServiceConfigurationError(service.getName() + ": " + msg);
+    }
+
+    private static void fail(Class<?> service, URL u, int line, String msg)
+        throws ServiceConfigurationError
+    {
+        fail(service, u + ":" + line + ": " + msg);
+    }
+
+    // Parse a single line from the given configuration file, adding the name
+    // on the line to the names list.
+    //
+    private int parseLine(Class<?> service, URL u, BufferedReader r, int lc,
+                          List<String> names)
+        throws IOException, ServiceConfigurationError
+    {
+        String ln = r.readLine();
+        if (ln == null) {
+            return -1;
+        }
+        int ci = ln.indexOf('#');
+        if (ci >= 0) ln = ln.substring(0, ci);
+        ln = ln.trim();
+        int n = ln.length();
+        if (n != 0) {
+            if ((ln.indexOf(' ') >= 0) || (ln.indexOf('\t') >= 0))
+                fail(service, u, lc, "Illegal configuration-file syntax");
+            int cp = ln.codePointAt(0);
+            if (!Character.isJavaIdentifierStart(cp))
+                fail(service, u, lc, "Illegal provider-class name: " + ln);
+            for (int i = Character.charCount(cp); i < n; i += Character.charCount(cp)) {
+                cp = ln.codePointAt(i);
+                if (!Character.isJavaIdentifierPart(cp) && (cp != '.'))
+                    fail(service, u, lc, "Illegal provider-class name: " + ln);
+            }
+            if (!providers.containsKey(ln) && !names.contains(ln))
+                names.add(ln);
+        }
+        return lc + 1;
+    }
+
+    // Parse the content of the given URL as a provider-configuration file.
+    //
+    // @param  service
+    //         The service type for which providers are being sought;
+    //         used to construct error detail strings
+    //
+    // @param  u
+    //         The URL naming the configuration file to be parsed
+    //
+    // @return A (possibly empty) iterator that will yield the provider-class
+    //         names in the given configuration file that are not yet members
+    //         of the returned set
+    //
+    // @throws ServiceConfigurationError
+    //         If an I/O error occurs while reading from the given URL, or
+    //         if a configuration-file format error is detected
+    //
+    private Iterator<String> parse(Class<?> service, URL u)
+        throws ServiceConfigurationError
+    {
+        InputStream in = null;
+        BufferedReader r = null;
+        ArrayList<String> names = new ArrayList<>();
+        try {
+            // The problem is that by default, streams opened with
+            // u.openInputStream use a cached reference to a JarFile, which
+            // is separate from the reference used by URLClassLoader, and
+            // which is not closed by URLClassLoader.close().
+            // The workaround is to disable caching for this specific jar file,
+            // so that the reference to the jar file can be closed when the
+            // file has been read.
+            // Original code:
+            // in = u.openStream();
+            // Workaround ...
+            URLConnection uc = u.openConnection();
+            uc.setUseCaches(false);
+            in = uc.getInputStream();
+            // ... end of workaround.
+            r = new BufferedReader(new InputStreamReader(in, "utf-8"));
+            int lc = 1;
+            while ((lc = parseLine(service, u, r, lc, names)) >= 0);
+        } catch (IOException x) {
+            fail(service, "Error reading configuration file", x);
+        } finally {
+            try {
+                if (r != null) r.close();
+                if (in != null) in.close();
+            } catch (IOException y) {
+                fail(service, "Error closing configuration file", y);
+            }
+        }
+        return names.iterator();
+    }
+
+    // Private inner class implementing fully-lazy provider lookup
+    //
+    private class LazyIterator
+        implements Iterator<S>
+    {
+
+        Class<S> service;
+        ClassLoader loader;
+        Enumeration<URL> configs = null;
+        Iterator<String> pending = null;
+        String nextName = null;
+
+        private LazyIterator(Class<S> service, ClassLoader loader) {
+            this.service = service;
+            this.loader = loader;
+        }
+
+        public boolean hasNext() {
+            if (nextName != null) {
+                return true;
+            }
+            if (configs == null) {
+                try {
+                    String fullName = PREFIX + service.getName();
+                    if (loader == null)
+                        configs = ClassLoader.getSystemResources(fullName);
+                    else
+                        configs = loader.getResources(fullName);
+                } catch (IOException x) {
+                    fail(service, "Error locating configuration files", x);
+                }
+            }
+            while ((pending == null) || !pending.hasNext()) {
+                if (!configs.hasMoreElements()) {
+                    return false;
+                }
+                pending = parse(service, configs.nextElement());
+            }
+            nextName = pending.next();
+            return true;
+        }
+
+        public S next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            String cn = nextName;
+            nextName = null;
+            Class<?> c = null;
+            try {
+                c = Class.forName(cn, false, loader);
+            } catch (ClassNotFoundException x) {
+                fail(service,
+                     "Provider " + cn + " not found");
+            }
+            if (!service.isAssignableFrom(c)) {
+                fail(service,
+                     "Provider " + cn  + " not a subtype");
+            }
+            try {
+                S p = service.cast(c.newInstance());
+                providers.put(cn, p);
+                return p;
+            } catch (Throwable x) {
+                fail(service,
+                     "Provider " + cn + " could not be instantiated: " + x,
+                     x);
+            }
+            throw new Error();          // This cannot happen
+        }
+
+        public void remove() {
+            throw new UnsupportedOperationException();
+        }
+
+    }
+
+    /**
+     * Lazily loads the available providers of this loader's service.
+     *
+     * <p> The iterator returned by this method first yields all of the
+     * elements of the provider cache, in instantiation order.  It then lazily
+     * loads and instantiates any remaining providers, adding each one to the
+     * cache in turn.
+     *
+     * <p> To achieve laziness the actual work of parsing the available
+     * provider-configuration files and instantiating providers must be done by
+     * the iterator itself.  Its {@link Iterator#hasNext hasNext} and
+     * {@link Iterator#next next} methods can therefore throw a
+     * {@link ServiceConfigurationError} if a provider-configuration file
+     * violates the specified format, or if it names a provider class that
+     * cannot be found and instantiated, or if the result of instantiating the
+     * class is not assignable to the service type, or if any other kind of
+     * exception or error is thrown as the next provider is located and
+     * instantiated.  To write robust code it is only necessary to catch {@link
+     * ServiceConfigurationError} when using a service iterator.
+     *
+     * <p> If such an error is thrown then subsequent invocations of the
+     * iterator will make a best effort to locate and instantiate the next
+     * available provider, but in general such recovery cannot be guaranteed.
+     *
+     * <blockquote style="font-size: smaller; line-height: 1.2"><span
+     * style="padding-right: 1em; font-weight: bold">Design Note</span>
+     * Throwing an error in these cases may seem extreme.  The rationale for
+     * this behavior is that a malformed provider-configuration file, like a
+     * malformed class file, indicates a serious problem with the way the Java
+     * virtual machine is configured or is being used.  As such it is
+     * preferable to throw an error rather than try to recover or, even worse,
+     * fail silently.</blockquote>
+     *
+     * <p> The iterator returned by this method does not support removal.
+     * Invoking its {@link Iterator#remove() remove} method will
+     * cause an {@link UnsupportedOperationException} to be thrown.
+     *
+     * @return  An iterator that lazily loads providers for this loader's
+     *          service
+     */
+    public Iterator<S> iterator() {
+        return new Iterator<S>() {
+
+            Iterator<Map.Entry<String,S>> knownProviders
+                = providers.entrySet().iterator();
+
+            public boolean hasNext() {
+                if (knownProviders.hasNext())
+                    return true;
+                return lookupIterator.hasNext();
+            }
+
+            public S next() {
+                if (knownProviders.hasNext())
+                    return knownProviders.next().getValue();
+                return lookupIterator.next();
+            }
+
+            public void remove() {
+                throw new UnsupportedOperationException();
+            }
+
+        };
+    }
+
+    /**
+     * Creates a new service loader for the given service type and class
+     * loader.
+     *
+     * @param  service
+     *         The interface or abstract class representing the service
+     *
+     * @param  loader
+     *         The class loader to be used to load provider-configuration files
+     *         and provider classes, or <tt>null</tt> if the system class
+     *         loader (or, failing that, the bootstrap class loader) is to be
+     *         used
+     *
+     * @return A new service loader
+     */
+    public static <S> ServiceLoader<S> load(Class<S> service,
+                                            ClassLoader loader)
+    {
+        return new ServiceLoader<>(service, loader);
+    }
+
+    /**
+     * Creates a new service loader for the given service type, using the
+     * current thread's {@linkplain Thread#getContextClassLoader
+     * context class loader}.
+     *
+     * <p> An invocation of this convenience method of the form
+     *
+     * <blockquote><pre>
+     * ServiceLoader.load(<i>service</i>)</pre></blockquote>
+     *
+     * is equivalent to
+     *
+     * <blockquote><pre>
+     * ServiceLoader.load(<i>service</i>,
+     *                    Thread.currentThread().getContextClassLoader())</pre></blockquote>
+     *
+     * @param  service
+     *         The interface or abstract class representing the service
+     *
+     * @return A new service loader
+     */
+    public static <S> ServiceLoader<S> load(Class<S> service) {
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        return ServiceLoader.load(service, cl);
+    }
+
+    /**
+     * Creates a new service loader for the given service type, using the
+     * extension class loader.
+     *
+     * <p> This convenience method simply locates the extension class loader,
+     * call it <tt><i>extClassLoader</i></tt>, and then returns
+     *
+     * <blockquote><pre>
+     * ServiceLoader.load(<i>service</i>, <i>extClassLoader</i>)</pre></blockquote>
+     *
+     * <p> If the extension class loader cannot be found then the system class
+     * loader is used; if there is no system class loader then the bootstrap
+     * class loader is used.
+     *
+     * <p> This method is intended for use when only installed providers are
+     * desired.  The resulting service will only find and load providers that
+     * have been installed into the current Java virtual machine; providers on
+     * the application's class path will be ignored.
+     *
+     * @param  service
+     *         The interface or abstract class representing the service
+     *
+     * @return A new service loader
+     */
+    public static <S> ServiceLoader<S> loadInstalled(Class<S> service) {
+        ClassLoader cl = ClassLoader.getSystemClassLoader();
+        ClassLoader prev = null;
+        while (cl != null) {
+            prev = cl;
+            cl = cl.getParent();
+        }
+        return ServiceLoader.load(service, prev);
+    }
+
+    /**
+     * Returns a string describing this service.
+     *
+     * @return  A descriptive string
+     */
+    public String toString() {
+        return "java.util.ServiceLoader[" + service.getName() + "]";
+    }
+
+}

@@ -1,283 +1,279 @@
-/*     */ package com.sun.tools.javadoc;
-/*     */ 
-/*     */ import com.sun.javadoc.FieldDoc;
-/*     */ import com.sun.javadoc.SerialFieldTag;
-/*     */ import com.sun.javadoc.SourcePosition;
-/*     */ import com.sun.javadoc.Type;
-/*     */ import com.sun.source.util.TreePath;
-/*     */ import com.sun.tools.javac.code.Symbol;
-/*     */ import com.sun.tools.javac.code.TypeTag;
-/*     */ import java.lang.reflect.Modifier;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class FieldDocImpl
-/*     */   extends MemberDocImpl
-/*     */   implements FieldDoc
-/*     */ {
-/*     */   protected final Symbol.VarSymbol sym;
-/*     */   private String name;
-/*     */   private String qualifiedName;
-/*     */   
-/*     */   public FieldDocImpl(DocEnv paramDocEnv, Symbol.VarSymbol paramVarSymbol, TreePath paramTreePath) {
-/*  62 */     super(paramDocEnv, (Symbol)paramVarSymbol, paramTreePath);
-/*  63 */     this.sym = paramVarSymbol;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public FieldDocImpl(DocEnv paramDocEnv, Symbol.VarSymbol paramVarSymbol) {
-/*  70 */     this(paramDocEnv, paramVarSymbol, (TreePath)null);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected long getFlags() {
-/*  77 */     return this.sym.flags();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Symbol.ClassSymbol getContainingClass() {
-/*  84 */     return this.sym.enclClass();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Type type() {
-/*  91 */     return TypeMaker.getType(this.env, this.sym.type, false);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Object constantValue() {
-/* 102 */     Object object = this.sym.getConstValue();
-/* 103 */     if (object != null && this.sym.type.hasTag(TypeTag.BOOLEAN))
-/*     */     {
-/* 105 */       object = Boolean.valueOf((((Integer)object).intValue() != 0)); } 
-/* 106 */     return object;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String constantValueExpression() {
-/* 118 */     return constantValueExpression(constantValue());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   static String constantValueExpression(Object paramObject) {
-/* 125 */     if (paramObject == null) return null; 
-/* 126 */     if (paramObject instanceof Character) return sourceForm(((Character)paramObject).charValue()); 
-/* 127 */     if (paramObject instanceof Byte) return sourceForm(((Byte)paramObject).byteValue()); 
-/* 128 */     if (paramObject instanceof String) return sourceForm((String)paramObject); 
-/* 129 */     if (paramObject instanceof Double) return sourceForm(((Double)paramObject).doubleValue(), 'd'); 
-/* 130 */     if (paramObject instanceof Float) return sourceForm(((Float)paramObject).doubleValue(), 'f'); 
-/* 131 */     if (paramObject instanceof Long) return paramObject + "L"; 
-/* 132 */     return paramObject.toString();
-/*     */   }
-/*     */   
-/*     */   private static String sourceForm(double paramDouble, char paramChar) {
-/* 136 */     if (Double.isNaN(paramDouble))
-/* 137 */       return "0" + paramChar + "/0" + paramChar; 
-/* 138 */     if (paramDouble == Double.POSITIVE_INFINITY)
-/* 139 */       return "1" + paramChar + "/0" + paramChar; 
-/* 140 */     if (paramDouble == Double.NEGATIVE_INFINITY)
-/* 141 */       return "-1" + paramChar + "/0" + paramChar; 
-/* 142 */     return paramDouble + ((paramChar == 'f' || paramChar == 'F') ? ("" + paramChar) : "");
-/*     */   }
-/*     */   private static String sourceForm(char paramChar) {
-/* 145 */     StringBuilder stringBuilder = new StringBuilder(8);
-/* 146 */     stringBuilder.append('\'');
-/* 147 */     sourceChar(paramChar, stringBuilder);
-/* 148 */     stringBuilder.append('\'');
-/* 149 */     return stringBuilder.toString();
-/*     */   }
-/*     */   private static String sourceForm(byte paramByte) {
-/* 152 */     return "0x" + Integer.toString(paramByte & 0xFF, 16);
-/*     */   }
-/*     */   private static String sourceForm(String paramString) {
-/* 155 */     StringBuilder stringBuilder = new StringBuilder(paramString.length() + 5);
-/* 156 */     stringBuilder.append('"');
-/* 157 */     for (byte b = 0; b < paramString.length(); b++) {
-/* 158 */       char c = paramString.charAt(b);
-/* 159 */       sourceChar(c, stringBuilder);
-/*     */     } 
-/* 161 */     stringBuilder.append('"');
-/* 162 */     return stringBuilder.toString();
-/*     */   }
-/*     */   private static void sourceChar(char paramChar, StringBuilder paramStringBuilder) {
-/* 165 */     switch (paramChar) { case '\b':
-/* 166 */         paramStringBuilder.append("\\b"); return;
-/* 167 */       case '\t': paramStringBuilder.append("\\t"); return;
-/* 168 */       case '\n': paramStringBuilder.append("\\n"); return;
-/* 169 */       case '\f': paramStringBuilder.append("\\f"); return;
-/* 170 */       case '\r': paramStringBuilder.append("\\r"); return;
-/* 171 */       case '"': paramStringBuilder.append("\\\""); return;
-/* 172 */       case '\'': paramStringBuilder.append("\\'"); return;
-/* 173 */       case '\\': paramStringBuilder.append("\\\\"); return; }
-/*     */     
-/* 175 */     if (isPrintableAscii(paramChar)) {
-/* 176 */       paramStringBuilder.append(paramChar); return;
-/*     */     } 
-/* 178 */     unicodeEscape(paramChar, paramStringBuilder);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static void unicodeEscape(char paramChar, StringBuilder paramStringBuilder) {
-/* 184 */     paramStringBuilder.append("\\u");
-/* 185 */     paramStringBuilder.append("0123456789abcdef".charAt(0xF & paramChar >> 12));
-/* 186 */     paramStringBuilder.append("0123456789abcdef".charAt(0xF & paramChar >> 8));
-/* 187 */     paramStringBuilder.append("0123456789abcdef".charAt(0xF & paramChar >> 4));
-/* 188 */     paramStringBuilder.append("0123456789abcdef".charAt(0xF & paramChar >> 0));
-/*     */   }
-/*     */   private static boolean isPrintableAscii(char paramChar) {
-/* 191 */     return (paramChar >= ' ' && paramChar <= '~');
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isIncluded() {
-/* 198 */     return (containingClass().isIncluded() && this.env.shouldDocument(this.sym));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isField() {
-/* 206 */     return !isEnumConstant();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isEnumConstant() {
-/* 215 */     return ((getFlags() & 0x4000L) != 0L && !this.env.legacyDoclet);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isTransient() {
-/* 223 */     return Modifier.isTransient(getModifiers());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isVolatile() {
-/* 230 */     return Modifier.isVolatile(getModifiers());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isSynthetic() {
-/* 237 */     return ((getFlags() & 0x1000L) != 0L);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public SerialFieldTag[] serialFieldTags() {
-/* 247 */     return comment().serialFieldTags();
-/*     */   }
-/*     */   
-/*     */   public String name() {
-/* 251 */     if (this.name == null) {
-/* 252 */       this.name = this.sym.name.toString();
-/*     */     }
-/* 254 */     return this.name;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String qualifiedName() {
-/* 260 */     if (this.qualifiedName == null) {
-/* 261 */       this.qualifiedName = this.sym.enclClass().getQualifiedName() + "." + name();
-/*     */     }
-/* 263 */     return this.qualifiedName;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public SourcePosition position() {
-/* 274 */     if ((this.sym.enclClass()).sourcefile == null) return null; 
-/* 275 */     return SourcePositionImpl.make((this.sym.enclClass()).sourcefile, (this.tree == null) ? 0 : this.tree.pos, this.lineMap);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javadoc\FieldDocImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javadoc;
+
+import com.sun.source.util.TreePath;
+import java.lang.reflect.Modifier;
+
+import com.sun.javadoc.*;
+
+import com.sun.tools.javac.code.Flags;
+import com.sun.tools.javac.code.Symbol.ClassSymbol;
+import com.sun.tools.javac.code.Symbol.VarSymbol;
+
+import static com.sun.tools.javac.code.TypeTag.BOOLEAN;
+
+/**
+ * Represents a field in a java class.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @see MemberDocImpl
+ *
+ * @since 1.2
+ * @author Robert Field
+ * @author Neal Gafter (rewrite)
+ * @author Scott Seligman (generics, enums, annotations)
+ */
+public class FieldDocImpl extends MemberDocImpl implements FieldDoc {
+
+    protected final VarSymbol sym;
+
+    /**
+     * Constructor.
+     */
+    public FieldDocImpl(DocEnv env, VarSymbol sym, TreePath treePath) {
+        super(env, sym, treePath);
+        this.sym = sym;
+    }
+
+    /**
+     * Constructor.
+     */
+    public FieldDocImpl(DocEnv env, VarSymbol sym) {
+        this(env, sym, null);
+    }
+
+    /**
+     * Returns the flags in terms of javac's flags
+     */
+    protected long getFlags() {
+        return sym.flags();
+    }
+
+    /**
+     * Identify the containing class
+     */
+    protected ClassSymbol getContainingClass() {
+        return sym.enclClass();
+    }
+
+    /**
+     * Get type of this field.
+     */
+    public Type type() {
+        return TypeMaker.getType(env, sym.type, false);
+    }
+
+    /**
+     * Get the value of a constant field.
+     *
+     * @return the value of a constant field. The value is
+     * automatically wrapped in an object if it has a primitive type.
+     * If the field is not constant, returns null.
+     */
+    public Object constantValue() {
+        Object result = sym.getConstValue();
+        if (result != null && sym.type.hasTag(BOOLEAN))
+            // javac represents false and true as Integers 0 and 1
+            result = Boolean.valueOf(((Integer)result).intValue() != 0);
+        return result;
+    }
+
+    /**
+     * Get the value of a constant field.
+     *
+     * @return the text of a Java language expression whose value
+     * is the value of the constant. The expression uses no identifiers
+     * other than primitive literals. If the field is
+     * not constant, returns null.
+     */
+    public String constantValueExpression() {
+        return constantValueExpression(constantValue());
+    }
+
+    /**
+     * A static version of the above.
+     */
+    static String constantValueExpression(Object cb) {
+        if (cb == null) return null;
+        if (cb instanceof Character) return sourceForm(((Character)cb).charValue());
+        if (cb instanceof Byte) return sourceForm(((Byte)cb).byteValue());
+        if (cb instanceof String) return sourceForm((String)cb);
+        if (cb instanceof Double) return sourceForm(((Double)cb).doubleValue(), 'd');
+        if (cb instanceof Float) return sourceForm(((Float)cb).doubleValue(), 'f');
+        if (cb instanceof Long) return cb + "L";
+        return cb.toString(); // covers int, short
+    }
+        // where
+        private static String sourceForm(double v, char suffix) {
+            if (Double.isNaN(v))
+                return "0" + suffix + "/0" + suffix;
+            if (v == Double.POSITIVE_INFINITY)
+                return "1" + suffix + "/0" + suffix;
+            if (v == Double.NEGATIVE_INFINITY)
+                return "-1" + suffix + "/0" + suffix;
+            return v + (suffix == 'f' || suffix == 'F' ? "" + suffix : "");
+        }
+        private static String sourceForm(char c) {
+            StringBuilder buf = new StringBuilder(8);
+            buf.append('\'');
+            sourceChar(c, buf);
+            buf.append('\'');
+            return buf.toString();
+        }
+        private static String sourceForm(byte c) {
+            return "0x" + Integer.toString(c & 0xff, 16);
+        }
+        private static String sourceForm(String s) {
+            StringBuilder buf = new StringBuilder(s.length() + 5);
+            buf.append('\"');
+            for (int i=0; i<s.length(); i++) {
+                char c = s.charAt(i);
+                sourceChar(c, buf);
+            }
+            buf.append('\"');
+            return buf.toString();
+        }
+        private static void sourceChar(char c, StringBuilder buf) {
+            switch (c) {
+            case '\b': buf.append("\\b"); return;
+            case '\t': buf.append("\\t"); return;
+            case '\n': buf.append("\\n"); return;
+            case '\f': buf.append("\\f"); return;
+            case '\r': buf.append("\\r"); return;
+            case '\"': buf.append("\\\""); return;
+            case '\'': buf.append("\\\'"); return;
+            case '\\': buf.append("\\\\"); return;
+            default:
+                if (isPrintableAscii(c)) {
+                    buf.append(c); return;
+                }
+                unicodeEscape(c, buf);
+                return;
+            }
+        }
+        private static void unicodeEscape(char c, StringBuilder buf) {
+            final String chars = "0123456789abcdef";
+            buf.append("\\u");
+            buf.append(chars.charAt(15 & (c>>12)));
+            buf.append(chars.charAt(15 & (c>>8)));
+            buf.append(chars.charAt(15 & (c>>4)));
+            buf.append(chars.charAt(15 & (c>>0)));
+        }
+        private static boolean isPrintableAscii(char c) {
+            return c >= ' ' && c <= '~';
+        }
+
+    /**
+     * Return true if this field is included in the active set.
+     */
+    public boolean isIncluded() {
+        return containingClass().isIncluded() && env.shouldDocument(sym);
+    }
+
+    /**
+     * Is this Doc item a field (but not an enum constant?
+     */
+    @Override
+    public boolean isField() {
+        return !isEnumConstant();
+    }
+
+    /**
+     * Is this Doc item an enum constant?
+     * (For legacy doclets, return false.)
+     */
+    @Override
+    public boolean isEnumConstant() {
+        return (getFlags() & Flags.ENUM) != 0 &&
+               !env.legacyDoclet;
+    }
+
+    /**
+     * Return true if this field is transient
+     */
+    public boolean isTransient() {
+        return Modifier.isTransient(getModifiers());
+    }
+
+    /**
+     * Return true if this field is volatile
+     */
+    public boolean isVolatile() {
+        return Modifier.isVolatile(getModifiers());
+    }
+
+    /**
+     * Returns true if this field was synthesized by the compiler.
+     */
+    public boolean isSynthetic() {
+        return (getFlags() & Flags.SYNTHETIC) != 0;
+    }
+
+    /**
+     * Return the serialField tags in this FieldDocImpl item.
+     *
+     * @return an array of <tt>SerialFieldTagImpl</tt> containing all
+     *         <code>&#64;serialField</code> tags.
+     */
+    public SerialFieldTag[] serialFieldTags() {
+        return comment().serialFieldTags();
+    }
+
+    public String name() {
+        if (name == null) {
+            name = sym.name.toString();
+        }
+        return name;
+    }
+
+    private String name;
+
+    public String qualifiedName() {
+        if (qualifiedName == null) {
+            qualifiedName = sym.enclClass().getQualifiedName() + "." + name();
+        }
+        return qualifiedName;
+    }
+
+    private String qualifiedName;
+
+    /**
+     * Return the source position of the entity, or null if
+     * no position is available.
+     */
+    @Override
+    public SourcePosition position() {
+        if (sym.enclClass().sourcefile == null) return null;
+        return SourcePositionImpl.make(sym.enclClass().sourcefile,
+                                       (tree==null) ? 0 : tree.pos,
+                                       lineMap);
+    }
+}

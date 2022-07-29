@@ -1,765 +1,761 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.taglets;
-/*     */ 
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.Tag;
-/*     */ import com.sun.tools.doclets.Taglet;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.MessageRetriever;
-/*     */ import com.sun.tools.javac.util.StringUtils;
-/*     */ import java.io.File;
-/*     */ import java.lang.reflect.Method;
-/*     */ import java.net.MalformedURLException;
-/*     */ import java.net.URL;
-/*     */ import java.net.URLClassLoader;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.LinkedHashMap;
-/*     */ import java.util.LinkedHashSet;
-/*     */ import java.util.Map;
-/*     */ import java.util.Set;
-/*     */ import javax.tools.DocumentationTool;
-/*     */ import javax.tools.JavaFileManager;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class TagletManager
-/*     */ {
-/*     */   public static final char SIMPLE_TAGLET_OPT_SEPARATOR = ':';
-/*     */   public static final String ALT_SIMPLE_TAGLET_OPT_SEPARATOR = "-";
-/*     */   private LinkedHashMap<String, Taglet> customTags;
-/*     */   private Taglet[] packageTags;
-/*     */   private Taglet[] typeTags;
-/*     */   private Taglet[] fieldTags;
-/*     */   private Taglet[] constructorTags;
-/*     */   private Taglet[] methodTags;
-/*     */   private Taglet[] overviewTags;
-/*     */   private Taglet[] inlineTags;
-/*     */   private Taglet[] serializedFormTags;
-/*     */   private MessageRetriever message;
-/*     */   private Set<String> standardTags;
-/*     */   private Set<String> standardTagsLowercase;
-/*     */   private Set<String> overridenStandardTags;
-/*     */   private Set<String> potentiallyConflictingTags;
-/*     */   private Set<String> unseenCustomTags;
-/*     */   private boolean nosince;
-/*     */   private boolean showversion;
-/*     */   private boolean showauthor;
-/*     */   private boolean javafx;
-/*     */   
-/*     */   public TagletManager(boolean paramBoolean1, boolean paramBoolean2, boolean paramBoolean3, boolean paramBoolean4, MessageRetriever paramMessageRetriever) {
-/* 176 */     this.overridenStandardTags = new HashSet<>();
-/* 177 */     this.potentiallyConflictingTags = new HashSet<>();
-/* 178 */     this.standardTags = new HashSet<>();
-/* 179 */     this.standardTagsLowercase = new HashSet<>();
-/* 180 */     this.unseenCustomTags = new HashSet<>();
-/* 181 */     this.customTags = new LinkedHashMap<>();
-/* 182 */     this.nosince = paramBoolean1;
-/* 183 */     this.showversion = paramBoolean2;
-/* 184 */     this.showauthor = paramBoolean3;
-/* 185 */     this.javafx = paramBoolean4;
-/* 186 */     this.message = paramMessageRetriever;
-/* 187 */     initStandardTaglets();
-/* 188 */     initStandardTagsLowercase();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addCustomTag(Taglet paramTaglet) {
-/* 199 */     if (paramTaglet != null) {
-/* 200 */       String str = paramTaglet.getName();
-/* 201 */       if (this.customTags.containsKey(str)) {
-/* 202 */         this.customTags.remove(str);
-/*     */       }
-/* 204 */       this.customTags.put(str, paramTaglet);
-/* 205 */       checkTagName(str);
-/*     */     } 
-/*     */   }
-/*     */   
-/*     */   public Set<String> getCustomTagNames() {
-/* 210 */     return this.customTags.keySet();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addCustomTag(String paramString1, JavaFileManager paramJavaFileManager, String paramString2) {
-/*     */     try {
-/*     */       ClassLoader classLoader;
-/* 221 */       Class<?> clazz = null;
-/*     */       
-/* 223 */       String str = null;
-/*     */ 
-/*     */       
-/* 226 */       if (paramJavaFileManager != null && paramJavaFileManager.hasLocation(DocumentationTool.Location.TAGLET_PATH)) {
-/* 227 */         classLoader = paramJavaFileManager.getClassLoader(DocumentationTool.Location.TAGLET_PATH);
-/*     */       } else {
-/*     */         
-/* 230 */         str = appendPath(System.getProperty("env.class.path"), str);
-/* 231 */         str = appendPath(System.getProperty("java.class.path"), str);
-/* 232 */         str = appendPath(paramString2, str);
-/* 233 */         classLoader = new URLClassLoader(pathToURLs(str));
-/*     */       } 
-/*     */       
-/* 236 */       clazz = classLoader.loadClass(paramString1);
-/* 237 */       Method method = clazz.getMethod("register", new Class[] { Map.class });
-/*     */       
-/* 239 */       Object[] arrayOfObject = this.customTags.values().toArray();
-/* 240 */       Taglet taglet = (arrayOfObject != null && arrayOfObject.length > 0) ? (Taglet)arrayOfObject[arrayOfObject.length - 1] : null;
-/*     */       
-/* 242 */       method.invoke(null, new Object[] { this.customTags });
-/* 243 */       arrayOfObject = this.customTags.values().toArray();
-/* 244 */       Object object = (arrayOfObject != null && arrayOfObject.length > 0) ? arrayOfObject[arrayOfObject.length - 1] : null;
-/*     */       
-/* 246 */       if (taglet != object) {
-/*     */ 
-/*     */ 
-/*     */         
-/* 250 */         this.message.notice("doclet.Notice_taglet_registered", new Object[] { paramString1 });
-/* 251 */         if (object != null) {
-/* 252 */           checkTaglet(object);
-/*     */         }
-/*     */       } 
-/* 255 */     } catch (Exception exception) {
-/* 256 */       this.message.error("doclet.Error_taglet_not_registered", new Object[] { exception.getClass().getName(), paramString1 });
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   private String appendPath(String paramString1, String paramString2) {
-/* 262 */     if (paramString1 == null || paramString1.length() == 0)
-/* 263 */       return (paramString2 == null) ? "." : paramString2; 
-/* 264 */     if (paramString2 == null || paramString2.length() == 0) {
-/* 265 */       return paramString1;
-/*     */     }
-/* 267 */     return paramString1 + File.pathSeparator + paramString2;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private URL[] pathToURLs(String paramString) {
-/* 279 */     LinkedHashSet<URL> linkedHashSet = new LinkedHashSet();
-/* 280 */     for (String str : paramString.split(File.pathSeparator)) {
-/* 281 */       if (!str.isEmpty())
-/*     */         try {
-/* 283 */           linkedHashSet.add((new File(str)).getAbsoluteFile().toURI().toURL());
-/* 284 */         } catch (MalformedURLException malformedURLException) {
-/* 285 */           this.message.error("doclet.MalformedURL", new Object[] { str });
-/*     */         }  
-/*     */     } 
-/* 288 */     return linkedHashSet.<URL>toArray(new URL[linkedHashSet.size()]);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addNewSimpleCustomTag(String paramString1, String paramString2, String paramString3) {
-/* 304 */     if (paramString1 == null || paramString3 == null) {
-/*     */       return;
-/*     */     }
-/* 307 */     Taglet taglet = this.customTags.get(paramString1);
-/* 308 */     paramString3 = StringUtils.toLowerCase(paramString3);
-/* 309 */     if (taglet == null || paramString2 != null) {
-/* 310 */       this.customTags.remove(paramString1);
-/* 311 */       this.customTags.put(paramString1, new SimpleTaglet(paramString1, paramString2, paramString3));
-/* 312 */       if (paramString3 != null && paramString3.indexOf('x') == -1) {
-/* 313 */         checkTagName(paramString1);
-/*     */       }
-/*     */     } else {
-/*     */       
-/* 317 */       this.customTags.remove(paramString1);
-/* 318 */       this.customTags.put(paramString1, taglet);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void checkTagName(String paramString) {
-/* 326 */     if (this.standardTags.contains(paramString)) {
-/* 327 */       this.overridenStandardTags.add(paramString);
-/*     */     } else {
-/* 329 */       if (paramString.indexOf('.') == -1) {
-/* 330 */         this.potentiallyConflictingTags.add(paramString);
-/*     */       }
-/* 332 */       this.unseenCustomTags.add(paramString);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void checkTaglet(Object paramObject) {
-/* 341 */     if (paramObject instanceof Taglet) {
-/* 342 */       checkTagName(((Taglet)paramObject).getName());
-/* 343 */     } else if (paramObject instanceof Taglet) {
-/* 344 */       Taglet taglet = (Taglet)paramObject;
-/* 345 */       this.customTags.remove(taglet.getName());
-/* 346 */       this.customTags.put(taglet.getName(), new LegacyTaglet(taglet));
-/* 347 */       checkTagName(taglet.getName());
-/*     */     } else {
-/* 349 */       throw new IllegalArgumentException("Given object is not a taglet.");
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void seenCustomTag(String paramString) {
-/* 359 */     this.unseenCustomTags.remove(paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void checkTags(Doc paramDoc, Tag[] paramArrayOfTag, boolean paramBoolean) {
-/* 369 */     if (paramArrayOfTag == null) {
-/*     */       return;
-/*     */     }
-/*     */     
-/* 373 */     for (byte b = 0; b < paramArrayOfTag.length; b++) {
-/* 374 */       String str = paramArrayOfTag[b].name();
-/* 375 */       if (str.length() > 0 && str.charAt(0) == '@') {
-/* 376 */         str = str.substring(1, str.length());
-/*     */       }
-/* 378 */       if (!this.standardTags.contains(str) && !this.customTags.containsKey(str)) {
-/* 379 */         if (this.standardTagsLowercase.contains(StringUtils.toLowerCase(str))) {
-/* 380 */           this.message.warning(paramArrayOfTag[b].position(), "doclet.UnknownTagLowercase", new Object[] { paramArrayOfTag[b].name() });
-/*     */         } else {
-/*     */           
-/* 383 */           this.message.warning(paramArrayOfTag[b].position(), "doclet.UnknownTag", new Object[] { paramArrayOfTag[b].name() });
-/*     */         } 
-/*     */       } else {
-/*     */         Taglet taglet;
-/*     */         
-/* 388 */         if ((taglet = this.customTags.get(str)) != null) {
-/* 389 */           if (paramBoolean && !taglet.isInlineTag()) {
-/* 390 */             printTagMisuseWarn(taglet, paramArrayOfTag[b], "inline");
-/*     */           }
-/* 392 */           if (paramDoc instanceof com.sun.javadoc.RootDoc && !taglet.inOverview()) {
-/* 393 */             printTagMisuseWarn(taglet, paramArrayOfTag[b], "overview");
-/* 394 */           } else if (paramDoc instanceof com.sun.javadoc.PackageDoc && !taglet.inPackage()) {
-/* 395 */             printTagMisuseWarn(taglet, paramArrayOfTag[b], "package");
-/* 396 */           } else if (paramDoc instanceof com.sun.javadoc.ClassDoc && !taglet.inType()) {
-/* 397 */             printTagMisuseWarn(taglet, paramArrayOfTag[b], "class");
-/* 398 */           } else if (paramDoc instanceof com.sun.javadoc.ConstructorDoc && !taglet.inConstructor()) {
-/* 399 */             printTagMisuseWarn(taglet, paramArrayOfTag[b], "constructor");
-/* 400 */           } else if (paramDoc instanceof com.sun.javadoc.FieldDoc && !taglet.inField()) {
-/* 401 */             printTagMisuseWarn(taglet, paramArrayOfTag[b], "field");
-/* 402 */           } else if (paramDoc instanceof com.sun.javadoc.MethodDoc && !taglet.inMethod()) {
-/* 403 */             printTagMisuseWarn(taglet, paramArrayOfTag[b], "method");
-/*     */           } 
-/*     */         } 
-/*     */       } 
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void printTagMisuseWarn(Taglet paramTaglet, Tag paramTag, String paramString) {
-/* 417 */     LinkedHashSet<String> linkedHashSet = new LinkedHashSet();
-/* 418 */     if (paramTaglet.inOverview()) {
-/* 419 */       linkedHashSet.add("overview");
-/*     */     }
-/* 421 */     if (paramTaglet.inPackage()) {
-/* 422 */       linkedHashSet.add("package");
-/*     */     }
-/* 424 */     if (paramTaglet.inType()) {
-/* 425 */       linkedHashSet.add("class/interface");
-/*     */     }
-/* 427 */     if (paramTaglet.inConstructor()) {
-/* 428 */       linkedHashSet.add("constructor");
-/*     */     }
-/* 430 */     if (paramTaglet.inField()) {
-/* 431 */       linkedHashSet.add("field");
-/*     */     }
-/* 433 */     if (paramTaglet.inMethod()) {
-/* 434 */       linkedHashSet.add("method");
-/*     */     }
-/* 436 */     if (paramTaglet.isInlineTag()) {
-/* 437 */       linkedHashSet.add("inline text");
-/*     */     }
-/* 439 */     String[] arrayOfString = linkedHashSet.<String>toArray(new String[0]);
-/* 440 */     if (arrayOfString == null || arrayOfString.length == 0) {
-/*     */       return;
-/*     */     }
-/*     */     
-/* 444 */     StringBuilder stringBuilder = new StringBuilder();
-/* 445 */     for (byte b = 0; b < arrayOfString.length; b++) {
-/* 446 */       if (b > 0) {
-/* 447 */         stringBuilder.append(", ");
-/*     */       }
-/* 449 */       stringBuilder.append(arrayOfString[b]);
-/*     */     } 
-/* 451 */     this.message.warning(paramTag.position(), "doclet.tag_misuse", new Object[] { "@" + paramTaglet
-/* 452 */           .getName(), paramString, stringBuilder.toString() });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Taglet[] getPackageCustomTaglets() {
-/* 462 */     if (this.packageTags == null) {
-/* 463 */       initCustomTagletArrays();
-/*     */     }
-/* 465 */     return this.packageTags;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Taglet[] getTypeCustomTaglets() {
-/* 475 */     if (this.typeTags == null) {
-/* 476 */       initCustomTagletArrays();
-/*     */     }
-/* 478 */     return this.typeTags;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Taglet[] getInlineCustomTaglets() {
-/* 488 */     if (this.inlineTags == null) {
-/* 489 */       initCustomTagletArrays();
-/*     */     }
-/* 491 */     return this.inlineTags;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Taglet[] getFieldCustomTaglets() {
-/* 501 */     if (this.fieldTags == null) {
-/* 502 */       initCustomTagletArrays();
-/*     */     }
-/* 504 */     return this.fieldTags;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Taglet[] getSerializedFormTaglets() {
-/* 514 */     if (this.serializedFormTags == null) {
-/* 515 */       initCustomTagletArrays();
-/*     */     }
-/* 517 */     return this.serializedFormTags;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Taglet[] getCustomTaglets(Doc paramDoc) {
-/* 525 */     if (paramDoc instanceof com.sun.javadoc.ConstructorDoc)
-/* 526 */       return getConstructorCustomTaglets(); 
-/* 527 */     if (paramDoc instanceof com.sun.javadoc.MethodDoc)
-/* 528 */       return getMethodCustomTaglets(); 
-/* 529 */     if (paramDoc instanceof com.sun.javadoc.FieldDoc)
-/* 530 */       return getFieldCustomTaglets(); 
-/* 531 */     if (paramDoc instanceof com.sun.javadoc.ClassDoc)
-/* 532 */       return getTypeCustomTaglets(); 
-/* 533 */     if (paramDoc instanceof com.sun.javadoc.PackageDoc)
-/* 534 */       return getPackageCustomTaglets(); 
-/* 535 */     if (paramDoc instanceof com.sun.javadoc.RootDoc) {
-/* 536 */       return getOverviewCustomTaglets();
-/*     */     }
-/* 538 */     return null;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Taglet[] getConstructorCustomTaglets() {
-/* 548 */     if (this.constructorTags == null) {
-/* 549 */       initCustomTagletArrays();
-/*     */     }
-/* 551 */     return this.constructorTags;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Taglet[] getMethodCustomTaglets() {
-/* 561 */     if (this.methodTags == null) {
-/* 562 */       initCustomTagletArrays();
-/*     */     }
-/* 564 */     return this.methodTags;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Taglet[] getOverviewCustomTaglets() {
-/* 574 */     if (this.overviewTags == null) {
-/* 575 */       initCustomTagletArrays();
-/*     */     }
-/* 577 */     return this.overviewTags;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void initCustomTagletArrays() {
-/* 584 */     Iterator<Taglet> iterator = this.customTags.values().iterator();
-/* 585 */     ArrayList<Taglet> arrayList1 = new ArrayList(this.customTags.size());
-/* 586 */     ArrayList<Taglet> arrayList2 = new ArrayList(this.customTags.size());
-/* 587 */     ArrayList<Taglet> arrayList3 = new ArrayList(this.customTags.size());
-/* 588 */     ArrayList<Taglet> arrayList4 = new ArrayList(this.customTags.size());
-/* 589 */     ArrayList<Taglet> arrayList5 = new ArrayList(this.customTags.size());
-/* 590 */     ArrayList<Taglet> arrayList6 = new ArrayList(this.customTags.size());
-/* 591 */     ArrayList<Taglet> arrayList7 = new ArrayList(this.customTags.size());
-/* 592 */     ArrayList arrayList = new ArrayList();
-/*     */     
-/* 594 */     while (iterator.hasNext()) {
-/* 595 */       Taglet taglet = iterator.next();
-/* 596 */       if (taglet.inPackage() && !taglet.isInlineTag()) {
-/* 597 */         arrayList1.add(taglet);
-/*     */       }
-/* 599 */       if (taglet.inType() && !taglet.isInlineTag()) {
-/* 600 */         arrayList2.add(taglet);
-/*     */       }
-/* 602 */       if (taglet.inField() && !taglet.isInlineTag()) {
-/* 603 */         arrayList3.add(taglet);
-/*     */       }
-/* 605 */       if (taglet.inConstructor() && !taglet.isInlineTag()) {
-/* 606 */         arrayList4.add(taglet);
-/*     */       }
-/* 608 */       if (taglet.inMethod() && !taglet.isInlineTag()) {
-/* 609 */         arrayList5.add(taglet);
-/*     */       }
-/* 611 */       if (taglet.isInlineTag()) {
-/* 612 */         arrayList6.add(taglet);
-/*     */       }
-/* 614 */       if (taglet.inOverview() && !taglet.isInlineTag()) {
-/* 615 */         arrayList7.add(taglet);
-/*     */       }
-/*     */     } 
-/* 618 */     this.packageTags = arrayList1.<Taglet>toArray(new Taglet[0]);
-/* 619 */     this.typeTags = arrayList2.<Taglet>toArray(new Taglet[0]);
-/* 620 */     this.fieldTags = arrayList3.<Taglet>toArray(new Taglet[0]);
-/* 621 */     this.constructorTags = arrayList4.<Taglet>toArray(new Taglet[0]);
-/* 622 */     this.methodTags = arrayList5.<Taglet>toArray(new Taglet[0]);
-/* 623 */     this.overviewTags = arrayList7.<Taglet>toArray(new Taglet[0]);
-/* 624 */     this.inlineTags = arrayList6.<Taglet>toArray(new Taglet[0]);
-/*     */ 
-/*     */     
-/* 627 */     arrayList.add(this.customTags.get("serialData"));
-/* 628 */     arrayList.add(this.customTags.get("throws"));
-/* 629 */     if (!this.nosince)
-/* 630 */       arrayList.add(this.customTags.get("since")); 
-/* 631 */     arrayList.add(this.customTags.get("see"));
-/* 632 */     this.serializedFormTags = (Taglet[])arrayList.toArray((Object[])new Taglet[0]);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void initStandardTaglets() {
-/* 639 */     if (this.javafx) {
-/* 640 */       initJavaFXTaglets();
-/*     */     }
-/*     */ 
-/*     */     
-/* 644 */     addStandardTaglet(new ParamTaglet());
-/* 645 */     addStandardTaglet(new ReturnTaglet());
-/* 646 */     addStandardTaglet(new ThrowsTaglet());
-/* 647 */     addStandardTaglet(new SimpleTaglet("exception", null, "mc"));
-/*     */     
-/* 649 */     addStandardTaglet(!this.nosince, new SimpleTaglet("since", this.message.getText("doclet.Since", new Object[0]), "a"));
-/*     */     
-/* 651 */     addStandardTaglet(this.showversion, new SimpleTaglet("version", this.message.getText("doclet.Version", new Object[0]), "pto"));
-/*     */     
-/* 653 */     addStandardTaglet(this.showauthor, new SimpleTaglet("author", this.message.getText("doclet.Author", new Object[0]), "pto"));
-/*     */     
-/* 655 */     addStandardTaglet(new SimpleTaglet("serialData", this.message.getText("doclet.SerialData", new Object[0]), "x"));
-/*     */     SimpleTaglet simpleTaglet;
-/* 657 */     this.customTags.put((simpleTaglet = new SimpleTaglet("factory", this.message.getText("doclet.Factory", new Object[0]), "m"))
-/* 658 */         .getName(), simpleTaglet);
-/* 659 */     addStandardTaglet(new SeeTaglet());
-/*     */     
-/* 661 */     addStandardTaglet(new DocRootTaglet());
-/* 662 */     addStandardTaglet(new InheritDocTaglet());
-/* 663 */     addStandardTaglet(new ValueTaglet());
-/* 664 */     addStandardTaglet(new LiteralTaglet());
-/* 665 */     addStandardTaglet(new CodeTaglet());
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */     
-/* 670 */     this.standardTags.add("deprecated");
-/* 671 */     this.standardTags.add("link");
-/* 672 */     this.standardTags.add("linkplain");
-/* 673 */     this.standardTags.add("serial");
-/* 674 */     this.standardTags.add("serialField");
-/* 675 */     this.standardTags.add("Text");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void initJavaFXTaglets() {
-/* 682 */     addStandardTaglet(new PropertyGetterTaglet());
-/* 683 */     addStandardTaglet(new PropertySetterTaglet());
-/* 684 */     addStandardTaglet(new SimpleTaglet("propertyDescription", this.message
-/* 685 */           .getText("doclet.PropertyDescription", new Object[0]), "fm"));
-/*     */     
-/* 687 */     addStandardTaglet(new SimpleTaglet("defaultValue", this.message.getText("doclet.DefaultValue", new Object[0]), "fm"));
-/*     */     
-/* 689 */     addStandardTaglet(new SimpleTaglet("treatAsPrivate", null, "fmt"));
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   void addStandardTaglet(Taglet paramTaglet) {
-/* 694 */     String str = paramTaglet.getName();
-/* 695 */     this.customTags.put(str, paramTaglet);
-/* 696 */     this.standardTags.add(str);
-/*     */   }
-/*     */   
-/*     */   void addStandardTaglet(boolean paramBoolean, Taglet paramTaglet) {
-/* 700 */     String str = paramTaglet.getName();
-/* 701 */     if (paramBoolean)
-/* 702 */       this.customTags.put(str, paramTaglet); 
-/* 703 */     this.standardTags.add(str);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void initStandardTagsLowercase() {
-/* 710 */     Iterator<String> iterator = this.standardTags.iterator();
-/* 711 */     while (iterator.hasNext()) {
-/* 712 */       this.standardTagsLowercase.add(StringUtils.toLowerCase(iterator.next()));
-/*     */     }
-/*     */   }
-/*     */   
-/*     */   public boolean isKnownCustomTag(String paramString) {
-/* 717 */     return this.customTags.containsKey(paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void printReport() {
-/* 726 */     printReportHelper("doclet.Notice_taglet_conflict_warn", this.potentiallyConflictingTags);
-/* 727 */     printReportHelper("doclet.Notice_taglet_overriden", this.overridenStandardTags);
-/* 728 */     printReportHelper("doclet.Notice_taglet_unseen", this.unseenCustomTags);
-/*     */   }
-/*     */   
-/*     */   private void printReportHelper(String paramString, Set<String> paramSet) {
-/* 732 */     if (paramSet.size() > 0) {
-/* 733 */       String[] arrayOfString = paramSet.<String>toArray(new String[0]);
-/* 734 */       String str = " ";
-/* 735 */       for (byte b = 0; b < arrayOfString.length; b++) {
-/* 736 */         str = str + "@" + arrayOfString[b];
-/* 737 */         if (b + 1 < arrayOfString.length) {
-/* 738 */           str = str + ", ";
-/*     */         }
-/*     */       } 
-/* 741 */       this.message.notice(paramString, new Object[] { str });
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Taglet getTaglet(String paramString) {
-/* 754 */     if (paramString.indexOf("@") == 0) {
-/* 755 */       return this.customTags.get(paramString.substring(1));
-/*     */     }
-/* 757 */     return this.customTags.get(paramString);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolkit\taglets\TagletManager.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2001, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.taglets;
+
+import java.io.*;
+import java.lang.reflect.*;
+import java.net.*;
+import java.util.*;
+
+import javax.tools.DocumentationTool;
+import javax.tools.JavaFileManager;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+import com.sun.tools.javac.util.StringUtils;
+
+/**
+ * Manages the<code>Taglet</code>s used by doclets.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Jamie Ho
+ * @since 1.4
+ */
+
+public class TagletManager {
+
+    /**
+     * The default separator for the simple tag option.
+     */
+    public static final char SIMPLE_TAGLET_OPT_SEPARATOR = ':';
+
+    /**
+     * The alternate separator for simple tag options.  Use this
+     * when you want the default separator to be in the name of the
+     * custom tag.
+     */
+    public static final String ALT_SIMPLE_TAGLET_OPT_SEPARATOR = "-";
+
+    /**
+     * The map of custom tags.
+     */
+    private LinkedHashMap<String,Taglet> customTags;
+
+    /**
+     * The array of custom tags that can appear in packages.
+     */
+    private Taglet[] packageTags;
+
+    /**
+     * The array of custom tags that can appear in classes or interfaces.
+     */
+    private Taglet[] typeTags;
+
+    /**
+     * The array of custom tags that can appear in fields.
+     */
+    private Taglet[] fieldTags;
+
+    /**
+     * The array of custom tags that can appear in constructors.
+     */
+    private Taglet[] constructorTags;
+
+    /**
+     * The array of custom tags that can appear in methods.
+     */
+    private Taglet[] methodTags;
+
+    /**
+     * The array of custom tags that can appear in the overview.
+     */
+    private Taglet[] overviewTags;
+
+    /**
+     * The array of custom tags that can appear in comments.
+     */
+    private Taglet[] inlineTags;
+
+    /**
+     * The array of custom tags that can appear in the serialized form.
+     */
+    private Taglet[] serializedFormTags;
+
+    /**
+     * The message retriever that will be used to print error messages.
+     */
+    private MessageRetriever message;
+
+    /**
+     * Keep track of standard tags.
+     */
+    private Set<String> standardTags;
+
+    /**
+     * Keep track of standard tags in lowercase to compare for better
+     * error messages when a tag like @docRoot is mistakenly spelled
+     * lowercase @docroot.
+     */
+    private Set<String> standardTagsLowercase;
+
+    /**
+     * Keep track of overriden standard tags.
+     */
+    private Set<String> overridenStandardTags;
+
+    /**
+     * Keep track of the tags that may conflict
+     * with standard tags in the future (any custom tag without
+     * a period in its name).
+     */
+    private Set<String> potentiallyConflictingTags;
+
+    /**
+     * The set of unseen custom tags.
+     */
+    private Set<String> unseenCustomTags;
+
+    /**
+     * True if we do not want to use @since tags.
+     */
+    private boolean nosince;
+
+    /**
+     * True if we want to use @version tags.
+     */
+    private boolean showversion;
+
+    /**
+     * True if we want to use @author tags.
+     */
+    private boolean showauthor;
+
+    /**
+     * True if we want to use JavaFX-related tags (@propertyGetter,
+     * @propertySetter, @propertyDescription, @defaultValue, @treatAsPrivate).
+     */
+    private boolean javafx;
+
+    /**
+     * Construct a new <code>TagletManager</code>.
+     * @param nosince true if we do not want to use @since tags.
+     * @param showversion true if we want to use @version tags.
+     * @param showauthor true if we want to use @author tags.
+     * @param message the message retriever to print warnings.
+     */
+    public TagletManager(boolean nosince, boolean showversion,
+                         boolean showauthor, boolean javafx,
+                         MessageRetriever message) {
+        overridenStandardTags = new HashSet<String>();
+        potentiallyConflictingTags = new HashSet<String>();
+        standardTags = new HashSet<String>();
+        standardTagsLowercase = new HashSet<String>();
+        unseenCustomTags = new HashSet<String>();
+        customTags = new LinkedHashMap<String,Taglet>();
+        this.nosince = nosince;
+        this.showversion = showversion;
+        this.showauthor = showauthor;
+        this.javafx = javafx;
+        this.message = message;
+        initStandardTaglets();
+        initStandardTagsLowercase();
+    }
+
+    /**
+     * Add a new <code>CustomTag</code>.  This is used to add a Taglet from within
+     * a Doclet.  No message is printed to indicate that the Taglet is properly
+     * registered because these Taglets are typically added for every execution of the
+     * Doclet.  We don't want to see this type of error message every time.
+     * @param customTag the new <code>CustomTag</code> to add.
+     */
+    public void addCustomTag(Taglet customTag) {
+        if (customTag != null) {
+            String name = customTag.getName();
+            if (customTags.containsKey(name)) {
+                customTags.remove(name);
+            }
+            customTags.put(name, customTag);
+            checkTagName(name);
+        }
+    }
+
+    public Set<String> getCustomTagNames() {
+        return customTags.keySet();
+    }
+
+    /**
+     * Add a new <code>Taglet</code>.  Print a message to indicate whether or not
+     * the Taglet was registered properly.
+     * @param classname  the name of the class representing the custom tag.
+     * @param tagletPath  the path to the class representing the custom tag.
+     */
+    public void addCustomTag(String classname, JavaFileManager fileManager, String tagletPath) {
+        try {
+            Class<?> customTagClass = null;
+            // construct class loader
+            String cpString = null;   // make sure env.class.path defaults to dot
+
+            ClassLoader tagClassLoader;
+            if (fileManager != null && fileManager.hasLocation(DocumentationTool.Location.TAGLET_PATH)) {
+                tagClassLoader = fileManager.getClassLoader(DocumentationTool.Location.TAGLET_PATH);
+            } else {
+                // do prepends to get correct ordering
+                cpString = appendPath(System.getProperty("env.class.path"), cpString);
+                cpString = appendPath(System.getProperty("java.class.path"), cpString);
+                cpString = appendPath(tagletPath, cpString);
+                tagClassLoader = new URLClassLoader(pathToURLs(cpString));
+            }
+
+            customTagClass = tagClassLoader.loadClass(classname);
+            Method meth = customTagClass.getMethod("register",
+                                                   new Class<?>[] {Map.class});
+            Object[] list = customTags.values().toArray();
+            Taglet lastTag = (list != null && list.length > 0)
+                ? (Taglet) list[list.length-1] : null;
+            meth.invoke(null, new Object[] {customTags});
+            list = customTags.values().toArray();
+            Object newLastTag = (list != null&& list.length > 0)
+                ? list[list.length-1] : null;
+            if (lastTag != newLastTag) {
+                //New taglets must always be added to the end of the LinkedHashMap.
+                //If the current and previous last taglet are not equal, that
+                //means a new Taglet has been added.
+                message.notice("doclet.Notice_taglet_registered", classname);
+                if (newLastTag != null) {
+                    checkTaglet(newLastTag);
+                }
+            }
+        } catch (Exception exc) {
+            message.error("doclet.Error_taglet_not_registered", exc.getClass().getName(), classname);
+        }
+
+    }
+
+    private String appendPath(String path1, String path2) {
+        if (path1 == null || path1.length() == 0) {
+            return path2 == null ? "." : path2;
+        } else if (path2 == null || path2.length() == 0) {
+            return path1;
+        } else {
+            return path1  + File.pathSeparator + path2;
+        }
+    }
+
+    /**
+     * Utility method for converting a search path string to an array
+     * of directory and JAR file URLs.
+     *
+     * @param path the search path string
+     * @return the resulting array of directory and JAR file URLs
+     */
+    private URL[] pathToURLs(String path) {
+        Set<URL> urls = new LinkedHashSet<URL>();
+        for (String s: path.split(File.pathSeparator)) {
+            if (s.isEmpty()) continue;
+            try {
+                urls.add(new File(s).getAbsoluteFile().toURI().toURL());
+            } catch (MalformedURLException e) {
+                message.error("doclet.MalformedURL", s);
+            }
+        }
+        return urls.toArray(new URL[urls.size()]);
+    }
+
+
+    /**
+     * Add a new <code>SimpleTaglet</code>.  If this tag already exists
+     * and the header passed as an argument is null, move tag to the back of the
+     * list. If this tag already exists and the header passed as an argument is
+     * not null, overwrite previous tag with new one.  Otherwise, add new
+     * SimpleTaglet to list.
+     * @param tagName the name of this tag
+     * @param header the header to output.
+     * @param locations the possible locations that this tag
+     * can appear in.
+     */
+    public void addNewSimpleCustomTag(String tagName, String header, String locations) {
+        if (tagName == null || locations == null) {
+            return;
+        }
+        Taglet tag = customTags.get(tagName);
+        locations = StringUtils.toLowerCase(locations);
+        if (tag == null || header != null) {
+            customTags.remove(tagName);
+            customTags.put(tagName, new SimpleTaglet(tagName, header, locations));
+            if (locations != null && locations.indexOf('x') == -1) {
+                checkTagName(tagName);
+            }
+        } else {
+            //Move to back
+            customTags.remove(tagName);
+            customTags.put(tagName, tag);
+        }
+    }
+
+    /**
+     * Given a tag name, add it to the set of tags it belongs to.
+     */
+    private void checkTagName(String name) {
+        if (standardTags.contains(name)) {
+            overridenStandardTags.add(name);
+        } else {
+            if (name.indexOf('.') == -1) {
+                potentiallyConflictingTags.add(name);
+            }
+            unseenCustomTags.add(name);
+        }
+    }
+
+    /**
+     * Check the taglet to see if it is a legacy taglet.  Also
+     * check its name for errors.
+     */
+    private void checkTaglet(Object taglet) {
+        if (taglet instanceof Taglet) {
+            checkTagName(((Taglet) taglet).getName());
+        } else if (taglet instanceof com.sun.tools.doclets.Taglet) {
+            com.sun.tools.doclets.Taglet legacyTaglet = (com.sun.tools.doclets.Taglet) taglet;
+            customTags.remove(legacyTaglet.getName());
+            customTags.put(legacyTaglet.getName(), new LegacyTaglet(legacyTaglet));
+            checkTagName(legacyTaglet.getName());
+        } else {
+            throw new IllegalArgumentException("Given object is not a taglet.");
+        }
+    }
+
+    /**
+     * Given a name of a seen custom tag, remove it from the set of unseen
+     * custom tags.
+     * @param name the name of the seen custom tag.
+     */
+    public void seenCustomTag(String name) {
+        unseenCustomTags.remove(name);
+    }
+
+    /**
+     * Given an array of <code>Tag</code>s, check for spelling mistakes.
+     * @param doc the Doc object that holds the tags.
+     * @param tags the list of <code>Tag</code>s to check.
+     * @param areInlineTags true if the array of tags are inline and false otherwise.
+     */
+    public void checkTags(Doc doc, Tag[] tags, boolean areInlineTags) {
+        if (tags == null) {
+            return;
+        }
+        Taglet taglet;
+        for (int i = 0; i < tags.length; i++) {
+            String name = tags[i].name();
+            if (name.length() > 0 && name.charAt(0) == '@') {
+                name = name.substring(1, name.length());
+            }
+            if (! (standardTags.contains(name) || customTags.containsKey(name))) {
+                if (standardTagsLowercase.contains(StringUtils.toLowerCase(name))) {
+                    message.warning(tags[i].position(), "doclet.UnknownTagLowercase", tags[i].name());
+                    continue;
+                } else {
+                    message.warning(tags[i].position(), "doclet.UnknownTag", tags[i].name());
+                    continue;
+                }
+            }
+            //Check if this tag is being used in the wrong location.
+            if ((taglet = customTags.get(name)) != null) {
+                if (areInlineTags && ! taglet.isInlineTag()) {
+                    printTagMisuseWarn(taglet, tags[i], "inline");
+                }
+                if ((doc instanceof RootDoc) && ! taglet.inOverview()) {
+                    printTagMisuseWarn(taglet, tags[i], "overview");
+                } else if ((doc instanceof PackageDoc) && ! taglet.inPackage()) {
+                    printTagMisuseWarn(taglet, tags[i], "package");
+                } else if ((doc instanceof ClassDoc) && ! taglet.inType()) {
+                    printTagMisuseWarn(taglet, tags[i], "class");
+                } else if ((doc instanceof ConstructorDoc) && ! taglet.inConstructor()) {
+                    printTagMisuseWarn(taglet, tags[i], "constructor");
+                } else if ((doc instanceof FieldDoc) && ! taglet.inField()) {
+                    printTagMisuseWarn(taglet, tags[i], "field");
+                } else if ((doc instanceof MethodDoc) && ! taglet.inMethod()) {
+                    printTagMisuseWarn(taglet, tags[i], "method");
+                }
+            }
+        }
+    }
+
+    /**
+     * Given the taglet, the tag and the type of documentation that the tag
+     * was found in, print a tag misuse warning.
+     * @param taglet the taglet representing the misused tag.
+     * @param tag the misused tag.
+     * @param holderType the type of documentation that the misused tag was found in.
+     */
+    private void printTagMisuseWarn(Taglet taglet, Tag tag, String holderType) {
+        Set<String> locationsSet = new LinkedHashSet<String>();
+        if (taglet.inOverview()) {
+            locationsSet.add("overview");
+        }
+        if (taglet.inPackage()) {
+            locationsSet.add("package");
+        }
+        if (taglet.inType()) {
+            locationsSet.add("class/interface");
+        }
+        if (taglet.inConstructor())  {
+            locationsSet.add("constructor");
+        }
+        if (taglet.inField()) {
+            locationsSet.add("field");
+        }
+        if (taglet.inMethod()) {
+            locationsSet.add("method");
+        }
+        if (taglet.isInlineTag()) {
+            locationsSet.add("inline text");
+        }
+        String[] locations = locationsSet.toArray(new String[]{});
+        if (locations == null || locations.length == 0) {
+            //This known tag is excluded.
+            return;
+        }
+        StringBuilder combined_locations = new StringBuilder();
+        for (int i = 0; i < locations.length; i++) {
+            if (i > 0) {
+                combined_locations.append(", ");
+            }
+            combined_locations.append(locations[i]);
+        }
+        message.warning(tag.position(), "doclet.tag_misuse",
+            "@" + taglet.getName(), holderType, combined_locations.toString());
+    }
+
+    /**
+     * Return the array of <code>Taglet</code>s that can
+     * appear in packages.
+     * @return the array of <code>Taglet</code>s that can
+     * appear in packages.
+     */
+    public Taglet[] getPackageCustomTaglets() {
+        if (packageTags == null) {
+            initCustomTagletArrays();
+        }
+        return packageTags;
+    }
+
+    /**
+     * Return the array of <code>Taglet</code>s that can
+     * appear in classes or interfaces.
+     * @return the array of <code>Taglet</code>s that can
+     * appear in classes or interfaces.
+     */
+    public Taglet[] getTypeCustomTaglets() {
+        if (typeTags == null) {
+            initCustomTagletArrays();
+        }
+        return typeTags;
+    }
+
+    /**
+     * Return the array of inline <code>Taglet</code>s that can
+     * appear in comments.
+     * @return the array of <code>Taglet</code>s that can
+     * appear in comments.
+     */
+    public Taglet[] getInlineCustomTaglets() {
+        if (inlineTags == null) {
+            initCustomTagletArrays();
+        }
+        return inlineTags;
+    }
+
+    /**
+     * Return the array of <code>Taglet</code>s that can
+     * appear in fields.
+     * @return the array of <code>Taglet</code>s that can
+     * appear in field.
+     */
+    public Taglet[] getFieldCustomTaglets() {
+        if (fieldTags == null) {
+            initCustomTagletArrays();
+        }
+        return fieldTags;
+    }
+
+    /**
+     * Return the array of <code>Taglet</code>s that can
+     * appear in the serialized form.
+     * @return the array of <code>Taglet</code>s that can
+     * appear in the serialized form.
+     */
+    public Taglet[] getSerializedFormTaglets() {
+        if (serializedFormTags == null) {
+            initCustomTagletArrays();
+        }
+        return serializedFormTags;
+    }
+
+    /**
+     * @return the array of <code>Taglet</code>s that can
+     * appear in the given Doc.
+     */
+    public Taglet[] getCustomTaglets(Doc doc) {
+        if (doc instanceof ConstructorDoc) {
+            return getConstructorCustomTaglets();
+        } else if (doc instanceof MethodDoc) {
+            return getMethodCustomTaglets();
+        } else if (doc instanceof FieldDoc) {
+            return getFieldCustomTaglets();
+        } else if (doc instanceof ClassDoc) {
+            return getTypeCustomTaglets();
+        } else if (doc instanceof PackageDoc) {
+            return getPackageCustomTaglets();
+        } else if (doc instanceof RootDoc) {
+            return getOverviewCustomTaglets();
+        }
+        return null;
+    }
+
+    /**
+     * Return the array of <code>Taglet</code>s that can
+     * appear in constructors.
+     * @return the array of <code>Taglet</code>s that can
+     * appear in constructors.
+     */
+    public Taglet[] getConstructorCustomTaglets() {
+        if (constructorTags == null) {
+            initCustomTagletArrays();
+        }
+        return constructorTags;
+    }
+
+    /**
+     * Return the array of <code>Taglet</code>s that can
+     * appear in methods.
+     * @return the array of <code>Taglet</code>s that can
+     * appear in methods.
+     */
+    public Taglet[] getMethodCustomTaglets() {
+        if (methodTags == null) {
+            initCustomTagletArrays();
+        }
+        return methodTags;
+    }
+
+    /**
+     * Return the array of <code>Taglet</code>s that can
+     * appear in an overview.
+     * @return the array of <code>Taglet</code>s that can
+     * appear in overview.
+     */
+    public Taglet[] getOverviewCustomTaglets() {
+        if (overviewTags == null) {
+            initCustomTagletArrays();
+        }
+        return overviewTags;
+    }
+
+    /**
+     * Initialize the custom tag arrays.
+     */
+    private void initCustomTagletArrays() {
+        Iterator<Taglet> it = customTags.values().iterator();
+        ArrayList<Taglet> pTags = new ArrayList<Taglet>(customTags.size());
+        ArrayList<Taglet> tTags = new ArrayList<Taglet>(customTags.size());
+        ArrayList<Taglet> fTags = new ArrayList<Taglet>(customTags.size());
+        ArrayList<Taglet> cTags = new ArrayList<Taglet>(customTags.size());
+        ArrayList<Taglet> mTags = new ArrayList<Taglet>(customTags.size());
+        ArrayList<Taglet> iTags = new ArrayList<Taglet>(customTags.size());
+        ArrayList<Taglet> oTags = new ArrayList<Taglet>(customTags.size());
+        ArrayList<Taglet> sTags = new ArrayList<Taglet>();
+        Taglet current;
+        while (it.hasNext()) {
+            current = it.next();
+            if (current.inPackage() && !current.isInlineTag()) {
+                pTags.add(current);
+            }
+            if (current.inType() && !current.isInlineTag()) {
+                tTags.add(current);
+            }
+            if (current.inField() && !current.isInlineTag()) {
+                fTags.add(current);
+            }
+            if (current.inConstructor() && !current.isInlineTag()) {
+                cTags.add(current);
+            }
+            if (current.inMethod() && !current.isInlineTag()) {
+                mTags.add(current);
+            }
+            if (current.isInlineTag()) {
+                iTags.add(current);
+            }
+            if (current.inOverview() && !current.isInlineTag()) {
+                oTags.add(current);
+            }
+        }
+        packageTags = pTags.toArray(new Taglet[] {});
+        typeTags = tTags.toArray(new Taglet[] {});
+        fieldTags = fTags.toArray(new Taglet[] {});
+        constructorTags = cTags.toArray(new Taglet[] {});
+        methodTags = mTags.toArray(new Taglet[] {});
+        overviewTags = oTags.toArray(new Taglet[] {});
+        inlineTags = iTags.toArray(new Taglet[] {});
+
+        //Init the serialized form tags
+        sTags.add(customTags.get("serialData"));
+        sTags.add(customTags.get("throws"));
+        if (!nosince)
+            sTags.add(customTags.get("since"));
+        sTags.add(customTags.get("see"));
+        serializedFormTags = sTags.toArray(new Taglet[] {});
+    }
+
+    /**
+     * Initialize standard Javadoc tags for ordering purposes.
+     */
+    private void initStandardTaglets() {
+        if (javafx) {
+            initJavaFXTaglets();
+        }
+
+        Taglet temp;
+        addStandardTaglet(new ParamTaglet());
+        addStandardTaglet(new ReturnTaglet());
+        addStandardTaglet(new ThrowsTaglet());
+        addStandardTaglet(new SimpleTaglet("exception", null,
+                SimpleTaglet.METHOD + SimpleTaglet.CONSTRUCTOR));
+        addStandardTaglet(!nosince, new SimpleTaglet("since", message.getText("doclet.Since"),
+               SimpleTaglet.ALL));
+        addStandardTaglet(showversion, new SimpleTaglet("version", message.getText("doclet.Version"),
+                SimpleTaglet.PACKAGE + SimpleTaglet.TYPE + SimpleTaglet.OVERVIEW));
+        addStandardTaglet(showauthor, new SimpleTaglet("author", message.getText("doclet.Author"),
+                SimpleTaglet.PACKAGE + SimpleTaglet.TYPE + SimpleTaglet.OVERVIEW));
+        addStandardTaglet(new SimpleTaglet("serialData", message.getText("doclet.SerialData"),
+            SimpleTaglet.EXCLUDED));
+        customTags.put((temp = new SimpleTaglet("factory", message.getText("doclet.Factory"),
+            SimpleTaglet.METHOD)).getName(), temp);
+        addStandardTaglet(new SeeTaglet());
+        //Standard inline tags
+        addStandardTaglet(new DocRootTaglet());
+        addStandardTaglet(new InheritDocTaglet());
+        addStandardTaglet(new ValueTaglet());
+        addStandardTaglet(new LiteralTaglet());
+        addStandardTaglet(new CodeTaglet());
+
+        // Keep track of the names of standard tags for error
+        // checking purposes. The following are not handled above.
+        // See, for example, com.sun.tools.javadoc.Comment
+        standardTags.add("deprecated");
+        standardTags.add("link");
+        standardTags.add("linkplain");
+        standardTags.add("serial");
+        standardTags.add("serialField");
+        standardTags.add("Text");
+    }
+
+    /**
+     * Initialize JavaFX-related tags.
+     */
+    private void initJavaFXTaglets() {
+        addStandardTaglet(new PropertyGetterTaglet());
+        addStandardTaglet(new PropertySetterTaglet());
+        addStandardTaglet(new SimpleTaglet("propertyDescription",
+                message.getText("doclet.PropertyDescription"),
+                SimpleTaglet.FIELD + SimpleTaglet.METHOD));
+        addStandardTaglet(new SimpleTaglet("defaultValue", message.getText("doclet.DefaultValue"),
+            SimpleTaglet.FIELD + SimpleTaglet.METHOD));
+        addStandardTaglet(new SimpleTaglet("treatAsPrivate", null,
+                SimpleTaglet.FIELD + SimpleTaglet.METHOD + SimpleTaglet.TYPE));
+    }
+
+    void addStandardTaglet(Taglet taglet) {
+        String name = taglet.getName();
+        customTags.put(name, taglet);
+        standardTags.add(name);
+    }
+
+    void addStandardTaglet(boolean enable, Taglet taglet) {
+        String name = taglet.getName();
+        if (enable)
+            customTags.put(name, taglet);
+        standardTags.add(name);
+    }
+
+    /**
+     * Initialize lowercase version of standard Javadoc tags.
+     */
+    private void initStandardTagsLowercase() {
+        Iterator<String> it = standardTags.iterator();
+        while (it.hasNext()) {
+            standardTagsLowercase.add(StringUtils.toLowerCase(it.next()));
+        }
+    }
+
+    public boolean isKnownCustomTag(String tagName) {
+        return customTags.containsKey(tagName);
+    }
+
+    /**
+     * Print a list of {@link Taglet}s that might conflict with
+     * standard tags in the future and a list of standard tags
+     * that have been overriden.
+     */
+    public void printReport() {
+        printReportHelper("doclet.Notice_taglet_conflict_warn", potentiallyConflictingTags);
+        printReportHelper("doclet.Notice_taglet_overriden", overridenStandardTags);
+        printReportHelper("doclet.Notice_taglet_unseen", unseenCustomTags);
+    }
+
+    private void printReportHelper(String noticeKey, Set<String> names) {
+        if (names.size() > 0) {
+            String[] namesArray = names.toArray(new String[] {});
+            String result = " ";
+            for (int i = 0; i < namesArray.length; i++) {
+                result += "@" + namesArray[i];
+                if (i + 1 < namesArray.length) {
+                    result += ", ";
+                }
+            }
+            message.notice(noticeKey, result);
+        }
+    }
+
+    /**
+     * Given the name of a tag, return the corresponding taglet.
+     * Return null if the tag is unknown.
+     *
+     * @param name the name of the taglet to retrieve.
+     * @return return the corresponding taglet. Return null if the tag is
+     *         unknown.
+     */
+    public Taglet getTaglet(String name) {
+        if (name.indexOf("@") == 0) {
+            return customTags.get(name.substring(1));
+        } else {
+            return customTags.get(name);
+        }
+
+    }
+}

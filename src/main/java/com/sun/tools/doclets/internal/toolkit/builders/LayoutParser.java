@@ -1,135 +1,129 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.builders;
-/*     */ 
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocletAbortException;
-/*     */ import java.io.InputStream;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.Map;
-/*     */ import javax.xml.parsers.SAXParser;
-/*     */ import javax.xml.parsers.SAXParserFactory;
-/*     */ import org.xml.sax.Attributes;
-/*     */ import org.xml.sax.SAXException;
-/*     */ import org.xml.sax.helpers.DefaultHandler;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class LayoutParser
-/*     */   extends DefaultHandler
-/*     */ {
-/*     */   private Map<String, XMLNode> xmlElementsMap;
-/*     */   private XMLNode currentNode;
-/*     */   private final Configuration configuration;
-/*     */   private String currentRoot;
-/*     */   private boolean isParsing;
-/*     */   
-/*     */   private LayoutParser(Configuration paramConfiguration) {
-/*  63 */     this.xmlElementsMap = new HashMap<>();
-/*  64 */     this.configuration = paramConfiguration;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static LayoutParser getInstance(Configuration paramConfiguration) {
-/*  74 */     return new LayoutParser(paramConfiguration);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public XMLNode parseXML(String paramString) {
-/*  83 */     if (this.xmlElementsMap.containsKey(paramString)) {
-/*  84 */       return this.xmlElementsMap.get(paramString);
-/*     */     }
-/*     */     try {
-/*  87 */       this.currentRoot = paramString;
-/*  88 */       this.isParsing = false;
-/*  89 */       SAXParserFactory sAXParserFactory = SAXParserFactory.newInstance();
-/*  90 */       SAXParser sAXParser = sAXParserFactory.newSAXParser();
-/*  91 */       InputStream inputStream = this.configuration.getBuilderXML();
-/*  92 */       sAXParser.parse(inputStream, this);
-/*  93 */       return this.xmlElementsMap.get(paramString);
-/*  94 */     } catch (Throwable throwable) {
-/*  95 */       throwable.printStackTrace();
-/*  96 */       throw new DocletAbortException(throwable);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void startElement(String paramString1, String paramString2, String paramString3, Attributes paramAttributes) throws SAXException {
-/* 107 */     if (this.isParsing || paramString3.equals(this.currentRoot)) {
-/* 108 */       this.isParsing = true;
-/* 109 */       this.currentNode = new XMLNode(this.currentNode, paramString3);
-/* 110 */       for (byte b = 0; b < paramAttributes.getLength(); b++)
-/* 111 */         this.currentNode.attrs.put(paramAttributes.getLocalName(b), paramAttributes.getValue(b)); 
-/* 112 */       if (paramString3.equals(this.currentRoot)) {
-/* 113 */         this.xmlElementsMap.put(paramString3, this.currentNode);
-/*     */       }
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void endElement(String paramString1, String paramString2, String paramString3) throws SAXException {
-/* 123 */     if (!this.isParsing) {
-/*     */       return;
-/*     */     }
-/* 126 */     this.currentNode = this.currentNode.parent;
-/* 127 */     this.isParsing = !paramString3.equals(this.currentRoot);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolkit\builders\LayoutParser.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+package com.sun.tools.doclets.internal.toolkit.builders;
+
+import java.io.*;
+import java.util.*;
+
+import javax.xml.parsers.*;
+
+import org.xml.sax.*;
+import org.xml.sax.helpers.DefaultHandler;
+
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Parse the XML that specified the order of operation for the builders.  This
+ * Parser uses SAX parsing.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Jamie Ho
+ * @since 1.5
+ * @see SAXParser
+ */
+public class LayoutParser extends DefaultHandler {
+
+    /**
+     * The map of XML elements that have been parsed.
+     */
+    private Map<String,XMLNode> xmlElementsMap;
+    private XMLNode currentNode;
+    private final Configuration configuration;
+    private String currentRoot;
+    private boolean isParsing;
+
+    private LayoutParser(Configuration configuration) {
+        xmlElementsMap = new HashMap<String,XMLNode>();
+        this.configuration = configuration;
+    }
+
+    /**
+     * Return an instance of the BuilderXML.
+     *
+     * @param configuration the current configuration of the doclet.
+     * @return an instance of the BuilderXML.
+     */
+    public static LayoutParser getInstance(Configuration configuration) {
+        return new LayoutParser(configuration);
+    }
+
+    /**
+     * Parse the XML specifying the layout of the documentation.
+     *
+     * @return the list of XML elements parsed.
+     */
+    public XMLNode parseXML(String root) {
+        if (xmlElementsMap.containsKey(root)) {
+            return xmlElementsMap.get(root);
+        }
+        try {
+            currentRoot = root;
+            isParsing = false;
+            SAXParserFactory factory = SAXParserFactory.newInstance();
+            SAXParser saxParser = factory.newSAXParser();
+            InputStream in = configuration.getBuilderXML();
+            saxParser.parse(in, this);
+            return xmlElementsMap.get(root);
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw new DocletAbortException(t);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void startElement(String namespaceURI, String sName, String qName,
+        Attributes attrs)
+    throws SAXException {
+        if (isParsing || qName.equals(currentRoot)) {
+            isParsing = true;
+            currentNode = new XMLNode(currentNode, qName);
+            for (int i = 0; i < attrs.getLength(); i++)
+                currentNode.attrs.put(attrs.getLocalName(i), attrs.getValue(i));
+            if (qName.equals(currentRoot))
+                xmlElementsMap.put(qName, currentNode);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void endElement(String namespaceURI, String sName, String qName)
+    throws SAXException {
+        if (! isParsing) {
+            return;
+        }
+        currentNode = currentNode.parent;
+        isParsing = ! qName.equals(currentRoot);
+    }
+}

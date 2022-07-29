@@ -1,2981 +1,2622 @@
-/*      */ package com.sun.tools.javac.comp;
-/*      */
-/*      */ import com.sun.source.tree.LambdaExpressionTree;
-/*      */ import com.sun.tools.javac.code.Lint;
-/*      */ import com.sun.tools.javac.code.Scope;
-/*      */ import com.sun.tools.javac.code.Source;
-/*      */ import com.sun.tools.javac.code.Symbol;
-/*      */ import com.sun.tools.javac.code.Symtab;
-/*      */ import com.sun.tools.javac.code.Type;
-/*      */ import com.sun.tools.javac.code.TypeTag;
-/*      */ import com.sun.tools.javac.code.Types;
-/*      */ import com.sun.tools.javac.tree.JCTree;
-/*      */ import com.sun.tools.javac.tree.TreeInfo;
-/*      */ import com.sun.tools.javac.tree.TreeMaker;
-/*      */ import com.sun.tools.javac.tree.TreeScanner;
-/*      */ import com.sun.tools.javac.util.ArrayUtils;
-/*      */ import com.sun.tools.javac.util.Assert;
-/*      */ import com.sun.tools.javac.util.Bits;
-/*      */ import com.sun.tools.javac.util.Context;
-/*      */ import com.sun.tools.javac.util.JCDiagnostic;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.Names;
-/*      */ import java.util.HashMap;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class Flow
-/*      */ {
-/*  184 */   protected static final Context.Key<Flow> flowKey = new Context.Key();
-/*      */
-/*      */   private final Names names;
-/*      */
-/*      */   private final Log log;
-/*      */   private final Symtab syms;
-/*      */   private final Types types;
-/*      */   private final Check chk;
-/*      */   private TreeMaker make;
-/*      */   private final Resolve rs;
-/*      */   private final JCDiagnostic.Factory diags;
-/*      */   private Env<AttrContext> attrEnv;
-/*      */   private Lint lint;
-/*      */   private final boolean allowImprovedRethrowAnalysis;
-/*      */   private final boolean allowImprovedCatchAnalysis;
-/*      */   private final boolean allowEffectivelyFinalInInnerClasses;
-/*      */   private final boolean enforceThisDotInit;
-/*      */
-/*      */   public static Flow instance(Context paramContext) {
-/*  203 */     Flow flow = (Flow)paramContext.get(flowKey);
-/*  204 */     if (flow == null)
-/*  205 */       flow = new Flow(paramContext);
-/*  206 */     return flow;
-/*      */   }
-/*      */
-/*      */   public void analyzeTree(Env<AttrContext> paramEnv, TreeMaker paramTreeMaker) {
-/*  210 */     (new AliveAnalyzer()).analyzeTree(paramEnv, paramTreeMaker);
-/*  211 */     (new AssignAnalyzer()).analyzeTree(paramEnv);
-/*  212 */     (new FlowAnalyzer()).analyzeTree(paramEnv, paramTreeMaker);
-/*  213 */     (new CaptureAnalyzer()).analyzeTree(paramEnv, paramTreeMaker);
-/*      */   }
-/*      */
-/*      */   public void analyzeLambda(Env<AttrContext> paramEnv, JCTree.JCLambda paramJCLambda, TreeMaker paramTreeMaker, boolean paramBoolean) {
-/*  217 */     Log.DiscardDiagnosticHandler discardDiagnosticHandler = null;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  223 */     if (!paramBoolean) {
-/*  224 */       discardDiagnosticHandler = new Log.DiscardDiagnosticHandler(this.log);
-/*      */     }
-/*      */     try {
-/*  227 */       (new AliveAnalyzer()).analyzeTree(paramEnv, (JCTree)paramJCLambda, paramTreeMaker);
-/*      */     } finally {
-/*  229 */       if (!paramBoolean) {
-/*  230 */         this.log.popDiagnosticHandler((Log.DiagnosticHandler)discardDiagnosticHandler);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public List<Type> analyzeLambdaThrownTypes(final Env<AttrContext> env, JCTree.JCLambda paramJCLambda, TreeMaker paramTreeMaker) {
-/*  242 */     Log.DiscardDiagnosticHandler discardDiagnosticHandler = new Log.DiscardDiagnosticHandler(this.log);
-/*      */     try {
-/*  244 */       (new AssignAnalyzer() {
-/*  245 */           Scope enclosedSymbols = new Scope((Symbol)env.enclClass.sym);
-/*      */
-/*      */           public void visitVarDef(JCTree.JCVariableDecl param1JCVariableDecl) {
-/*  248 */             this.enclosedSymbols.enter((Symbol)param1JCVariableDecl.sym);
-/*  249 */             super.visitVarDef(param1JCVariableDecl);
-/*      */           }
-/*      */
-/*      */           protected boolean trackable(Symbol.VarSymbol param1VarSymbol) {
-/*  253 */             return (this.enclosedSymbols.includes((Symbol)param1VarSymbol) && param1VarSymbol.owner.kind == 16);
-/*      */           }
-/*  256 */         }).analyzeTree(env, (JCTree)paramJCLambda);
-/*  257 */       LambdaFlowAnalyzer lambdaFlowAnalyzer = new LambdaFlowAnalyzer();
-/*  258 */       lambdaFlowAnalyzer.analyzeTree(env, (JCTree)paramJCLambda, paramTreeMaker);
-/*  259 */       return lambdaFlowAnalyzer.inferredThrownTypes;
-/*      */     } finally {
-/*  261 */       this.log.popDiagnosticHandler((Log.DiagnosticHandler)discardDiagnosticHandler);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   enum FlowKind
-/*      */   {
-/*  272 */     NORMAL("var.might.already.be.assigned", false),
-/*      */
-/*      */
-/*      */
-/*      */
-/*  277 */     SPECULATIVE_LOOP("var.might.be.assigned.in.loop", true);
-/*      */
-/*      */     final String errKey;
-/*      */     final boolean isFinal;
-/*      */
-/*      */     FlowKind(String param1String1, boolean param1Boolean) {
-/*  283 */       this.errKey = param1String1;
-/*  284 */       this.isFinal = param1Boolean;
-/*      */     }
-/*      */
-/*      */     boolean isFinal() {
-/*  288 */       return this.isFinal;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   protected Flow(Context paramContext) {
-/*  293 */     paramContext.put(flowKey, this);
-/*  294 */     this.names = Names.instance(paramContext);
-/*  295 */     this.log = Log.instance(paramContext);
-/*  296 */     this.syms = Symtab.instance(paramContext);
-/*  297 */     this.types = Types.instance(paramContext);
-/*  298 */     this.chk = Check.instance(paramContext);
-/*  299 */     this.lint = Lint.instance(paramContext);
-/*  300 */     this.rs = Resolve.instance(paramContext);
-/*  301 */     this.diags = JCDiagnostic.Factory.instance(paramContext);
-/*  302 */     Source source = Source.instance(paramContext);
-/*  303 */     this.allowImprovedRethrowAnalysis = source.allowImprovedRethrowAnalysis();
-/*  304 */     this.allowImprovedCatchAnalysis = source.allowImprovedCatchAnalysis();
-/*  305 */     this.allowEffectivelyFinalInInnerClasses = source.allowEffectivelyFinalInInnerClasses();
-/*  306 */     this.enforceThisDotInit = source.enforceThisDotInit();
-/*      */   }
-/*      */
-/*      */   static abstract class BaseAnalyzer<P extends BaseAnalyzer.PendingExit>
-/*      */     extends TreeScanner {
-/*      */     ListBuffer<P> pendingExits;
-/*      */
-/*      */     abstract void markDead();
-/*      */
-/*      */     enum JumpKind {
-/*  316 */       BREAK((String)JCTree.Tag.BREAK)
-/*      */       {
-/*      */         JCTree getTarget(JCTree param3JCTree) {
-/*  319 */           return ((JCTree.JCBreak)param3JCTree).target;
-/*      */         }
-/*      */       },
-/*  322 */       CONTINUE((String)JCTree.Tag.CONTINUE)
-/*      */       {
-/*      */         JCTree getTarget(JCTree param3JCTree) {
-/*  325 */           return ((JCTree.JCContinue)param3JCTree).target;
-/*      */         }
-/*      */       };
-/*      */
-/*      */       final JCTree.Tag treeTag;
-/*      */
-/*      */       JumpKind(JCTree.Tag param2Tag) {
-/*  332 */         this.treeTag = param2Tag;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       abstract JCTree getTarget(JCTree param2JCTree);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     static class PendingExit
-/*      */     {
-/*      */       JCTree tree;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       PendingExit(JCTree param2JCTree) {
-/*  353 */         this.tree = param2JCTree;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       void resolveJump() {}
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     void recordExit(P param1P) {
-/*  365 */       this.pendingExits.append(param1P);
-/*  366 */       markDead();
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private boolean resolveJump(JCTree param1JCTree, ListBuffer<P> param1ListBuffer, JumpKind param1JumpKind) {
-/*  373 */       boolean bool = false;
-/*  374 */       List list = this.pendingExits.toList();
-/*  375 */       this.pendingExits = param1ListBuffer;
-/*  376 */       for (; list.nonEmpty(); list = list.tail) {
-/*  377 */         PendingExit pendingExit = (PendingExit)list.head;
-/*  378 */         if (pendingExit.tree.hasTag(param1JumpKind.treeTag) && param1JumpKind
-/*  379 */           .getTarget(pendingExit.tree) == param1JCTree) {
-/*  380 */           pendingExit.resolveJump();
-/*  381 */           bool = true;
-/*      */         } else {
-/*  383 */           this.pendingExits.append(pendingExit);
-/*      */         }
-/*      */       }
-/*  386 */       return bool;
-/*      */     }
-/*      */
-/*      */
-/*      */     boolean resolveContinues(JCTree param1JCTree) {
-/*  391 */       return resolveJump(param1JCTree, new ListBuffer(), JumpKind.CONTINUE);
-/*      */     }
-/*      */
-/*      */
-/*      */     boolean resolveBreaks(JCTree param1JCTree, ListBuffer<P> param1ListBuffer) {
-/*  396 */       return resolveJump(param1JCTree, param1ListBuffer, JumpKind.BREAK);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void scan(JCTree param1JCTree) {
-/*  401 */       if (param1JCTree != null && (param1JCTree.type == null || param1JCTree.type != Type.stuckType))
-/*      */       {
-/*      */
-/*  404 */         super.scan(param1JCTree);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   class AliveAnalyzer
-/*      */     extends BaseAnalyzer<BaseAnalyzer.PendingExit>
-/*      */   {
-/*      */     private boolean alive;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void markDead() {
-/*  424 */       this.alive = false;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void scanDef(JCTree param1JCTree) {
-/*  434 */       scanStat(param1JCTree);
-/*  435 */       if (param1JCTree != null && param1JCTree.hasTag(JCTree.Tag.BLOCK) && !this.alive) {
-/*  436 */         Flow.this.log.error(param1JCTree.pos(), "initializer.must.be.able.to.complete.normally", new Object[0]);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void scanStat(JCTree param1JCTree) {
-/*  444 */       if (!this.alive && param1JCTree != null) {
-/*  445 */         Flow.this.log.error(param1JCTree.pos(), "unreachable.stmt", new Object[0]);
-/*  446 */         if (!param1JCTree.hasTag(JCTree.Tag.SKIP)) this.alive = true;
-/*      */       }
-/*  448 */       scan(param1JCTree);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     void scanStats(List<? extends JCTree.JCStatement> param1List) {
-/*  454 */       if (param1List != null) {
-/*  455 */         for (List<? extends JCTree.JCStatement> list = param1List; list.nonEmpty(); list = list.tail) {
-/*  456 */           scanStat((JCTree)list.head);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) {
-/*  462 */       if (param1JCClassDecl.sym == null)
-/*  463 */         return;  boolean bool = this.alive;
-/*  464 */       ListBuffer<PendingExit> listBuffer = this.pendingExits;
-/*  465 */       Lint lint = Flow.this.lint;
-/*      */
-/*  467 */       this.pendingExits = new ListBuffer();
-/*  468 */       Flow.this.lint = Flow.this.lint.augment((Symbol)param1JCClassDecl.sym);
-/*      */
-/*      */       try {
-/*      */         List list;
-/*  472 */         for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/*  473 */           if (!((JCTree)list.head).hasTag(JCTree.Tag.METHODDEF) && (
-/*  474 */             TreeInfo.flags((JCTree)list.head) & 0x8L) != 0L) {
-/*  475 */             scanDef((JCTree)list.head);
-/*      */           }
-/*      */         }
-/*      */
-/*      */
-/*  480 */         for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/*  481 */           if (!((JCTree)list.head).hasTag(JCTree.Tag.METHODDEF) && (
-/*  482 */             TreeInfo.flags((JCTree)list.head) & 0x8L) == 0L) {
-/*  483 */             scanDef((JCTree)list.head);
-/*      */           }
-/*      */         }
-/*      */
-/*      */
-/*  488 */         for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/*  489 */           if (((JCTree)list.head).hasTag(JCTree.Tag.METHODDEF)) {
-/*  490 */             scan((JCTree)list.head);
-/*      */           }
-/*      */         }
-/*      */       } finally {
-/*  494 */         this.pendingExits = listBuffer;
-/*  495 */         this.alive = bool;
-/*  496 */         Flow.this.lint = lint;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitMethodDef(JCTree.JCMethodDecl param1JCMethodDecl) {
-/*  501 */       if (param1JCMethodDecl.body == null)
-/*  502 */         return;  Lint lint = Flow.this.lint;
-/*      */
-/*  504 */       Flow.this.lint = Flow.this.lint.augment((Symbol)param1JCMethodDecl.sym);
-/*      */
-/*  506 */       Assert.check(this.pendingExits.isEmpty());
-/*      */
-/*      */       try {
-/*  509 */         this.alive = true;
-/*  510 */         scanStat((JCTree)param1JCMethodDecl.body);
-/*      */
-/*  512 */         if (this.alive && !param1JCMethodDecl.sym.type.getReturnType().hasTag(TypeTag.VOID)) {
-/*  513 */           Flow.this.log.error(TreeInfo.diagEndPos((JCTree)param1JCMethodDecl.body), "missing.ret.stmt", new Object[0]);
-/*      */         }
-/*  515 */         List list = this.pendingExits.toList();
-/*  516 */         this.pendingExits = new ListBuffer();
-/*  517 */         while (list.nonEmpty()) {
-/*  518 */           PendingExit pendingExit = (PendingExit)list.head;
-/*  519 */           list = list.tail;
-/*  520 */           Assert.check(pendingExit.tree.hasTag(JCTree.Tag.RETURN));
-/*      */         }
-/*      */       } finally {
-/*  523 */         Flow.this.lint = lint;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitVarDef(JCTree.JCVariableDecl param1JCVariableDecl) {
-/*  528 */       if (param1JCVariableDecl.init != null) {
-/*  529 */         Lint lint = Flow.this.lint;
-/*  530 */         Flow.this.lint = Flow.this.lint.augment((Symbol)param1JCVariableDecl.sym);
-/*      */         try {
-/*  532 */           scan((JCTree)param1JCVariableDecl.init);
-/*      */         } finally {
-/*  534 */           Flow.this.lint = lint;
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitBlock(JCTree.JCBlock param1JCBlock) {
-/*  540 */       scanStats(param1JCBlock.stats);
-/*      */     }
-/*      */
-/*      */     public void visitDoLoop(JCTree.JCDoWhileLoop param1JCDoWhileLoop) {
-/*  544 */       ListBuffer<PendingExit> listBuffer = this.pendingExits;
-/*  545 */       this.pendingExits = new ListBuffer();
-/*  546 */       scanStat((JCTree)param1JCDoWhileLoop.body);
-/*  547 */       this.alive |= resolveContinues((JCTree)param1JCDoWhileLoop);
-/*  548 */       scan((JCTree)param1JCDoWhileLoop.cond);
-/*  549 */       this.alive = (this.alive && !param1JCDoWhileLoop.cond.type.isTrue());
-/*  550 */       this.alive |= resolveBreaks((JCTree)param1JCDoWhileLoop, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitWhileLoop(JCTree.JCWhileLoop param1JCWhileLoop) {
-/*  554 */       ListBuffer<PendingExit> listBuffer = this.pendingExits;
-/*  555 */       this.pendingExits = new ListBuffer();
-/*  556 */       scan((JCTree)param1JCWhileLoop.cond);
-/*  557 */       this.alive = !param1JCWhileLoop.cond.type.isFalse();
-/*  558 */       scanStat((JCTree)param1JCWhileLoop.body);
-/*  559 */       this.alive |= resolveContinues((JCTree)param1JCWhileLoop);
-/*  560 */       this
-/*  561 */         .alive = (resolveBreaks((JCTree)param1JCWhileLoop, listBuffer) || !param1JCWhileLoop.cond.type.isTrue());
-/*      */     }
-/*      */
-/*      */     public void visitForLoop(JCTree.JCForLoop param1JCForLoop) {
-/*  565 */       ListBuffer<PendingExit> listBuffer = this.pendingExits;
-/*  566 */       scanStats(param1JCForLoop.init);
-/*  567 */       this.pendingExits = new ListBuffer();
-/*  568 */       if (param1JCForLoop.cond != null) {
-/*  569 */         scan((JCTree)param1JCForLoop.cond);
-/*  570 */         this.alive = !param1JCForLoop.cond.type.isFalse();
-/*      */       } else {
-/*  572 */         this.alive = true;
-/*      */       }
-/*  574 */       scanStat((JCTree)param1JCForLoop.body);
-/*  575 */       this.alive |= resolveContinues((JCTree)param1JCForLoop);
-/*  576 */       scan(param1JCForLoop.step);
-/*  577 */       this
-/*  578 */         .alive = (resolveBreaks((JCTree)param1JCForLoop, listBuffer) || (param1JCForLoop.cond != null && !param1JCForLoop.cond.type.isTrue()));
-/*      */     }
-/*      */
-/*      */     public void visitForeachLoop(JCTree.JCEnhancedForLoop param1JCEnhancedForLoop) {
-/*  582 */       visitVarDef(param1JCEnhancedForLoop.var);
-/*  583 */       ListBuffer<PendingExit> listBuffer = this.pendingExits;
-/*  584 */       scan((JCTree)param1JCEnhancedForLoop.expr);
-/*  585 */       this.pendingExits = new ListBuffer();
-/*  586 */       scanStat((JCTree)param1JCEnhancedForLoop.body);
-/*  587 */       this.alive |= resolveContinues((JCTree)param1JCEnhancedForLoop);
-/*  588 */       resolveBreaks((JCTree)param1JCEnhancedForLoop, listBuffer);
-/*  589 */       this.alive = true;
-/*      */     }
-/*      */
-/*      */     public void visitLabelled(JCTree.JCLabeledStatement param1JCLabeledStatement) {
-/*  593 */       ListBuffer<PendingExit> listBuffer = this.pendingExits;
-/*  594 */       this.pendingExits = new ListBuffer();
-/*  595 */       scanStat((JCTree)param1JCLabeledStatement.body);
-/*  596 */       this.alive |= resolveBreaks((JCTree)param1JCLabeledStatement, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitSwitch(JCTree.JCSwitch param1JCSwitch) {
-/*  600 */       ListBuffer<PendingExit> listBuffer = this.pendingExits;
-/*  601 */       this.pendingExits = new ListBuffer();
-/*  602 */       scan((JCTree)param1JCSwitch.selector);
-/*  603 */       boolean bool = false;
-/*  604 */       for (List list = param1JCSwitch.cases; list.nonEmpty(); list = list.tail) {
-/*  605 */         this.alive = true;
-/*  606 */         JCTree.JCCase jCCase = (JCTree.JCCase)list.head;
-/*  607 */         if (jCCase.pat == null) {
-/*  608 */           bool = true;
-/*      */         } else {
-/*  610 */           scan((JCTree)jCCase.pat);
-/*  611 */         }  scanStats(jCCase.stats);
-/*      */
-/*  613 */         if (this.alive && Flow.this
-/*  614 */           .lint.isEnabled(Lint.LintCategory.FALLTHROUGH) && jCCase.stats
-/*  615 */           .nonEmpty() && list.tail.nonEmpty()) {
-/*  616 */           Flow.this.log.warning(Lint.LintCategory.FALLTHROUGH, ((JCTree.JCCase)list.tail.head)
-/*  617 */               .pos(), "possible.fall-through.into.case", new Object[0]);
-/*      */         }
-/*      */       }
-/*  620 */       if (!bool) {
-/*  621 */         this.alive = true;
-/*      */       }
-/*  623 */       this.alive |= resolveBreaks((JCTree)param1JCSwitch, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitTry(JCTree.JCTry param1JCTry) {
-/*  627 */       ListBuffer<PendingExit> listBuffer = this.pendingExits;
-/*  628 */       this.pendingExits = new ListBuffer();
-/*  629 */       for (JCTree jCTree : param1JCTry.resources) {
-/*  630 */         if (jCTree instanceof JCTree.JCVariableDecl) {
-/*  631 */           JCTree.JCVariableDecl jCVariableDecl = (JCTree.JCVariableDecl)jCTree;
-/*  632 */           visitVarDef(jCVariableDecl); continue;
-/*  633 */         }  if (jCTree instanceof JCTree.JCExpression) {
-/*  634 */           scan(jCTree); continue;
-/*      */         }
-/*  636 */         throw new AssertionError(param1JCTry);
-/*      */       }
-/*      */
-/*      */
-/*  640 */       scanStat((JCTree)param1JCTry.body);
-/*  641 */       boolean bool = this.alive;
-/*      */
-/*  643 */       for (List list = param1JCTry.catchers; list.nonEmpty(); list = list.tail) {
-/*  644 */         this.alive = true;
-/*  645 */         JCTree.JCVariableDecl jCVariableDecl = ((JCTree.JCCatch)list.head).param;
-/*  646 */         scan((JCTree)jCVariableDecl);
-/*  647 */         scanStat((JCTree)((JCTree.JCCatch)list.head).body);
-/*  648 */         bool |= this.alive;
-/*      */       }
-/*  650 */       if (param1JCTry.finalizer != null) {
-/*  651 */         ListBuffer<PendingExit> listBuffer1 = this.pendingExits;
-/*  652 */         this.pendingExits = listBuffer;
-/*  653 */         this.alive = true;
-/*  654 */         scanStat((JCTree)param1JCTry.finalizer);
-/*  655 */         param1JCTry.finallyCanCompleteNormally = this.alive;
-/*  656 */         if (!this.alive) {
-/*  657 */           if (Flow.this.lint.isEnabled(Lint.LintCategory.FINALLY)) {
-/*  658 */             Flow.this.log.warning(Lint.LintCategory.FINALLY,
-/*  659 */                 TreeInfo.diagEndPos((JCTree)param1JCTry.finalizer), "finally.cannot.complete", new Object[0]);
-/*      */           }
-/*      */         } else {
-/*      */
-/*  663 */           while (listBuffer1.nonEmpty()) {
-/*  664 */             this.pendingExits.append(listBuffer1.next());
-/*      */           }
-/*  666 */           this.alive = bool;
-/*      */         }
-/*      */       } else {
-/*  669 */         this.alive = bool;
-/*  670 */         ListBuffer<PendingExit> listBuffer1 = this.pendingExits;
-/*  671 */         this.pendingExits = listBuffer;
-/*  672 */         for (; listBuffer1.nonEmpty(); this.pendingExits.append(listBuffer1.next()));
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitIf(JCTree.JCIf param1JCIf) {
-/*  678 */       scan((JCTree)param1JCIf.cond);
-/*  679 */       scanStat((JCTree)param1JCIf.thenpart);
-/*  680 */       if (param1JCIf.elsepart != null) {
-/*  681 */         boolean bool = this.alive;
-/*  682 */         this.alive = true;
-/*  683 */         scanStat((JCTree)param1JCIf.elsepart);
-/*  684 */         this.alive |= bool;
-/*      */       } else {
-/*  686 */         this.alive = true;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitBreak(JCTree.JCBreak param1JCBreak) {
-/*  691 */       recordExit(new PendingExit((JCTree)param1JCBreak));
-/*      */     }
-/*      */
-/*      */     public void visitContinue(JCTree.JCContinue param1JCContinue) {
-/*  695 */       recordExit(new PendingExit((JCTree)param1JCContinue));
-/*      */     }
-/*      */
-/*      */     public void visitReturn(JCTree.JCReturn param1JCReturn) {
-/*  699 */       scan((JCTree)param1JCReturn.expr);
-/*  700 */       recordExit(new PendingExit((JCTree)param1JCReturn));
-/*      */     }
-/*      */
-/*      */     public void visitThrow(JCTree.JCThrow param1JCThrow) {
-/*  704 */       scan((JCTree)param1JCThrow.expr);
-/*  705 */       markDead();
-/*      */     }
-/*      */
-/*      */     public void visitApply(JCTree.JCMethodInvocation param1JCMethodInvocation) {
-/*  709 */       scan((JCTree)param1JCMethodInvocation.meth);
-/*  710 */       scan(param1JCMethodInvocation.args);
-/*      */     }
-/*      */
-/*      */     public void visitNewClass(JCTree.JCNewClass param1JCNewClass) {
-/*  714 */       scan((JCTree)param1JCNewClass.encl);
-/*  715 */       scan(param1JCNewClass.args);
-/*  716 */       if (param1JCNewClass.def != null) {
-/*  717 */         scan((JCTree)param1JCNewClass.def);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitLambda(JCTree.JCLambda param1JCLambda) {
-/*  723 */       if (param1JCLambda.type != null && param1JCLambda.type
-/*  724 */         .isErroneous()) {
-/*      */         return;
-/*      */       }
-/*      */
-/*  728 */       ListBuffer<PendingExit> listBuffer = this.pendingExits;
-/*  729 */       boolean bool = this.alive;
-/*      */       try {
-/*  731 */         this.pendingExits = new ListBuffer();
-/*  732 */         this.alive = true;
-/*  733 */         scanStat(param1JCLambda.body);
-/*  734 */         param1JCLambda.canCompleteNormally = this.alive;
-/*      */       } finally {
-/*      */
-/*  737 */         this.pendingExits = listBuffer;
-/*  738 */         this.alive = bool;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitTopLevel(JCTree.JCCompilationUnit param1JCCompilationUnit) {}
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void analyzeTree(Env<AttrContext> param1Env, TreeMaker param1TreeMaker) {
-/*  753 */       analyzeTree(param1Env, param1Env.tree, param1TreeMaker);
-/*      */     }
-/*      */     public void analyzeTree(Env<AttrContext> param1Env, JCTree param1JCTree, TreeMaker param1TreeMaker) {
-/*      */       try {
-/*  757 */         Flow.this.attrEnv = param1Env;
-/*  758 */         Flow.this.make = param1TreeMaker;
-/*  759 */         this.pendingExits = new ListBuffer();
-/*  760 */         this.alive = true;
-/*  761 */         scan(param1JCTree);
-/*      */       } finally {
-/*  763 */         this.pendingExits = null;
-/*  764 */         Flow.this.make = null;
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   class FlowAnalyzer
-/*      */     extends BaseAnalyzer<FlowAnalyzer.FlowPendingExit>
-/*      */   {
-/*      */     HashMap<Symbol, List<Type>> preciseRethrowTypes;
-/*      */
-/*      */
-/*      */
-/*      */     JCTree.JCClassDecl classDef;
-/*      */
-/*      */
-/*      */
-/*      */     List<Type> thrown;
-/*      */
-/*      */
-/*      */
-/*      */     List<Type> caught;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     class FlowPendingExit
-/*      */       extends PendingExit
-/*      */     {
-/*      */       Type thrown;
-/*      */
-/*      */
-/*      */
-/*      */       FlowPendingExit(JCTree param2JCTree, Type param2Type) {
-/*  800 */         super(param2JCTree);
-/*  801 */         this.thrown = param2Type;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void markDead() {}
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void errorUncaught() {
-/*  815 */       FlowPendingExit flowPendingExit = (FlowPendingExit)this.pendingExits.next();
-/*  816 */       for (; flowPendingExit != null;
-/*  817 */         flowPendingExit = (FlowPendingExit)this.pendingExits.next()) {
-/*  818 */         if (this.classDef != null && this.classDef.pos == flowPendingExit.tree.pos) {
-/*      */
-/*  820 */           Flow.this.log.error(flowPendingExit.tree.pos(), "unreported.exception.default.constructor", new Object[] { flowPendingExit.thrown });
-/*      */
-/*      */         }
-/*  823 */         else if (flowPendingExit.tree.hasTag(JCTree.Tag.VARDEF) && ((JCTree.JCVariableDecl)flowPendingExit.tree).sym
-/*  824 */           .isResourceVariable()) {
-/*  825 */           Flow.this.log.error(flowPendingExit.tree.pos(), "unreported.exception.implicit.close", new Object[] { flowPendingExit.thrown, ((JCTree.JCVariableDecl)flowPendingExit.tree).sym.name });
-/*      */
-/*      */         }
-/*      */         else {
-/*      */
-/*  830 */           Flow.this.log.error(flowPendingExit.tree.pos(), "unreported.exception.need.to.catch.or.throw", new Object[] { flowPendingExit.thrown });
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void markThrown(JCTree param1JCTree, Type param1Type) {
-/*  841 */       if (!Flow.this.chk.isUnchecked(param1JCTree.pos(), param1Type)) {
-/*  842 */         if (!Flow.this.chk.isHandled(param1Type, this.caught)) {
-/*  843 */           this.pendingExits.append(new FlowPendingExit(param1JCTree, param1Type));
-/*      */         }
-/*  845 */         this.thrown = Flow.this.chk.incl(param1Type, this.thrown);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) {
-/*  856 */       if (param1JCClassDecl.sym == null)
-/*      */         return;
-/*  858 */       JCTree.JCClassDecl jCClassDecl = this.classDef;
-/*  859 */       List<Type> list1 = this.thrown;
-/*  860 */       List<Type> list2 = this.caught;
-/*  861 */       ListBuffer<FlowPendingExit> listBuffer = this.pendingExits;
-/*  862 */       Lint lint = Flow.this.lint;
-/*      */
-/*  864 */       this.pendingExits = new ListBuffer();
-/*  865 */       if (param1JCClassDecl.name != Flow.this.names.empty) {
-/*  866 */         this.caught = List.nil();
-/*      */       }
-/*  868 */       this.classDef = param1JCClassDecl;
-/*  869 */       this.thrown = List.nil();
-/*  870 */       Flow.this.lint = Flow.this.lint.augment((Symbol)param1JCClassDecl.sym);
-/*      */
-/*      */       try {
-/*      */         List list;
-/*  874 */         for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/*  875 */           if (!((JCTree)list.head).hasTag(JCTree.Tag.METHODDEF) && (
-/*  876 */             TreeInfo.flags((JCTree)list.head) & 0x8L) != 0L) {
-/*  877 */             scan((JCTree)list.head);
-/*  878 */             errorUncaught();
-/*      */           }
-/*      */         }
-/*      */
-/*      */
-/*      */
-/*  884 */         if (param1JCClassDecl.name != Flow.this.names.empty) {
-/*  885 */           boolean bool = true;
-/*  886 */           for (List list3 = param1JCClassDecl.defs; list3.nonEmpty(); list3 = list3.tail) {
-/*  887 */             if (TreeInfo.isInitialConstructor((JCTree)list3.head)) {
-/*      */
-/*  889 */               List<Type> list4 = ((JCTree.JCMethodDecl)list3.head).sym.type.getThrownTypes();
-/*  890 */               if (bool) {
-/*  891 */                 this.caught = list4;
-/*  892 */                 bool = false;
-/*      */               } else {
-/*  894 */                 this.caught = Flow.this.chk.intersect(list4, this.caught);
-/*      */               }
-/*      */             }
-/*      */           }
-/*      */         }
-/*      */
-/*      */
-/*  901 */         for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/*  902 */           if (!((JCTree)list.head).hasTag(JCTree.Tag.METHODDEF) && (
-/*  903 */             TreeInfo.flags((JCTree)list.head) & 0x8L) == 0L) {
-/*  904 */             scan((JCTree)list.head);
-/*  905 */             errorUncaught();
-/*      */           }
-/*      */         }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  915 */         if (param1JCClassDecl.name == Flow.this.names.empty) {
-/*  916 */           for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/*  917 */             if (TreeInfo.isInitialConstructor((JCTree)list.head)) {
-/*  918 */               JCTree.JCMethodDecl jCMethodDecl = (JCTree.JCMethodDecl)list.head;
-/*  919 */               jCMethodDecl.thrown = Flow.this.make.Types(this.thrown);
-/*  920 */               jCMethodDecl.sym.type = Flow.this.types.createMethodTypeWithThrown(jCMethodDecl.sym.type, this.thrown);
-/*      */             }
-/*      */           }
-/*  923 */           list1 = Flow.this.chk.union(this.thrown, list1);
-/*      */         }
-/*      */
-/*      */
-/*  927 */         for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/*  928 */           if (((JCTree)list.head).hasTag(JCTree.Tag.METHODDEF)) {
-/*  929 */             scan((JCTree)list.head);
-/*  930 */             errorUncaught();
-/*      */           }
-/*      */         }
-/*      */
-/*  934 */         this.thrown = list1;
-/*      */       } finally {
-/*  936 */         this.pendingExits = listBuffer;
-/*  937 */         this.caught = list2;
-/*  938 */         this.classDef = jCClassDecl;
-/*  939 */         Flow.this.lint = lint;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitMethodDef(JCTree.JCMethodDecl param1JCMethodDecl) {
-/*  944 */       if (param1JCMethodDecl.body == null)
-/*      */         return;
-/*  946 */       List<Type> list1 = this.caught;
-/*  947 */       List<Type> list2 = param1JCMethodDecl.sym.type.getThrownTypes();
-/*  948 */       Lint lint = Flow.this.lint;
-/*      */
-/*  950 */       Flow.this.lint = Flow.this.lint.augment((Symbol)param1JCMethodDecl.sym);
-/*      */
-/*  952 */       Assert.check(this.pendingExits.isEmpty());
-/*      */       try {
-/*      */         List list;
-/*  955 */         for (list = param1JCMethodDecl.params; list.nonEmpty(); list = list.tail) {
-/*  956 */           JCTree.JCVariableDecl jCVariableDecl = (JCTree.JCVariableDecl)list.head;
-/*  957 */           scan((JCTree)jCVariableDecl);
-/*      */         }
-/*  959 */         if (TreeInfo.isInitialConstructor((JCTree)param1JCMethodDecl)) {
-/*  960 */           this.caught = Flow.this.chk.union(this.caught, list2);
-/*  961 */         } else if ((param1JCMethodDecl.sym.flags() & 0x100008L) != 1048576L) {
-/*  962 */           this.caught = list2;
-/*      */         }
-/*      */
-/*      */
-/*  966 */         scan((JCTree)param1JCMethodDecl.body);
-/*      */
-/*  968 */         list = this.pendingExits.toList();
-/*  969 */         this.pendingExits = new ListBuffer();
-/*  970 */         while (list.nonEmpty()) {
-/*  971 */           FlowPendingExit flowPendingExit = (FlowPendingExit)list.head;
-/*  972 */           list = list.tail;
-/*  973 */           if (flowPendingExit.thrown == null) {
-/*  974 */             Assert.check(flowPendingExit.tree.hasTag(JCTree.Tag.RETURN));
-/*      */             continue;
-/*      */           }
-/*  977 */           this.pendingExits.append(flowPendingExit);
-/*      */         }
-/*      */       } finally {
-/*      */
-/*  981 */         this.caught = list1;
-/*  982 */         Flow.this.lint = lint;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitVarDef(JCTree.JCVariableDecl param1JCVariableDecl) {
-/*  987 */       if (param1JCVariableDecl.init != null) {
-/*  988 */         Lint lint = Flow.this.lint;
-/*  989 */         Flow.this.lint = Flow.this.lint.augment((Symbol)param1JCVariableDecl.sym);
-/*      */         try {
-/*  991 */           scan((JCTree)param1JCVariableDecl.init);
-/*      */         } finally {
-/*  993 */           Flow.this.lint = lint;
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitBlock(JCTree.JCBlock param1JCBlock) {
-/*  999 */       scan(param1JCBlock.stats);
-/*      */     }
-/*      */
-/*      */     public void visitDoLoop(JCTree.JCDoWhileLoop param1JCDoWhileLoop) {
-/* 1003 */       ListBuffer<FlowPendingExit> listBuffer = this.pendingExits;
-/* 1004 */       this.pendingExits = new ListBuffer();
-/* 1005 */       scan((JCTree)param1JCDoWhileLoop.body);
-/* 1006 */       resolveContinues((JCTree)param1JCDoWhileLoop);
-/* 1007 */       scan((JCTree)param1JCDoWhileLoop.cond);
-/* 1008 */       resolveBreaks((JCTree)param1JCDoWhileLoop, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitWhileLoop(JCTree.JCWhileLoop param1JCWhileLoop) {
-/* 1012 */       ListBuffer<FlowPendingExit> listBuffer = this.pendingExits;
-/* 1013 */       this.pendingExits = new ListBuffer();
-/* 1014 */       scan((JCTree)param1JCWhileLoop.cond);
-/* 1015 */       scan((JCTree)param1JCWhileLoop.body);
-/* 1016 */       resolveContinues((JCTree)param1JCWhileLoop);
-/* 1017 */       resolveBreaks((JCTree)param1JCWhileLoop, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitForLoop(JCTree.JCForLoop param1JCForLoop) {
-/* 1021 */       ListBuffer<FlowPendingExit> listBuffer = this.pendingExits;
-/* 1022 */       scan(param1JCForLoop.init);
-/* 1023 */       this.pendingExits = new ListBuffer();
-/* 1024 */       if (param1JCForLoop.cond != null) {
-/* 1025 */         scan((JCTree)param1JCForLoop.cond);
-/*      */       }
-/* 1027 */       scan((JCTree)param1JCForLoop.body);
-/* 1028 */       resolveContinues((JCTree)param1JCForLoop);
-/* 1029 */       scan(param1JCForLoop.step);
-/* 1030 */       resolveBreaks((JCTree)param1JCForLoop, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitForeachLoop(JCTree.JCEnhancedForLoop param1JCEnhancedForLoop) {
-/* 1034 */       visitVarDef(param1JCEnhancedForLoop.var);
-/* 1035 */       ListBuffer<FlowPendingExit> listBuffer = this.pendingExits;
-/* 1036 */       scan((JCTree)param1JCEnhancedForLoop.expr);
-/* 1037 */       this.pendingExits = new ListBuffer();
-/* 1038 */       scan((JCTree)param1JCEnhancedForLoop.body);
-/* 1039 */       resolveContinues((JCTree)param1JCEnhancedForLoop);
-/* 1040 */       resolveBreaks((JCTree)param1JCEnhancedForLoop, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitLabelled(JCTree.JCLabeledStatement param1JCLabeledStatement) {
-/* 1044 */       ListBuffer<FlowPendingExit> listBuffer = this.pendingExits;
-/* 1045 */       this.pendingExits = new ListBuffer();
-/* 1046 */       scan((JCTree)param1JCLabeledStatement.body);
-/* 1047 */       resolveBreaks((JCTree)param1JCLabeledStatement, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitSwitch(JCTree.JCSwitch param1JCSwitch) {
-/* 1051 */       ListBuffer<FlowPendingExit> listBuffer = this.pendingExits;
-/* 1052 */       this.pendingExits = new ListBuffer();
-/* 1053 */       scan((JCTree)param1JCSwitch.selector);
-/* 1054 */       for (List list = param1JCSwitch.cases; list.nonEmpty(); list = list.tail) {
-/* 1055 */         JCTree.JCCase jCCase = (JCTree.JCCase)list.head;
-/* 1056 */         if (jCCase.pat != null) {
-/* 1057 */           scan((JCTree)jCCase.pat);
-/*      */         }
-/* 1059 */         scan(jCCase.stats);
-/*      */       }
-/* 1061 */       resolveBreaks((JCTree)param1JCSwitch, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitTry(JCTree.JCTry param1JCTry) {
-/* 1065 */       List<Type> list1 = this.caught;
-/* 1066 */       List<Type> list2 = this.thrown;
-/* 1067 */       this.thrown = List.nil();
-/* 1068 */       for (List list = param1JCTry.catchers; list.nonEmpty(); list = list.tail) {
-/*      */
-/*      */
-/* 1071 */         List list6 = TreeInfo.isMultiCatch((JCTree.JCCatch)list.head) ? ((JCTree.JCTypeUnion)((JCTree.JCCatch)list.head).param.vartype).alternatives : List.of(((JCTree.JCCatch)list.head).param.vartype);
-/* 1072 */         for (JCTree.JCExpression jCExpression : list6) {
-/* 1073 */           this.caught = Flow.this.chk.incl(jCExpression.type, this.caught);
-/*      */         }
-/*      */       }
-/*      */
-/* 1077 */       ListBuffer<FlowPendingExit> listBuffer = this.pendingExits;
-/* 1078 */       this.pendingExits = new ListBuffer();
-/* 1079 */       for (JCTree jCTree : param1JCTry.resources) {
-/* 1080 */         if (jCTree instanceof JCTree.JCVariableDecl) {
-/* 1081 */           JCTree.JCVariableDecl jCVariableDecl = (JCTree.JCVariableDecl)jCTree;
-/* 1082 */           visitVarDef(jCVariableDecl); continue;
-/* 1083 */         }  if (jCTree instanceof JCTree.JCExpression) {
-/* 1084 */           scan(jCTree); continue;
-/*      */         }
-/* 1086 */         throw new AssertionError(param1JCTry);
-/*      */       }
-/*      */
-/* 1089 */       for (JCTree jCTree : param1JCTry.resources) {
-/*      */
-/*      */
-/* 1092 */         List list6 = jCTree.type.isCompound() ? Flow.this.types.interfaces(jCTree.type).prepend(Flow.this.types.supertype(jCTree.type)) : List.of(jCTree.type);
-/* 1093 */         for (Type type : list6) {
-/* 1094 */           if (Flow.this.types.asSuper(type, (Symbol)Flow.this.syms.autoCloseableType.tsym) != null) {
-/* 1095 */             Symbol symbol = Flow.this.rs.resolveQualifiedMethod((JCDiagnostic.DiagnosticPosition)param1JCTry, Flow.this
-/* 1096 */                 .attrEnv, type,
-/*      */
-/* 1098 */                 Flow.this.names.close,
-/* 1099 */                 List.nil(),
-/* 1100 */                 List.nil());
-/* 1101 */             Type type1 = Flow.this.types.memberType(jCTree.type, symbol);
-/* 1102 */             if (symbol.kind == 16) {
-/* 1103 */               for (Type type2 : type1.getThrownTypes()) {
-/* 1104 */                 markThrown(jCTree, type2);
-/*      */               }
-/*      */             }
-/*      */           }
-/*      */         }
-/*      */       }
-/* 1110 */       scan((JCTree)param1JCTry.body);
-/*      */
-/* 1112 */       List<Type> list3 = Flow.this.allowImprovedCatchAnalysis ? Flow.this.chk.union(this.thrown, List.of(Flow.this.syms.runtimeExceptionType, Flow.this.syms.errorType)) : this.thrown;
-/*      */
-/* 1114 */       this.thrown = list2;
-/* 1115 */       this.caught = list1;
-/*      */
-/* 1117 */       List<Type> list4 = List.nil(); List<Type> list5;
-/* 1118 */       for (list5 = param1JCTry.catchers; list5.nonEmpty(); list5 = list5.tail) {
-/* 1119 */         JCTree.JCVariableDecl jCVariableDecl = ((JCTree.JCCatch)list5.head).param;
-/*      */
-/*      */
-/* 1122 */         List list6 = TreeInfo.isMultiCatch((JCTree.JCCatch)list5.head) ? ((JCTree.JCTypeUnion)((JCTree.JCCatch)list5.head).param.vartype).alternatives : List.of(((JCTree.JCCatch)list5.head).param.vartype);
-/* 1123 */         List<Type> list7 = List.nil();
-/* 1124 */         List<Type> list8 = Flow.this.chk.diff(list3, list4);
-/* 1125 */         for (JCTree.JCExpression jCExpression : list6) {
-/* 1126 */           Type type = jCExpression.type;
-/* 1127 */           if (type != Flow.this.syms.unknownType) {
-/* 1128 */             list7 = list7.append(type);
-/* 1129 */             if (Flow.this.types.isSameType(type, Flow.this.syms.objectType))
-/*      */               continue;
-/* 1131 */             checkCaughtType(((JCTree.JCCatch)list5.head).pos(), type, list3, list4);
-/* 1132 */             list4 = Flow.this.chk.incl(type, list4);
-/*      */           }
-/*      */         }
-/* 1135 */         scan((JCTree)jCVariableDecl);
-/* 1136 */         this.preciseRethrowTypes.put(jCVariableDecl.sym, Flow.this.chk.intersect(list7, list8));
-/* 1137 */         scan((JCTree)((JCTree.JCCatch)list5.head).body);
-/* 1138 */         this.preciseRethrowTypes.remove(jCVariableDecl.sym);
-/*      */       }
-/* 1140 */       if (param1JCTry.finalizer != null) {
-/* 1141 */         list5 = this.thrown;
-/* 1142 */         this.thrown = List.nil();
-/* 1143 */         ListBuffer<FlowPendingExit> listBuffer1 = this.pendingExits;
-/* 1144 */         this.pendingExits = listBuffer;
-/* 1145 */         scan((JCTree)param1JCTry.finalizer);
-/* 1146 */         if (!param1JCTry.finallyCanCompleteNormally) {
-/*      */
-/* 1148 */           this.thrown = Flow.this.chk.union(this.thrown, list2);
-/*      */         } else {
-/* 1150 */           this.thrown = Flow.this.chk.union(this.thrown, Flow.this.chk.diff(list3, list4));
-/* 1151 */           this.thrown = Flow.this.chk.union(this.thrown, list5);
-/*      */
-/*      */
-/* 1154 */           while (listBuffer1.nonEmpty()) {
-/* 1155 */             this.pendingExits.append(listBuffer1.next());
-/*      */           }
-/*      */         }
-/*      */       } else {
-/* 1159 */         this.thrown = Flow.this.chk.union(this.thrown, Flow.this.chk.diff(list3, list4));
-/* 1160 */         ListBuffer<FlowPendingExit> listBuffer1 = this.pendingExits;
-/* 1161 */         this.pendingExits = listBuffer;
-/* 1162 */         for (; listBuffer1.nonEmpty(); this.pendingExits.append(listBuffer1.next()));
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitIf(JCTree.JCIf param1JCIf) {
-/* 1168 */       scan((JCTree)param1JCIf.cond);
-/* 1169 */       scan((JCTree)param1JCIf.thenpart);
-/* 1170 */       if (param1JCIf.elsepart != null) {
-/* 1171 */         scan((JCTree)param1JCIf.elsepart);
-/*      */       }
-/*      */     }
-/*      */
-/*      */     void checkCaughtType(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Type param1Type, List<Type> param1List1, List<Type> param1List2) {
-/* 1176 */       if (Flow.this.chk.subset(param1Type, param1List2)) {
-/* 1177 */         Flow.this.log.error(param1DiagnosticPosition, "except.already.caught", new Object[] { param1Type });
-/* 1178 */       } else if (!Flow.this.chk.isUnchecked(param1DiagnosticPosition, param1Type) &&
-/* 1179 */         !isExceptionOrThrowable(param1Type) &&
-/* 1180 */         !Flow.this.chk.intersects(param1Type, param1List1)) {
-/* 1181 */         Flow.this.log.error(param1DiagnosticPosition, "except.never.thrown.in.try", new Object[] { param1Type });
-/* 1182 */       } else if (Flow.this.allowImprovedCatchAnalysis) {
-/* 1183 */         List<Type> list = Flow.this.chk.intersect(List.of(param1Type), param1List1);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1188 */         if (Flow.this.chk.diff(list, param1List2).isEmpty() &&
-/* 1189 */           !isExceptionOrThrowable(param1Type)) {
-/* 1190 */           String str = (list.length() == 1) ? "unreachable.catch" : "unreachable.catch.1";
-/*      */
-/*      */
-/* 1193 */           Flow.this.log.warning(param1DiagnosticPosition, str, new Object[] { list });
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */     private boolean isExceptionOrThrowable(Type param1Type) {
-/* 1199 */       return (param1Type.tsym == Flow.this.syms.throwableType.tsym || param1Type.tsym ==
-/* 1200 */         Flow.this.syms.exceptionType.tsym);
-/*      */     }
-/*      */
-/*      */     public void visitBreak(JCTree.JCBreak param1JCBreak) {
-/* 1204 */       recordExit(new FlowPendingExit((JCTree)param1JCBreak, null));
-/*      */     }
-/*      */
-/*      */     public void visitContinue(JCTree.JCContinue param1JCContinue) {
-/* 1208 */       recordExit(new FlowPendingExit((JCTree)param1JCContinue, null));
-/*      */     }
-/*      */
-/*      */     public void visitReturn(JCTree.JCReturn param1JCReturn) {
-/* 1212 */       scan((JCTree)param1JCReturn.expr);
-/* 1213 */       recordExit(new FlowPendingExit((JCTree)param1JCReturn, null));
-/*      */     }
-/*      */
-/*      */     public void visitThrow(JCTree.JCThrow param1JCThrow) {
-/* 1217 */       scan((JCTree)param1JCThrow.expr);
-/* 1218 */       Symbol symbol = TreeInfo.symbol((JCTree)param1JCThrow.expr);
-/* 1219 */       if (symbol != null && symbol.kind == 4 && (symbol
-/*      */
-/* 1221 */         .flags() & 0x20000000010L) != 0L && this.preciseRethrowTypes
-/* 1222 */         .get(symbol) != null && Flow.this
-/* 1223 */         .allowImprovedRethrowAnalysis) {
-/* 1224 */         for (Type type : this.preciseRethrowTypes.get(symbol)) {
-/* 1225 */           markThrown((JCTree)param1JCThrow, type);
-/*      */         }
-/*      */       } else {
-/*      */
-/* 1229 */         markThrown((JCTree)param1JCThrow, param1JCThrow.expr.type);
-/*      */       }
-/* 1231 */       markDead();
-/*      */     }
-/*      */
-/*      */     public void visitApply(JCTree.JCMethodInvocation param1JCMethodInvocation) {
-/* 1235 */       scan((JCTree)param1JCMethodInvocation.meth);
-/* 1236 */       scan(param1JCMethodInvocation.args);
-/* 1237 */       for (List list = param1JCMethodInvocation.meth.type.getThrownTypes(); list.nonEmpty(); list = list.tail)
-/* 1238 */         markThrown((JCTree)param1JCMethodInvocation, (Type)list.head);
-/*      */     }
-/*      */
-/*      */     public void visitNewClass(JCTree.JCNewClass param1JCNewClass) {
-/* 1242 */       scan((JCTree)param1JCNewClass.encl);
-/* 1243 */       scan(param1JCNewClass.args);
-/*      */
-/* 1245 */       List<Type> list = param1JCNewClass.constructorType.getThrownTypes();
-/* 1246 */       for (; list.nonEmpty();
-/* 1247 */         list = list.tail) {
-/* 1248 */         markThrown((JCTree)param1JCNewClass, (Type)list.head);
-/*      */       }
-/* 1250 */       list = this.caught;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       try {
-/* 1260 */         if (param1JCNewClass.def != null) {
-/* 1261 */           List list1 = param1JCNewClass.constructor.type.getThrownTypes();
-/* 1262 */           for (; list1.nonEmpty();
-/* 1263 */             list1 = list1.tail)
-/* 1264 */             this.caught = Flow.this.chk.incl((Type)list1.head, this.caught);
-/*      */         }
-/* 1266 */         scan((JCTree)param1JCNewClass.def);
-/*      */       } finally {
-/*      */
-/* 1269 */         this.caught = list;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitLambda(JCTree.JCLambda param1JCLambda) {
-/* 1275 */       if (param1JCLambda.type != null && param1JCLambda.type
-/* 1276 */         .isErroneous()) {
-/*      */         return;
-/*      */       }
-/* 1279 */       List<Type> list1 = this.caught;
-/* 1280 */       List<Type> list2 = this.thrown;
-/* 1281 */       ListBuffer<FlowPendingExit> listBuffer = this.pendingExits;
-/*      */       try {
-/* 1283 */         this.pendingExits = new ListBuffer();
-/* 1284 */         this.caught = param1JCLambda.getDescriptorType(Flow.this.types).getThrownTypes();
-/* 1285 */         this.thrown = List.nil();
-/* 1286 */         scan(param1JCLambda.body);
-/* 1287 */         List list = this.pendingExits.toList();
-/* 1288 */         this.pendingExits = new ListBuffer();
-/* 1289 */         while (list.nonEmpty()) {
-/* 1290 */           FlowPendingExit flowPendingExit = (FlowPendingExit)list.head;
-/* 1291 */           list = list.tail;
-/* 1292 */           if (flowPendingExit.thrown == null) {
-/* 1293 */             Assert.check(flowPendingExit.tree.hasTag(JCTree.Tag.RETURN));
-/*      */             continue;
-/*      */           }
-/* 1296 */           this.pendingExits.append(flowPendingExit);
-/*      */         }
-/*      */
-/*      */
-/* 1300 */         errorUncaught();
-/*      */       } finally {
-/* 1302 */         this.pendingExits = listBuffer;
-/* 1303 */         this.caught = list1;
-/* 1304 */         this.thrown = list2;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitTopLevel(JCTree.JCCompilationUnit param1JCCompilationUnit) {}
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void analyzeTree(Env<AttrContext> param1Env, TreeMaker param1TreeMaker) {
-/* 1319 */       analyzeTree(param1Env, param1Env.tree, param1TreeMaker);
-/*      */     }
-/*      */     public void analyzeTree(Env<AttrContext> param1Env, JCTree param1JCTree, TreeMaker param1TreeMaker) {
-/*      */       try {
-/* 1323 */         Flow.this.attrEnv = param1Env;
-/* 1324 */         Flow.this.make = param1TreeMaker;
-/* 1325 */         this.pendingExits = new ListBuffer();
-/* 1326 */         this.preciseRethrowTypes = new HashMap<>();
-/* 1327 */         this.thrown = this.caught = null;
-/* 1328 */         this.classDef = null;
-/* 1329 */         scan(param1JCTree);
-/*      */       } finally {
-/* 1331 */         this.pendingExits = null;
-/* 1332 */         Flow.this.make = null;
-/* 1333 */         this.thrown = this.caught = null;
-/* 1334 */         this.classDef = null;
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   class LambdaFlowAnalyzer
-/*      */     extends FlowAnalyzer
-/*      */   {
-/*      */     List<Type> inferredThrownTypes;
-/*      */     boolean inLambda;
-/*      */
-/*      */     public void visitLambda(JCTree.JCLambda param1JCLambda) {
-/* 1347 */       if ((param1JCLambda.type != null && param1JCLambda.type
-/* 1348 */         .isErroneous()) || this.inLambda) {
-/*      */         return;
-/*      */       }
-/* 1351 */       List<Type> list1 = this.caught;
-/* 1352 */       List<Type> list2 = this.thrown;
-/* 1353 */       ListBuffer<FlowPendingExit> listBuffer = this.pendingExits;
-/* 1354 */       this.inLambda = true;
-/*      */       try {
-/* 1356 */         this.pendingExits = new ListBuffer();
-/* 1357 */         this.caught = List.of(Flow.this.syms.throwableType);
-/* 1358 */         this.thrown = List.nil();
-/* 1359 */         scan(param1JCLambda.body);
-/* 1360 */         this.inferredThrownTypes = this.thrown;
-/*      */       } finally {
-/* 1362 */         this.pendingExits = listBuffer;
-/* 1363 */         this.caught = list1;
-/* 1364 */         this.thrown = list2;
-/* 1365 */         this.inLambda = false;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) {}
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public class AssignAnalyzer
-/*      */     extends BaseAnalyzer<AssignAnalyzer.AssignPendingExit>
-/*      */   {
-/*      */     final Bits inits;
-/*      */
-/*      */
-/*      */
-/*      */     final Bits uninits;
-/*      */
-/*      */
-/*      */
-/*      */     final Bits uninitsTry;
-/*      */
-/*      */
-/*      */
-/*      */     final Bits initsWhenTrue;
-/*      */
-/*      */
-/*      */
-/*      */     final Bits initsWhenFalse;
-/*      */
-/*      */
-/*      */
-/*      */     final Bits uninitsWhenTrue;
-/*      */
-/*      */
-/*      */
-/*      */     final Bits uninitsWhenFalse;
-/*      */
-/*      */
-/*      */
-/*      */     protected JCTree.JCVariableDecl[] vardecls;
-/*      */
-/*      */
-/*      */
-/*      */     JCTree.JCClassDecl classDef;
-/*      */
-/*      */
-/*      */
-/*      */     int firstadr;
-/*      */
-/*      */
-/*      */
-/*      */     protected int nextadr;
-/*      */
-/*      */
-/*      */
-/*      */     protected int returnadr;
-/*      */
-/*      */
-/*      */
-/*      */     Scope unrefdResources;
-/*      */
-/*      */
-/*      */
-/* 1434 */     FlowKind flowKind = FlowKind.NORMAL;
-/*      */     int startPos;
-/*      */     private boolean isInitialConstructor;
-/*      */
-/*      */     public class AssignPendingExit
-/*      */       extends PendingExit
-/*      */     {
-/*      */       final Bits inits;
-/*      */       final Bits uninits;
-/* 1443 */       final Bits exit_inits = new Bits(true);
-/* 1444 */       final Bits exit_uninits = new Bits(true);
-/*      */
-/*      */       public AssignPendingExit(JCTree param2JCTree, Bits param2Bits1, Bits param2Bits2) {
-/* 1447 */         super(param2JCTree);
-/* 1448 */         this.inits = param2Bits1;
-/* 1449 */         this.uninits = param2Bits2;
-/* 1450 */         this.exit_inits.assign(param2Bits1);
-/* 1451 */         this.exit_uninits.assign(param2Bits2);
-/*      */       }
-/*      */
-/*      */
-/*      */       void resolveJump() {
-/* 1456 */         this.inits.andSet(this.exit_inits);
-/* 1457 */         this.uninits.andSet(this.exit_uninits);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public AssignAnalyzer() {
-/* 1471 */       this.isInitialConstructor = false; this.inits = new Bits(); this.uninits = new Bits(); this.uninitsTry = new Bits();
-/*      */       this.initsWhenTrue = new Bits(true);
-/*      */       this.initsWhenFalse = new Bits(true);
-/*      */       this.uninitsWhenTrue = new Bits(true);
-/* 1475 */       this.uninitsWhenFalse = new Bits(true); } void markDead() { if (!this.isInitialConstructor) {
-/* 1476 */         this.inits.inclRange(this.returnadr, this.nextadr);
-/*      */       } else {
-/* 1478 */         for (int i = this.returnadr; i < this.nextadr; i++) {
-/* 1479 */           if (!isFinalUninitializedStaticField((this.vardecls[i]).sym)) {
-/* 1480 */             this.inits.incl(i);
-/*      */           }
-/*      */         }
-/*      */       }
-/* 1484 */       this.uninits.inclRange(this.returnadr, this.nextadr); }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     protected boolean trackable(Symbol.VarSymbol param1VarSymbol) {
-/* 1493 */       return (param1VarSymbol.pos >= this.startPos && (param1VarSymbol.owner.kind == 16 ||
-/*      */
-/*      */
-/* 1496 */         isFinalUninitializedField(param1VarSymbol)));
-/*      */     }
-/*      */
-/*      */     boolean isFinalUninitializedField(Symbol.VarSymbol param1VarSymbol) {
-/* 1500 */       return (param1VarSymbol.owner.kind == 2 && (param1VarSymbol
-/* 1501 */         .flags() & 0x200040010L) == 16L && this.classDef.sym
-/* 1502 */         .isEnclosedBy((Symbol.ClassSymbol)param1VarSymbol.owner));
-/*      */     }
-/*      */
-/*      */     boolean isFinalUninitializedStaticField(Symbol.VarSymbol param1VarSymbol) {
-/* 1506 */       return (isFinalUninitializedField(param1VarSymbol) && param1VarSymbol.isStatic());
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void newVar(JCTree.JCVariableDecl param1JCVariableDecl) {
-/* 1514 */       Symbol.VarSymbol varSymbol = param1JCVariableDecl.sym;
-/* 1515 */       this.vardecls = (JCTree.JCVariableDecl[])ArrayUtils.ensureCapacity((Object[])this.vardecls, this.nextadr);
-/* 1516 */       if ((varSymbol.flags() & 0x10L) == 0L) {
-/* 1517 */         varSymbol.flags_field |= 0x20000000000L;
-/*      */       }
-/* 1519 */       varSymbol.adr = this.nextadr;
-/* 1520 */       this.vardecls[this.nextadr] = param1JCVariableDecl;
-/* 1521 */       this.inits.excl(this.nextadr);
-/* 1522 */       this.uninits.incl(this.nextadr);
-/* 1523 */       this.nextadr++;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     void letInit(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Symbol.VarSymbol param1VarSymbol) {
-/* 1529 */       if (param1VarSymbol.adr >= this.firstadr && trackable(param1VarSymbol)) {
-/* 1530 */         if ((param1VarSymbol.flags() & 0x20000000000L) != 0L) {
-/* 1531 */           if (!this.uninits.isMember(param1VarSymbol.adr)) {
-/*      */
-/*      */
-/*      */
-/* 1535 */             param1VarSymbol.flags_field &= 0xFFFFFDFFFFFFFFFFL;
-/*      */           } else {
-/* 1537 */             uninit(param1VarSymbol);
-/*      */           }
-/* 1539 */         } else if ((param1VarSymbol.flags() & 0x10L) != 0L) {
-/* 1540 */           if ((param1VarSymbol.flags() & 0x200000000L) != 0L) {
-/* 1541 */             if ((param1VarSymbol.flags() & 0x8000000000L) != 0L) {
-/* 1542 */               Flow.this.log.error(param1DiagnosticPosition, "multicatch.parameter.may.not.be.assigned", new Object[] { param1VarSymbol });
-/*      */             } else {
-/* 1544 */               Flow.this.log.error(param1DiagnosticPosition, "final.parameter.may.not.be.assigned", new Object[] { param1VarSymbol });
-/*      */             }
-/*      */
-/* 1547 */           } else if (!this.uninits.isMember(param1VarSymbol.adr)) {
-/* 1548 */             Flow.this.log.error(param1DiagnosticPosition, this.flowKind.errKey, new Object[] { param1VarSymbol });
-/*      */           } else {
-/* 1550 */             uninit(param1VarSymbol);
-/*      */           }
-/*      */         }
-/* 1553 */         this.inits.incl(param1VarSymbol.adr);
-/* 1554 */       } else if ((param1VarSymbol.flags() & 0x10L) != 0L) {
-/* 1555 */         Flow.this.log.error(param1DiagnosticPosition, "var.might.already.be.assigned", new Object[] { param1VarSymbol });
-/*      */       }
-/*      */     }
-/*      */
-/*      */     void uninit(Symbol.VarSymbol param1VarSymbol) {
-/* 1560 */       if (!this.inits.isMember(param1VarSymbol.adr)) {
-/*      */
-/* 1562 */         this.uninits.excl(param1VarSymbol.adr);
-/* 1563 */         this.uninitsTry.excl(param1VarSymbol.adr);
-/*      */       } else {
-/*      */
-/* 1566 */         this.uninits.excl(param1VarSymbol.adr);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void letInit(JCTree param1JCTree) {
-/* 1575 */       param1JCTree = TreeInfo.skipParens(param1JCTree);
-/* 1576 */       if (param1JCTree.hasTag(JCTree.Tag.IDENT) || param1JCTree.hasTag(JCTree.Tag.SELECT)) {
-/* 1577 */         Symbol symbol = TreeInfo.symbol(param1JCTree);
-/* 1578 */         if (symbol.kind == 4) {
-/* 1579 */           letInit(param1JCTree.pos(), (Symbol.VarSymbol)symbol);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     void checkInit(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Symbol.VarSymbol param1VarSymbol) {
-/* 1587 */       checkInit(param1DiagnosticPosition, param1VarSymbol, "var.might.not.have.been.initialized");
-/*      */     }
-/*      */
-/*      */     void checkInit(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Symbol.VarSymbol param1VarSymbol, String param1String) {
-/* 1591 */       if ((param1VarSymbol.adr >= this.firstadr || param1VarSymbol.owner.kind != 2) &&
-/* 1592 */         trackable(param1VarSymbol) &&
-/* 1593 */         !this.inits.isMember(param1VarSymbol.adr)) {
-/* 1594 */         Flow.this.log.error(param1DiagnosticPosition, param1String, new Object[] { param1VarSymbol });
-/* 1595 */         this.inits.incl(param1VarSymbol.adr);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     private void resetBits(Bits... param1VarArgs) {
-/* 1602 */       for (Bits bits : param1VarArgs) {
-/* 1603 */         bits.reset();
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     void split(boolean param1Boolean) {
-/* 1610 */       this.initsWhenFalse.assign(this.inits);
-/* 1611 */       this.uninitsWhenFalse.assign(this.uninits);
-/* 1612 */       this.initsWhenTrue.assign(this.inits);
-/* 1613 */       this.uninitsWhenTrue.assign(this.uninits);
-/* 1614 */       if (param1Boolean) {
-/* 1615 */         resetBits(new Bits[] { this.inits, this.uninits });
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     protected void merge() {
-/* 1622 */       this.inits.assign(this.initsWhenFalse.andSet(this.initsWhenTrue));
-/* 1623 */       this.uninits.assign(this.uninitsWhenFalse.andSet(this.uninitsWhenTrue));
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void scanExpr(JCTree param1JCTree) {
-/* 1634 */       if (param1JCTree != null) {
-/* 1635 */         scan(param1JCTree);
-/* 1636 */         if (this.inits.isReset()) {
-/* 1637 */           merge();
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     void scanExprs(List<? extends JCTree.JCExpression> param1List) {
-/* 1645 */       if (param1List != null) {
-/* 1646 */         for (List<? extends JCTree.JCExpression> list = param1List; list.nonEmpty(); list = list.tail) {
-/* 1647 */           scanExpr((JCTree)list.head);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     void scanCond(JCTree param1JCTree) {
-/* 1654 */       if (param1JCTree.type.isFalse()) {
-/* 1655 */         if (this.inits.isReset()) merge();
-/* 1656 */         this.initsWhenTrue.assign(this.inits);
-/* 1657 */         this.initsWhenTrue.inclRange(this.firstadr, this.nextadr);
-/* 1658 */         this.uninitsWhenTrue.assign(this.uninits);
-/* 1659 */         this.uninitsWhenTrue.inclRange(this.firstadr, this.nextadr);
-/* 1660 */         this.initsWhenFalse.assign(this.inits);
-/* 1661 */         this.uninitsWhenFalse.assign(this.uninits);
-/* 1662 */       } else if (param1JCTree.type.isTrue()) {
-/* 1663 */         if (this.inits.isReset()) merge();
-/* 1664 */         this.initsWhenFalse.assign(this.inits);
-/* 1665 */         this.initsWhenFalse.inclRange(this.firstadr, this.nextadr);
-/* 1666 */         this.uninitsWhenFalse.assign(this.uninits);
-/* 1667 */         this.uninitsWhenFalse.inclRange(this.firstadr, this.nextadr);
-/* 1668 */         this.initsWhenTrue.assign(this.inits);
-/* 1669 */         this.uninitsWhenTrue.assign(this.uninits);
-/*      */       } else {
-/* 1671 */         scan(param1JCTree);
-/* 1672 */         if (!this.inits.isReset())
-/* 1673 */           split((param1JCTree.type != Flow.this.syms.unknownType));
-/*      */       }
-/* 1675 */       if (param1JCTree.type != Flow.this.syms.unknownType) {
-/* 1676 */         resetBits(new Bits[] { this.inits, this.uninits });
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) {
-/* 1683 */       if (param1JCClassDecl.sym == null) {
-/*      */         return;
-/*      */       }
-/*      */
-/* 1687 */       Lint lint = Flow.this.lint;
-/* 1688 */       Flow.this.lint = Flow.this.lint.augment((Symbol)param1JCClassDecl.sym);
-/*      */       try {
-/* 1690 */         if (param1JCClassDecl.sym == null) {
-/*      */           return;
-/*      */         }
-/*      */
-/* 1694 */         JCTree.JCClassDecl jCClassDecl = this.classDef;
-/* 1695 */         int i = this.firstadr;
-/* 1696 */         int j = this.nextadr;
-/* 1697 */         ListBuffer<AssignPendingExit> listBuffer = this.pendingExits;
-/*      */
-/* 1699 */         this.pendingExits = new ListBuffer();
-/* 1700 */         if (param1JCClassDecl.name != Flow.this.names.empty) {
-/* 1701 */           this.firstadr = this.nextadr;
-/*      */         }
-/* 1703 */         this.classDef = param1JCClassDecl;
-/*      */         try {
-/*      */           List list;
-/* 1706 */           for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/* 1707 */             if (((JCTree)list.head).hasTag(JCTree.Tag.VARDEF)) {
-/* 1708 */               JCTree.JCVariableDecl jCVariableDecl = (JCTree.JCVariableDecl)list.head;
-/* 1709 */               if ((jCVariableDecl.mods.flags & 0x8L) != 0L) {
-/* 1710 */                 Symbol.VarSymbol varSymbol = jCVariableDecl.sym;
-/* 1711 */                 if (trackable(varSymbol)) {
-/* 1712 */                   newVar(jCVariableDecl);
-/*      */                 }
-/*      */               }
-/*      */             }
-/*      */           }
-/*      */
-/*      */
-/* 1719 */           for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/* 1720 */             if (!((JCTree)list.head).hasTag(JCTree.Tag.METHODDEF) && (
-/* 1721 */               TreeInfo.flags((JCTree)list.head) & 0x8L) != 0L) {
-/* 1722 */               scan((JCTree)list.head);
-/*      */             }
-/*      */           }
-/*      */
-/*      */
-/* 1727 */           for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/* 1728 */             if (((JCTree)list.head).hasTag(JCTree.Tag.VARDEF)) {
-/* 1729 */               JCTree.JCVariableDecl jCVariableDecl = (JCTree.JCVariableDecl)list.head;
-/* 1730 */               if ((jCVariableDecl.mods.flags & 0x8L) == 0L) {
-/* 1731 */                 Symbol.VarSymbol varSymbol = jCVariableDecl.sym;
-/* 1732 */                 if (trackable(varSymbol)) {
-/* 1733 */                   newVar(jCVariableDecl);
-/*      */                 }
-/*      */               }
-/*      */             }
-/*      */           }
-/*      */
-/* 1739 */           for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/* 1740 */             if (!((JCTree)list.head).hasTag(JCTree.Tag.METHODDEF) && (
-/* 1741 */               TreeInfo.flags((JCTree)list.head) & 0x8L) == 0L) {
-/* 1742 */               scan((JCTree)list.head);
-/*      */             }
-/*      */           }
-/*      */
-/*      */
-/* 1747 */           for (list = param1JCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/* 1748 */             if (((JCTree)list.head).hasTag(JCTree.Tag.METHODDEF)) {
-/* 1749 */               scan((JCTree)list.head);
-/*      */             }
-/*      */           }
-/*      */         } finally {
-/* 1753 */           this.pendingExits = listBuffer;
-/* 1754 */           this.nextadr = j;
-/* 1755 */           this.firstadr = i;
-/* 1756 */           this.classDef = jCClassDecl;
-/*      */         }
-/*      */       } finally {
-/* 1759 */         Flow.this.lint = lint;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitMethodDef(JCTree.JCMethodDecl param1JCMethodDecl) {
-/* 1764 */       if (param1JCMethodDecl.body == null) {
-/*      */         return;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/* 1770 */       if ((param1JCMethodDecl.sym.flags() & 0x1000L) != 0L) {
-/*      */         return;
-/*      */       }
-/*      */
-/* 1774 */       Lint lint = Flow.this.lint;
-/* 1775 */       Flow.this.lint = Flow.this.lint.augment((Symbol)param1JCMethodDecl.sym);
-/*      */       try {
-/* 1777 */         if (param1JCMethodDecl.body == null) {
-/*      */           return;
-/*      */         }
-/*      */
-/*      */
-/* 1782 */         if ((param1JCMethodDecl.sym.flags() & 0x2000000001000L) == 4096L) {
-/*      */           return;
-/*      */         }
-/*      */
-/* 1786 */         Bits bits1 = new Bits(this.inits);
-/* 1787 */         Bits bits2 = new Bits(this.uninits);
-/* 1788 */         int i = this.nextadr;
-/* 1789 */         int j = this.firstadr;
-/* 1790 */         int k = this.returnadr;
-/*      */
-/* 1792 */         Assert.check(this.pendingExits.isEmpty());
-/* 1793 */         boolean bool = this.isInitialConstructor;
-/*      */         try {
-/* 1795 */           this.isInitialConstructor = TreeInfo.isInitialConstructor((JCTree)param1JCMethodDecl);
-/*      */
-/* 1797 */           if (!this.isInitialConstructor)
-/* 1798 */             this.firstadr = this.nextadr;
-/*      */           List list;
-/* 1800 */           for (list = param1JCMethodDecl.params; list.nonEmpty(); list = list.tail) {
-/* 1801 */             JCTree.JCVariableDecl jCVariableDecl = (JCTree.JCVariableDecl)list.head;
-/* 1802 */             scan((JCTree)jCVariableDecl);
-/* 1803 */             Assert.check(((jCVariableDecl.sym.flags() & 0x200000000L) != 0L), "Method parameter without PARAMETER flag");
-/*      */
-/*      */
-/*      */
-/* 1807 */             initParam(jCVariableDecl);
-/*      */           }
-/*      */
-/*      */
-/* 1811 */           scan((JCTree)param1JCMethodDecl.body);
-/*      */
-/* 1813 */           if (this.isInitialConstructor) {
-/* 1814 */             boolean bool1 = ((param1JCMethodDecl.sym.flags() & 0x1000000000L) != 0L) ? true : false;
-/*      */
-/* 1816 */             for (int m = this.firstadr; m < this.nextadr; m++) {
-/* 1817 */               JCTree.JCVariableDecl jCVariableDecl = this.vardecls[m];
-/* 1818 */               Symbol.VarSymbol varSymbol = jCVariableDecl.sym;
-/* 1819 */               if (varSymbol.owner == this.classDef.sym)
-/*      */               {
-/*      */
-/* 1822 */                 if (bool1) {
-/* 1823 */                   checkInit(TreeInfo.diagnosticPositionFor((Symbol)varSymbol, (JCTree)jCVariableDecl), varSymbol, "var.not.initialized.in.default.constructor");
-/*      */                 } else {
-/*      */
-/* 1826 */                   checkInit(TreeInfo.diagEndPos((JCTree)param1JCMethodDecl.body), varSymbol);
-/*      */                 }
-/*      */               }
-/*      */             }
-/*      */           }
-/* 1831 */           list = this.pendingExits.toList();
-/* 1832 */           this.pendingExits = new ListBuffer();
-/* 1833 */           while (list.nonEmpty()) {
-/* 1834 */             AssignPendingExit assignPendingExit = (AssignPendingExit)list.head;
-/* 1835 */             list = list.tail;
-/* 1836 */             Assert.check(assignPendingExit.tree.hasTag(JCTree.Tag.RETURN), assignPendingExit.tree);
-/* 1837 */             if (this.isInitialConstructor) {
-/* 1838 */               this.inits.assign(assignPendingExit.exit_inits);
-/* 1839 */               for (int m = this.firstadr; m < this.nextadr; m++) {
-/* 1840 */                 checkInit(assignPendingExit.tree.pos(), (this.vardecls[m]).sym);
-/*      */               }
-/*      */             }
-/*      */           }
-/*      */         } finally {
-/* 1845 */           this.inits.assign(bits1);
-/* 1846 */           this.uninits.assign(bits2);
-/* 1847 */           this.nextadr = i;
-/* 1848 */           this.firstadr = j;
-/* 1849 */           this.returnadr = k;
-/* 1850 */           this.isInitialConstructor = bool;
-/*      */         }
-/*      */       } finally {
-/* 1853 */         Flow.this.lint = lint;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     protected void initParam(JCTree.JCVariableDecl param1JCVariableDecl) {
-/* 1858 */       this.inits.incl(param1JCVariableDecl.sym.adr);
-/* 1859 */       this.uninits.excl(param1JCVariableDecl.sym.adr);
-/*      */     }
-/*      */
-/*      */     public void visitVarDef(JCTree.JCVariableDecl param1JCVariableDecl) {
-/* 1863 */       Lint lint = Flow.this.lint;
-/* 1864 */       Flow.this.lint = Flow.this.lint.augment((Symbol)param1JCVariableDecl.sym);
-/*      */       try {
-/* 1866 */         boolean bool = trackable(param1JCVariableDecl.sym);
-/* 1867 */         if (bool && param1JCVariableDecl.sym.owner.kind == 16) {
-/* 1868 */           newVar(param1JCVariableDecl);
-/*      */         }
-/* 1870 */         if (param1JCVariableDecl.init != null) {
-/* 1871 */           scanExpr((JCTree)param1JCVariableDecl.init);
-/* 1872 */           if (bool) {
-/* 1873 */             letInit(param1JCVariableDecl.pos(), param1JCVariableDecl.sym);
-/*      */           }
-/*      */         }
-/*      */       } finally {
-/* 1877 */         Flow.this.lint = lint;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitBlock(JCTree.JCBlock param1JCBlock) {
-/* 1882 */       int i = this.nextadr;
-/* 1883 */       scan(param1JCBlock.stats);
-/* 1884 */       this.nextadr = i;
-/*      */     }
-/*      */
-/*      */     public void visitDoLoop(JCTree.JCDoWhileLoop param1JCDoWhileLoop) {
-/* 1888 */       ListBuffer<AssignPendingExit> listBuffer = this.pendingExits;
-/* 1889 */       FlowKind flowKind = this.flowKind;
-/* 1890 */       this.flowKind = FlowKind.NORMAL;
-/* 1891 */       Bits bits1 = new Bits(true);
-/* 1892 */       Bits bits2 = new Bits(true);
-/* 1893 */       this.pendingExits = new ListBuffer();
-/* 1894 */       int i = Flow.this.log.nerrors;
-/*      */       while (true) {
-/* 1896 */         Bits bits = new Bits(this.uninits);
-/* 1897 */         bits.excludeFrom(this.nextadr);
-/* 1898 */         scan((JCTree)param1JCDoWhileLoop.body);
-/* 1899 */         resolveContinues((JCTree)param1JCDoWhileLoop);
-/* 1900 */         scanCond((JCTree)param1JCDoWhileLoop.cond);
-/* 1901 */         if (!this.flowKind.isFinal()) {
-/* 1902 */           bits1.assign(this.initsWhenFalse);
-/* 1903 */           bits2.assign(this.uninitsWhenFalse);
-/*      */         }
-/* 1905 */         if (Flow.this.log.nerrors != i || this.flowKind
-/* 1906 */           .isFinal() || (new Bits(bits))
-/* 1907 */           .diffSet(this.uninitsWhenTrue).nextBit(this.firstadr) == -1)
-/*      */           break;
-/* 1909 */         this.inits.assign(this.initsWhenTrue);
-/* 1910 */         this.uninits.assign(bits.andSet(this.uninitsWhenTrue));
-/* 1911 */         this.flowKind = FlowKind.SPECULATIVE_LOOP;
-/*      */       }
-/* 1913 */       this.flowKind = flowKind;
-/* 1914 */       this.inits.assign(bits1);
-/* 1915 */       this.uninits.assign(bits2);
-/* 1916 */       resolveBreaks((JCTree)param1JCDoWhileLoop, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitWhileLoop(JCTree.JCWhileLoop param1JCWhileLoop) {
-/* 1920 */       ListBuffer<AssignPendingExit> listBuffer = this.pendingExits;
-/* 1921 */       FlowKind flowKind = this.flowKind;
-/* 1922 */       this.flowKind = FlowKind.NORMAL;
-/* 1923 */       Bits bits1 = new Bits(true);
-/* 1924 */       Bits bits2 = new Bits(true);
-/* 1925 */       this.pendingExits = new ListBuffer();
-/* 1926 */       int i = Flow.this.log.nerrors;
-/* 1927 */       Bits bits3 = new Bits(this.uninits);
-/* 1928 */       bits3.excludeFrom(this.nextadr);
-/*      */       while (true) {
-/* 1930 */         scanCond((JCTree)param1JCWhileLoop.cond);
-/* 1931 */         if (!this.flowKind.isFinal()) {
-/* 1932 */           bits1.assign(this.initsWhenFalse);
-/* 1933 */           bits2.assign(this.uninitsWhenFalse);
-/*      */         }
-/* 1935 */         this.inits.assign(this.initsWhenTrue);
-/* 1936 */         this.uninits.assign(this.uninitsWhenTrue);
-/* 1937 */         scan((JCTree)param1JCWhileLoop.body);
-/* 1938 */         resolveContinues((JCTree)param1JCWhileLoop);
-/* 1939 */         if (Flow.this.log.nerrors != i || this.flowKind
-/* 1940 */           .isFinal() || (new Bits(bits3))
-/* 1941 */           .diffSet(this.uninits).nextBit(this.firstadr) == -1) {
-/*      */           break;
-/*      */         }
-/* 1944 */         this.uninits.assign(bits3.andSet(this.uninits));
-/* 1945 */         this.flowKind = FlowKind.SPECULATIVE_LOOP;
-/*      */       }
-/* 1947 */       this.flowKind = flowKind;
-/*      */
-/*      */
-/* 1950 */       this.inits.assign(bits1);
-/* 1951 */       this.uninits.assign(bits2);
-/* 1952 */       resolveBreaks((JCTree)param1JCWhileLoop, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitForLoop(JCTree.JCForLoop param1JCForLoop) {
-/* 1956 */       ListBuffer<AssignPendingExit> listBuffer = this.pendingExits;
-/* 1957 */       FlowKind flowKind = this.flowKind;
-/* 1958 */       this.flowKind = FlowKind.NORMAL;
-/* 1959 */       int i = this.nextadr;
-/* 1960 */       scan(param1JCForLoop.init);
-/* 1961 */       Bits bits1 = new Bits(true);
-/* 1962 */       Bits bits2 = new Bits(true);
-/* 1963 */       this.pendingExits = new ListBuffer();
-/* 1964 */       int j = Flow.this.log.nerrors;
-/*      */       while (true) {
-/* 1966 */         Bits bits = new Bits(this.uninits);
-/* 1967 */         bits.excludeFrom(this.nextadr);
-/* 1968 */         if (param1JCForLoop.cond != null) {
-/* 1969 */           scanCond((JCTree)param1JCForLoop.cond);
-/* 1970 */           if (!this.flowKind.isFinal()) {
-/* 1971 */             bits1.assign(this.initsWhenFalse);
-/* 1972 */             bits2.assign(this.uninitsWhenFalse);
-/*      */           }
-/* 1974 */           this.inits.assign(this.initsWhenTrue);
-/* 1975 */           this.uninits.assign(this.uninitsWhenTrue);
-/* 1976 */         } else if (!this.flowKind.isFinal()) {
-/* 1977 */           bits1.assign(this.inits);
-/* 1978 */           bits1.inclRange(this.firstadr, this.nextadr);
-/* 1979 */           bits2.assign(this.uninits);
-/* 1980 */           bits2.inclRange(this.firstadr, this.nextadr);
-/*      */         }
-/* 1982 */         scan((JCTree)param1JCForLoop.body);
-/* 1983 */         resolveContinues((JCTree)param1JCForLoop);
-/* 1984 */         scan(param1JCForLoop.step);
-/* 1985 */         if (Flow.this.log.nerrors != j || this.flowKind
-/* 1986 */           .isFinal() || (new Bits(bits))
-/* 1987 */           .diffSet(this.uninits).nextBit(this.firstadr) == -1)
-/*      */           break;
-/* 1989 */         this.uninits.assign(bits.andSet(this.uninits));
-/* 1990 */         this.flowKind = FlowKind.SPECULATIVE_LOOP;
-/*      */       }
-/* 1992 */       this.flowKind = flowKind;
-/*      */
-/*      */
-/* 1995 */       this.inits.assign(bits1);
-/* 1996 */       this.uninits.assign(bits2);
-/* 1997 */       resolveBreaks((JCTree)param1JCForLoop, listBuffer);
-/* 1998 */       this.nextadr = i;
-/*      */     }
-/*      */
-/*      */     public void visitForeachLoop(JCTree.JCEnhancedForLoop param1JCEnhancedForLoop) {
-/* 2002 */       visitVarDef(param1JCEnhancedForLoop.var);
-/*      */
-/* 2004 */       ListBuffer<AssignPendingExit> listBuffer = this.pendingExits;
-/* 2005 */       FlowKind flowKind = this.flowKind;
-/* 2006 */       this.flowKind = FlowKind.NORMAL;
-/* 2007 */       int i = this.nextadr;
-/* 2008 */       scan((JCTree)param1JCEnhancedForLoop.expr);
-/* 2009 */       Bits bits1 = new Bits(this.inits);
-/* 2010 */       Bits bits2 = new Bits(this.uninits);
-/*      */
-/* 2012 */       letInit(param1JCEnhancedForLoop.pos(), param1JCEnhancedForLoop.var.sym);
-/* 2013 */       this.pendingExits = new ListBuffer();
-/* 2014 */       int j = Flow.this.log.nerrors;
-/*      */       while (true) {
-/* 2016 */         Bits bits = new Bits(this.uninits);
-/* 2017 */         bits.excludeFrom(this.nextadr);
-/* 2018 */         scan((JCTree)param1JCEnhancedForLoop.body);
-/* 2019 */         resolveContinues((JCTree)param1JCEnhancedForLoop);
-/* 2020 */         if (Flow.this.log.nerrors != j || this.flowKind
-/* 2021 */           .isFinal() || (new Bits(bits))
-/* 2022 */           .diffSet(this.uninits).nextBit(this.firstadr) == -1)
-/*      */           break;
-/* 2024 */         this.uninits.assign(bits.andSet(this.uninits));
-/* 2025 */         this.flowKind = FlowKind.SPECULATIVE_LOOP;
-/*      */       }
-/* 2027 */       this.flowKind = flowKind;
-/* 2028 */       this.inits.assign(bits1);
-/* 2029 */       this.uninits.assign(bits2.andSet(this.uninits));
-/* 2030 */       resolveBreaks((JCTree)param1JCEnhancedForLoop, listBuffer);
-/* 2031 */       this.nextadr = i;
-/*      */     }
-/*      */
-/*      */     public void visitLabelled(JCTree.JCLabeledStatement param1JCLabeledStatement) {
-/* 2035 */       ListBuffer<AssignPendingExit> listBuffer = this.pendingExits;
-/* 2036 */       this.pendingExits = new ListBuffer();
-/* 2037 */       scan((JCTree)param1JCLabeledStatement.body);
-/* 2038 */       resolveBreaks((JCTree)param1JCLabeledStatement, listBuffer);
-/*      */     }
-/*      */
-/*      */     public void visitSwitch(JCTree.JCSwitch param1JCSwitch) {
-/* 2042 */       ListBuffer<AssignPendingExit> listBuffer = this.pendingExits;
-/* 2043 */       this.pendingExits = new ListBuffer();
-/* 2044 */       int i = this.nextadr;
-/* 2045 */       scanExpr((JCTree)param1JCSwitch.selector);
-/* 2046 */       Bits bits1 = new Bits(this.inits);
-/* 2047 */       Bits bits2 = new Bits(this.uninits);
-/* 2048 */       boolean bool = false;
-/* 2049 */       for (List list = param1JCSwitch.cases; list.nonEmpty(); list = list.tail) {
-/* 2050 */         this.inits.assign(bits1);
-/* 2051 */         this.uninits.assign(this.uninits.andSet(bits2));
-/* 2052 */         JCTree.JCCase jCCase = (JCTree.JCCase)list.head;
-/* 2053 */         if (jCCase.pat == null) {
-/* 2054 */           bool = true;
-/*      */         } else {
-/* 2056 */           scanExpr((JCTree)jCCase.pat);
-/*      */         }
-/* 2058 */         if (bool) {
-/* 2059 */           this.inits.assign(bits1);
-/* 2060 */           this.uninits.assign(this.uninits.andSet(bits2));
-/*      */         }
-/* 2062 */         scan(jCCase.stats);
-/* 2063 */         addVars(jCCase.stats, bits1, bits2);
-/* 2064 */         if (!bool) {
-/* 2065 */           this.inits.assign(bits1);
-/* 2066 */           this.uninits.assign(this.uninits.andSet(bits2));
-/*      */         }
-/*      */       }
-/*      */
-/* 2070 */       if (!bool) {
-/* 2071 */         this.inits.andSet(bits1);
-/*      */       }
-/* 2073 */       resolveBreaks((JCTree)param1JCSwitch, listBuffer);
-/* 2074 */       this.nextadr = i;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     private void addVars(List<JCTree.JCStatement> param1List, Bits param1Bits1, Bits param1Bits2) {
-/* 2080 */       for (; param1List.nonEmpty(); param1List = param1List.tail) {
-/* 2081 */         JCTree jCTree = (JCTree)param1List.head;
-/* 2082 */         if (jCTree.hasTag(JCTree.Tag.VARDEF)) {
-/* 2083 */           int i = ((JCTree.JCVariableDecl)jCTree).sym.adr;
-/* 2084 */           param1Bits1.excl(i);
-/* 2085 */           param1Bits2.incl(i);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitTry(JCTree.JCTry param1JCTry) {
-/* 2091 */       ListBuffer listBuffer = new ListBuffer();
-/* 2092 */       Bits bits1 = new Bits(this.uninitsTry);
-/* 2093 */       ListBuffer<AssignPendingExit> listBuffer1 = this.pendingExits;
-/* 2094 */       this.pendingExits = new ListBuffer();
-/* 2095 */       Bits bits2 = new Bits(this.inits);
-/* 2096 */       this.uninitsTry.assign(this.uninits);
-/* 2097 */       for (JCTree jCTree : param1JCTry.resources) {
-/* 2098 */         if (jCTree instanceof JCTree.JCVariableDecl) {
-/* 2099 */           JCTree.JCVariableDecl jCVariableDecl = (JCTree.JCVariableDecl)jCTree;
-/* 2100 */           visitVarDef(jCVariableDecl);
-/* 2101 */           this.unrefdResources.enter((Symbol)jCVariableDecl.sym);
-/* 2102 */           listBuffer.append(jCVariableDecl); continue;
-/* 2103 */         }  if (jCTree instanceof JCTree.JCExpression) {
-/* 2104 */           scanExpr(jCTree); continue;
-/*      */         }
-/* 2106 */         throw new AssertionError(param1JCTry);
-/*      */       }
-/*      */
-/* 2109 */       scan((JCTree)param1JCTry.body);
-/* 2110 */       this.uninitsTry.andSet(this.uninits);
-/* 2111 */       Bits bits3 = new Bits(this.inits);
-/* 2112 */       Bits bits4 = new Bits(this.uninits);
-/* 2113 */       int i = this.nextadr;
-/*      */
-/* 2115 */       if (!listBuffer.isEmpty() && Flow.this
-/* 2116 */         .lint.isEnabled(Lint.LintCategory.TRY)) {
-/* 2117 */         for (JCTree.JCVariableDecl jCVariableDecl : listBuffer) {
-/* 2118 */           if (this.unrefdResources.includes((Symbol)jCVariableDecl.sym)) {
-/* 2119 */             Flow.this.log.warning(Lint.LintCategory.TRY, jCVariableDecl.pos(), "try.resource.not.referenced", new Object[] { jCVariableDecl.sym });
-/*      */
-/* 2121 */             this.unrefdResources.remove((Symbol)jCVariableDecl.sym);
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2130 */       Bits bits5 = new Bits(bits2);
-/* 2131 */       Bits bits6 = new Bits(this.uninitsTry);
-/*      */
-/* 2133 */       for (List list = param1JCTry.catchers; list.nonEmpty(); list = list.tail) {
-/* 2134 */         JCTree.JCVariableDecl jCVariableDecl = ((JCTree.JCCatch)list.head).param;
-/* 2135 */         this.inits.assign(bits5);
-/* 2136 */         this.uninits.assign(bits6);
-/* 2137 */         scan((JCTree)jCVariableDecl);
-/*      */
-/*      */
-/*      */
-/* 2141 */         initParam(jCVariableDecl);
-/* 2142 */         scan((JCTree)((JCTree.JCCatch)list.head).body);
-/* 2143 */         bits3.andSet(this.inits);
-/* 2144 */         bits4.andSet(this.uninits);
-/* 2145 */         this.nextadr = i;
-/*      */       }
-/* 2147 */       if (param1JCTry.finalizer != null) {
-/* 2148 */         this.inits.assign(bits2);
-/* 2149 */         this.uninits.assign(this.uninitsTry);
-/* 2150 */         ListBuffer<AssignPendingExit> listBuffer2 = this.pendingExits;
-/* 2151 */         this.pendingExits = listBuffer1;
-/* 2152 */         scan((JCTree)param1JCTry.finalizer);
-/* 2153 */         if (param1JCTry.finallyCanCompleteNormally) {
-/*      */
-/*      */
-/* 2156 */           this.uninits.andSet(bits4);
-/*      */
-/*      */
-/* 2159 */           while (listBuffer2.nonEmpty()) {
-/* 2160 */             AssignPendingExit assignPendingExit = (AssignPendingExit)listBuffer2.next();
-/* 2161 */             if (assignPendingExit.exit_inits != null) {
-/* 2162 */               assignPendingExit.exit_inits.orSet(this.inits);
-/* 2163 */               assignPendingExit.exit_uninits.andSet(this.uninits);
-/*      */             }
-/* 2165 */             this.pendingExits.append(assignPendingExit);
-/*      */           }
-/* 2167 */           this.inits.orSet(bits3);
-/*      */         }
-/*      */       } else {
-/* 2170 */         this.inits.assign(bits3);
-/* 2171 */         this.uninits.assign(bits4);
-/* 2172 */         ListBuffer<AssignPendingExit> listBuffer2 = this.pendingExits;
-/* 2173 */         this.pendingExits = listBuffer1;
-/* 2174 */         for (; listBuffer2.nonEmpty(); this.pendingExits.append(listBuffer2.next()));
-/*      */       }
-/* 2176 */       this.uninitsTry.andSet(bits1).andSet(this.uninits);
-/*      */     }
-/*      */
-/*      */     public void visitConditional(JCTree.JCConditional param1JCConditional) {
-/* 2180 */       scanCond((JCTree)param1JCConditional.cond);
-/* 2181 */       Bits bits1 = new Bits(this.initsWhenFalse);
-/* 2182 */       Bits bits2 = new Bits(this.uninitsWhenFalse);
-/* 2183 */       this.inits.assign(this.initsWhenTrue);
-/* 2184 */       this.uninits.assign(this.uninitsWhenTrue);
-/* 2185 */       if (param1JCConditional.truepart.type.hasTag(TypeTag.BOOLEAN) && param1JCConditional.falsepart.type
-/* 2186 */         .hasTag(TypeTag.BOOLEAN)) {
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2191 */         scanCond((JCTree)param1JCConditional.truepart);
-/* 2192 */         Bits bits3 = new Bits(this.initsWhenTrue);
-/* 2193 */         Bits bits4 = new Bits(this.initsWhenFalse);
-/* 2194 */         Bits bits5 = new Bits(this.uninitsWhenTrue);
-/* 2195 */         Bits bits6 = new Bits(this.uninitsWhenFalse);
-/* 2196 */         this.inits.assign(bits1);
-/* 2197 */         this.uninits.assign(bits2);
-/* 2198 */         scanCond((JCTree)param1JCConditional.falsepart);
-/* 2199 */         this.initsWhenTrue.andSet(bits3);
-/* 2200 */         this.initsWhenFalse.andSet(bits4);
-/* 2201 */         this.uninitsWhenTrue.andSet(bits5);
-/* 2202 */         this.uninitsWhenFalse.andSet(bits6);
-/*      */       } else {
-/* 2204 */         scanExpr((JCTree)param1JCConditional.truepart);
-/* 2205 */         Bits bits3 = new Bits(this.inits);
-/* 2206 */         Bits bits4 = new Bits(this.uninits);
-/* 2207 */         this.inits.assign(bits1);
-/* 2208 */         this.uninits.assign(bits2);
-/* 2209 */         scanExpr((JCTree)param1JCConditional.falsepart);
-/* 2210 */         this.inits.andSet(bits3);
-/* 2211 */         this.uninits.andSet(bits4);
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitIf(JCTree.JCIf param1JCIf) {
-/* 2216 */       scanCond((JCTree)param1JCIf.cond);
-/* 2217 */       Bits bits1 = new Bits(this.initsWhenFalse);
-/* 2218 */       Bits bits2 = new Bits(this.uninitsWhenFalse);
-/* 2219 */       this.inits.assign(this.initsWhenTrue);
-/* 2220 */       this.uninits.assign(this.uninitsWhenTrue);
-/* 2221 */       scan((JCTree)param1JCIf.thenpart);
-/* 2222 */       if (param1JCIf.elsepart != null) {
-/* 2223 */         Bits bits3 = new Bits(this.inits);
-/* 2224 */         Bits bits4 = new Bits(this.uninits);
-/* 2225 */         this.inits.assign(bits1);
-/* 2226 */         this.uninits.assign(bits2);
-/* 2227 */         scan((JCTree)param1JCIf.elsepart);
-/* 2228 */         this.inits.andSet(bits3);
-/* 2229 */         this.uninits.andSet(bits4);
-/*      */       } else {
-/* 2231 */         this.inits.andSet(bits1);
-/* 2232 */         this.uninits.andSet(bits2);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitBreak(JCTree.JCBreak param1JCBreak) {
-/* 2238 */       recordExit(new AssignPendingExit((JCTree)param1JCBreak, this.inits, this.uninits));
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitContinue(JCTree.JCContinue param1JCContinue) {
-/* 2243 */       recordExit(new AssignPendingExit((JCTree)param1JCContinue, this.inits, this.uninits));
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitReturn(JCTree.JCReturn param1JCReturn) {
-/* 2248 */       scanExpr((JCTree)param1JCReturn.expr);
-/* 2249 */       recordExit(new AssignPendingExit((JCTree)param1JCReturn, this.inits, this.uninits));
-/*      */     }
-/*      */
-/*      */     public void visitThrow(JCTree.JCThrow param1JCThrow) {
-/* 2253 */       scanExpr((JCTree)param1JCThrow.expr);
-/* 2254 */       markDead();
-/*      */     }
-/*      */
-/*      */     public void visitApply(JCTree.JCMethodInvocation param1JCMethodInvocation) {
-/* 2258 */       scanExpr((JCTree)param1JCMethodInvocation.meth);
-/* 2259 */       scanExprs(param1JCMethodInvocation.args);
-/*      */     }
-/*      */
-/*      */     public void visitNewClass(JCTree.JCNewClass param1JCNewClass) {
-/* 2263 */       scanExpr((JCTree)param1JCNewClass.encl);
-/* 2264 */       scanExprs(param1JCNewClass.args);
-/* 2265 */       scan((JCTree)param1JCNewClass.def);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitLambda(JCTree.JCLambda param1JCLambda) {
-/* 2270 */       Bits bits1 = new Bits(this.uninits);
-/* 2271 */       Bits bits2 = new Bits(this.inits);
-/* 2272 */       int i = this.returnadr;
-/* 2273 */       ListBuffer<AssignPendingExit> listBuffer = this.pendingExits;
-/*      */       try {
-/* 2275 */         this.returnadr = this.nextadr;
-/* 2276 */         this.pendingExits = new ListBuffer();
-/* 2277 */         for (List list = param1JCLambda.params; list.nonEmpty(); list = list.tail) {
-/* 2278 */           JCTree.JCVariableDecl jCVariableDecl = (JCTree.JCVariableDecl)list.head;
-/* 2279 */           scan((JCTree)jCVariableDecl);
-/* 2280 */           this.inits.incl(jCVariableDecl.sym.adr);
-/* 2281 */           this.uninits.excl(jCVariableDecl.sym.adr);
-/*      */         }
-/* 2283 */         if (param1JCLambda.getBodyKind() == LambdaExpressionTree.BodyKind.EXPRESSION) {
-/* 2284 */           scanExpr(param1JCLambda.body);
-/*      */         } else {
-/* 2286 */           scan(param1JCLambda.body);
-/*      */         }
-/*      */       } finally {
-/*      */
-/* 2290 */         this.returnadr = i;
-/* 2291 */         this.uninits.assign(bits1);
-/* 2292 */         this.inits.assign(bits2);
-/* 2293 */         this.pendingExits = listBuffer;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitNewArray(JCTree.JCNewArray param1JCNewArray) {
-/* 2298 */       scanExprs(param1JCNewArray.dims);
-/* 2299 */       scanExprs(param1JCNewArray.elems);
-/*      */     }
-/*      */
-/*      */     public void visitAssert(JCTree.JCAssert param1JCAssert) {
-/* 2303 */       Bits bits1 = new Bits(this.inits);
-/* 2304 */       Bits bits2 = new Bits(this.uninits);
-/* 2305 */       scanCond((JCTree)param1JCAssert.cond);
-/* 2306 */       bits2.andSet(this.uninitsWhenTrue);
-/* 2307 */       if (param1JCAssert.detail != null) {
-/* 2308 */         this.inits.assign(this.initsWhenFalse);
-/* 2309 */         this.uninits.assign(this.uninitsWhenFalse);
-/* 2310 */         scanExpr((JCTree)param1JCAssert.detail);
-/*      */       }
-/* 2312 */       this.inits.assign(bits1);
-/* 2313 */       this.uninits.assign(bits2);
-/*      */     }
-/*      */
-/*      */     public void visitAssign(JCTree.JCAssign param1JCAssign) {
-/* 2317 */       JCTree.JCExpression jCExpression = TreeInfo.skipParens(param1JCAssign.lhs);
-/* 2318 */       if (!isIdentOrThisDotIdent((JCTree)jCExpression))
-/* 2319 */         scanExpr((JCTree)jCExpression);
-/* 2320 */       scanExpr((JCTree)param1JCAssign.rhs);
-/* 2321 */       letInit((JCTree)jCExpression);
-/*      */     }
-/*      */     private boolean isIdentOrThisDotIdent(JCTree param1JCTree) {
-/* 2324 */       if (param1JCTree.hasTag(JCTree.Tag.IDENT))
-/* 2325 */         return true;
-/* 2326 */       if (!param1JCTree.hasTag(JCTree.Tag.SELECT)) {
-/* 2327 */         return false;
-/*      */       }
-/* 2329 */       JCTree.JCFieldAccess jCFieldAccess = (JCTree.JCFieldAccess)param1JCTree;
-/* 2330 */       return (jCFieldAccess.selected.hasTag(JCTree.Tag.IDENT) && ((JCTree.JCIdent)jCFieldAccess.selected).name ==
-/* 2331 */         Flow.this.names._this);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     public void visitSelect(JCTree.JCFieldAccess param1JCFieldAccess) {
-/* 2337 */       super.visitSelect(param1JCFieldAccess);
-/* 2338 */       if (Flow.this.enforceThisDotInit && param1JCFieldAccess.selected
-/* 2339 */         .hasTag(JCTree.Tag.IDENT) && ((JCTree.JCIdent)param1JCFieldAccess.selected).name ==
-/* 2340 */         Flow.this.names._this && param1JCFieldAccess.sym.kind == 4)
-/*      */       {
-/*      */
-/* 2343 */         checkInit(param1JCFieldAccess.pos(), (Symbol.VarSymbol)param1JCFieldAccess.sym);
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitAssignop(JCTree.JCAssignOp param1JCAssignOp) {
-/* 2348 */       scanExpr((JCTree)param1JCAssignOp.lhs);
-/* 2349 */       scanExpr((JCTree)param1JCAssignOp.rhs);
-/* 2350 */       letInit((JCTree)param1JCAssignOp.lhs);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitUnary(JCTree.JCUnary param1JCUnary) {
-/*      */       // Byte code:
-/*      */       //   0: getstatic com/sun/tools/javac/comp/Flow$2.$SwitchMap$com$sun$tools$javac$tree$JCTree$Tag : [I
-/*      */       //   3: aload_1
-/*      */       //   4: invokevirtual getTag : ()Lcom/sun/tools/javac/tree/JCTree$Tag;
-/*      */       //   7: invokevirtual ordinal : ()I
-/*      */       //   10: iaload
-/*      */       //   11: tableswitch default -> 137, 1 -> 44, 2 -> 118, 3 -> 118, 4 -> 118, 5 -> 118
-/*      */       //   44: aload_0
-/*      */       //   45: aload_1
-/*      */       //   46: getfield arg : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   49: invokevirtual scanCond : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   52: new com/sun/tools/javac/util/Bits
-/*      */       //   55: dup
-/*      */       //   56: aload_0
-/*      */       //   57: getfield initsWhenFalse : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   60: invokespecial <init> : (Lcom/sun/tools/javac/util/Bits;)V
-/*      */       //   63: astore_2
-/*      */       //   64: aload_0
-/*      */       //   65: getfield initsWhenFalse : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   68: aload_0
-/*      */       //   69: getfield initsWhenTrue : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   72: invokevirtual assign : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   75: pop
-/*      */       //   76: aload_0
-/*      */       //   77: getfield initsWhenTrue : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   80: aload_2
-/*      */       //   81: invokevirtual assign : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   84: pop
-/*      */       //   85: aload_2
-/*      */       //   86: aload_0
-/*      */       //   87: getfield uninitsWhenFalse : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   90: invokevirtual assign : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   93: pop
-/*      */       //   94: aload_0
-/*      */       //   95: getfield uninitsWhenFalse : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   98: aload_0
-/*      */       //   99: getfield uninitsWhenTrue : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   102: invokevirtual assign : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   105: pop
-/*      */       //   106: aload_0
-/*      */       //   107: getfield uninitsWhenTrue : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   110: aload_2
-/*      */       //   111: invokevirtual assign : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   114: pop
-/*      */       //   115: goto -> 145
-/*      */       //   118: aload_0
-/*      */       //   119: aload_1
-/*      */       //   120: getfield arg : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   123: invokevirtual scanExpr : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   126: aload_0
-/*      */       //   127: aload_1
-/*      */       //   128: getfield arg : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   131: invokevirtual letInit : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   134: goto -> 145
-/*      */       //   137: aload_0
-/*      */       //   138: aload_1
-/*      */       //   139: getfield arg : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   142: invokevirtual scanExpr : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   145: return
-/*      */       // Line number table:
-/*      */       //   Java source line number -> byte code offset
-/*      */       //   #2354	-> 0
-/*      */       //   #2356	-> 44
-/*      */       //   #2357	-> 52
-/*      */       //   #2358	-> 64
-/*      */       //   #2359	-> 76
-/*      */       //   #2360	-> 85
-/*      */       //   #2361	-> 94
-/*      */       //   #2362	-> 106
-/*      */       //   #2363	-> 115
-/*      */       //   #2366	-> 118
-/*      */       //   #2367	-> 126
-/*      */       //   #2368	-> 134
-/*      */       //   #2370	-> 137
-/*      */       //   #2372	-> 145
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitBinary(JCTree.JCBinary param1JCBinary) {
-/*      */       // Byte code:
-/*      */       //   0: getstatic com/sun/tools/javac/comp/Flow$2.$SwitchMap$com$sun$tools$javac$tree$JCTree$Tag : [I
-/*      */       //   3: aload_1
-/*      */       //   4: invokevirtual getTag : ()Lcom/sun/tools/javac/tree/JCTree$Tag;
-/*      */       //   7: invokevirtual ordinal : ()I
-/*      */       //   10: iaload
-/*      */       //   11: lookupswitch default -> 210, 6 -> 36, 7 -> 121
-/*      */       //   36: aload_0
-/*      */       //   37: aload_1
-/*      */       //   38: getfield lhs : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   41: invokevirtual scanCond : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   44: new com/sun/tools/javac/util/Bits
-/*      */       //   47: dup
-/*      */       //   48: aload_0
-/*      */       //   49: getfield initsWhenFalse : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   52: invokespecial <init> : (Lcom/sun/tools/javac/util/Bits;)V
-/*      */       //   55: astore_2
-/*      */       //   56: new com/sun/tools/javac/util/Bits
-/*      */       //   59: dup
-/*      */       //   60: aload_0
-/*      */       //   61: getfield uninitsWhenFalse : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   64: invokespecial <init> : (Lcom/sun/tools/javac/util/Bits;)V
-/*      */       //   67: astore_3
-/*      */       //   68: aload_0
-/*      */       //   69: getfield inits : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   72: aload_0
-/*      */       //   73: getfield initsWhenTrue : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   76: invokevirtual assign : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   79: pop
-/*      */       //   80: aload_0
-/*      */       //   81: getfield uninits : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   84: aload_0
-/*      */       //   85: getfield uninitsWhenTrue : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   88: invokevirtual assign : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   91: pop
-/*      */       //   92: aload_0
-/*      */       //   93: aload_1
-/*      */       //   94: getfield rhs : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   97: invokevirtual scanCond : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   100: aload_0
-/*      */       //   101: getfield initsWhenFalse : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   104: aload_2
-/*      */       //   105: invokevirtual andSet : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   108: pop
-/*      */       //   109: aload_0
-/*      */       //   110: getfield uninitsWhenFalse : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   113: aload_3
-/*      */       //   114: invokevirtual andSet : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   117: pop
-/*      */       //   118: goto -> 226
-/*      */       //   121: aload_0
-/*      */       //   122: aload_1
-/*      */       //   123: getfield lhs : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   126: invokevirtual scanCond : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   129: new com/sun/tools/javac/util/Bits
-/*      */       //   132: dup
-/*      */       //   133: aload_0
-/*      */       //   134: getfield initsWhenTrue : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   137: invokespecial <init> : (Lcom/sun/tools/javac/util/Bits;)V
-/*      */       //   140: astore #4
-/*      */       //   142: new com/sun/tools/javac/util/Bits
-/*      */       //   145: dup
-/*      */       //   146: aload_0
-/*      */       //   147: getfield uninitsWhenTrue : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   150: invokespecial <init> : (Lcom/sun/tools/javac/util/Bits;)V
-/*      */       //   153: astore #5
-/*      */       //   155: aload_0
-/*      */       //   156: getfield inits : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   159: aload_0
-/*      */       //   160: getfield initsWhenFalse : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   163: invokevirtual assign : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   166: pop
-/*      */       //   167: aload_0
-/*      */       //   168: getfield uninits : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   171: aload_0
-/*      */       //   172: getfield uninitsWhenFalse : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   175: invokevirtual assign : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   178: pop
-/*      */       //   179: aload_0
-/*      */       //   180: aload_1
-/*      */       //   181: getfield rhs : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   184: invokevirtual scanCond : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   187: aload_0
-/*      */       //   188: getfield initsWhenTrue : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   191: aload #4
-/*      */       //   193: invokevirtual andSet : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   196: pop
-/*      */       //   197: aload_0
-/*      */       //   198: getfield uninitsWhenTrue : Lcom/sun/tools/javac/util/Bits;
-/*      */       //   201: aload #5
-/*      */       //   203: invokevirtual andSet : (Lcom/sun/tools/javac/util/Bits;)Lcom/sun/tools/javac/util/Bits;
-/*      */       //   206: pop
-/*      */       //   207: goto -> 226
-/*      */       //   210: aload_0
-/*      */       //   211: aload_1
-/*      */       //   212: getfield lhs : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   215: invokevirtual scanExpr : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   218: aload_0
-/*      */       //   219: aload_1
-/*      */       //   220: getfield rhs : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   223: invokevirtual scanExpr : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   226: return
-/*      */       // Line number table:
-/*      */       //   Java source line number -> byte code offset
-/*      */       //   #2375	-> 0
-/*      */       //   #2377	-> 36
-/*      */       //   #2378	-> 44
-/*      */       //   #2379	-> 56
-/*      */       //   #2380	-> 68
-/*      */       //   #2381	-> 80
-/*      */       //   #2382	-> 92
-/*      */       //   #2383	-> 100
-/*      */       //   #2384	-> 109
-/*      */       //   #2385	-> 118
-/*      */       //   #2387	-> 121
-/*      */       //   #2388	-> 129
-/*      */       //   #2389	-> 142
-/*      */       //   #2390	-> 155
-/*      */       //   #2391	-> 167
-/*      */       //   #2392	-> 179
-/*      */       //   #2393	-> 187
-/*      */       //   #2394	-> 197
-/*      */       //   #2395	-> 207
-/*      */       //   #2397	-> 210
-/*      */       //   #2398	-> 218
-/*      */       //   #2400	-> 226
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitIdent(JCTree.JCIdent param1JCIdent) {
-/* 2403 */       if (param1JCIdent.sym.kind == 4) {
-/* 2404 */         checkInit(param1JCIdent.pos(), (Symbol.VarSymbol)param1JCIdent.sym);
-/* 2405 */         referenced(param1JCIdent.sym);
-/*      */       }
-/*      */     }
-/*      */
-/*      */     void referenced(Symbol param1Symbol) {
-/* 2410 */       this.unrefdResources.remove(param1Symbol);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitAnnotatedType(JCTree.JCAnnotatedType param1JCAnnotatedType) {
-/* 2415 */       param1JCAnnotatedType.underlyingType.accept((JCTree.Visitor)this);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitTopLevel(JCTree.JCCompilationUnit param1JCCompilationUnit) {}
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void analyzeTree(Env<?> param1Env) {
-/* 2429 */       analyzeTree(param1Env, param1Env.tree);
-/*      */     }
-/*      */
-/*      */     public void analyzeTree(Env<?> param1Env, JCTree param1JCTree) {
-/*      */       try {
-/* 2434 */         this.startPos = param1JCTree.pos().getStartPosition();
-/*      */
-/* 2436 */         if (this.vardecls == null) {
-/* 2437 */           this.vardecls = new JCTree.JCVariableDecl[32];
-/*      */         } else {
-/* 2439 */           for (byte b = 0; b < this.vardecls.length; b++)
-/* 2440 */             this.vardecls[b] = null;
-/* 2441 */         }  this.firstadr = 0;
-/* 2442 */         this.nextadr = 0;
-/* 2443 */         this.pendingExits = new ListBuffer();
-/* 2444 */         this.classDef = null;
-/* 2445 */         this.unrefdResources = new Scope((Symbol)param1Env.enclClass.sym);
-/* 2446 */         scan(param1JCTree);
-/*      */       } finally {
-/*      */
-/* 2449 */         this.startPos = -1;
-/* 2450 */         resetBits(new Bits[] { this.inits, this.uninits, this.uninitsTry, this.initsWhenTrue, this.initsWhenFalse, this.uninitsWhenTrue, this.uninitsWhenFalse });
-/*      */
-/* 2452 */         if (this.vardecls != null)
-/* 2453 */           for (byte b = 0; b < this.vardecls.length; b++) {
-/* 2454 */             this.vardecls[b] = null;
-/*      */           }
-/* 2456 */         this.firstadr = 0;
-/* 2457 */         this.nextadr = 0;
-/* 2458 */         this.pendingExits = null;
-/* 2459 */         this.classDef = null;
-/* 2460 */         this.unrefdResources = null;
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   class CaptureAnalyzer
-/*      */     extends BaseAnalyzer<BaseAnalyzer.PendingExit>
-/*      */   {
-/*      */     JCTree currentTree;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void markDead() {}
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void checkEffectivelyFinal(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Symbol.VarSymbol param1VarSymbol) {
-/*      */       // Byte code:
-/*      */       //   0: aload_0
-/*      */       //   1: getfield currentTree : Lcom/sun/tools/javac/tree/JCTree;
-/*      */       //   4: ifnull -> 123
-/*      */       //   7: aload_2
-/*      */       //   8: getfield owner : Lcom/sun/tools/javac/code/Symbol;
-/*      */       //   11: getfield kind : I
-/*      */       //   14: bipush #16
-/*      */       //   16: if_icmpne -> 123
-/*      */       //   19: aload_2
-/*      */       //   20: getfield pos : I
-/*      */       //   23: aload_0
-/*      */       //   24: getfield currentTree : Lcom/sun/tools/javac/tree/JCTree;
-/*      */       //   27: invokevirtual getStartPosition : ()I
-/*      */       //   30: if_icmpge -> 123
-/*      */       //   33: getstatic com/sun/tools/javac/comp/Flow$2.$SwitchMap$com$sun$tools$javac$tree$JCTree$Tag : [I
-/*      */       //   36: aload_0
-/*      */       //   37: getfield currentTree : Lcom/sun/tools/javac/tree/JCTree;
-/*      */       //   40: invokevirtual getTag : ()Lcom/sun/tools/javac/tree/JCTree$Tag;
-/*      */       //   43: invokevirtual ordinal : ()I
-/*      */       //   46: iaload
-/*      */       //   47: lookupswitch default -> 123, 8 -> 72, 9 -> 104
-/*      */       //   72: aload_0
-/*      */       //   73: getfield this$0 : Lcom/sun/tools/javac/comp/Flow;
-/*      */       //   76: invokestatic access$1300 : (Lcom/sun/tools/javac/comp/Flow;)Z
-/*      */       //   79: ifne -> 104
-/*      */       //   82: aload_2
-/*      */       //   83: invokevirtual flags : ()J
-/*      */       //   86: ldc2_w 16
-/*      */       //   89: land
-/*      */       //   90: lconst_0
-/*      */       //   91: lcmp
-/*      */       //   92: ifne -> 123
-/*      */       //   95: aload_0
-/*      */       //   96: aload_1
-/*      */       //   97: aload_2
-/*      */       //   98: invokevirtual reportInnerClsNeedsFinalError : (Lcom/sun/tools/javac/util/JCDiagnostic$DiagnosticPosition;Lcom/sun/tools/javac/code/Symbol;)V
-/*      */       //   101: goto -> 123
-/*      */       //   104: aload_2
-/*      */       //   105: invokevirtual flags : ()J
-/*      */       //   108: ldc2_w 2199023255568
-/*      */       //   111: land
-/*      */       //   112: lconst_0
-/*      */       //   113: lcmp
-/*      */       //   114: ifne -> 123
-/*      */       //   117: aload_0
-/*      */       //   118: aload_1
-/*      */       //   119: aload_2
-/*      */       //   120: invokevirtual reportEffectivelyFinalError : (Lcom/sun/tools/javac/util/JCDiagnostic$DiagnosticPosition;Lcom/sun/tools/javac/code/Symbol;)V
-/*      */       //   123: return
-/*      */       // Line number table:
-/*      */       //   Java source line number -> byte code offset
-/*      */       //   #2483	-> 0
-/*      */       //   #2485	-> 27
-/*      */       //   #2486	-> 33
-/*      */       //   #2488	-> 72
-/*      */       //   #2489	-> 82
-/*      */       //   #2490	-> 95
-/*      */       //   #2495	-> 104
-/*      */       //   #2496	-> 117
-/*      */       //   #2500	-> 123
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void letInit(JCTree param1JCTree) {
-/*      */       // Byte code:
-/*      */       //   0: aload_1
-/*      */       //   1: invokestatic skipParens : (Lcom/sun/tools/javac/tree/JCTree;)Lcom/sun/tools/javac/tree/JCTree;
-/*      */       //   4: astore_1
-/*      */       //   5: aload_1
-/*      */       //   6: getstatic com/sun/tools/javac/tree/JCTree$Tag.IDENT : Lcom/sun/tools/javac/tree/JCTree$Tag;
-/*      */       //   9: invokevirtual hasTag : (Lcom/sun/tools/javac/tree/JCTree$Tag;)Z
-/*      */       //   12: ifne -> 25
-/*      */       //   15: aload_1
-/*      */       //   16: getstatic com/sun/tools/javac/tree/JCTree$Tag.SELECT : Lcom/sun/tools/javac/tree/JCTree$Tag;
-/*      */       //   19: invokevirtual hasTag : (Lcom/sun/tools/javac/tree/JCTree$Tag;)Z
-/*      */       //   22: ifeq -> 141
-/*      */       //   25: aload_1
-/*      */       //   26: invokestatic symbol : (Lcom/sun/tools/javac/tree/JCTree;)Lcom/sun/tools/javac/code/Symbol;
-/*      */       //   29: astore_2
-/*      */       //   30: aload_0
-/*      */       //   31: getfield currentTree : Lcom/sun/tools/javac/tree/JCTree;
-/*      */       //   34: ifnull -> 141
-/*      */       //   37: aload_2
-/*      */       //   38: getfield kind : I
-/*      */       //   41: iconst_4
-/*      */       //   42: if_icmpne -> 141
-/*      */       //   45: aload_2
-/*      */       //   46: getfield owner : Lcom/sun/tools/javac/code/Symbol;
-/*      */       //   49: getfield kind : I
-/*      */       //   52: bipush #16
-/*      */       //   54: if_icmpne -> 141
-/*      */       //   57: aload_2
-/*      */       //   58: checkcast com/sun/tools/javac/code/Symbol$VarSymbol
-/*      */       //   61: getfield pos : I
-/*      */       //   64: aload_0
-/*      */       //   65: getfield currentTree : Lcom/sun/tools/javac/tree/JCTree;
-/*      */       //   68: invokevirtual getStartPosition : ()I
-/*      */       //   71: if_icmpge -> 141
-/*      */       //   74: getstatic com/sun/tools/javac/comp/Flow$2.$SwitchMap$com$sun$tools$javac$tree$JCTree$Tag : [I
-/*      */       //   77: aload_0
-/*      */       //   78: getfield currentTree : Lcom/sun/tools/javac/tree/JCTree;
-/*      */       //   81: invokevirtual getTag : ()Lcom/sun/tools/javac/tree/JCTree$Tag;
-/*      */       //   84: invokevirtual ordinal : ()I
-/*      */       //   87: iaload
-/*      */       //   88: lookupswitch default -> 141, 8 -> 116, 9 -> 135
-/*      */       //   116: aload_0
-/*      */       //   117: getfield this$0 : Lcom/sun/tools/javac/comp/Flow;
-/*      */       //   120: invokestatic access$1300 : (Lcom/sun/tools/javac/comp/Flow;)Z
-/*      */       //   123: ifne -> 135
-/*      */       //   126: aload_0
-/*      */       //   127: aload_1
-/*      */       //   128: aload_2
-/*      */       //   129: invokevirtual reportInnerClsNeedsFinalError : (Lcom/sun/tools/javac/util/JCDiagnostic$DiagnosticPosition;Lcom/sun/tools/javac/code/Symbol;)V
-/*      */       //   132: goto -> 141
-/*      */       //   135: aload_0
-/*      */       //   136: aload_1
-/*      */       //   137: aload_2
-/*      */       //   138: invokevirtual reportEffectivelyFinalError : (Lcom/sun/tools/javac/util/JCDiagnostic$DiagnosticPosition;Lcom/sun/tools/javac/code/Symbol;)V
-/*      */       //   141: return
-/*      */       // Line number table:
-/*      */       //   Java source line number -> byte code offset
-/*      */       //   #2504	-> 0
-/*      */       //   #2505	-> 5
-/*      */       //   #2506	-> 25
-/*      */       //   #2507	-> 30
-/*      */       //   #2510	-> 68
-/*      */       //   #2511	-> 74
-/*      */       //   #2513	-> 116
-/*      */       //   #2514	-> 126
-/*      */       //   #2515	-> 132
-/*      */       //   #2518	-> 135
-/*      */       //   #2522	-> 141
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     void reportEffectivelyFinalError(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Symbol param1Symbol) {
-/* 2525 */       String str = this.currentTree.hasTag(JCTree.Tag.LAMBDA) ? "lambda" : "inner.cls";
-/*      */
-/* 2527 */       Flow.this.log.error(param1DiagnosticPosition, "cant.ref.non.effectively.final.var", new Object[] { param1Symbol, Flow.access$1400(this.this$0).fragment(str, new Object[0]) });
-/*      */     }
-/*      */
-/*      */     void reportInnerClsNeedsFinalError(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Symbol param1Symbol) {
-/* 2531 */       Flow.this.log.error(param1DiagnosticPosition, "local.var.accessed.from.icls.needs.final", new Object[] { param1Symbol });
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) {
-/* 2543 */       JCTree jCTree = this.currentTree;
-/*      */       try {
-/* 2545 */         this.currentTree = param1JCClassDecl.sym.isLocal() ? (JCTree)param1JCClassDecl : null;
-/* 2546 */         super.visitClassDef(param1JCClassDecl);
-/*      */       } finally {
-/* 2548 */         this.currentTree = jCTree;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitLambda(JCTree.JCLambda param1JCLambda) {
-/* 2554 */       JCTree jCTree = this.currentTree;
-/*      */       try {
-/* 2556 */         this.currentTree = (JCTree)param1JCLambda;
-/* 2557 */         super.visitLambda(param1JCLambda);
-/*      */       } finally {
-/* 2559 */         this.currentTree = jCTree;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitIdent(JCTree.JCIdent param1JCIdent) {
-/* 2565 */       if (param1JCIdent.sym.kind == 4) {
-/* 2566 */         checkEffectivelyFinal((JCDiagnostic.DiagnosticPosition)param1JCIdent, (Symbol.VarSymbol)param1JCIdent.sym);
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void visitAssign(JCTree.JCAssign param1JCAssign) {
-/* 2571 */       JCTree.JCExpression jCExpression = TreeInfo.skipParens(param1JCAssign.lhs);
-/* 2572 */       if (!(jCExpression instanceof JCTree.JCIdent)) {
-/* 2573 */         scan((JCTree)jCExpression);
-/*      */       }
-/* 2575 */       scan((JCTree)param1JCAssign.rhs);
-/* 2576 */       letInit((JCTree)jCExpression);
-/*      */     }
-/*      */
-/*      */     public void visitAssignop(JCTree.JCAssignOp param1JCAssignOp) {
-/* 2580 */       scan((JCTree)param1JCAssignOp.lhs);
-/* 2581 */       scan((JCTree)param1JCAssignOp.rhs);
-/* 2582 */       letInit((JCTree)param1JCAssignOp.lhs);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitUnary(JCTree.JCUnary param1JCUnary) {
-/*      */       // Byte code:
-/*      */       //   0: getstatic com/sun/tools/javac/comp/Flow$2.$SwitchMap$com$sun$tools$javac$tree$JCTree$Tag : [I
-/*      */       //   3: aload_1
-/*      */       //   4: invokevirtual getTag : ()Lcom/sun/tools/javac/tree/JCTree$Tag;
-/*      */       //   7: invokevirtual ordinal : ()I
-/*      */       //   10: iaload
-/*      */       //   11: tableswitch default -> 59, 2 -> 40, 3 -> 40, 4 -> 40, 5 -> 40
-/*      */       //   40: aload_0
-/*      */       //   41: aload_1
-/*      */       //   42: getfield arg : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   45: invokevirtual scan : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   48: aload_0
-/*      */       //   49: aload_1
-/*      */       //   50: getfield arg : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   53: invokevirtual letInit : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   56: goto -> 67
-/*      */       //   59: aload_0
-/*      */       //   60: aload_1
-/*      */       //   61: getfield arg : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   64: invokevirtual scan : (Lcom/sun/tools/javac/tree/JCTree;)V
-/*      */       //   67: return
-/*      */       // Line number table:
-/*      */       //   Java source line number -> byte code offset
-/*      */       //   #2586	-> 0
-/*      */       //   #2589	-> 40
-/*      */       //   #2590	-> 48
-/*      */       //   #2591	-> 56
-/*      */       //   #2593	-> 59
-/*      */       //   #2595	-> 67
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitTopLevel(JCTree.JCCompilationUnit param1JCCompilationUnit) {}
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void analyzeTree(Env<AttrContext> param1Env, TreeMaker param1TreeMaker) {
-/* 2608 */       analyzeTree(param1Env, param1Env.tree, param1TreeMaker);
-/*      */     }
-/*      */     public void analyzeTree(Env<AttrContext> param1Env, JCTree param1JCTree, TreeMaker param1TreeMaker) {
-/*      */       try {
-/* 2612 */         Flow.this.attrEnv = param1Env;
-/* 2613 */         Flow.this.make = param1TreeMaker;
-/* 2614 */         this.pendingExits = new ListBuffer();
-/* 2615 */         scan(param1JCTree);
-/*      */       } finally {
-/* 2617 */         this.pendingExits = null;
-/* 2618 */         Flow.this.make = null;
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\comp\Flow.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2015, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+//todo: one might eliminate uninits.andSets when monotonic
+
+package com.sun.tools.javac.comp;
+
+import java.util.HashMap;
+
+import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.tree.*;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
+
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.tree.JCTree.*;
+
+import static com.sun.tools.javac.code.Flags.*;
+import static com.sun.tools.javac.code.Flags.BLOCK;
+import static com.sun.tools.javac.code.Kinds.*;
+import static com.sun.tools.javac.code.TypeTag.BOOLEAN;
+import static com.sun.tools.javac.code.TypeTag.VOID;
+import static com.sun.tools.javac.tree.JCTree.Tag.*;
+
+/** This pass implements dataflow analysis for Java programs though
+ *  different AST visitor steps. Liveness analysis (see AliveAnalyzer) checks that
+ *  every statement is reachable. Exception analysis (see FlowAnalyzer) ensures that
+ *  every checked exception that is thrown is declared or caught.  Definite assignment analysis
+ *  (see AssignAnalyzer) ensures that each variable is assigned when used.  Definite
+ *  unassignment analysis (see AssignAnalyzer) in ensures that no final variable
+ *  is assigned more than once. Finally, local variable capture analysis (see CaptureAnalyzer)
+ *  determines that local variables accessed within the scope of an inner class/lambda
+ *  are either final or effectively-final.
+ *
+ *  <p>The JLS has a number of problems in the
+ *  specification of these flow analysis problems. This implementation
+ *  attempts to address those issues.
+ *
+ *  <p>First, there is no accommodation for a finally clause that cannot
+ *  complete normally. For liveness analysis, an intervening finally
+ *  clause can cause a break, continue, or return not to reach its
+ *  target.  For exception analysis, an intervening finally clause can
+ *  cause any exception to be "caught".  For DA/DU analysis, the finally
+ *  clause can prevent a transfer of control from propagating DA/DU
+ *  state to the target.  In addition, code in the finally clause can
+ *  affect the DA/DU status of variables.
+ *
+ *  <p>For try statements, we introduce the idea of a variable being
+ *  definitely unassigned "everywhere" in a block.  A variable V is
+ *  "unassigned everywhere" in a block iff it is unassigned at the
+ *  beginning of the block and there is no reachable assignment to V
+ *  in the block.  An assignment V=e is reachable iff V is not DA
+ *  after e.  Then we can say that V is DU at the beginning of the
+ *  catch block iff V is DU everywhere in the try block.  Similarly, V
+ *  is DU at the beginning of the finally block iff V is DU everywhere
+ *  in the try block and in every catch block.  Specifically, the
+ *  following bullet is added to 16.2.2
+ *  <pre>
+ *      V is <em>unassigned everywhere</em> in a block if it is
+ *      unassigned before the block and there is no reachable
+ *      assignment to V within the block.
+ *  </pre>
+ *  <p>In 16.2.15, the third bullet (and all of its sub-bullets) for all
+ *  try blocks is changed to
+ *  <pre>
+ *      V is definitely unassigned before a catch block iff V is
+ *      definitely unassigned everywhere in the try block.
+ *  </pre>
+ *  <p>The last bullet (and all of its sub-bullets) for try blocks that
+ *  have a finally block is changed to
+ *  <pre>
+ *      V is definitely unassigned before the finally block iff
+ *      V is definitely unassigned everywhere in the try block
+ *      and everywhere in each catch block of the try statement.
+ *  </pre>
+ *  <p>In addition,
+ *  <pre>
+ *      V is definitely assigned at the end of a constructor iff
+ *      V is definitely assigned after the block that is the body
+ *      of the constructor and V is definitely assigned at every
+ *      return that can return from the constructor.
+ *  </pre>
+ *  <p>In addition, each continue statement with the loop as its target
+ *  is treated as a jump to the end of the loop body, and "intervening"
+ *  finally clauses are treated as follows: V is DA "due to the
+ *  continue" iff V is DA before the continue statement or V is DA at
+ *  the end of any intervening finally block.  V is DU "due to the
+ *  continue" iff any intervening finally cannot complete normally or V
+ *  is DU at the end of every intervening finally block.  This "due to
+ *  the continue" concept is then used in the spec for the loops.
+ *
+ *  <p>Similarly, break statements must consider intervening finally
+ *  blocks.  For liveness analysis, a break statement for which any
+ *  intervening finally cannot complete normally is not considered to
+ *  cause the target statement to be able to complete normally. Then
+ *  we say V is DA "due to the break" iff V is DA before the break or
+ *  V is DA at the end of any intervening finally block.  V is DU "due
+ *  to the break" iff any intervening finally cannot complete normally
+ *  or V is DU at the break and at the end of every intervening
+ *  finally block.  (I suspect this latter condition can be
+ *  simplified.)  This "due to the break" is then used in the spec for
+ *  all statements that can be "broken".
+ *
+ *  <p>The return statement is treated similarly.  V is DA "due to a
+ *  return statement" iff V is DA before the return statement or V is
+ *  DA at the end of any intervening finally block.  Note that we
+ *  don't have to worry about the return expression because this
+ *  concept is only used for construcrors.
+ *
+ *  <p>There is no spec in the JLS for when a variable is definitely
+ *  assigned at the end of a constructor, which is needed for final
+ *  fields (8.3.1.2).  We implement the rule that V is DA at the end
+ *  of the constructor iff it is DA and the end of the body of the
+ *  constructor and V is DA "due to" every return of the constructor.
+ *
+ *  <p>Intervening finally blocks similarly affect exception analysis.  An
+ *  intervening finally that cannot complete normally allows us to ignore
+ *  an otherwise uncaught exception.
+ *
+ *  <p>To implement the semantics of intervening finally clauses, all
+ *  nonlocal transfers (break, continue, return, throw, method call that
+ *  can throw a checked exception, and a constructor invocation that can
+ *  thrown a checked exception) are recorded in a queue, and removed
+ *  from the queue when we complete processing the target of the
+ *  nonlocal transfer.  This allows us to modify the queue in accordance
+ *  with the above rules when we encounter a finally clause.  The only
+ *  exception to this [no pun intended] is that checked exceptions that
+ *  are known to be caught or declared to be caught in the enclosing
+ *  method are not recorded in the queue, but instead are recorded in a
+ *  global variable "{@code Set<Type> thrown}" that records the type of all
+ *  exceptions that can be thrown.
+ *
+ *  <p>Other minor issues the treatment of members of other classes
+ *  (always considered DA except that within an anonymous class
+ *  constructor, where DA status from the enclosing scope is
+ *  preserved), treatment of the case expression (V is DA before the
+ *  case expression iff V is DA after the switch expression),
+ *  treatment of variables declared in a switch block (the implied
+ *  DA/DU status after the switch expression is DU and not DA for
+ *  variables defined in a switch block), the treatment of boolean ?:
+ *  expressions (The JLS rules only handle b and c non-boolean; the
+ *  new rule is that if b and c are boolean valued, then V is
+ *  (un)assigned after a?b:c when true/false iff V is (un)assigned
+ *  after b when true/false and V is (un)assigned after c when
+ *  true/false).
+ *
+ *  <p>There is the remaining question of what syntactic forms constitute a
+ *  reference to a variable.  It is conventional to allow this.x on the
+ *  left-hand-side to initialize a final instance field named x, yet
+ *  this.x isn't considered a "use" when appearing on a right-hand-side
+ *  in most implementations.  Should parentheses affect what is
+ *  considered a variable reference?  The simplest rule would be to
+ *  allow unqualified forms only, parentheses optional, and phase out
+ *  support for assigning to a final field via this.x.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Flow {
+    protected static final Context.Key<Flow> flowKey =
+        new Context.Key<Flow>();
+
+    private final Names names;
+    private final Log log;
+    private final Symtab syms;
+    private final Types types;
+    private final Check chk;
+    private       TreeMaker make;
+    private final Resolve rs;
+    private final JCDiagnostic.Factory diags;
+    private Env<AttrContext> attrEnv;
+    private       Lint lint;
+    private final boolean allowImprovedRethrowAnalysis;
+    private final boolean allowImprovedCatchAnalysis;
+    private final boolean allowEffectivelyFinalInInnerClasses;
+    private final boolean enforceThisDotInit;
+
+    public static Flow instance(Context context) {
+        Flow instance = context.get(flowKey);
+        if (instance == null)
+            instance = new Flow(context);
+        return instance;
+    }
+
+    public void analyzeTree(Env<AttrContext> env, TreeMaker make) {
+        new AliveAnalyzer().analyzeTree(env, make);
+        new AssignAnalyzer().analyzeTree(env);
+        new FlowAnalyzer().analyzeTree(env, make);
+        new CaptureAnalyzer().analyzeTree(env, make);
+    }
+
+    public void analyzeLambda(Env<AttrContext> env, JCLambda that, TreeMaker make, boolean speculative) {
+        Log.DiagnosticHandler diagHandler = null;
+        //we need to disable diagnostics temporarily; the problem is that if
+        //a lambda expression contains e.g. an unreachable statement, an error
+        //message will be reported and will cause compilation to skip the flow analyis
+        //step - if we suppress diagnostics, we won't stop at Attr for flow-analysis
+        //related errors, which will allow for more errors to be detected
+        if (!speculative) {
+            diagHandler = new Log.DiscardDiagnosticHandler(log);
+        }
+        try {
+            new AliveAnalyzer().analyzeTree(env, that, make);
+        } finally {
+            if (!speculative) {
+                log.popDiagnosticHandler(diagHandler);
+            }
+        }
+    }
+
+    public List<Type> analyzeLambdaThrownTypes(final Env<AttrContext> env,
+            JCLambda that, TreeMaker make) {
+        //we need to disable diagnostics temporarily; the problem is that if
+        //a lambda expression contains e.g. an unreachable statement, an error
+        //message will be reported and will cause compilation to skip the flow analyis
+        //step - if we suppress diagnostics, we won't stop at Attr for flow-analysis
+        //related errors, which will allow for more errors to be detected
+        Log.DiagnosticHandler diagHandler = new Log.DiscardDiagnosticHandler(log);
+        try {
+            new AssignAnalyzer() {
+                Scope enclosedSymbols = new Scope(env.enclClass.sym);
+                @Override
+                public void visitVarDef(JCVariableDecl tree) {
+                    enclosedSymbols.enter(tree.sym);
+                    super.visitVarDef(tree);
+                }
+                @Override
+                protected boolean trackable(VarSymbol sym) {
+                    return enclosedSymbols.includes(sym) &&
+                           sym.owner.kind == MTH;
+                }
+            }.analyzeTree(env, that);
+            LambdaFlowAnalyzer flowAnalyzer = new LambdaFlowAnalyzer();
+            flowAnalyzer.analyzeTree(env, that, make);
+            return flowAnalyzer.inferredThrownTypes;
+        } finally {
+            log.popDiagnosticHandler(diagHandler);
+        }
+    }
+
+    /**
+     * Definite assignment scan mode
+     */
+    enum FlowKind {
+        /**
+         * This is the normal DA/DU analysis mode
+         */
+        NORMAL("var.might.already.be.assigned", false),
+        /**
+         * This is the speculative DA/DU analysis mode used to speculatively
+         * derive assertions within loop bodies
+         */
+        SPECULATIVE_LOOP("var.might.be.assigned.in.loop", true);
+
+        final String errKey;
+        final boolean isFinal;
+
+        FlowKind(String errKey, boolean isFinal) {
+            this.errKey = errKey;
+            this.isFinal = isFinal;
+        }
+
+        boolean isFinal() {
+            return isFinal;
+        }
+    }
+
+    protected Flow(Context context) {
+        context.put(flowKey, this);
+        names = Names.instance(context);
+        log = Log.instance(context);
+        syms = Symtab.instance(context);
+        types = Types.instance(context);
+        chk = Check.instance(context);
+        lint = Lint.instance(context);
+        rs = Resolve.instance(context);
+        diags = JCDiagnostic.Factory.instance(context);
+        Source source = Source.instance(context);
+        allowImprovedRethrowAnalysis = source.allowImprovedRethrowAnalysis();
+        allowImprovedCatchAnalysis = source.allowImprovedCatchAnalysis();
+        allowEffectivelyFinalInInnerClasses = source.allowEffectivelyFinalInInnerClasses();
+        enforceThisDotInit = source.enforceThisDotInit();
+    }
+
+    /**
+     * Base visitor class for all visitors implementing dataflow analysis logic.
+     * This class define the shared logic for handling jumps (break/continue statements).
+     */
+    static abstract class BaseAnalyzer<P extends BaseAnalyzer.PendingExit> extends TreeScanner {
+
+        enum JumpKind {
+            BREAK(Tag.BREAK) {
+                @Override
+                JCTree getTarget(JCTree tree) {
+                    return ((JCBreak)tree).target;
+                }
+            },
+            CONTINUE(Tag.CONTINUE) {
+                @Override
+                JCTree getTarget(JCTree tree) {
+                    return ((JCContinue)tree).target;
+                }
+            };
+
+            final Tag treeTag;
+
+            private JumpKind(Tag treeTag) {
+                this.treeTag = treeTag;
+            }
+
+            abstract JCTree getTarget(JCTree tree);
+        }
+
+        /** The currently pending exits that go from current inner blocks
+         *  to an enclosing block, in source order.
+         */
+        ListBuffer<P> pendingExits;
+
+        /** A pending exit.  These are the statements return, break, and
+         *  continue.  In addition, exception-throwing expressions or
+         *  statements are put here when not known to be caught.  This
+         *  will typically result in an error unless it is within a
+         *  try-finally whose finally block cannot complete normally.
+         */
+        static class PendingExit {
+            JCTree tree;
+
+            PendingExit(JCTree tree) {
+                this.tree = tree;
+            }
+
+            void resolveJump() {
+                //do nothing
+            }
+        }
+
+        abstract void markDead();
+
+        /** Record an outward transfer of control. */
+        void recordExit(P pe) {
+            pendingExits.append(pe);
+            markDead();
+        }
+
+        /** Resolve all jumps of this statement. */
+        private boolean resolveJump(JCTree tree,
+                        ListBuffer<P> oldPendingExits,
+                        JumpKind jk) {
+            boolean resolved = false;
+            List<P> exits = pendingExits.toList();
+            pendingExits = oldPendingExits;
+            for (; exits.nonEmpty(); exits = exits.tail) {
+                P exit = exits.head;
+                if (exit.tree.hasTag(jk.treeTag) &&
+                        jk.getTarget(exit.tree) == tree) {
+                    exit.resolveJump();
+                    resolved = true;
+                } else {
+                    pendingExits.append(exit);
+                }
+            }
+            return resolved;
+        }
+
+        /** Resolve all continues of this statement. */
+        boolean resolveContinues(JCTree tree) {
+            return resolveJump(tree, new ListBuffer<P>(), JumpKind.CONTINUE);
+        }
+
+        /** Resolve all breaks of this statement. */
+        boolean resolveBreaks(JCTree tree, ListBuffer<P> oldPendingExits) {
+            return resolveJump(tree, oldPendingExits, JumpKind.BREAK);
+        }
+
+        @Override
+        public void scan(JCTree tree) {
+            if (tree != null && (
+                    tree.type == null ||
+                    tree.type != Type.stuckType)) {
+                super.scan(tree);
+            }
+        }
+    }
+
+    /**
+     * This pass implements the first step of the dataflow analysis, namely
+     * the liveness analysis check. This checks that every statement is reachable.
+     * The output of this analysis pass are used by other analyzers. This analyzer
+     * sets the 'finallyCanCompleteNormally' field in the JCTry class.
+     */
+    class AliveAnalyzer extends BaseAnalyzer<BaseAnalyzer.PendingExit> {
+
+        /** A flag that indicates whether the last statement could
+         *  complete normally.
+         */
+        private boolean alive;
+
+        @Override
+        void markDead() {
+            alive = false;
+        }
+
+    /*************************************************************************
+     * Visitor methods for statements and definitions
+     *************************************************************************/
+
+        /** Analyze a definition.
+         */
+        void scanDef(JCTree tree) {
+            scanStat(tree);
+            if (tree != null && tree.hasTag(Tag.BLOCK) && !alive) {
+                log.error(tree.pos(),
+                          "initializer.must.be.able.to.complete.normally");
+            }
+        }
+
+        /** Analyze a statement. Check that statement is reachable.
+         */
+        void scanStat(JCTree tree) {
+            if (!alive && tree != null) {
+                log.error(tree.pos(), "unreachable.stmt");
+                if (!tree.hasTag(SKIP)) alive = true;
+            }
+            scan(tree);
+        }
+
+        /** Analyze list of statements.
+         */
+        void scanStats(List<? extends JCStatement> trees) {
+            if (trees != null)
+                for (List<? extends JCStatement> l = trees; l.nonEmpty(); l = l.tail)
+                    scanStat(l.head);
+        }
+
+        /* ------------ Visitor methods for various sorts of trees -------------*/
+
+        public void visitClassDef(JCClassDecl tree) {
+            if (tree.sym == null) return;
+            boolean alivePrev = alive;
+            ListBuffer<PendingExit> pendingExitsPrev = pendingExits;
+            Lint lintPrev = lint;
+
+            pendingExits = new ListBuffer<>();
+            lint = lint.augment(tree.sym);
+
+            try {
+                // process all the static initializers
+                for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                    if (!l.head.hasTag(METHODDEF) &&
+                        (TreeInfo.flags(l.head) & STATIC) != 0) {
+                        scanDef(l.head);
+                    }
+                }
+
+                // process all the instance initializers
+                for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                    if (!l.head.hasTag(METHODDEF) &&
+                        (TreeInfo.flags(l.head) & STATIC) == 0) {
+                        scanDef(l.head);
+                    }
+                }
+
+                // process all the methods
+                for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                    if (l.head.hasTag(METHODDEF)) {
+                        scan(l.head);
+                    }
+                }
+            } finally {
+                pendingExits = pendingExitsPrev;
+                alive = alivePrev;
+                lint = lintPrev;
+            }
+        }
+
+        public void visitMethodDef(JCMethodDecl tree) {
+            if (tree.body == null) return;
+            Lint lintPrev = lint;
+
+            lint = lint.augment(tree.sym);
+
+            Assert.check(pendingExits.isEmpty());
+
+            try {
+                alive = true;
+                scanStat(tree.body);
+
+                if (alive && !tree.sym.type.getReturnType().hasTag(VOID))
+                    log.error(TreeInfo.diagEndPos(tree.body), "missing.ret.stmt");
+
+                List<PendingExit> exits = pendingExits.toList();
+                pendingExits = new ListBuffer<>();
+                while (exits.nonEmpty()) {
+                    PendingExit exit = exits.head;
+                    exits = exits.tail;
+                    Assert.check(exit.tree.hasTag(RETURN));
+                }
+            } finally {
+                lint = lintPrev;
+            }
+        }
+
+        public void visitVarDef(JCVariableDecl tree) {
+            if (tree.init != null) {
+                Lint lintPrev = lint;
+                lint = lint.augment(tree.sym);
+                try{
+                    scan(tree.init);
+                } finally {
+                    lint = lintPrev;
+                }
+            }
+        }
+
+        public void visitBlock(JCBlock tree) {
+            scanStats(tree.stats);
+        }
+
+        public void visitDoLoop(JCDoWhileLoop tree) {
+            ListBuffer<PendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<>();
+            scanStat(tree.body);
+            alive |= resolveContinues(tree);
+            scan(tree.cond);
+            alive = alive && !tree.cond.type.isTrue();
+            alive |= resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitWhileLoop(JCWhileLoop tree) {
+            ListBuffer<PendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<>();
+            scan(tree.cond);
+            alive = !tree.cond.type.isFalse();
+            scanStat(tree.body);
+            alive |= resolveContinues(tree);
+            alive = resolveBreaks(tree, prevPendingExits) ||
+                !tree.cond.type.isTrue();
+        }
+
+        public void visitForLoop(JCForLoop tree) {
+            ListBuffer<PendingExit> prevPendingExits = pendingExits;
+            scanStats(tree.init);
+            pendingExits = new ListBuffer<>();
+            if (tree.cond != null) {
+                scan(tree.cond);
+                alive = !tree.cond.type.isFalse();
+            } else {
+                alive = true;
+            }
+            scanStat(tree.body);
+            alive |= resolveContinues(tree);
+            scan(tree.step);
+            alive = resolveBreaks(tree, prevPendingExits) ||
+                tree.cond != null && !tree.cond.type.isTrue();
+        }
+
+        public void visitForeachLoop(JCEnhancedForLoop tree) {
+            visitVarDef(tree.var);
+            ListBuffer<PendingExit> prevPendingExits = pendingExits;
+            scan(tree.expr);
+            pendingExits = new ListBuffer<>();
+            scanStat(tree.body);
+            alive |= resolveContinues(tree);
+            resolveBreaks(tree, prevPendingExits);
+            alive = true;
+        }
+
+        public void visitLabelled(JCLabeledStatement tree) {
+            ListBuffer<PendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<>();
+            scanStat(tree.body);
+            alive |= resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitSwitch(JCSwitch tree) {
+            ListBuffer<PendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<>();
+            scan(tree.selector);
+            boolean hasDefault = false;
+            for (List<JCCase> l = tree.cases; l.nonEmpty(); l = l.tail) {
+                alive = true;
+                JCCase c = l.head;
+                if (c.pat == null)
+                    hasDefault = true;
+                else
+                    scan(c.pat);
+                scanStats(c.stats);
+                // Warn about fall-through if lint switch fallthrough enabled.
+                if (alive &&
+                    lint.isEnabled(Lint.LintCategory.FALLTHROUGH) &&
+                    c.stats.nonEmpty() && l.tail.nonEmpty())
+                    log.warning(Lint.LintCategory.FALLTHROUGH,
+                                l.tail.head.pos(),
+                                "possible.fall-through.into.case");
+            }
+            if (!hasDefault) {
+                alive = true;
+            }
+            alive |= resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitTry(JCTry tree) {
+            ListBuffer<PendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<>();
+            for (JCTree resource : tree.resources) {
+                if (resource instanceof JCVariableDecl) {
+                    JCVariableDecl vdecl = (JCVariableDecl) resource;
+                    visitVarDef(vdecl);
+                } else if (resource instanceof JCExpression) {
+                    scan((JCExpression) resource);
+                } else {
+                    throw new AssertionError(tree);  // parser error
+                }
+            }
+
+            scanStat(tree.body);
+            boolean aliveEnd = alive;
+
+            for (List<JCCatch> l = tree.catchers; l.nonEmpty(); l = l.tail) {
+                alive = true;
+                JCVariableDecl param = l.head.param;
+                scan(param);
+                scanStat(l.head.body);
+                aliveEnd |= alive;
+            }
+            if (tree.finalizer != null) {
+                ListBuffer<PendingExit> exits = pendingExits;
+                pendingExits = prevPendingExits;
+                alive = true;
+                scanStat(tree.finalizer);
+                tree.finallyCanCompleteNormally = alive;
+                if (!alive) {
+                    if (lint.isEnabled(Lint.LintCategory.FINALLY)) {
+                        log.warning(Lint.LintCategory.FINALLY,
+                                TreeInfo.diagEndPos(tree.finalizer),
+                                "finally.cannot.complete");
+                    }
+                } else {
+                    while (exits.nonEmpty()) {
+                        pendingExits.append(exits.next());
+                    }
+                    alive = aliveEnd;
+                }
+            } else {
+                alive = aliveEnd;
+                ListBuffer<PendingExit> exits = pendingExits;
+                pendingExits = prevPendingExits;
+                while (exits.nonEmpty()) pendingExits.append(exits.next());
+            }
+        }
+
+        @Override
+        public void visitIf(JCIf tree) {
+            scan(tree.cond);
+            scanStat(tree.thenpart);
+            if (tree.elsepart != null) {
+                boolean aliveAfterThen = alive;
+                alive = true;
+                scanStat(tree.elsepart);
+                alive = alive | aliveAfterThen;
+            } else {
+                alive = true;
+            }
+        }
+
+        public void visitBreak(JCBreak tree) {
+            recordExit(new PendingExit(tree));
+        }
+
+        public void visitContinue(JCContinue tree) {
+            recordExit(new PendingExit(tree));
+        }
+
+        public void visitReturn(JCReturn tree) {
+            scan(tree.expr);
+            recordExit(new PendingExit(tree));
+        }
+
+        public void visitThrow(JCThrow tree) {
+            scan(tree.expr);
+            markDead();
+        }
+
+        public void visitApply(JCMethodInvocation tree) {
+            scan(tree.meth);
+            scan(tree.args);
+        }
+
+        public void visitNewClass(JCNewClass tree) {
+            scan(tree.encl);
+            scan(tree.args);
+            if (tree.def != null) {
+                scan(tree.def);
+            }
+        }
+
+        @Override
+        public void visitLambda(JCLambda tree) {
+            if (tree.type != null &&
+                    tree.type.isErroneous()) {
+                return;
+            }
+
+            ListBuffer<PendingExit> prevPending = pendingExits;
+            boolean prevAlive = alive;
+            try {
+                pendingExits = new ListBuffer<>();
+                alive = true;
+                scanStat(tree.body);
+                tree.canCompleteNormally = alive;
+            }
+            finally {
+                pendingExits = prevPending;
+                alive = prevAlive;
+            }
+        }
+
+        public void visitTopLevel(JCCompilationUnit tree) {
+            // Do nothing for TopLevel since each class is visited individually
+        }
+
+    /**************************************************************************
+     * main method
+     *************************************************************************/
+
+        /** Perform definite assignment/unassignment analysis on a tree.
+         */
+        public void analyzeTree(Env<AttrContext> env, TreeMaker make) {
+            analyzeTree(env, env.tree, make);
+        }
+        public void analyzeTree(Env<AttrContext> env, JCTree tree, TreeMaker make) {
+            try {
+                attrEnv = env;
+                Flow.this.make = make;
+                pendingExits = new ListBuffer<>();
+                alive = true;
+                scan(tree);
+            } finally {
+                pendingExits = null;
+                Flow.this.make = null;
+            }
+        }
+    }
+
+    /**
+     * This pass implements the second step of the dataflow analysis, namely
+     * the exception analysis. This is to ensure that every checked exception that is
+     * thrown is declared or caught. The analyzer uses some info that has been set by
+     * the liveliness analyzer.
+     */
+    class FlowAnalyzer extends BaseAnalyzer<FlowAnalyzer.FlowPendingExit> {
+
+        /** A flag that indicates whether the last statement could
+         *  complete normally.
+         */
+        HashMap<Symbol, List<Type>> preciseRethrowTypes;
+
+        /** The current class being defined.
+         */
+        JCClassDecl classDef;
+
+        /** The list of possibly thrown declarable exceptions.
+         */
+        List<Type> thrown;
+
+        /** The list of exceptions that are either caught or declared to be
+         *  thrown.
+         */
+        List<Type> caught;
+
+        class FlowPendingExit extends BaseAnalyzer.PendingExit {
+
+            Type thrown;
+
+            FlowPendingExit(JCTree tree, Type thrown) {
+                super(tree);
+                this.thrown = thrown;
+            }
+        }
+
+        @Override
+        void markDead() {
+            //do nothing
+        }
+
+        /*-------------------- Exceptions ----------------------*/
+
+        /** Complain that pending exceptions are not caught.
+         */
+        void errorUncaught() {
+            for (FlowPendingExit exit = pendingExits.next();
+                 exit != null;
+                 exit = pendingExits.next()) {
+                if (classDef != null &&
+                    classDef.pos == exit.tree.pos) {
+                    log.error(exit.tree.pos(),
+                            "unreported.exception.default.constructor",
+                            exit.thrown);
+                } else if (exit.tree.hasTag(VARDEF) &&
+                        ((JCVariableDecl)exit.tree).sym.isResourceVariable()) {
+                    log.error(exit.tree.pos(),
+                            "unreported.exception.implicit.close",
+                            exit.thrown,
+                            ((JCVariableDecl)exit.tree).sym.name);
+                } else {
+                    log.error(exit.tree.pos(),
+                            "unreported.exception.need.to.catch.or.throw",
+                            exit.thrown);
+                }
+            }
+        }
+
+        /** Record that exception is potentially thrown and check that it
+         *  is caught.
+         */
+        void markThrown(JCTree tree, Type exc) {
+            if (!chk.isUnchecked(tree.pos(), exc)) {
+                if (!chk.isHandled(exc, caught)) {
+                    pendingExits.append(new FlowPendingExit(tree, exc));
+                }
+                thrown = chk.incl(exc, thrown);
+            }
+        }
+
+    /*************************************************************************
+     * Visitor methods for statements and definitions
+     *************************************************************************/
+
+        /* ------------ Visitor methods for various sorts of trees -------------*/
+
+        public void visitClassDef(JCClassDecl tree) {
+            if (tree.sym == null) return;
+
+            JCClassDecl classDefPrev = classDef;
+            List<Type> thrownPrev = thrown;
+            List<Type> caughtPrev = caught;
+            ListBuffer<FlowPendingExit> pendingExitsPrev = pendingExits;
+            Lint lintPrev = lint;
+
+            pendingExits = new ListBuffer<FlowPendingExit>();
+            if (tree.name != names.empty) {
+                caught = List.nil();
+            }
+            classDef = tree;
+            thrown = List.nil();
+            lint = lint.augment(tree.sym);
+
+            try {
+                // process all the static initializers
+                for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                    if (!l.head.hasTag(METHODDEF) &&
+                        (TreeInfo.flags(l.head) & STATIC) != 0) {
+                        scan(l.head);
+                        errorUncaught();
+                    }
+                }
+
+                // add intersection of all thrown clauses of initial constructors
+                // to set of caught exceptions, unless class is anonymous.
+                if (tree.name != names.empty) {
+                    boolean firstConstructor = true;
+                    for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                        if (TreeInfo.isInitialConstructor(l.head)) {
+                            List<Type> mthrown =
+                                ((JCMethodDecl) l.head).sym.type.getThrownTypes();
+                            if (firstConstructor) {
+                                caught = mthrown;
+                                firstConstructor = false;
+                            } else {
+                                caught = chk.intersect(mthrown, caught);
+                            }
+                        }
+                    }
+                }
+
+                // process all the instance initializers
+                for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                    if (!l.head.hasTag(METHODDEF) &&
+                        (TreeInfo.flags(l.head) & STATIC) == 0) {
+                        scan(l.head);
+                        errorUncaught();
+                    }
+                }
+
+                // in an anonymous class, add the set of thrown exceptions to
+                // the throws clause of the synthetic constructor and propagate
+                // outwards.
+                // Changing the throws clause on the fly is okay here because
+                // the anonymous constructor can't be invoked anywhere else,
+                // and its type hasn't been cached.
+                if (tree.name == names.empty) {
+                    for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                        if (TreeInfo.isInitialConstructor(l.head)) {
+                            JCMethodDecl mdef = (JCMethodDecl)l.head;
+                            mdef.thrown = make.Types(thrown);
+                            mdef.sym.type = types.createMethodTypeWithThrown(mdef.sym.type, thrown);
+                        }
+                    }
+                    thrownPrev = chk.union(thrown, thrownPrev);
+                }
+
+                // process all the methods
+                for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                    if (l.head.hasTag(METHODDEF)) {
+                        scan(l.head);
+                        errorUncaught();
+                    }
+                }
+
+                thrown = thrownPrev;
+            } finally {
+                pendingExits = pendingExitsPrev;
+                caught = caughtPrev;
+                classDef = classDefPrev;
+                lint = lintPrev;
+            }
+        }
+
+        public void visitMethodDef(JCMethodDecl tree) {
+            if (tree.body == null) return;
+
+            List<Type> caughtPrev = caught;
+            List<Type> mthrown = tree.sym.type.getThrownTypes();
+            Lint lintPrev = lint;
+
+            lint = lint.augment(tree.sym);
+
+            Assert.check(pendingExits.isEmpty());
+
+            try {
+                for (List<JCVariableDecl> l = tree.params; l.nonEmpty(); l = l.tail) {
+                    JCVariableDecl def = l.head;
+                    scan(def);
+                }
+                if (TreeInfo.isInitialConstructor(tree))
+                    caught = chk.union(caught, mthrown);
+                else if ((tree.sym.flags() & (BLOCK | STATIC)) != BLOCK)
+                    caught = mthrown;
+                // else we are in an instance initializer block;
+                // leave caught unchanged.
+
+                scan(tree.body);
+
+                List<FlowPendingExit> exits = pendingExits.toList();
+                pendingExits = new ListBuffer<FlowPendingExit>();
+                while (exits.nonEmpty()) {
+                    FlowPendingExit exit = exits.head;
+                    exits = exits.tail;
+                    if (exit.thrown == null) {
+                        Assert.check(exit.tree.hasTag(RETURN));
+                    } else {
+                        // uncaught throws will be reported later
+                        pendingExits.append(exit);
+                    }
+                }
+            } finally {
+                caught = caughtPrev;
+                lint = lintPrev;
+            }
+        }
+
+        public void visitVarDef(JCVariableDecl tree) {
+            if (tree.init != null) {
+                Lint lintPrev = lint;
+                lint = lint.augment(tree.sym);
+                try{
+                    scan(tree.init);
+                } finally {
+                    lint = lintPrev;
+                }
+            }
+        }
+
+        public void visitBlock(JCBlock tree) {
+            scan(tree.stats);
+        }
+
+        public void visitDoLoop(JCDoWhileLoop tree) {
+            ListBuffer<FlowPendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<FlowPendingExit>();
+            scan(tree.body);
+            resolveContinues(tree);
+            scan(tree.cond);
+            resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitWhileLoop(JCWhileLoop tree) {
+            ListBuffer<FlowPendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<FlowPendingExit>();
+            scan(tree.cond);
+            scan(tree.body);
+            resolveContinues(tree);
+            resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitForLoop(JCForLoop tree) {
+            ListBuffer<FlowPendingExit> prevPendingExits = pendingExits;
+            scan(tree.init);
+            pendingExits = new ListBuffer<FlowPendingExit>();
+            if (tree.cond != null) {
+                scan(tree.cond);
+            }
+            scan(tree.body);
+            resolveContinues(tree);
+            scan(tree.step);
+            resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitForeachLoop(JCEnhancedForLoop tree) {
+            visitVarDef(tree.var);
+            ListBuffer<FlowPendingExit> prevPendingExits = pendingExits;
+            scan(tree.expr);
+            pendingExits = new ListBuffer<FlowPendingExit>();
+            scan(tree.body);
+            resolveContinues(tree);
+            resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitLabelled(JCLabeledStatement tree) {
+            ListBuffer<FlowPendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<FlowPendingExit>();
+            scan(tree.body);
+            resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitSwitch(JCSwitch tree) {
+            ListBuffer<FlowPendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<FlowPendingExit>();
+            scan(tree.selector);
+            for (List<JCCase> l = tree.cases; l.nonEmpty(); l = l.tail) {
+                JCCase c = l.head;
+                if (c.pat != null) {
+                    scan(c.pat);
+                }
+                scan(c.stats);
+            }
+            resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitTry(JCTry tree) {
+            List<Type> caughtPrev = caught;
+            List<Type> thrownPrev = thrown;
+            thrown = List.nil();
+            for (List<JCCatch> l = tree.catchers; l.nonEmpty(); l = l.tail) {
+                List<JCExpression> subClauses = TreeInfo.isMultiCatch(l.head) ?
+                        ((JCTypeUnion)l.head.param.vartype).alternatives :
+                        List.of(l.head.param.vartype);
+                for (JCExpression ct : subClauses) {
+                    caught = chk.incl(ct.type, caught);
+                }
+            }
+
+            ListBuffer<FlowPendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<FlowPendingExit>();
+            for (JCTree resource : tree.resources) {
+                if (resource instanceof JCVariableDecl) {
+                    JCVariableDecl vdecl = (JCVariableDecl) resource;
+                    visitVarDef(vdecl);
+                } else if (resource instanceof JCExpression) {
+                    scan((JCExpression) resource);
+                } else {
+                    throw new AssertionError(tree);  // parser error
+                }
+            }
+            for (JCTree resource : tree.resources) {
+                List<Type> closeableSupertypes = resource.type.isCompound() ?
+                    types.interfaces(resource.type).prepend(types.supertype(resource.type)) :
+                    List.of(resource.type);
+                for (Type sup : closeableSupertypes) {
+                    if (types.asSuper(sup, syms.autoCloseableType.tsym) != null) {
+                        Symbol closeMethod = rs.resolveQualifiedMethod(tree,
+                                attrEnv,
+                                sup,
+                                names.close,
+                                List.<Type>nil(),
+                                List.<Type>nil());
+                        Type mt = types.memberType(resource.type, closeMethod);
+                        if (closeMethod.kind == MTH) {
+                            for (Type t : mt.getThrownTypes()) {
+                                markThrown(resource, t);
+                            }
+                        }
+                    }
+                }
+            }
+            scan(tree.body);
+            List<Type> thrownInTry = allowImprovedCatchAnalysis ?
+                chk.union(thrown, List.of(syms.runtimeExceptionType, syms.errorType)) :
+                thrown;
+            thrown = thrownPrev;
+            caught = caughtPrev;
+
+            List<Type> caughtInTry = List.nil();
+            for (List<JCCatch> l = tree.catchers; l.nonEmpty(); l = l.tail) {
+                JCVariableDecl param = l.head.param;
+                List<JCExpression> subClauses = TreeInfo.isMultiCatch(l.head) ?
+                        ((JCTypeUnion)l.head.param.vartype).alternatives :
+                        List.of(l.head.param.vartype);
+                List<Type> ctypes = List.nil();
+                List<Type> rethrownTypes = chk.diff(thrownInTry, caughtInTry);
+                for (JCExpression ct : subClauses) {
+                    Type exc = ct.type;
+                    if (exc != syms.unknownType) {
+                        ctypes = ctypes.append(exc);
+                        if (types.isSameType(exc, syms.objectType))
+                            continue;
+                        checkCaughtType(l.head.pos(), exc, thrownInTry, caughtInTry);
+                        caughtInTry = chk.incl(exc, caughtInTry);
+                    }
+                }
+                scan(param);
+                preciseRethrowTypes.put(param.sym, chk.intersect(ctypes, rethrownTypes));
+                scan(l.head.body);
+                preciseRethrowTypes.remove(param.sym);
+            }
+            if (tree.finalizer != null) {
+                List<Type> savedThrown = thrown;
+                thrown = List.nil();
+                ListBuffer<FlowPendingExit> exits = pendingExits;
+                pendingExits = prevPendingExits;
+                scan(tree.finalizer);
+                if (!tree.finallyCanCompleteNormally) {
+                    // discard exits and exceptions from try and finally
+                    thrown = chk.union(thrown, thrownPrev);
+                } else {
+                    thrown = chk.union(thrown, chk.diff(thrownInTry, caughtInTry));
+                    thrown = chk.union(thrown, savedThrown);
+                    // FIX: this doesn't preserve source order of exits in catch
+                    // versus finally!
+                    while (exits.nonEmpty()) {
+                        pendingExits.append(exits.next());
+                    }
+                }
+            } else {
+                thrown = chk.union(thrown, chk.diff(thrownInTry, caughtInTry));
+                ListBuffer<FlowPendingExit> exits = pendingExits;
+                pendingExits = prevPendingExits;
+                while (exits.nonEmpty()) pendingExits.append(exits.next());
+            }
+        }
+
+        @Override
+        public void visitIf(JCIf tree) {
+            scan(tree.cond);
+            scan(tree.thenpart);
+            if (tree.elsepart != null) {
+                scan(tree.elsepart);
+            }
+        }
+
+        void checkCaughtType(DiagnosticPosition pos, Type exc, List<Type> thrownInTry, List<Type> caughtInTry) {
+            if (chk.subset(exc, caughtInTry)) {
+                log.error(pos, "except.already.caught", exc);
+            } else if (!chk.isUnchecked(pos, exc) &&
+                    !isExceptionOrThrowable(exc) &&
+                    !chk.intersects(exc, thrownInTry)) {
+                log.error(pos, "except.never.thrown.in.try", exc);
+            } else if (allowImprovedCatchAnalysis) {
+                List<Type> catchableThrownTypes = chk.intersect(List.of(exc), thrownInTry);
+                // 'catchableThrownTypes' cannnot possibly be empty - if 'exc' was an
+                // unchecked exception, the result list would not be empty, as the augmented
+                // thrown set includes { RuntimeException, Error }; if 'exc' was a checked
+                // exception, that would have been covered in the branch above
+                if (chk.diff(catchableThrownTypes, caughtInTry).isEmpty() &&
+                        !isExceptionOrThrowable(exc)) {
+                    String key = catchableThrownTypes.length() == 1 ?
+                            "unreachable.catch" :
+                            "unreachable.catch.1";
+                    log.warning(pos, key, catchableThrownTypes);
+                }
+            }
+        }
+        //where
+            private boolean isExceptionOrThrowable(Type exc) {
+                return exc.tsym == syms.throwableType.tsym ||
+                    exc.tsym == syms.exceptionType.tsym;
+            }
+
+        public void visitBreak(JCBreak tree) {
+            recordExit(new FlowPendingExit(tree, null));
+        }
+
+        public void visitContinue(JCContinue tree) {
+            recordExit(new FlowPendingExit(tree, null));
+        }
+
+        public void visitReturn(JCReturn tree) {
+            scan(tree.expr);
+            recordExit(new FlowPendingExit(tree, null));
+        }
+
+        public void visitThrow(JCThrow tree) {
+            scan(tree.expr);
+            Symbol sym = TreeInfo.symbol(tree.expr);
+            if (sym != null &&
+                sym.kind == VAR &&
+                (sym.flags() & (FINAL | EFFECTIVELY_FINAL)) != 0 &&
+                preciseRethrowTypes.get(sym) != null &&
+                allowImprovedRethrowAnalysis) {
+                for (Type t : preciseRethrowTypes.get(sym)) {
+                    markThrown(tree, t);
+                }
+            }
+            else {
+                markThrown(tree, tree.expr.type);
+            }
+            markDead();
+        }
+
+        public void visitApply(JCMethodInvocation tree) {
+            scan(tree.meth);
+            scan(tree.args);
+            for (List<Type> l = tree.meth.type.getThrownTypes(); l.nonEmpty(); l = l.tail)
+                markThrown(tree, l.head);
+        }
+
+        public void visitNewClass(JCNewClass tree) {
+            scan(tree.encl);
+            scan(tree.args);
+           // scan(tree.def);
+            for (List<Type> l = tree.constructorType.getThrownTypes();
+                 l.nonEmpty();
+                 l = l.tail) {
+                markThrown(tree, l.head);
+            }
+            List<Type> caughtPrev = caught;
+            try {
+                // If the new class expression defines an anonymous class,
+                // analysis of the anonymous constructor may encounter thrown
+                // types which are unsubstituted type variables.
+                // However, since the constructor's actual thrown types have
+                // already been marked as thrown, it is safe to simply include
+                // each of the constructor's formal thrown types in the set of
+                // 'caught/declared to be thrown' types, for the duration of
+                // the class def analysis.
+                if (tree.def != null)
+                    for (List<Type> l = tree.constructor.type.getThrownTypes();
+                         l.nonEmpty();
+                         l = l.tail) {
+                        caught = chk.incl(l.head, caught);
+                    }
+                scan(tree.def);
+            }
+            finally {
+                caught = caughtPrev;
+            }
+        }
+
+        @Override
+        public void visitLambda(JCLambda tree) {
+            if (tree.type != null &&
+                    tree.type.isErroneous()) {
+                return;
+            }
+            List<Type> prevCaught = caught;
+            List<Type> prevThrown = thrown;
+            ListBuffer<FlowPendingExit> prevPending = pendingExits;
+            try {
+                pendingExits = new ListBuffer<>();
+                caught = tree.getDescriptorType(types).getThrownTypes();
+                thrown = List.nil();
+                scan(tree.body);
+                List<FlowPendingExit> exits = pendingExits.toList();
+                pendingExits = new ListBuffer<FlowPendingExit>();
+                while (exits.nonEmpty()) {
+                    FlowPendingExit exit = exits.head;
+                    exits = exits.tail;
+                    if (exit.thrown == null) {
+                        Assert.check(exit.tree.hasTag(RETURN));
+                    } else {
+                        // uncaught throws will be reported later
+                        pendingExits.append(exit);
+                    }
+                }
+
+                errorUncaught();
+            } finally {
+                pendingExits = prevPending;
+                caught = prevCaught;
+                thrown = prevThrown;
+            }
+        }
+
+        public void visitTopLevel(JCCompilationUnit tree) {
+            // Do nothing for TopLevel since each class is visited individually
+        }
+
+    /**************************************************************************
+     * main method
+     *************************************************************************/
+
+        /** Perform definite assignment/unassignment analysis on a tree.
+         */
+        public void analyzeTree(Env<AttrContext> env, TreeMaker make) {
+            analyzeTree(env, env.tree, make);
+        }
+        public void analyzeTree(Env<AttrContext> env, JCTree tree, TreeMaker make) {
+            try {
+                attrEnv = env;
+                Flow.this.make = make;
+                pendingExits = new ListBuffer<FlowPendingExit>();
+                preciseRethrowTypes = new HashMap<Symbol, List<Type>>();
+                this.thrown = this.caught = null;
+                this.classDef = null;
+                scan(tree);
+            } finally {
+                pendingExits = null;
+                Flow.this.make = null;
+                this.thrown = this.caught = null;
+                this.classDef = null;
+            }
+        }
+    }
+
+    /**
+     * Specialized pass that performs inference of thrown types for lambdas.
+     */
+    class LambdaFlowAnalyzer extends FlowAnalyzer {
+        List<Type> inferredThrownTypes;
+        boolean inLambda;
+        @Override
+        public void visitLambda(JCLambda tree) {
+            if ((tree.type != null &&
+                    tree.type.isErroneous()) || inLambda) {
+                return;
+            }
+            List<Type> prevCaught = caught;
+            List<Type> prevThrown = thrown;
+            ListBuffer<FlowPendingExit> prevPending = pendingExits;
+            inLambda = true;
+            try {
+                pendingExits = new ListBuffer<>();
+                caught = List.of(syms.throwableType);
+                thrown = List.nil();
+                scan(tree.body);
+                inferredThrownTypes = thrown;
+            } finally {
+                pendingExits = prevPending;
+                caught = prevCaught;
+                thrown = prevThrown;
+                inLambda = false;
+            }
+        }
+        @Override
+        public void visitClassDef(JCClassDecl tree) {
+            //skip
+        }
+    }
+
+    /**
+     * This pass implements (i) definite assignment analysis, which ensures that
+     * each variable is assigned when used and (ii) definite unassignment analysis,
+     * which ensures that no final variable is assigned more than once. This visitor
+     * depends on the results of the liveliness analyzer. This pass is also used to mark
+     * effectively-final local variables/parameters.
+     */
+
+    public class AssignAnalyzer extends BaseAnalyzer<AssignAnalyzer.AssignPendingExit> {
+        /** The set of definitely assigned variables.
+         */
+        final Bits inits;
+
+        /** The set of definitely unassigned variables.
+         */
+        final Bits uninits;
+
+        /** The set of variables that are definitely unassigned everywhere
+         *  in current try block. This variable is maintained lazily; it is
+         *  updated only when something gets removed from uninits,
+         *  typically by being assigned in reachable code.  To obtain the
+         *  correct set of variables which are definitely unassigned
+         *  anywhere in current try block, intersect uninitsTry and
+         *  uninits.
+         */
+        final Bits uninitsTry;
+
+        /** When analyzing a condition, inits and uninits are null.
+         *  Instead we have:
+         */
+        final Bits initsWhenTrue;
+        final Bits initsWhenFalse;
+        final Bits uninitsWhenTrue;
+        final Bits uninitsWhenFalse;
+
+        /** A mapping from addresses to variable symbols.
+         */
+        protected JCVariableDecl[] vardecls;
+
+        /** The current class being defined.
+         */
+        JCClassDecl classDef;
+
+        /** The first variable sequence number in this class definition.
+         */
+        int firstadr;
+
+        /** The next available variable sequence number.
+         */
+        protected int nextadr;
+
+        /** The first variable sequence number in a block that can return.
+         */
+        protected int returnadr;
+
+        /** The list of unreferenced automatic resources.
+         */
+        Scope unrefdResources;
+
+        /** Modified when processing a loop body the second time for DU analysis. */
+        FlowKind flowKind = FlowKind.NORMAL;
+
+        /** The starting position of the analyzed tree */
+        int startPos;
+
+        public class AssignPendingExit extends BaseAnalyzer.PendingExit {
+
+            final Bits inits;
+            final Bits uninits;
+            final Bits exit_inits = new Bits(true);
+            final Bits exit_uninits = new Bits(true);
+
+            public AssignPendingExit(JCTree tree, final Bits inits, final Bits uninits) {
+                super(tree);
+                this.inits = inits;
+                this.uninits = uninits;
+                this.exit_inits.assign(inits);
+                this.exit_uninits.assign(uninits);
+            }
+
+            @Override
+            void resolveJump() {
+                inits.andSet(exit_inits);
+                uninits.andSet(exit_uninits);
+            }
+        }
+
+        public AssignAnalyzer() {
+            this.inits = new Bits();
+            uninits = new Bits();
+            uninitsTry = new Bits();
+            initsWhenTrue = new Bits(true);
+            initsWhenFalse = new Bits(true);
+            uninitsWhenTrue = new Bits(true);
+            uninitsWhenFalse = new Bits(true);
+        }
+
+        private boolean isInitialConstructor = false;
+
+        @Override
+         void markDead() {
+            if (!isInitialConstructor) {
+                inits.inclRange(returnadr, nextadr);
+            } else {
+                for (int address = returnadr; address < nextadr; address++) {
+                    if (!(isFinalUninitializedStaticField(vardecls[address].sym))) {
+                        inits.incl(address);
+                    }
+                }
+            }
+            uninits.inclRange(returnadr, nextadr);
+        }
+
+        /*-------------- Processing variables ----------------------*/
+
+        /** Do we need to track init/uninit state of this symbol?
+         *  I.e. is symbol either a local or a blank final variable?
+         */
+        protected boolean trackable(VarSymbol sym) {
+            return
+                sym.pos >= startPos &&
+                ((sym.owner.kind == MTH ||
+                isFinalUninitializedField(sym)));
+        }
+
+        boolean isFinalUninitializedField(VarSymbol sym) {
+            return sym.owner.kind == TYP &&
+                   ((sym.flags() & (FINAL | HASINIT | PARAMETER)) == FINAL &&
+                   classDef.sym.isEnclosedBy((ClassSymbol)sym.owner));
+        }
+
+        boolean isFinalUninitializedStaticField(VarSymbol sym) {
+            return isFinalUninitializedField(sym) && sym.isStatic();
+        }
+
+        /** Initialize new trackable variable by setting its address field
+         *  to the next available sequence number and entering it under that
+         *  index into the vars array.
+         */
+        void newVar(JCVariableDecl varDecl) {
+            VarSymbol sym = varDecl.sym;
+            vardecls = ArrayUtils.ensureCapacity(vardecls, nextadr);
+            if ((sym.flags() & FINAL) == 0) {
+                sym.flags_field |= EFFECTIVELY_FINAL;
+            }
+            sym.adr = nextadr;
+            vardecls[nextadr] = varDecl;
+            inits.excl(nextadr);
+            uninits.incl(nextadr);
+            nextadr++;
+        }
+
+        /** Record an initialization of a trackable variable.
+         */
+        void letInit(DiagnosticPosition pos, VarSymbol sym) {
+            if (sym.adr >= firstadr && trackable(sym)) {
+                if ((sym.flags() & EFFECTIVELY_FINAL) != 0) {
+                    if (!uninits.isMember(sym.adr)) {
+                        //assignment targeting an effectively final variable
+                        //makes the variable lose its status of effectively final
+                        //if the variable is _not_ definitively unassigned
+                        sym.flags_field &= ~EFFECTIVELY_FINAL;
+                    } else {
+                        uninit(sym);
+                    }
+                } else if ((sym.flags() & FINAL) != 0) {
+                    if ((sym.flags() & PARAMETER) != 0) {
+                        if ((sym.flags() & UNION) != 0) { //multi-catch parameter
+                            log.error(pos, "multicatch.parameter.may.not.be.assigned", sym);
+                        } else {
+                            log.error(pos, "final.parameter.may.not.be.assigned",
+                                  sym);
+                        }
+                    } else if (!uninits.isMember(sym.adr)) {
+                        log.error(pos, flowKind.errKey, sym);
+                    } else {
+                        uninit(sym);
+                    }
+                }
+                inits.incl(sym.adr);
+            } else if ((sym.flags() & FINAL) != 0) {
+                log.error(pos, "var.might.already.be.assigned", sym);
+            }
+        }
+        //where
+            void uninit(VarSymbol sym) {
+                if (!inits.isMember(sym.adr)) {
+                    // reachable assignment
+                    uninits.excl(sym.adr);
+                    uninitsTry.excl(sym.adr);
+                } else {
+                    //log.rawWarning(pos, "unreachable assignment");//DEBUG
+                    uninits.excl(sym.adr);
+                }
+            }
+
+        /** If tree is either a simple name or of the form this.name or
+         *  C.this.name, and tree represents a trackable variable,
+         *  record an initialization of the variable.
+         */
+        void letInit(JCTree tree) {
+            tree = TreeInfo.skipParens(tree);
+            if (tree.hasTag(IDENT) || tree.hasTag(SELECT)) {
+                Symbol sym = TreeInfo.symbol(tree);
+                if (sym.kind == VAR) {
+                    letInit(tree.pos(), (VarSymbol)sym);
+                }
+            }
+        }
+
+        /** Check that trackable variable is initialized.
+         */
+        void checkInit(DiagnosticPosition pos, VarSymbol sym) {
+            checkInit(pos, sym, "var.might.not.have.been.initialized");
+        }
+
+        void checkInit(DiagnosticPosition pos, VarSymbol sym, String errkey) {
+            if ((sym.adr >= firstadr || sym.owner.kind != TYP) &&
+                trackable(sym) &&
+                !inits.isMember(sym.adr)) {
+                log.error(pos, errkey, sym);
+                inits.incl(sym.adr);
+            }
+        }
+
+        /** Utility method to reset several Bits instances.
+         */
+        private void resetBits(Bits... bits) {
+            for (Bits b : bits) {
+                b.reset();
+            }
+        }
+
+        /** Split (duplicate) inits/uninits into WhenTrue/WhenFalse sets
+         */
+        void split(boolean setToNull) {
+            initsWhenFalse.assign(inits);
+            uninitsWhenFalse.assign(uninits);
+            initsWhenTrue.assign(inits);
+            uninitsWhenTrue.assign(uninits);
+            if (setToNull) {
+                resetBits(inits, uninits);
+            }
+        }
+
+        /** Merge (intersect) inits/uninits from WhenTrue/WhenFalse sets.
+         */
+        protected void merge() {
+            inits.assign(initsWhenFalse.andSet(initsWhenTrue));
+            uninits.assign(uninitsWhenFalse.andSet(uninitsWhenTrue));
+        }
+
+    /* ************************************************************************
+     * Visitor methods for statements and definitions
+     *************************************************************************/
+
+        /** Analyze an expression. Make sure to set (un)inits rather than
+         *  (un)initsWhenTrue(WhenFalse) on exit.
+         */
+        void scanExpr(JCTree tree) {
+            if (tree != null) {
+                scan(tree);
+                if (inits.isReset()) {
+                    merge();
+                }
+            }
+        }
+
+        /** Analyze a list of expressions.
+         */
+        void scanExprs(List<? extends JCExpression> trees) {
+            if (trees != null)
+                for (List<? extends JCExpression> l = trees; l.nonEmpty(); l = l.tail)
+                    scanExpr(l.head);
+        }
+
+        /** Analyze a condition. Make sure to set (un)initsWhenTrue(WhenFalse)
+         *  rather than (un)inits on exit.
+         */
+        void scanCond(JCTree tree) {
+            if (tree.type.isFalse()) {
+                if (inits.isReset()) merge();
+                initsWhenTrue.assign(inits);
+                initsWhenTrue.inclRange(firstadr, nextadr);
+                uninitsWhenTrue.assign(uninits);
+                uninitsWhenTrue.inclRange(firstadr, nextadr);
+                initsWhenFalse.assign(inits);
+                uninitsWhenFalse.assign(uninits);
+            } else if (tree.type.isTrue()) {
+                if (inits.isReset()) merge();
+                initsWhenFalse.assign(inits);
+                initsWhenFalse.inclRange(firstadr, nextadr);
+                uninitsWhenFalse.assign(uninits);
+                uninitsWhenFalse.inclRange(firstadr, nextadr);
+                initsWhenTrue.assign(inits);
+                uninitsWhenTrue.assign(uninits);
+            } else {
+                scan(tree);
+                if (!inits.isReset())
+                    split(tree.type != syms.unknownType);
+            }
+            if (tree.type != syms.unknownType) {
+                resetBits(inits, uninits);
+            }
+        }
+
+        /* ------------ Visitor methods for various sorts of trees -------------*/
+
+        public void visitClassDef(JCClassDecl tree) {
+            if (tree.sym == null) {
+                return;
+            }
+
+            Lint lintPrev = lint;
+            lint = lint.augment(tree.sym);
+            try {
+                if (tree.sym == null) {
+                    return;
+                }
+
+                JCClassDecl classDefPrev = classDef;
+                int firstadrPrev = firstadr;
+                int nextadrPrev = nextadr;
+                ListBuffer<AssignPendingExit> pendingExitsPrev = pendingExits;
+
+                pendingExits = new ListBuffer<>();
+                if (tree.name != names.empty) {
+                    firstadr = nextadr;
+                }
+                classDef = tree;
+                try {
+                    // define all the static fields
+                    for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                        if (l.head.hasTag(VARDEF)) {
+                            JCVariableDecl def = (JCVariableDecl)l.head;
+                            if ((def.mods.flags & STATIC) != 0) {
+                                VarSymbol sym = def.sym;
+                                if (trackable(sym)) {
+                                    newVar(def);
+                                }
+                            }
+                        }
+                    }
+
+                    // process all the static initializers
+                    for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                        if (!l.head.hasTag(METHODDEF) &&
+                            (TreeInfo.flags(l.head) & STATIC) != 0) {
+                            scan(l.head);
+                        }
+                    }
+
+                    // define all the instance fields
+                    for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                        if (l.head.hasTag(VARDEF)) {
+                            JCVariableDecl def = (JCVariableDecl)l.head;
+                            if ((def.mods.flags & STATIC) == 0) {
+                                VarSymbol sym = def.sym;
+                                if (trackable(sym)) {
+                                    newVar(def);
+                                }
+                            }
+                        }
+                    }
+                    // process all the instance initializers
+                    for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                        if (!l.head.hasTag(METHODDEF) &&
+                            (TreeInfo.flags(l.head) & STATIC) == 0) {
+                            scan(l.head);
+                        }
+                    }
+
+                    // process all the methods
+                    for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+                        if (l.head.hasTag(METHODDEF)) {
+                            scan(l.head);
+                        }
+                    }
+                } finally {
+                    pendingExits = pendingExitsPrev;
+                    nextadr = nextadrPrev;
+                    firstadr = firstadrPrev;
+                    classDef = classDefPrev;
+                }
+            } finally {
+                lint = lintPrev;
+            }
+        }
+
+        public void visitMethodDef(JCMethodDecl tree) {
+            if (tree.body == null) {
+                return;
+            }
+
+            /*  MemberEnter can generate synthetic methods ignore them
+             */
+            if ((tree.sym.flags() & SYNTHETIC) != 0) {
+                return;
+            }
+
+            Lint lintPrev = lint;
+            lint = lint.augment(tree.sym);
+            try {
+                if (tree.body == null) {
+                    return;
+                }
+                /*  Ignore synthetic methods, except for translated lambda methods.
+                 */
+                if ((tree.sym.flags() & (SYNTHETIC | LAMBDA_METHOD)) == SYNTHETIC) {
+                    return;
+                }
+
+                final Bits initsPrev = new Bits(inits);
+                final Bits uninitsPrev = new Bits(uninits);
+                int nextadrPrev = nextadr;
+                int firstadrPrev = firstadr;
+                int returnadrPrev = returnadr;
+
+                Assert.check(pendingExits.isEmpty());
+                boolean lastInitialConstructor = isInitialConstructor;
+                try {
+                    isInitialConstructor = TreeInfo.isInitialConstructor(tree);
+
+                    if (!isInitialConstructor) {
+                        firstadr = nextadr;
+                    }
+                    for (List<JCVariableDecl> l = tree.params; l.nonEmpty(); l = l.tail) {
+                        JCVariableDecl def = l.head;
+                        scan(def);
+                        Assert.check((def.sym.flags() & PARAMETER) != 0, "Method parameter without PARAMETER flag");
+                        /*  If we are executing the code from Gen, then there can be
+                         *  synthetic or mandated variables, ignore them.
+                         */
+                        initParam(def);
+                    }
+                    // else we are in an instance initializer block;
+                    // leave caught unchanged.
+                    scan(tree.body);
+
+                    if (isInitialConstructor) {
+                        boolean isSynthesized = (tree.sym.flags() &
+                                                 GENERATEDCONSTR) != 0;
+                        for (int i = firstadr; i < nextadr; i++) {
+                            JCVariableDecl vardecl = vardecls[i];
+                            VarSymbol var = vardecl.sym;
+                            if (var.owner == classDef.sym) {
+                                // choose the diagnostic position based on whether
+                                // the ctor is default(synthesized) or not
+                                if (isSynthesized) {
+                                    checkInit(TreeInfo.diagnosticPositionFor(var, vardecl),
+                                        var, "var.not.initialized.in.default.constructor");
+                                } else {
+                                    checkInit(TreeInfo.diagEndPos(tree.body), var);
+                                }
+                            }
+                        }
+                    }
+                    List<AssignPendingExit> exits = pendingExits.toList();
+                    pendingExits = new ListBuffer<>();
+                    while (exits.nonEmpty()) {
+                        AssignPendingExit exit = exits.head;
+                        exits = exits.tail;
+                        Assert.check(exit.tree.hasTag(RETURN), exit.tree);
+                        if (isInitialConstructor) {
+                            inits.assign(exit.exit_inits);
+                            for (int i = firstadr; i < nextadr; i++) {
+                                checkInit(exit.tree.pos(), vardecls[i].sym);
+                            }
+                        }
+                    }
+                } finally {
+                    inits.assign(initsPrev);
+                    uninits.assign(uninitsPrev);
+                    nextadr = nextadrPrev;
+                    firstadr = firstadrPrev;
+                    returnadr = returnadrPrev;
+                    isInitialConstructor = lastInitialConstructor;
+                }
+            } finally {
+                lint = lintPrev;
+            }
+        }
+
+        protected void initParam(JCVariableDecl def) {
+            inits.incl(def.sym.adr);
+            uninits.excl(def.sym.adr);
+        }
+
+        public void visitVarDef(JCVariableDecl tree) {
+            Lint lintPrev = lint;
+            lint = lint.augment(tree.sym);
+            try{
+                boolean track = trackable(tree.sym);
+                if (track && tree.sym.owner.kind == MTH) {
+                    newVar(tree);
+                }
+                if (tree.init != null) {
+                    scanExpr(tree.init);
+                    if (track) {
+                        letInit(tree.pos(), tree.sym);
+                    }
+                }
+            } finally {
+                lint = lintPrev;
+            }
+        }
+
+        public void visitBlock(JCBlock tree) {
+            int nextadrPrev = nextadr;
+            scan(tree.stats);
+            nextadr = nextadrPrev;
+        }
+
+        public void visitDoLoop(JCDoWhileLoop tree) {
+            ListBuffer<AssignPendingExit> prevPendingExits = pendingExits;
+            FlowKind prevFlowKind = flowKind;
+            flowKind = FlowKind.NORMAL;
+            final Bits initsSkip = new Bits(true);
+            final Bits uninitsSkip = new Bits(true);
+            pendingExits = new ListBuffer<>();
+            int prevErrors = log.nerrors;
+            do {
+                final Bits uninitsEntry = new Bits(uninits);
+                uninitsEntry.excludeFrom(nextadr);
+                scan(tree.body);
+                resolveContinues(tree);
+                scanCond(tree.cond);
+                if (!flowKind.isFinal()) {
+                    initsSkip.assign(initsWhenFalse);
+                    uninitsSkip.assign(uninitsWhenFalse);
+                }
+                if (log.nerrors !=  prevErrors ||
+                    flowKind.isFinal() ||
+                    new Bits(uninitsEntry).diffSet(uninitsWhenTrue).nextBit(firstadr)==-1)
+                    break;
+                inits.assign(initsWhenTrue);
+                uninits.assign(uninitsEntry.andSet(uninitsWhenTrue));
+                flowKind = FlowKind.SPECULATIVE_LOOP;
+            } while (true);
+            flowKind = prevFlowKind;
+            inits.assign(initsSkip);
+            uninits.assign(uninitsSkip);
+            resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitWhileLoop(JCWhileLoop tree) {
+            ListBuffer<AssignPendingExit> prevPendingExits = pendingExits;
+            FlowKind prevFlowKind = flowKind;
+            flowKind = FlowKind.NORMAL;
+            final Bits initsSkip = new Bits(true);
+            final Bits uninitsSkip = new Bits(true);
+            pendingExits = new ListBuffer<>();
+            int prevErrors = log.nerrors;
+            final Bits uninitsEntry = new Bits(uninits);
+            uninitsEntry.excludeFrom(nextadr);
+            do {
+                scanCond(tree.cond);
+                if (!flowKind.isFinal()) {
+                    initsSkip.assign(initsWhenFalse) ;
+                    uninitsSkip.assign(uninitsWhenFalse);
+                }
+                inits.assign(initsWhenTrue);
+                uninits.assign(uninitsWhenTrue);
+                scan(tree.body);
+                resolveContinues(tree);
+                if (log.nerrors != prevErrors ||
+                    flowKind.isFinal() ||
+                    new Bits(uninitsEntry).diffSet(uninits).nextBit(firstadr) == -1) {
+                    break;
+                }
+                uninits.assign(uninitsEntry.andSet(uninits));
+                flowKind = FlowKind.SPECULATIVE_LOOP;
+            } while (true);
+            flowKind = prevFlowKind;
+            //a variable is DA/DU after the while statement, if it's DA/DU assuming the
+            //branch is not taken AND if it's DA/DU before any break statement
+            inits.assign(initsSkip);
+            uninits.assign(uninitsSkip);
+            resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitForLoop(JCForLoop tree) {
+            ListBuffer<AssignPendingExit> prevPendingExits = pendingExits;
+            FlowKind prevFlowKind = flowKind;
+            flowKind = FlowKind.NORMAL;
+            int nextadrPrev = nextadr;
+            scan(tree.init);
+            final Bits initsSkip = new Bits(true);
+            final Bits uninitsSkip = new Bits(true);
+            pendingExits = new ListBuffer<>();
+            int prevErrors = log.nerrors;
+            do {
+                final Bits uninitsEntry = new Bits(uninits);
+                uninitsEntry.excludeFrom(nextadr);
+                if (tree.cond != null) {
+                    scanCond(tree.cond);
+                    if (!flowKind.isFinal()) {
+                        initsSkip.assign(initsWhenFalse);
+                        uninitsSkip.assign(uninitsWhenFalse);
+                    }
+                    inits.assign(initsWhenTrue);
+                    uninits.assign(uninitsWhenTrue);
+                } else if (!flowKind.isFinal()) {
+                    initsSkip.assign(inits);
+                    initsSkip.inclRange(firstadr, nextadr);
+                    uninitsSkip.assign(uninits);
+                    uninitsSkip.inclRange(firstadr, nextadr);
+                }
+                scan(tree.body);
+                resolveContinues(tree);
+                scan(tree.step);
+                if (log.nerrors != prevErrors ||
+                    flowKind.isFinal() ||
+                    new Bits(uninitsEntry).diffSet(uninits).nextBit(firstadr) == -1)
+                    break;
+                uninits.assign(uninitsEntry.andSet(uninits));
+                flowKind = FlowKind.SPECULATIVE_LOOP;
+            } while (true);
+            flowKind = prevFlowKind;
+            //a variable is DA/DU after a for loop, if it's DA/DU assuming the
+            //branch is not taken AND if it's DA/DU before any break statement
+            inits.assign(initsSkip);
+            uninits.assign(uninitsSkip);
+            resolveBreaks(tree, prevPendingExits);
+            nextadr = nextadrPrev;
+        }
+
+        public void visitForeachLoop(JCEnhancedForLoop tree) {
+            visitVarDef(tree.var);
+
+            ListBuffer<AssignPendingExit> prevPendingExits = pendingExits;
+            FlowKind prevFlowKind = flowKind;
+            flowKind = FlowKind.NORMAL;
+            int nextadrPrev = nextadr;
+            scan(tree.expr);
+            final Bits initsStart = new Bits(inits);
+            final Bits uninitsStart = new Bits(uninits);
+
+            letInit(tree.pos(), tree.var.sym);
+            pendingExits = new ListBuffer<>();
+            int prevErrors = log.nerrors;
+            do {
+                final Bits uninitsEntry = new Bits(uninits);
+                uninitsEntry.excludeFrom(nextadr);
+                scan(tree.body);
+                resolveContinues(tree);
+                if (log.nerrors != prevErrors ||
+                    flowKind.isFinal() ||
+                    new Bits(uninitsEntry).diffSet(uninits).nextBit(firstadr) == -1)
+                    break;
+                uninits.assign(uninitsEntry.andSet(uninits));
+                flowKind = FlowKind.SPECULATIVE_LOOP;
+            } while (true);
+            flowKind = prevFlowKind;
+            inits.assign(initsStart);
+            uninits.assign(uninitsStart.andSet(uninits));
+            resolveBreaks(tree, prevPendingExits);
+            nextadr = nextadrPrev;
+        }
+
+        public void visitLabelled(JCLabeledStatement tree) {
+            ListBuffer<AssignPendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<>();
+            scan(tree.body);
+            resolveBreaks(tree, prevPendingExits);
+        }
+
+        public void visitSwitch(JCSwitch tree) {
+            ListBuffer<AssignPendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<>();
+            int nextadrPrev = nextadr;
+            scanExpr(tree.selector);
+            final Bits initsSwitch = new Bits(inits);
+            final Bits uninitsSwitch = new Bits(uninits);
+            boolean hasDefault = false;
+            for (List<JCCase> l = tree.cases; l.nonEmpty(); l = l.tail) {
+                inits.assign(initsSwitch);
+                uninits.assign(uninits.andSet(uninitsSwitch));
+                JCCase c = l.head;
+                if (c.pat == null) {
+                    hasDefault = true;
+                } else {
+                    scanExpr(c.pat);
+                }
+                if (hasDefault) {
+                    inits.assign(initsSwitch);
+                    uninits.assign(uninits.andSet(uninitsSwitch));
+                }
+                scan(c.stats);
+                addVars(c.stats, initsSwitch, uninitsSwitch);
+                if (!hasDefault) {
+                    inits.assign(initsSwitch);
+                    uninits.assign(uninits.andSet(uninitsSwitch));
+                }
+                // Warn about fall-through if lint switch fallthrough enabled.
+            }
+            if (!hasDefault) {
+                inits.andSet(initsSwitch);
+            }
+            resolveBreaks(tree, prevPendingExits);
+            nextadr = nextadrPrev;
+        }
+        // where
+            /** Add any variables defined in stats to inits and uninits. */
+            private void addVars(List<JCStatement> stats, final Bits inits,
+                                        final Bits uninits) {
+                for (;stats.nonEmpty(); stats = stats.tail) {
+                    JCTree stat = stats.head;
+                    if (stat.hasTag(VARDEF)) {
+                        int adr = ((JCVariableDecl) stat).sym.adr;
+                        inits.excl(adr);
+                        uninits.incl(adr);
+                    }
+                }
+            }
+
+        public void visitTry(JCTry tree) {
+            ListBuffer<JCVariableDecl> resourceVarDecls = new ListBuffer<>();
+            final Bits uninitsTryPrev = new Bits(uninitsTry);
+            ListBuffer<AssignPendingExit> prevPendingExits = pendingExits;
+            pendingExits = new ListBuffer<>();
+            final Bits initsTry = new Bits(inits);
+            uninitsTry.assign(uninits);
+            for (JCTree resource : tree.resources) {
+                if (resource instanceof JCVariableDecl) {
+                    JCVariableDecl vdecl = (JCVariableDecl) resource;
+                    visitVarDef(vdecl);
+                    unrefdResources.enter(vdecl.sym);
+                    resourceVarDecls.append(vdecl);
+                } else if (resource instanceof JCExpression) {
+                    scanExpr((JCExpression) resource);
+                } else {
+                    throw new AssertionError(tree);  // parser error
+                }
+            }
+            scan(tree.body);
+            uninitsTry.andSet(uninits);
+            final Bits initsEnd = new Bits(inits);
+            final Bits uninitsEnd = new Bits(uninits);
+            int nextadrCatch = nextadr;
+
+            if (!resourceVarDecls.isEmpty() &&
+                    lint.isEnabled(Lint.LintCategory.TRY)) {
+                for (JCVariableDecl resVar : resourceVarDecls) {
+                    if (unrefdResources.includes(resVar.sym)) {
+                        log.warning(Lint.LintCategory.TRY, resVar.pos(),
+                                    "try.resource.not.referenced", resVar.sym);
+                        unrefdResources.remove(resVar.sym);
+                    }
+                }
+            }
+
+            /*  The analysis of each catch should be independent.
+             *  Each one should have the same initial values of inits and
+             *  uninits.
+             */
+            final Bits initsCatchPrev = new Bits(initsTry);
+            final Bits uninitsCatchPrev = new Bits(uninitsTry);
+
+            for (List<JCCatch> l = tree.catchers; l.nonEmpty(); l = l.tail) {
+                JCVariableDecl param = l.head.param;
+                inits.assign(initsCatchPrev);
+                uninits.assign(uninitsCatchPrev);
+                scan(param);
+                /* If this is a TWR and we are executing the code from Gen,
+                 * then there can be synthetic variables, ignore them.
+                 */
+                initParam(param);
+                scan(l.head.body);
+                initsEnd.andSet(inits);
+                uninitsEnd.andSet(uninits);
+                nextadr = nextadrCatch;
+            }
+            if (tree.finalizer != null) {
+                inits.assign(initsTry);
+                uninits.assign(uninitsTry);
+                ListBuffer<AssignPendingExit> exits = pendingExits;
+                pendingExits = prevPendingExits;
+                scan(tree.finalizer);
+                if (!tree.finallyCanCompleteNormally) {
+                    // discard exits and exceptions from try and finally
+                } else {
+                    uninits.andSet(uninitsEnd);
+                    // FIX: this doesn't preserve source order of exits in catch
+                    // versus finally!
+                    while (exits.nonEmpty()) {
+                        AssignPendingExit exit = exits.next();
+                        if (exit.exit_inits != null) {
+                            exit.exit_inits.orSet(inits);
+                            exit.exit_uninits.andSet(uninits);
+                        }
+                        pendingExits.append(exit);
+                    }
+                    inits.orSet(initsEnd);
+                }
+            } else {
+                inits.assign(initsEnd);
+                uninits.assign(uninitsEnd);
+                ListBuffer<AssignPendingExit> exits = pendingExits;
+                pendingExits = prevPendingExits;
+                while (exits.nonEmpty()) pendingExits.append(exits.next());
+            }
+            uninitsTry.andSet(uninitsTryPrev).andSet(uninits);
+        }
+
+        public void visitConditional(JCConditional tree) {
+            scanCond(tree.cond);
+            final Bits initsBeforeElse = new Bits(initsWhenFalse);
+            final Bits uninitsBeforeElse = new Bits(uninitsWhenFalse);
+            inits.assign(initsWhenTrue);
+            uninits.assign(uninitsWhenTrue);
+            if (tree.truepart.type.hasTag(BOOLEAN) &&
+                tree.falsepart.type.hasTag(BOOLEAN)) {
+                // if b and c are boolean valued, then
+                // v is (un)assigned after a?b:c when true iff
+                //    v is (un)assigned after b when true and
+                //    v is (un)assigned after c when true
+                scanCond(tree.truepart);
+                final Bits initsAfterThenWhenTrue = new Bits(initsWhenTrue);
+                final Bits initsAfterThenWhenFalse = new Bits(initsWhenFalse);
+                final Bits uninitsAfterThenWhenTrue = new Bits(uninitsWhenTrue);
+                final Bits uninitsAfterThenWhenFalse = new Bits(uninitsWhenFalse);
+                inits.assign(initsBeforeElse);
+                uninits.assign(uninitsBeforeElse);
+                scanCond(tree.falsepart);
+                initsWhenTrue.andSet(initsAfterThenWhenTrue);
+                initsWhenFalse.andSet(initsAfterThenWhenFalse);
+                uninitsWhenTrue.andSet(uninitsAfterThenWhenTrue);
+                uninitsWhenFalse.andSet(uninitsAfterThenWhenFalse);
+            } else {
+                scanExpr(tree.truepart);
+                final Bits initsAfterThen = new Bits(inits);
+                final Bits uninitsAfterThen = new Bits(uninits);
+                inits.assign(initsBeforeElse);
+                uninits.assign(uninitsBeforeElse);
+                scanExpr(tree.falsepart);
+                inits.andSet(initsAfterThen);
+                uninits.andSet(uninitsAfterThen);
+            }
+        }
+
+        public void visitIf(JCIf tree) {
+            scanCond(tree.cond);
+            final Bits initsBeforeElse = new Bits(initsWhenFalse);
+            final Bits uninitsBeforeElse = new Bits(uninitsWhenFalse);
+            inits.assign(initsWhenTrue);
+            uninits.assign(uninitsWhenTrue);
+            scan(tree.thenpart);
+            if (tree.elsepart != null) {
+                final Bits initsAfterThen = new Bits(inits);
+                final Bits uninitsAfterThen = new Bits(uninits);
+                inits.assign(initsBeforeElse);
+                uninits.assign(uninitsBeforeElse);
+                scan(tree.elsepart);
+                inits.andSet(initsAfterThen);
+                uninits.andSet(uninitsAfterThen);
+            } else {
+                inits.andSet(initsBeforeElse);
+                uninits.andSet(uninitsBeforeElse);
+            }
+        }
+
+        @Override
+        public void visitBreak(JCBreak tree) {
+            recordExit(new AssignPendingExit(tree, inits, uninits));
+        }
+
+        @Override
+        public void visitContinue(JCContinue tree) {
+            recordExit(new AssignPendingExit(tree, inits, uninits));
+        }
+
+        @Override
+        public void visitReturn(JCReturn tree) {
+            scanExpr(tree.expr);
+            recordExit(new AssignPendingExit(tree, inits, uninits));
+        }
+
+        public void visitThrow(JCThrow tree) {
+            scanExpr(tree.expr);
+            markDead();
+        }
+
+        public void visitApply(JCMethodInvocation tree) {
+            scanExpr(tree.meth);
+            scanExprs(tree.args);
+        }
+
+        public void visitNewClass(JCNewClass tree) {
+            scanExpr(tree.encl);
+            scanExprs(tree.args);
+            scan(tree.def);
+        }
+
+        @Override
+        public void visitLambda(JCLambda tree) {
+            final Bits prevUninits = new Bits(uninits);
+            final Bits prevInits = new Bits(inits);
+            int returnadrPrev = returnadr;
+            ListBuffer<AssignPendingExit> prevPending = pendingExits;
+            try {
+                returnadr = nextadr;
+                pendingExits = new ListBuffer<>();
+                for (List<JCVariableDecl> l = tree.params; l.nonEmpty(); l = l.tail) {
+                    JCVariableDecl def = l.head;
+                    scan(def);
+                    inits.incl(def.sym.adr);
+                    uninits.excl(def.sym.adr);
+                }
+                if (tree.getBodyKind() == JCLambda.BodyKind.EXPRESSION) {
+                    scanExpr(tree.body);
+                } else {
+                    scan(tree.body);
+                }
+            }
+            finally {
+                returnadr = returnadrPrev;
+                uninits.assign(prevUninits);
+                inits.assign(prevInits);
+                pendingExits = prevPending;
+            }
+        }
+
+        public void visitNewArray(JCNewArray tree) {
+            scanExprs(tree.dims);
+            scanExprs(tree.elems);
+        }
+
+        public void visitAssert(JCAssert tree) {
+            final Bits initsExit = new Bits(inits);
+            final Bits uninitsExit = new Bits(uninits);
+            scanCond(tree.cond);
+            uninitsExit.andSet(uninitsWhenTrue);
+            if (tree.detail != null) {
+                inits.assign(initsWhenFalse);
+                uninits.assign(uninitsWhenFalse);
+                scanExpr(tree.detail);
+            }
+            inits.assign(initsExit);
+            uninits.assign(uninitsExit);
+        }
+
+        public void visitAssign(JCAssign tree) {
+            JCTree lhs = TreeInfo.skipParens(tree.lhs);
+            if (!isIdentOrThisDotIdent(lhs))
+                scanExpr(lhs);
+            scanExpr(tree.rhs);
+            letInit(lhs);
+        }
+        private boolean isIdentOrThisDotIdent(JCTree lhs) {
+            if (lhs.hasTag(IDENT))
+                return true;
+            if (!lhs.hasTag(SELECT))
+                return false;
+
+            JCFieldAccess fa = (JCFieldAccess)lhs;
+            return fa.selected.hasTag(IDENT) &&
+                   ((JCIdent)fa.selected).name == names._this;
+        }
+
+        // check fields accessed through this.<field> are definitely
+        // assigned before reading their value
+        public void visitSelect(JCFieldAccess tree) {
+            super.visitSelect(tree);
+            if (enforceThisDotInit &&
+                tree.selected.hasTag(IDENT) &&
+                ((JCIdent)tree.selected).name == names._this &&
+                tree.sym.kind == VAR)
+            {
+                checkInit(tree.pos(), (VarSymbol)tree.sym);
+            }
+        }
+
+        public void visitAssignop(JCAssignOp tree) {
+            scanExpr(tree.lhs);
+            scanExpr(tree.rhs);
+            letInit(tree.lhs);
+        }
+
+        public void visitUnary(JCUnary tree) {
+            switch (tree.getTag()) {
+            case NOT:
+                scanCond(tree.arg);
+                final Bits t = new Bits(initsWhenFalse);
+                initsWhenFalse.assign(initsWhenTrue);
+                initsWhenTrue.assign(t);
+                t.assign(uninitsWhenFalse);
+                uninitsWhenFalse.assign(uninitsWhenTrue);
+                uninitsWhenTrue.assign(t);
+                break;
+            case PREINC: case POSTINC:
+            case PREDEC: case POSTDEC:
+                scanExpr(tree.arg);
+                letInit(tree.arg);
+                break;
+            default:
+                scanExpr(tree.arg);
+            }
+        }
+
+        public void visitBinary(JCBinary tree) {
+            switch (tree.getTag()) {
+            case AND:
+                scanCond(tree.lhs);
+                final Bits initsWhenFalseLeft = new Bits(initsWhenFalse);
+                final Bits uninitsWhenFalseLeft = new Bits(uninitsWhenFalse);
+                inits.assign(initsWhenTrue);
+                uninits.assign(uninitsWhenTrue);
+                scanCond(tree.rhs);
+                initsWhenFalse.andSet(initsWhenFalseLeft);
+                uninitsWhenFalse.andSet(uninitsWhenFalseLeft);
+                break;
+            case OR:
+                scanCond(tree.lhs);
+                final Bits initsWhenTrueLeft = new Bits(initsWhenTrue);
+                final Bits uninitsWhenTrueLeft = new Bits(uninitsWhenTrue);
+                inits.assign(initsWhenFalse);
+                uninits.assign(uninitsWhenFalse);
+                scanCond(tree.rhs);
+                initsWhenTrue.andSet(initsWhenTrueLeft);
+                uninitsWhenTrue.andSet(uninitsWhenTrueLeft);
+                break;
+            default:
+                scanExpr(tree.lhs);
+                scanExpr(tree.rhs);
+            }
+        }
+
+        public void visitIdent(JCIdent tree) {
+            if (tree.sym.kind == VAR) {
+                checkInit(tree.pos(), (VarSymbol)tree.sym);
+                referenced(tree.sym);
+            }
+        }
+
+        void referenced(Symbol sym) {
+            unrefdResources.remove(sym);
+        }
+
+        public void visitAnnotatedType(JCAnnotatedType tree) {
+            // annotations don't get scanned
+            tree.underlyingType.accept(this);
+        }
+
+        public void visitTopLevel(JCCompilationUnit tree) {
+            // Do nothing for TopLevel since each class is visited individually
+        }
+
+    /**************************************************************************
+     * main method
+     *************************************************************************/
+
+        /** Perform definite assignment/unassignment analysis on a tree.
+         */
+        public void analyzeTree(Env<?> env) {
+            analyzeTree(env, env.tree);
+         }
+
+        public void analyzeTree(Env<?> env, JCTree tree) {
+            try {
+                startPos = tree.pos().getStartPosition();
+
+                if (vardecls == null)
+                    vardecls = new JCVariableDecl[32];
+                else
+                    for (int i=0; i<vardecls.length; i++)
+                        vardecls[i] = null;
+                firstadr = 0;
+                nextadr = 0;
+                pendingExits = new ListBuffer<>();
+                this.classDef = null;
+                unrefdResources = new Scope(env.enclClass.sym);
+                scan(tree);
+            } finally {
+                // note that recursive invocations of this method fail hard
+                startPos = -1;
+                resetBits(inits, uninits, uninitsTry, initsWhenTrue,
+                        initsWhenFalse, uninitsWhenTrue, uninitsWhenFalse);
+                if (vardecls != null) {
+                    for (int i=0; i<vardecls.length; i++)
+                        vardecls[i] = null;
+                }
+                firstadr = 0;
+                nextadr = 0;
+                pendingExits = null;
+                this.classDef = null;
+                unrefdResources = null;
+            }
+        }
+    }
+
+    /**
+     * This pass implements the last step of the dataflow analysis, namely
+     * the effectively-final analysis check. This checks that every local variable
+     * reference from a lambda body/local inner class is either final or effectively final.
+     * As effectively final variables are marked as such during DA/DU, this pass must run after
+     * AssignAnalyzer.
+     */
+    class CaptureAnalyzer extends BaseAnalyzer<BaseAnalyzer.PendingExit> {
+
+        JCTree currentTree; //local class or lambda
+
+        @Override
+        void markDead() {
+            //do nothing
+        }
+
+        @SuppressWarnings("fallthrough")
+        void checkEffectivelyFinal(DiagnosticPosition pos, VarSymbol sym) {
+            if (currentTree != null &&
+                    sym.owner.kind == MTH &&
+                    sym.pos < currentTree.getStartPosition()) {
+                switch (currentTree.getTag()) {
+                    case CLASSDEF:
+                        if (!allowEffectivelyFinalInInnerClasses) {
+                            if ((sym.flags() & FINAL) == 0) {
+                                reportInnerClsNeedsFinalError(pos, sym);
+                            }
+                            break;
+                        }
+                    case LAMBDA:
+                        if ((sym.flags() & (EFFECTIVELY_FINAL | FINAL)) == 0) {
+                           reportEffectivelyFinalError(pos, sym);
+                        }
+                }
+            }
+        }
+
+        @SuppressWarnings("fallthrough")
+        void letInit(JCTree tree) {
+            tree = TreeInfo.skipParens(tree);
+            if (tree.hasTag(IDENT) || tree.hasTag(SELECT)) {
+                Symbol sym = TreeInfo.symbol(tree);
+                if (currentTree != null &&
+                        sym.kind == VAR &&
+                        sym.owner.kind == MTH &&
+                        ((VarSymbol)sym).pos < currentTree.getStartPosition()) {
+                    switch (currentTree.getTag()) {
+                        case CLASSDEF:
+                            if (!allowEffectivelyFinalInInnerClasses) {
+                                reportInnerClsNeedsFinalError(tree, sym);
+                                break;
+                            }
+                        case LAMBDA:
+                            reportEffectivelyFinalError(tree, sym);
+                    }
+                }
+            }
+        }
+
+        void reportEffectivelyFinalError(DiagnosticPosition pos, Symbol sym) {
+            String subKey = currentTree.hasTag(LAMBDA) ?
+                  "lambda"  : "inner.cls";
+            log.error(pos, "cant.ref.non.effectively.final.var", sym, diags.fragment(subKey));
+        }
+
+        void reportInnerClsNeedsFinalError(DiagnosticPosition pos, Symbol sym) {
+            log.error(pos,
+                    "local.var.accessed.from.icls.needs.final",
+                    sym);
+        }
+
+    /*************************************************************************
+     * Visitor methods for statements and definitions
+     *************************************************************************/
+
+        /* ------------ Visitor methods for various sorts of trees -------------*/
+
+        public void visitClassDef(JCClassDecl tree) {
+            JCTree prevTree = currentTree;
+            try {
+                currentTree = tree.sym.isLocal() ? tree : null;
+                super.visitClassDef(tree);
+            } finally {
+                currentTree = prevTree;
+            }
+        }
+
+        @Override
+        public void visitLambda(JCLambda tree) {
+            JCTree prevTree = currentTree;
+            try {
+                currentTree = tree;
+                super.visitLambda(tree);
+            } finally {
+                currentTree = prevTree;
+            }
+        }
+
+        @Override
+        public void visitIdent(JCIdent tree) {
+            if (tree.sym.kind == VAR) {
+                checkEffectivelyFinal(tree, (VarSymbol)tree.sym);
+            }
+        }
+
+        public void visitAssign(JCAssign tree) {
+            JCTree lhs = TreeInfo.skipParens(tree.lhs);
+            if (!(lhs instanceof JCIdent)) {
+                scan(lhs);
+            }
+            scan(tree.rhs);
+            letInit(lhs);
+        }
+
+        public void visitAssignop(JCAssignOp tree) {
+            scan(tree.lhs);
+            scan(tree.rhs);
+            letInit(tree.lhs);
+        }
+
+        public void visitUnary(JCUnary tree) {
+            switch (tree.getTag()) {
+                case PREINC: case POSTINC:
+                case PREDEC: case POSTDEC:
+                    scan(tree.arg);
+                    letInit(tree.arg);
+                    break;
+                default:
+                    scan(tree.arg);
+            }
+        }
+
+        public void visitTopLevel(JCCompilationUnit tree) {
+            // Do nothing for TopLevel since each class is visited individually
+        }
+
+    /**************************************************************************
+     * main method
+     *************************************************************************/
+
+        /** Perform definite assignment/unassignment analysis on a tree.
+         */
+        public void analyzeTree(Env<AttrContext> env, TreeMaker make) {
+            analyzeTree(env, env.tree, make);
+        }
+        public void analyzeTree(Env<AttrContext> env, JCTree tree, TreeMaker make) {
+            try {
+                attrEnv = env;
+                Flow.this.make = make;
+                pendingExits = new ListBuffer<>();
+                scan(tree);
+            } finally {
+                pendingExits = null;
+                Flow.this.make = null;
+            }
+        }
+    }
+}

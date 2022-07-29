@@ -1,165 +1,159 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.util;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.MemberDoc;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import com.sun.tools.javac.jvm.Profile;
-/*     */ import java.util.ArrayList;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class MetaKeywords
-/*     */ {
-/*     */   private final Configuration configuration;
-/*     */   
-/*     */   public MetaKeywords(Configuration paramConfiguration) {
-/*  58 */     this.configuration = paramConfiguration;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String[] getMetaKeywords(ClassDoc paramClassDoc) {
-/*  74 */     ArrayList<String> arrayList = new ArrayList();
-/*     */ 
-/*     */     
-/*  77 */     if (this.configuration.keywords) {
-/*  78 */       arrayList.addAll(getClassKeyword(paramClassDoc));
-/*  79 */       arrayList.addAll(getMemberKeywords((MemberDoc[])paramClassDoc.fields()));
-/*  80 */       arrayList.addAll(getMemberKeywords((MemberDoc[])paramClassDoc.methods()));
-/*     */     } 
-/*  82 */     return arrayList.<String>toArray(new String[0]);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected ArrayList<String> getClassKeyword(ClassDoc paramClassDoc) {
-/*  90 */     String str = paramClassDoc.isInterface() ? "interface" : "class";
-/*  91 */     ArrayList<String> arrayList = new ArrayList(1);
-/*  92 */     arrayList.add(paramClassDoc.qualifiedName() + " " + str);
-/*  93 */     return arrayList;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String[] getMetaKeywords(PackageDoc paramPackageDoc) {
-/* 100 */     if (this.configuration.keywords) {
-/* 101 */       String str = Util.getPackageName(paramPackageDoc);
-/* 102 */       return new String[] { str + " package" };
-/*     */     } 
-/* 104 */     return new String[0];
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String[] getMetaKeywords(Profile paramProfile) {
-/* 114 */     if (this.configuration.keywords) {
-/* 115 */       String str = paramProfile.name;
-/* 116 */       return new String[] { str + " profile" };
-/*     */     } 
-/* 118 */     return new String[0];
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String[] getOverviewMetaKeywords(String paramString1, String paramString2) {
-/* 126 */     if (this.configuration.keywords) {
-/* 127 */       String str = this.configuration.getText(paramString1);
-/* 128 */       String[] arrayOfString = { str };
-/* 129 */       if (paramString2.length() > 0) {
-/* 130 */         arrayOfString[0] = arrayOfString[0] + ", " + paramString2;
-/*     */       }
-/* 132 */       return arrayOfString;
-/*     */     } 
-/* 134 */     return new String[0];
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected ArrayList<String> getMemberKeywords(MemberDoc[] paramArrayOfMemberDoc) {
-/* 148 */     ArrayList<String> arrayList = new ArrayList();
-/*     */     
-/* 150 */     for (byte b = 0; b < paramArrayOfMemberDoc.length; b++) {
-/*     */       
-/* 152 */       String str = paramArrayOfMemberDoc[b].name() + (paramArrayOfMemberDoc[b].isMethod() ? "()" : "");
-/* 153 */       if (!arrayList.contains(str)) {
-/* 154 */         arrayList.add(str);
-/*     */       }
-/*     */     } 
-/* 157 */     return arrayList;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolki\\util\MetaKeywords.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2002, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.util;
+
+import java.util.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.javac.jvm.Profile;
+import com.sun.tools.doclets.internal.toolkit.*;
+
+/**
+ * Provides methods for creating an array of class, method and
+ * field names to be included as meta keywords in the HTML header
+ * of class pages.  These keywords improve search results
+ * on browsers that look for keywords.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Doug Kramer
+ */
+public class MetaKeywords {
+
+    /**
+     * The global configuration information for this run.
+     */
+    private final Configuration configuration;
+
+    /**
+     * Constructor
+     */
+    public MetaKeywords(Configuration configuration) {
+        this.configuration = configuration;
+    }
+
+    /**
+     * Returns an array of strings where each element
+     * is a class, method or field name.  This array is
+     * used to create one meta keyword tag for each element.
+     * Method parameter lists are converted to "()" and
+     * overloads are combined.
+     *
+     * Constructors are not included because they have the same
+     * name as the class, which is already included.
+     * Nested class members are not included because their
+     * definitions are on separate pages.
+     */
+    public String[] getMetaKeywords(ClassDoc classdoc) {
+        ArrayList<String> results = new ArrayList<String>();
+
+        // Add field and method keywords only if -keywords option is used
+        if( configuration.keywords ) {
+            results.addAll(getClassKeyword(classdoc));
+            results.addAll(getMemberKeywords(classdoc.fields()));
+            results.addAll(getMemberKeywords(classdoc.methods()));
+        }
+        return results.toArray(new String[]{});
+    }
+
+    /**
+     * Get the current class for a meta tag keyword, as the first
+     * and only element of an array list.
+     */
+    protected ArrayList<String> getClassKeyword(ClassDoc classdoc) {
+        String cltypelower = classdoc.isInterface() ? "interface" : "class";
+        ArrayList<String> metakeywords = new ArrayList<String>(1);
+        metakeywords.add(classdoc.qualifiedName() + " " + cltypelower);
+        return metakeywords;
+    }
+
+    /**
+     * Get the package keywords.
+     */
+    public String[] getMetaKeywords(PackageDoc packageDoc) {
+        if( configuration.keywords ) {
+            String pkgName = Util.getPackageName(packageDoc);
+            return new String[] { pkgName + " " + "package" };
+        } else {
+            return new String[] {};
+        }
+    }
+
+    /**
+     * Get the profile keywords.
+     *
+     * @param profile the profile being documented
+     */
+    public String[] getMetaKeywords(Profile profile) {
+        if( configuration.keywords ) {
+            String profileName = profile.name;
+            return new String[] { profileName + " " + "profile" };
+        } else {
+            return new String[] {};
+        }
+    }
+
+    /**
+     * Get the overview keywords.
+     */
+    public String[] getOverviewMetaKeywords(String title, String docTitle) {
+        if( configuration.keywords ) {
+            String windowOverview = configuration.getText(title);
+            String[] metakeywords = { windowOverview };
+            if (docTitle.length() > 0 ) {
+                metakeywords[0] += ", " + docTitle;
+            }
+            return metakeywords;
+        } else {
+            return new String[] {};
+        }
+    }
+
+    /**
+     * Get members for meta tag keywords as an array,
+     * where each member name is a string element of the array.
+     * The parameter lists are not included in the keywords;
+     * therefore all overloaded methods are combined.<br>
+     * Example: getValue(Object) is returned in array as getValue()
+     *
+     * @param memberdocs  array of MemberDoc objects to be added to keywords
+     */
+    protected ArrayList<String> getMemberKeywords(MemberDoc[] memberdocs) {
+        ArrayList<String> results = new ArrayList<String>();
+        String membername;
+        for (int i=0; i < memberdocs.length; i++) {
+            membername = memberdocs[i].name()
+                             + (memberdocs[i].isMethod() ? "()" : "");
+            if ( ! results.contains(membername) ) {
+                results.add(membername);
+            }
+        }
+        return results;
+    }
+}

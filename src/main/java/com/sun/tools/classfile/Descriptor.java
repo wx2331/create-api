@@ -1,202 +1,199 @@
-/*     */ package com.sun.tools.classfile;
-/*     */ 
-/*     */ import java.io.IOException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class Descriptor
-/*     */ {
-/*     */   public final int index;
-/*     */   private int count;
-/*     */   
-/*     */   public static class InvalidDescriptor
-/*     */     extends DescriptorException
-/*     */   {
-/*     */     private static final long serialVersionUID = 1L;
-/*     */     public final String desc;
-/*     */     public final int index;
-/*     */     
-/*     */     InvalidDescriptor(String param1String) {
-/*  43 */       this.desc = param1String;
-/*  44 */       this.index = -1;
-/*     */     }
-/*     */     
-/*     */     InvalidDescriptor(String param1String, int param1Int) {
-/*  48 */       this.desc = param1String;
-/*  49 */       this.index = param1Int;
-/*     */     }
-/*     */ 
-/*     */ 
-/*     */     
-/*     */     public String getMessage() {
-/*  55 */       if (this.index == -1) {
-/*  56 */         return "invalid descriptor \"" + this.desc + "\"";
-/*     */       }
-/*  58 */       return "descriptor is invalid at offset " + this.index + " in \"" + this.desc + "\"";
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Descriptor(ClassReader paramClassReader) throws IOException {
-/*  67 */     this(paramClassReader.readUnsignedShort());
-/*     */   }
-/*     */   
-/*     */   public Descriptor(int paramInt) {
-/*  71 */     this.index = paramInt;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public String getValue(ConstantPool paramConstantPool) throws ConstantPoolException {
-/*  76 */     return paramConstantPool.getUTF8Value(this.index);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public int getParameterCount(ConstantPool paramConstantPool) throws ConstantPoolException, InvalidDescriptor {
-/*  81 */     String str = getValue(paramConstantPool);
-/*  82 */     int i = str.indexOf(")");
-/*  83 */     if (i == -1)
-/*  84 */       throw new InvalidDescriptor(str); 
-/*  85 */     parse(str, 0, i + 1);
-/*  86 */     return this.count;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getParameterTypes(ConstantPool paramConstantPool) throws ConstantPoolException, InvalidDescriptor {
-/*  92 */     String str = getValue(paramConstantPool);
-/*  93 */     int i = str.indexOf(")");
-/*  94 */     if (i == -1)
-/*  95 */       throw new InvalidDescriptor(str); 
-/*  96 */     return parse(str, 0, i + 1);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public String getReturnType(ConstantPool paramConstantPool) throws ConstantPoolException, InvalidDescriptor {
-/* 101 */     String str = getValue(paramConstantPool);
-/* 102 */     int i = str.indexOf(")");
-/* 103 */     if (i == -1)
-/* 104 */       throw new InvalidDescriptor(str); 
-/* 105 */     return parse(str, i + 1, str.length());
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public String getFieldType(ConstantPool paramConstantPool) throws ConstantPoolException, InvalidDescriptor {
-/* 110 */     String str = getValue(paramConstantPool);
-/* 111 */     return parse(str, 0, str.length());
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   private String parse(String paramString, int paramInt1, int paramInt2) throws InvalidDescriptor {
-/* 116 */     int i = paramInt1;
-/* 117 */     StringBuilder stringBuilder = new StringBuilder();
-/* 118 */     byte b = 0;
-/* 119 */     this.count = 0;
-/*     */     
-/* 121 */     while (i < paramInt2) {
-/*     */       String str; int j;
-/*     */       char c;
-/* 124 */       switch (c = paramString.charAt(i++)) {
-/*     */         case '(':
-/* 126 */           stringBuilder.append('(');
-/*     */           continue;
-/*     */         
-/*     */         case ')':
-/* 130 */           stringBuilder.append(')');
-/*     */           continue;
-/*     */         
-/*     */         case '[':
-/* 134 */           b++;
-/*     */           continue;
-/*     */         
-/*     */         case 'B':
-/* 138 */           str = "byte";
-/*     */           break;
-/*     */         
-/*     */         case 'C':
-/* 142 */           str = "char";
-/*     */           break;
-/*     */         
-/*     */         case 'D':
-/* 146 */           str = "double";
-/*     */           break;
-/*     */         
-/*     */         case 'F':
-/* 150 */           str = "float";
-/*     */           break;
-/*     */         
-/*     */         case 'I':
-/* 154 */           str = "int";
-/*     */           break;
-/*     */         
-/*     */         case 'J':
-/* 158 */           str = "long";
-/*     */           break;
-/*     */         
-/*     */         case 'L':
-/* 162 */           j = paramString.indexOf(';', i);
-/* 163 */           if (j == -1)
-/* 164 */             throw new InvalidDescriptor(paramString, i - 1); 
-/* 165 */           str = paramString.substring(i, j).replace('/', '.');
-/* 166 */           i = j + 1;
-/*     */           break;
-/*     */         
-/*     */         case 'S':
-/* 170 */           str = "short";
-/*     */           break;
-/*     */         
-/*     */         case 'Z':
-/* 174 */           str = "boolean";
-/*     */           break;
-/*     */         
-/*     */         case 'V':
-/* 178 */           str = "void";
-/*     */           break;
-/*     */         
-/*     */         default:
-/* 182 */           throw new InvalidDescriptor(paramString, i - 1);
-/*     */       } 
-/*     */       
-/* 185 */       if (stringBuilder.length() > 1 && stringBuilder.charAt(0) == '(')
-/* 186 */         stringBuilder.append(", "); 
-/* 187 */       stringBuilder.append(str);
-/* 188 */       for (; b > 0; b--) {
-/* 189 */         stringBuilder.append("[]");
-/*     */       }
-/* 191 */       this.count++;
-/*     */     } 
-/*     */     
-/* 194 */     return stringBuilder.toString();
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\classfile\Descriptor.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2007, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+
+package com.sun.tools.classfile;
+
+import java.io.IOException;
+
+/**
+ * See JVMS, section 4.4.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Descriptor {
+    public static class InvalidDescriptor extends DescriptorException {
+        private static final long serialVersionUID = 1L;
+        InvalidDescriptor(String desc) {
+            this.desc = desc;
+            this.index = -1;
+        }
+
+        InvalidDescriptor(String desc, int index) {
+            this.desc = desc;
+            this.index = index;
+        }
+
+        @Override
+        public String getMessage() {
+            // i18n
+            if (index == -1)
+                return "invalid descriptor \"" + desc + "\"";
+            else
+                return "descriptor is invalid at offset " + index + " in \"" + desc + "\"";
+        }
+
+        public final String desc;
+        public final int index;
+
+    }
+
+    public Descriptor(ClassReader cr) throws IOException {
+        this(cr.readUnsignedShort());
+    }
+
+    public Descriptor(int index) {
+        this.index = index;
+
+    }
+
+    public String getValue(ConstantPool constant_pool) throws ConstantPoolException {
+        return constant_pool.getUTF8Value(index);
+    }
+
+    public int getParameterCount(ConstantPool constant_pool)
+            throws ConstantPoolException, InvalidDescriptor {
+        String desc = getValue(constant_pool);
+        int end = desc.indexOf(")");
+        if (end == -1)
+            throw new InvalidDescriptor(desc);
+        parse(desc, 0, end + 1);
+        return count;
+
+    }
+
+    public String getParameterTypes(ConstantPool constant_pool)
+            throws ConstantPoolException, InvalidDescriptor {
+        String desc = getValue(constant_pool);
+        int end = desc.indexOf(")");
+        if (end == -1)
+            throw new InvalidDescriptor(desc);
+        return parse(desc, 0, end + 1);
+    }
+
+    public String getReturnType(ConstantPool constant_pool)
+            throws ConstantPoolException, InvalidDescriptor {
+        String desc = getValue(constant_pool);
+        int end = desc.indexOf(")");
+        if (end == -1)
+            throw new InvalidDescriptor(desc);
+        return parse(desc, end + 1, desc.length());
+    }
+
+    public String getFieldType(ConstantPool constant_pool)
+            throws ConstantPoolException, InvalidDescriptor {
+        String desc = getValue(constant_pool);
+        return parse(desc, 0, desc.length());
+    }
+
+    private String parse(String desc, int start, int end)
+            throws InvalidDescriptor {
+        int p = start;
+        StringBuilder sb = new StringBuilder();
+        int dims = 0;
+        count = 0;
+
+        while (p < end) {
+            String type;
+            char ch;
+            switch (ch = desc.charAt(p++)) {
+                case '(':
+                    sb.append('(');
+                    continue;
+
+                case ')':
+                    sb.append(')');
+                    continue;
+
+                case '[':
+                    dims++;
+                    continue;
+
+                case 'B':
+                    type = "byte";
+                    break;
+
+                case 'C':
+                    type = "char";
+                    break;
+
+                case 'D':
+                    type = "double";
+                    break;
+
+                case 'F':
+                    type = "float";
+                    break;
+
+                case 'I':
+                    type = "int";
+                    break;
+
+                case 'J':
+                    type = "long";
+                    break;
+
+                case 'L':
+                    int sep = desc.indexOf(';', p);
+                    if (sep == -1)
+                        throw new InvalidDescriptor(desc, p - 1);
+                    type = desc.substring(p, sep).replace('/', '.');
+                    p = sep + 1;
+                    break;
+
+                case 'S':
+                    type = "short";
+                    break;
+
+                case 'Z':
+                    type = "boolean";
+                    break;
+
+                case 'V':
+                    type = "void";
+                    break;
+
+                default:
+                    throw new InvalidDescriptor(desc, p - 1);
+            }
+
+            if (sb.length() > 1 && sb.charAt(0) == '(')
+                sb.append(", ");
+            sb.append(type);
+            for ( ; dims > 0; dims-- )
+                sb.append("[]");
+
+            count++;
+        }
+
+        return sb.toString();
+    }
+
+    public final int index;
+    private int count;
+}

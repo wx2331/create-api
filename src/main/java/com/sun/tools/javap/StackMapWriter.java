@@ -1,492 +1,291 @@
-/*     */ package com.sun.tools.javap;
-/*     */
-/*     */ import com.sun.tools.classfile.Code_attribute;
-/*     */ import com.sun.tools.classfile.ConstantPool;
-/*     */ import com.sun.tools.classfile.ConstantPoolException;
-/*     */ import com.sun.tools.classfile.Descriptor;
-/*     */ import com.sun.tools.classfile.Instruction;
-/*     */ import com.sun.tools.classfile.Method;
-/*     */ import com.sun.tools.classfile.StackMapTable_attribute;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.Map;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class StackMapWriter
-/*     */   extends InstructionDetailWriter
-/*     */ {
-/*     */   private Map<Integer, StackMap> map;
-/*     */   private ClassWriter classWriter;
-/*     */   private final StackMapTable_attribute.verification_type_info[] empty;
-/*     */
-/*     */   static StackMapWriter instance(Context paramContext) {
-/*  56 */     StackMapWriter stackMapWriter = paramContext.<StackMapWriter>get(StackMapWriter.class);
-/*  57 */     if (stackMapWriter == null)
-/*  58 */       stackMapWriter = new StackMapWriter(paramContext);
-/*  59 */     return stackMapWriter;
-/*     */   }
-/*     */
-/*     */   protected StackMapWriter(Context paramContext) {
-/*  63 */     super(paramContext);
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 290 */     this.empty = new StackMapTable_attribute.verification_type_info[0];
-/*     */     paramContext.put(StackMapWriter.class, this);
-/*     */     this.classWriter = ClassWriter.instance(paramContext);
-/*     */   }
-/*     */
-/*     */   public void reset(Code_attribute paramCode_attribute) {
-/*     */     setStackMap((StackMapTable_attribute)paramCode_attribute.attributes.get("StackMapTable"));
-/*     */   }
-/*     */
-/*     */   void setStackMap(StackMapTable_attribute paramStackMapTable_attribute) {
-/*     */     String[] arrayOfString;
-/*     */     if (paramStackMapTable_attribute == null) {
-/*     */       this.map = null;
-/*     */       return;
-/*     */     }
-/*     */     Method method = this.classWriter.getMethod();
-/*     */     Descriptor descriptor = method.descriptor;
-/*     */     try {
-/*     */       ConstantPool constantPool = (this.classWriter.getClassFile()).constant_pool;
-/*     */       String str = descriptor.getParameterTypes(constantPool);
-/*     */       arrayOfString = str.substring(1, str.length() - 1).split("[, ]+");
-/*     */     } catch (ConstantPoolException constantPoolException) {
-/*     */       return;
-/*     */     } catch (Descriptor.InvalidDescriptor invalidDescriptor) {
-/*     */       return;
-/*     */     }
-/*     */     boolean bool = method.access_flags.is(8);
-/*     */     StackMapTable_attribute.verification_type_info[] arrayOfVerification_type_info = new StackMapTable_attribute.verification_type_info[(bool ? 0 : 1) + arrayOfString.length];
-/*     */     if (!bool)
-/*     */       arrayOfVerification_type_info[0] = new CustomVerificationTypeInfo("this");
-/*     */     for (byte b1 = 0; b1 < arrayOfString.length; b1++)
-/*     */       arrayOfVerification_type_info[(bool ? 0 : 1) + b1] = new CustomVerificationTypeInfo(arrayOfString[b1].replace(".", "/"));
-/*     */     this.map = new HashMap<>();
-/*     */     StackMapBuilder stackMapBuilder = new StackMapBuilder();
-/*     */     int i = -1;
-/*     */     this.map.put(Integer.valueOf(i), new StackMap(arrayOfVerification_type_info, this.empty));
-/*     */     for (byte b2 = 0; b2 < paramStackMapTable_attribute.entries.length; b2++)
-/*     */       i = ((Integer)paramStackMapTable_attribute.entries[b2].accept(stackMapBuilder, Integer.valueOf(i))).intValue();
-/*     */   }
-/*     */
-/*     */   public void writeInitialDetails() {
-/*     */     writeDetails(-1);
-/*     */   }
-/*     */
-/*     */   public void writeDetails(Instruction paramInstruction) {
-/*     */     writeDetails(paramInstruction.getPC());
-/*     */   }
-/*     */
-/*     */   private void writeDetails(int paramInt) {
-/*     */     if (this.map == null)
-/*     */       return;
-/*     */     StackMap stackMap = this.map.get(Integer.valueOf(paramInt));
-/*     */     if (stackMap != null) {
-/*     */       print("StackMap locals: ", stackMap.locals);
-/*     */       print("StackMap stack: ", stackMap.stack);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   void print(String paramString, StackMapTable_attribute.verification_type_info[] paramArrayOfverification_type_info) {
-/*     */     print(paramString);
-/*     */     for (byte b = 0; b < paramArrayOfverification_type_info.length; b++) {
-/*     */       print(" ");
-/*     */       print(paramArrayOfverification_type_info[b]);
-/*     */     }
-/*     */     println();
-/*     */   }
-/*     */
-/*     */   void print(StackMapTable_attribute.verification_type_info paramverification_type_info) {
-/*     */     if (paramverification_type_info == null) {
-/*     */       print("ERROR");
-/*     */       return;
-/*     */     }
-/*     */     switch (paramverification_type_info.tag) {
-/*     */       case -1:
-/*     */         print(((CustomVerificationTypeInfo)paramverification_type_info).text);
-/*     */         break;
-/*     */       case 0:
-/*     */         print("top");
-/*     */         break;
-/*     */       case 1:
-/*     */         print("int");
-/*     */         break;
-/*     */       case 2:
-/*     */         print("float");
-/*     */         break;
-/*     */       case 4:
-/*     */         print("long");
-/*     */         break;
-/*     */       case 3:
-/*     */         print("double");
-/*     */         break;
-/*     */       case 5:
-/*     */         print("null");
-/*     */         break;
-/*     */       case 6:
-/*     */         print("uninit_this");
-/*     */         break;
-/*     */       case 7:
-/*     */         try {
-/*     */           ConstantPool constantPool = (this.classWriter.getClassFile()).constant_pool;
-/*     */           ConstantPool.CONSTANT_Class_info cONSTANT_Class_info = constantPool.getClassInfo(((StackMapTable_attribute.Object_variable_info)paramverification_type_info).cpool_index);
-/*     */           print(constantPool.getUTF8Value(cONSTANT_Class_info.name_index));
-/*     */         } catch (ConstantPoolException constantPoolException) {
-/*     */           print("??");
-/*     */         }
-/*     */         break;
-/*     */       case 8:
-/*     */         print(Integer.valueOf(((StackMapTable_attribute.Uninitialized_variable_info)paramverification_type_info).offset));
-/*     */         break;
-/*     */     }
-/*     */   }
-/*     */
-/*     */   class StackMapBuilder implements StackMapTable_attribute.stack_map_frame.Visitor<Integer, Integer> {
-/*     */     public Integer visit_same_frame(StackMapTable_attribute.same_frame param1same_frame, Integer param1Integer) {
-/*     */       int i = param1Integer.intValue() + param1same_frame.getOffsetDelta() + 1;
-/*     */       StackMap stackMap = (StackMap)StackMapWriter.this.map.get(param1Integer);
-/*     */       assert stackMap != null;
-/*     */       StackMapWriter.this.map.put(Integer.valueOf(i), stackMap);
-/*     */       return Integer.valueOf(i);
-/*     */     }
-/*     */
-/*     */     public Integer visit_same_locals_1_stack_item_frame(StackMapTable_attribute.same_locals_1_stack_item_frame param1same_locals_1_stack_item_frame, Integer param1Integer) {
-/*     */       int i = param1Integer.intValue() + param1same_locals_1_stack_item_frame.getOffsetDelta() + 1;
-/*     */       StackMap stackMap1 = (StackMap)StackMapWriter.this.map.get(param1Integer);
-/*     */       assert stackMap1 != null;
-/*     */       StackMap stackMap2 = new StackMap(stackMap1.locals, param1same_locals_1_stack_item_frame.stack);
-/*     */       StackMapWriter.this.map.put(Integer.valueOf(i), stackMap2);
-/*     */       return Integer.valueOf(i);
-/*     */     }
-/*     */
-/*     */     public Integer visit_same_locals_1_stack_item_frame_extended(StackMapTable_attribute.same_locals_1_stack_item_frame_extended param1same_locals_1_stack_item_frame_extended, Integer param1Integer) {
-/*     */       int i = param1Integer.intValue() + param1same_locals_1_stack_item_frame_extended.getOffsetDelta() + 1;
-/*     */       StackMap stackMap1 = (StackMap)StackMapWriter.this.map.get(param1Integer);
-/*     */       assert stackMap1 != null;
-/*     */       StackMap stackMap2 = new StackMap(stackMap1.locals, param1same_locals_1_stack_item_frame_extended.stack);
-/*     */       StackMapWriter.this.map.put(Integer.valueOf(i), stackMap2);
-/*     */       return Integer.valueOf(i);
-/*     */     }
-/*     */
-/*     */     public Integer visit_chop_frame(StackMapTable_attribute.chop_frame param1chop_frame, Integer param1Integer) {
-/*     */       int i = param1Integer.intValue() + param1chop_frame.getOffsetDelta() + 1;
-/*     */       StackMap stackMap1 = (StackMap)StackMapWriter.this.map.get(param1Integer);
-/*     */       assert stackMap1 != null;
-/*     */       int j = 251 - param1chop_frame.frame_type;
-/*     */       StackMapTable_attribute.verification_type_info[] arrayOfVerification_type_info = Arrays.<StackMapTable_attribute.verification_type_info>copyOf(stackMap1.locals, stackMap1.locals.length - j);
-/*     */       StackMap stackMap2 = new StackMap(arrayOfVerification_type_info, StackMapWriter.this.empty);
-/*     */       StackMapWriter.this.map.put(Integer.valueOf(i), stackMap2);
-/*     */       return Integer.valueOf(i);
-/*     */     }
-/*     */
-/*     */     public Integer visit_same_frame_extended(StackMapTable_attribute.same_frame_extended param1same_frame_extended, Integer param1Integer) {
-/*     */       int i = param1Integer.intValue() + param1same_frame_extended.getOffsetDelta();
-/*     */       StackMap stackMap = (StackMap)StackMapWriter.this.map.get(param1Integer);
-/*     */       assert stackMap != null;
-/*     */       StackMapWriter.this.map.put(Integer.valueOf(i), stackMap);
-/*     */       return Integer.valueOf(i);
-/*     */     }
-/*     */
-/*     */     public Integer visit_append_frame(StackMapTable_attribute.append_frame param1append_frame, Integer param1Integer) {
-/*     */       int i = param1Integer.intValue() + param1append_frame.getOffsetDelta() + 1;
-/*     */       StackMap stackMap1 = (StackMap)StackMapWriter.this.map.get(param1Integer);
-/*     */       assert stackMap1 != null;
-/*     */       StackMapTable_attribute.verification_type_info[] arrayOfVerification_type_info = new StackMapTable_attribute.verification_type_info[stackMap1.locals.length + param1append_frame.locals.length];
-/*     */       System.arraycopy(stackMap1.locals, 0, arrayOfVerification_type_info, 0, stackMap1.locals.length);
-/*     */       System.arraycopy(param1append_frame.locals, 0, arrayOfVerification_type_info, stackMap1.locals.length, param1append_frame.locals.length);
-/*     */       StackMap stackMap2 = new StackMap(arrayOfVerification_type_info, StackMapWriter.this.empty);
-/*     */       StackMapWriter.this.map.put(Integer.valueOf(i), stackMap2);
-/*     */       return Integer.valueOf(i);
-/*     */     }
-/*     */
-/*     */     public Integer visit_full_frame(StackMapTable_attribute.full_frame param1full_frame, Integer param1Integer) {
-/*     */       int i = param1Integer.intValue() + param1full_frame.getOffsetDelta() + 1;
-/*     */       StackMap stackMap = new StackMap(param1full_frame.locals, param1full_frame.stack);
-/*     */       StackMapWriter.this.map.put(Integer.valueOf(i), stackMap);
-/*     */       return Integer.valueOf(i);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   static class StackMap {
-/*     */     private final StackMapTable_attribute.verification_type_info[] locals;
-/*     */     private final StackMapTable_attribute.verification_type_info[] stack;
-/*     */
-/*     */     StackMap(StackMapTable_attribute.verification_type_info[] param1ArrayOfverification_type_info1, StackMapTable_attribute.verification_type_info[] param1ArrayOfverification_type_info2) {
-/*     */       this.locals = param1ArrayOfverification_type_info1;
-/*     */       this.stack = param1ArrayOfverification_type_info2;
-/*     */     }
-/*     */   }
-/*     */
-/*     */   static class CustomVerificationTypeInfo extends StackMapTable_attribute.verification_type_info {
-/*     */     private String text;
-/*     */
-/*     */     public CustomVerificationTypeInfo(String param1String) {
-/*     */       super(-1);
-/*     */       this.text = param1String;
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javap\StackMapWriter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2009, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javap;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+
+import com.sun.tools.classfile.AccessFlags;
+import com.sun.tools.classfile.Attribute;
+import com.sun.tools.classfile.Code_attribute;
+import com.sun.tools.classfile.ConstantPool;
+import com.sun.tools.classfile.ConstantPoolException;
+import com.sun.tools.classfile.Descriptor;
+import com.sun.tools.classfile.Descriptor.InvalidDescriptor;
+import com.sun.tools.classfile.Instruction;
+import com.sun.tools.classfile.Method;
+import com.sun.tools.classfile.StackMapTable_attribute;
+import com.sun.tools.classfile.StackMapTable_attribute.*;
+
+import static com.sun.tools.classfile.StackMapTable_attribute.verification_type_info.*;
+
+/**
+ * Annotate instructions with stack map.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class StackMapWriter extends InstructionDetailWriter {
+    static StackMapWriter instance(Context context) {
+        StackMapWriter instance = context.get(StackMapWriter.class);
+        if (instance == null)
+            instance = new StackMapWriter(context);
+        return instance;
+    }
+
+    protected StackMapWriter(Context context) {
+        super(context);
+        context.put(StackMapWriter.class, this);
+        classWriter = ClassWriter.instance(context);
+    }
+
+    public void reset(Code_attribute attr) {
+        setStackMap((StackMapTable_attribute) attr.attributes.get(Attribute.StackMapTable));
+    }
+
+    void setStackMap(StackMapTable_attribute attr) {
+        if (attr == null) {
+            map = null;
+            return;
+        }
+
+        Method m = classWriter.getMethod();
+        Descriptor d = m.descriptor;
+        String[] args;
+        try {
+            ConstantPool cp = classWriter.getClassFile().constant_pool;
+            String argString = d.getParameterTypes(cp);
+            args = argString.substring(1, argString.length() - 1).split("[, ]+");
+        } catch (ConstantPoolException e) {
+            return;
+        } catch (InvalidDescriptor e) {
+            return;
+        }
+        boolean isStatic = m.access_flags.is(AccessFlags.ACC_STATIC);
+
+        verification_type_info[] initialLocals = new verification_type_info[(isStatic ? 0 : 1) + args.length];
+        if (!isStatic)
+            initialLocals[0] = new CustomVerificationTypeInfo("this");
+        for (int i = 0; i < args.length; i++) {
+            initialLocals[(isStatic ? 0 : 1) + i] =
+                    new CustomVerificationTypeInfo(args[i].replace(".", "/"));
+        }
+
+        map = new HashMap<Integer, StackMap>();
+        StackMapBuilder builder = new StackMapBuilder();
+
+        // using -1 as the pc for the initial frame effectively compensates for
+        // the difference in behavior for the first stack map frame (where the
+        // pc offset is just offset_delta) compared to subsequent frames (where
+        // the pc offset is always offset_delta+1).
+        int pc = -1;
+
+        map.put(pc, new StackMap(initialLocals, empty));
+
+        for (int i = 0; i < attr.entries.length; i++)
+            pc = attr.entries[i].accept(builder, pc);
+    }
+
+    public void writeInitialDetails() {
+        writeDetails(-1);
+    }
+
+    public void writeDetails(Instruction instr) {
+        writeDetails(instr.getPC());
+    }
+
+    private void writeDetails(int pc) {
+        if (map == null)
+            return;
+
+        StackMap m = map.get(pc);
+        if (m != null) {
+            print("StackMap locals: ", m.locals);
+            print("StackMap stack: ", m.stack);
+        }
+
+    }
+
+    void print(String label, verification_type_info[] entries) {
+        print(label);
+        for (int i = 0; i < entries.length; i++) {
+            print(" ");
+            print(entries[i]);
+        }
+        println();
+    }
+
+    void print(verification_type_info entry) {
+        if (entry == null) {
+            print("ERROR");
+            return;
+        }
+
+        switch (entry.tag) {
+            case -1:
+                print(((CustomVerificationTypeInfo) entry).text);
+                break;
+
+            case ITEM_Top:
+                print("top");
+                break;
+
+            case ITEM_Integer:
+                print("int");
+                break;
+
+            case ITEM_Float:
+                print("float");
+                break;
+
+            case ITEM_Long:
+                print("long");
+                break;
+
+            case ITEM_Double:
+                print("double");
+                break;
+
+            case ITEM_Null:
+                print("null");
+                break;
+
+            case ITEM_UninitializedThis:
+                print("uninit_this");
+                break;
+
+            case ITEM_Object:
+                try {
+                    ConstantPool cp = classWriter.getClassFile().constant_pool;
+                    ConstantPool.CONSTANT_Class_info class_info = cp.getClassInfo(((Object_variable_info) entry).cpool_index);
+                    print(cp.getUTF8Value(class_info.name_index));
+                } catch (ConstantPoolException e) {
+                    print("??");
+                }
+                break;
+
+            case ITEM_Uninitialized:
+                print(((Uninitialized_variable_info) entry).offset);
+                break;
+        }
+
+    }
+
+    private Map<Integer, StackMap> map;
+    private ClassWriter classWriter;
+
+    class StackMapBuilder
+            implements stack_map_frame.Visitor<Integer, Integer> {
+
+        public Integer visit_same_frame(same_frame frame, Integer pc) {
+            int new_pc = pc + frame.getOffsetDelta() + 1;
+            StackMap m = map.get(pc);
+            assert (m != null);
+            map.put(new_pc, m);
+            return new_pc;
+        }
+
+        public Integer visit_same_locals_1_stack_item_frame(same_locals_1_stack_item_frame frame, Integer pc) {
+            int new_pc = pc + frame.getOffsetDelta() + 1;
+            StackMap prev = map.get(pc);
+            assert (prev != null);
+            StackMap m = new StackMap(prev.locals, frame.stack);
+            map.put(new_pc, m);
+            return new_pc;
+        }
+
+        public Integer visit_same_locals_1_stack_item_frame_extended(same_locals_1_stack_item_frame_extended frame, Integer pc) {
+            int new_pc = pc + frame.getOffsetDelta() + 1;
+            StackMap prev = map.get(pc);
+            assert (prev != null);
+            StackMap m = new StackMap(prev.locals, frame.stack);
+            map.put(new_pc, m);
+            return new_pc;
+        }
+
+        public Integer visit_chop_frame(chop_frame frame, Integer pc) {
+            int new_pc = pc + frame.getOffsetDelta() + 1;
+            StackMap prev = map.get(pc);
+            assert (prev != null);
+            int k = 251 - frame.frame_type;
+            verification_type_info[] new_locals = Arrays.copyOf(prev.locals, prev.locals.length - k);
+            StackMap m = new StackMap(new_locals, empty);
+            map.put(new_pc, m);
+            return new_pc;
+        }
+
+        public Integer visit_same_frame_extended(same_frame_extended frame, Integer pc) {
+            int new_pc = pc + frame.getOffsetDelta();
+            StackMap m = map.get(pc);
+            assert (m != null);
+            map.put(new_pc, m);
+            return new_pc;
+        }
+
+        public Integer visit_append_frame(append_frame frame, Integer pc) {
+            int new_pc = pc + frame.getOffsetDelta() + 1;
+            StackMap prev = map.get(pc);
+            assert (prev != null);
+            verification_type_info[] new_locals = new verification_type_info[prev.locals.length + frame.locals.length];
+            System.arraycopy(prev.locals, 0, new_locals, 0, prev.locals.length);
+            System.arraycopy(frame.locals, 0, new_locals, prev.locals.length, frame.locals.length);
+            StackMap m = new StackMap(new_locals, empty);
+            map.put(new_pc, m);
+            return new_pc;
+        }
+
+        public Integer visit_full_frame(full_frame frame, Integer pc) {
+            int new_pc = pc + frame.getOffsetDelta() + 1;
+            StackMap m = new StackMap(frame.locals, frame.stack);
+            map.put(new_pc, m);
+            return new_pc;
+        }
+
+    }
+
+    static class StackMap {
+        StackMap(verification_type_info[] locals, verification_type_info[] stack) {
+            this.locals = locals;
+            this.stack = stack;
+        }
+
+        private final verification_type_info[] locals;
+        private final verification_type_info[] stack;
+    }
+
+    static class CustomVerificationTypeInfo extends verification_type_info {
+        public CustomVerificationTypeInfo(String text) {
+            super(-1);
+            this.text = text;
+        }
+        private String text;
+    }
+
+    private final verification_type_info[] empty = { };
+}

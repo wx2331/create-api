@@ -1,330 +1,324 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.taglets;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.ExecutableMemberDoc;
-/*     */ import com.sun.javadoc.MethodDoc;
-/*     */ import com.sun.javadoc.ParamTag;
-/*     */ import com.sun.javadoc.Parameter;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.javadoc.Tag;
-/*     */ import com.sun.javadoc.TypeVariable;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocFinder;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.Map;
-/*     */ import java.util.Set;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class ParamTaglet
-/*     */   extends BaseTaglet
-/*     */   implements InheritableTaglet
-/*     */ {
-/*     */   private static Map<String, String> getRankMap(Object[] paramArrayOfObject) {
-/*  63 */     if (paramArrayOfObject == null) {
-/*  64 */       return null;
-/*     */     }
-/*  66 */     HashMap<Object, Object> hashMap = new HashMap<>();
-/*  67 */     for (byte b = 0; b < paramArrayOfObject.length; b++) {
-/*     */ 
-/*     */       
-/*  70 */       String str = (paramArrayOfObject[b] instanceof Parameter) ? ((Parameter)paramArrayOfObject[b]).name() : ((TypeVariable)paramArrayOfObject[b]).typeName();
-/*  71 */       hashMap.put(str, String.valueOf(b));
-/*     */     } 
-/*  73 */     return (Map)hashMap;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void inherit(DocFinder.Input paramInput, DocFinder.Output paramOutput) {
-/*  80 */     if (paramInput.tagId == null) {
-/*  81 */       paramInput.isTypeVariableParamTag = ((ParamTag)paramInput.tag).isTypeParameter();
-/*     */ 
-/*     */       
-/*  84 */       Object[] arrayOfObject = paramInput.isTypeVariableParamTag ? (Object[])((MethodDoc)paramInput.tag.holder()).typeParameters() : (Object[])((MethodDoc)paramInput.tag.holder()).parameters();
-/*  85 */       String str = ((ParamTag)paramInput.tag).parameterName();
-/*     */       byte b1;
-/*  87 */       for (b1 = 0; b1 < arrayOfObject.length; b1++) {
-/*     */ 
-/*     */         
-/*  90 */         String str1 = (arrayOfObject[b1] instanceof Parameter) ? ((Parameter)arrayOfObject[b1]).name() : ((TypeVariable)arrayOfObject[b1]).typeName();
-/*  91 */         if (str1.equals(str)) {
-/*  92 */           paramInput.tagId = String.valueOf(b1);
-/*     */           break;
-/*     */         } 
-/*     */       } 
-/*  96 */       if (b1 == arrayOfObject.length) {
-/*     */         return;
-/*     */       }
-/*     */     } 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */     
-/* 105 */     ParamTag[] arrayOfParamTag = paramInput.isTypeVariableParamTag ? ((MethodDoc)paramInput.element).typeParamTags() : ((MethodDoc)paramInput.element).paramTags();
-/* 106 */     Map<String, String> map = getRankMap(paramInput.isTypeVariableParamTag ? (Object[])((MethodDoc)paramInput.element)
-/* 107 */         .typeParameters() : (Object[])((MethodDoc)paramInput.element)
-/* 108 */         .parameters());
-/* 109 */     for (byte b = 0; b < arrayOfParamTag.length; b++) {
-/* 110 */       if (map.containsKey(arrayOfParamTag[b].parameterName()) && ((String)map
-/* 111 */         .get(arrayOfParamTag[b].parameterName())).equals(paramInput.tagId)) {
-/* 112 */         paramOutput.holder = (Doc)paramInput.element;
-/* 113 */         paramOutput.holderTag = (Tag)arrayOfParamTag[b];
-/* 114 */         paramOutput
-/* 115 */           .inlineTags = paramInput.isFirstSentence ? arrayOfParamTag[b].firstSentenceTags() : arrayOfParamTag[b].inlineTags();
-/*     */         return;
-/*     */       } 
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean inField() {
-/* 125 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean inMethod() {
-/* 132 */     return true;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean inOverview() {
-/* 139 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean inPackage() {
-/* 146 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean inType() {
-/* 153 */     return true;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isInlineTag() {
-/* 160 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getTagletOutput(Doc paramDoc, TagletWriter paramTagletWriter) {
-/* 170 */     if (paramDoc instanceof ExecutableMemberDoc) {
-/* 171 */       ExecutableMemberDoc executableMemberDoc = (ExecutableMemberDoc)paramDoc;
-/* 172 */       Content content = getTagletOutput(false, (Doc)executableMemberDoc, paramTagletWriter, (Object[])executableMemberDoc
-/* 173 */           .typeParameters(), executableMemberDoc.typeParamTags());
-/* 174 */       content.addContent(getTagletOutput(true, (Doc)executableMemberDoc, paramTagletWriter, (Object[])executableMemberDoc
-/* 175 */             .parameters(), executableMemberDoc.paramTags()));
-/* 176 */       return content;
-/*     */     } 
-/* 178 */     ClassDoc classDoc = (ClassDoc)paramDoc;
-/* 179 */     return getTagletOutput(false, (Doc)classDoc, paramTagletWriter, (Object[])classDoc
-/* 180 */         .typeParameters(), classDoc.typeParamTags());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private Content getTagletOutput(boolean paramBoolean, Doc paramDoc, TagletWriter paramTagletWriter, Object[] paramArrayOfObject, ParamTag[] paramArrayOfParamTag) {
-/* 197 */     Content content = paramTagletWriter.getOutputInstance();
-/* 198 */     HashSet<String> hashSet = new HashSet();
-/* 199 */     if (paramArrayOfParamTag.length > 0) {
-/* 200 */       content.addContent(
-/* 201 */           processParamTags(paramBoolean, paramArrayOfParamTag, 
-/* 202 */             getRankMap(paramArrayOfObject), paramTagletWriter, hashSet));
-/*     */     }
-/*     */     
-/* 205 */     if (hashSet.size() != paramArrayOfObject.length)
-/*     */     {
-/*     */       
-/* 208 */       content.addContent(getInheritedTagletOutput(paramBoolean, paramDoc, paramTagletWriter, paramArrayOfObject, hashSet));
-/*     */     }
-/*     */     
-/* 211 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private Content getInheritedTagletOutput(boolean paramBoolean, Doc paramDoc, TagletWriter paramTagletWriter, Object[] paramArrayOfObject, Set<String> paramSet) {
-/* 221 */     Content content = paramTagletWriter.getOutputInstance();
-/* 222 */     if (!paramSet.contains(null) && paramDoc instanceof MethodDoc)
-/*     */     {
-/* 224 */       for (byte b = 0; b < paramArrayOfObject.length; b++) {
-/* 225 */         if (!paramSet.contains(String.valueOf(b))) {
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */           
-/* 231 */           DocFinder.Output output = DocFinder.search(new DocFinder.Input((ProgramElementDoc)paramDoc, this, 
-/* 232 */                 String.valueOf(b), !paramBoolean));
-/* 233 */           if (output.inlineTags != null && output.inlineTags.length > 0)
-/*     */           {
-/* 235 */             content.addContent(
-/* 236 */                 processParamTag(paramBoolean, paramTagletWriter, (ParamTag)output.holderTag, paramBoolean ? ((Parameter)paramArrayOfObject[b])
-/*     */ 
-/*     */                   
-/* 239 */                   .name() : ((TypeVariable)paramArrayOfObject[b])
-/* 240 */                   .typeName(), 
-/* 241 */                   (paramSet.size() == 0)));
-/*     */           }
-/* 243 */           paramSet.add(String.valueOf(b));
-/*     */         } 
-/*     */       }  } 
-/* 246 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private Content processParamTags(boolean paramBoolean, ParamTag[] paramArrayOfParamTag, Map<String, String> paramMap, TagletWriter paramTagletWriter, Set<String> paramSet) {
-/* 270 */     Content content = paramTagletWriter.getOutputInstance();
-/* 271 */     if (paramArrayOfParamTag.length > 0) {
-/* 272 */       for (byte b = 0; b < paramArrayOfParamTag.length; b++) {
-/* 273 */         ParamTag paramTag = paramArrayOfParamTag[b];
-/*     */         
-/* 275 */         String str1 = paramBoolean ? paramTag.parameterName() : ("<" + paramTag.parameterName() + ">");
-/* 276 */         if (!paramMap.containsKey(paramTag.parameterName())) {
-/* 277 */           paramTagletWriter.getMsgRetriever().warning(paramTag.position(), paramBoolean ? "doclet.Parameters_warn" : "doclet.Type_Parameters_warn", new Object[] { str1 });
-/*     */         }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */         
-/* 283 */         String str2 = paramMap.get(paramTag.parameterName());
-/* 284 */         if (str2 != null && paramSet.contains(str2)) {
-/* 285 */           paramTagletWriter.getMsgRetriever().warning(paramTag.position(), paramBoolean ? "doclet.Parameters_dup_warn" : "doclet.Type_Parameters_dup_warn", new Object[] { str1 });
-/*     */         }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */         
-/* 291 */         content.addContent(processParamTag(paramBoolean, paramTagletWriter, paramTag, paramTag
-/* 292 */               .parameterName(), (paramSet.size() == 0)));
-/* 293 */         paramSet.add(str2);
-/*     */       } 
-/*     */     }
-/* 296 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private Content processParamTag(boolean paramBoolean1, TagletWriter paramTagletWriter, ParamTag paramParamTag, String paramString, boolean paramBoolean2) {
-/* 314 */     Content content = paramTagletWriter.getOutputInstance();
-/* 315 */     String str = paramTagletWriter.configuration().getText(paramBoolean1 ? "doclet.Parameters" : "doclet.TypeParameters");
-/*     */     
-/* 317 */     if (paramBoolean2) {
-/* 318 */       content.addContent(paramTagletWriter.getParamHeader(str));
-/*     */     }
-/* 320 */     content.addContent(paramTagletWriter.paramTagOutput(paramParamTag, paramString));
-/*     */     
-/* 322 */     return content;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolkit\taglets\ParamTaglet.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2001, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.taglets;
+
+import java.util.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.internal.toolkit.Content;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * A taglet that represents the @param tag.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Jamie Ho
+ * @since 1.4
+ */
+public class ParamTaglet extends BaseTaglet implements InheritableTaglet {
+
+    /**
+     * Construct a ParamTaglet.
+     */
+    public ParamTaglet() {
+        name = "param";
+    }
+
+    /**
+     * Given an array of <code>Parameter</code>s, return
+     * a name/rank number map.  If the array is null, then
+     * null is returned.
+     * @param params The array of parmeters (from type or executable member) to
+     *               check.
+     * @return a name-rank number map.
+     */
+    private static Map<String,String> getRankMap(Object[] params){
+        if (params == null) {
+            return null;
+        }
+        HashMap<String,String> result = new HashMap<String,String>();
+        for (int i = 0; i < params.length; i++) {
+            String name = params[i] instanceof Parameter ?
+                ((Parameter) params[i]).name() :
+                ((TypeVariable) params[i]).typeName();
+            result.put(name, String.valueOf(i));
+        }
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void inherit(DocFinder.Input input, DocFinder.Output output) {
+        if (input.tagId == null) {
+            input.isTypeVariableParamTag = ((ParamTag) input.tag).isTypeParameter();
+            Object[] parameters = input.isTypeVariableParamTag ?
+                (Object[]) ((MethodDoc) input.tag.holder()).typeParameters() :
+                (Object[]) ((MethodDoc) input.tag.holder()).parameters();
+            String target = ((ParamTag) input.tag).parameterName();
+            int i;
+            for (i = 0; i < parameters.length; i++) {
+                String name = parameters[i] instanceof Parameter ?
+                    ((Parameter) parameters[i]).name() :
+                    ((TypeVariable) parameters[i]).typeName();
+                if (name.equals(target)) {
+                    input.tagId = String.valueOf(i);
+                    break;
+                }
+            }
+            if (i == parameters.length) {
+                //Someone used {@inheritDoc} on an invalid @param tag.
+                //We don't know where to inherit from.
+                //XXX: in the future when Configuration is available here,
+                //print a warning for this mistake.
+                return;
+            }
+        }
+        ParamTag[] tags = input.isTypeVariableParamTag ?
+            ((MethodDoc)input.element).typeParamTags() : ((MethodDoc)input.element).paramTags();
+        Map<String, String> rankMap = getRankMap(input.isTypeVariableParamTag ?
+            (Object[]) ((MethodDoc)input.element).typeParameters() :
+            (Object[]) ((MethodDoc)input.element).parameters());
+        for (int i = 0; i < tags.length; i++) {
+            if (rankMap.containsKey(tags[i].parameterName()) &&
+                    rankMap.get(tags[i].parameterName()).equals((input.tagId))) {
+                output.holder = input.element;
+                output.holderTag = tags[i];
+                output.inlineTags = input.isFirstSentence ?
+                    tags[i].firstSentenceTags() : tags[i].inlineTags();
+                return;
+            }
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean inField() {
+        return false;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean inMethod() {
+        return true;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean inOverview() {
+        return false;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean inPackage() {
+        return false;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean inType() {
+        return true;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean isInlineTag() {
+        return false;
+    }
+
+    /**
+     * Given an array of <code>ParamTag</code>s,return its string representation.
+     * @param holder the member that holds the param tags.
+     * @param writer the TagletWriter that will write this tag.
+     * @return the TagletOutput representation of these <code>ParamTag</code>s.
+     */
+    public Content getTagletOutput(Doc holder, TagletWriter writer) {
+        if (holder instanceof ExecutableMemberDoc) {
+            ExecutableMemberDoc member = (ExecutableMemberDoc) holder;
+            Content output = getTagletOutput(false, member, writer,
+                member.typeParameters(), member.typeParamTags());
+            output.addContent(getTagletOutput(true, member, writer,
+                member.parameters(), member.paramTags()));
+            return output;
+        } else {
+            ClassDoc classDoc = (ClassDoc) holder;
+            return getTagletOutput(false, classDoc, writer,
+                classDoc.typeParameters(), classDoc.typeParamTags());
+        }
+    }
+
+    /**
+     * Given an array of <code>ParamTag</code>s,return its string representation.
+     * Try to inherit the param tags that are missing.
+     *
+     * @param holder            the doc that holds the param tags.
+     * @param writer            the TagletWriter that will write this tag.
+     * @param formalParameters  The array of parmeters (from type or executable
+     *                          member) to check.
+     *
+     * @return the TagletOutput representation of these <code>ParamTag</code>s.
+     */
+    private Content getTagletOutput(boolean isNonTypeParams, Doc holder,
+            TagletWriter writer, Object[] formalParameters, ParamTag[] paramTags) {
+        Content result = writer.getOutputInstance();
+        Set<String> alreadyDocumented = new HashSet<String>();
+        if (paramTags.length > 0) {
+            result.addContent(
+                processParamTags(isNonTypeParams, paramTags,
+                getRankMap(formalParameters), writer, alreadyDocumented)
+            );
+        }
+        if (alreadyDocumented.size() != formalParameters.length) {
+            //Some parameters are missing corresponding @param tags.
+            //Try to inherit them.
+            result.addContent(getInheritedTagletOutput (isNonTypeParams, holder,
+                writer, formalParameters, alreadyDocumented));
+        }
+        return result;
+    }
+
+    /**
+     * Loop through each indivitual parameter.  It it does not have a
+     * corresponding param tag, try to inherit it.
+     */
+    private Content getInheritedTagletOutput(boolean isNonTypeParams, Doc holder,
+            TagletWriter writer, Object[] formalParameters,
+            Set<String> alreadyDocumented) {
+        Content result = writer.getOutputInstance();
+        if ((! alreadyDocumented.contains(null)) &&
+                holder instanceof MethodDoc) {
+            for (int i = 0; i < formalParameters.length; i++) {
+                if (alreadyDocumented.contains(String.valueOf(i))) {
+                    continue;
+                }
+                //This parameter does not have any @param documentation.
+                //Try to inherit it.
+                DocFinder.Output inheritedDoc =
+                    DocFinder.search(new DocFinder.Input((MethodDoc) holder, this,
+                        String.valueOf(i), ! isNonTypeParams));
+                if (inheritedDoc.inlineTags != null &&
+                        inheritedDoc.inlineTags.length > 0) {
+                    result.addContent(
+                        processParamTag(isNonTypeParams, writer,
+                            (ParamTag) inheritedDoc.holderTag,
+                            isNonTypeParams ?
+                                ((Parameter) formalParameters[i]).name():
+                                ((TypeVariable) formalParameters[i]).typeName(),
+                            alreadyDocumented.size() == 0));
+                }
+                alreadyDocumented.add(String.valueOf(i));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Given an array of <code>Tag</code>s representing this custom
+     * tag, return its string representation.  Print a warning for param
+     * tags that do not map to parameters.  Print a warning for param
+     * tags that are duplicated.
+     *
+     * @param paramTags the array of <code>ParamTag</code>s to convert.
+     * @param writer the TagletWriter that will write this tag.
+     * @param alreadyDocumented the set of exceptions that have already
+     *        been documented.
+     * @param rankMap a {@link Map} which holds ordering
+     *                    information about the parameters.
+     * @param rankMap a {@link Map} which holds a mapping
+     *                of a rank of a parameter to its name.  This is
+     *                used to ensure that the right name is used
+     *                when parameter documentation is inherited.
+     * @return the Content representation of this <code>Tag</code>.
+     */
+    private Content processParamTags(boolean isNonTypeParams,
+            ParamTag[] paramTags, Map<String, String> rankMap, TagletWriter writer,
+            Set<String> alreadyDocumented) {
+        Content result = writer.getOutputInstance();
+        if (paramTags.length > 0) {
+            for (int i = 0; i < paramTags.length; ++i) {
+                ParamTag pt = paramTags[i];
+                String paramName = isNonTypeParams ?
+                    pt.parameterName() : "<" + pt.parameterName() + ">";
+                if (! rankMap.containsKey(pt.parameterName())) {
+                    writer.getMsgRetriever().warning(pt.position(),
+                        isNonTypeParams ?
+                            "doclet.Parameters_warn" :
+                            "doclet.Type_Parameters_warn",
+                        paramName);
+                }
+                String rank = rankMap.get(pt.parameterName());
+                if (rank != null && alreadyDocumented.contains(rank)) {
+                    writer.getMsgRetriever().warning(pt.position(),
+                       isNonTypeParams ?
+                           "doclet.Parameters_dup_warn" :
+                           "doclet.Type_Parameters_dup_warn",
+                       paramName);
+                }
+                result.addContent(processParamTag(isNonTypeParams, writer, pt,
+                     pt.parameterName(), alreadyDocumented.size() == 0));
+                alreadyDocumented.add(rank);
+            }
+        }
+        return result;
+    }
+    /**
+     * Convert the individual ParamTag into Content.
+     *
+     * @param isNonTypeParams true if this is just a regular param tag.  False
+     *                        if this is a type param tag.
+     * @param writer          the taglet writer for output writing.
+     * @param paramTag        the tag whose inline tags will be printed.
+     * @param name            the name of the parameter.  We can't rely on
+     *                        the name in the param tag because we might be
+     *                        inheriting documentation.
+     * @param isFirstParam    true if this is the first param tag being printed.
+     *
+     */
+    private Content processParamTag(boolean isNonTypeParams,
+            TagletWriter writer, ParamTag paramTag, String name,
+            boolean isFirstParam) {
+        Content result = writer.getOutputInstance();
+        String header = writer.configuration().getText(
+            isNonTypeParams ? "doclet.Parameters" : "doclet.TypeParameters");
+        if (isFirstParam) {
+            result.addContent(writer.getParamHeader(header));
+        }
+        result.addContent(writer.paramTagOutput(paramTag,
+            name));
+        return result;
+    }
+}

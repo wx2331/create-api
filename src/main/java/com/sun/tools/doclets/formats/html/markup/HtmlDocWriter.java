@@ -1,344 +1,338 @@
-/*     */ package com.sun.tools.doclets.formats.html.markup;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.tools.doclets.formats.html.SectionName;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocFile;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocLink;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPath;
-/*     */ import java.io.IOException;
-/*     */ import java.util.Date;
-/*     */ import java.util.GregorianCalendar;
-/*     */ import java.util.TimeZone;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public abstract class HtmlDocWriter
-/*     */   extends HtmlWriter
-/*     */ {
-/*     */   public static final String CONTENT_TYPE = "text/html";
-/*     */   
-/*     */   public HtmlDocWriter(Configuration paramConfiguration, DocPath paramDocPath) throws IOException {
-/*  67 */     super(paramConfiguration, paramDocPath);
-/*  68 */     paramConfiguration.message.notice("doclet.Generating_0", new Object[] {
-/*  69 */           DocFile.createFileForOutput(paramConfiguration, paramDocPath).getPath()
-/*     */         });
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public abstract Configuration configuration();
-/*     */ 
-/*     */   
-/*     */   public Content getHyperLink(DocPath paramDocPath, String paramString) {
-/*  78 */     return getHyperLink(paramDocPath, new StringContent(paramString), false, "", "", "");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getHyperLink(String paramString, Content paramContent) {
-/*  91 */     return getHyperLink(getDocLink(paramString), paramContent, "", "");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getHyperLink(SectionName paramSectionName, Content paramContent) {
-/* 103 */     return getHyperLink(getDocLink(paramSectionName), paramContent, "", "");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getHyperLink(SectionName paramSectionName, String paramString, Content paramContent) {
-/* 118 */     return getHyperLink(getDocLink(paramSectionName, paramString), paramContent, "", "");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public DocLink getDocLink(String paramString) {
-/* 128 */     return DocLink.fragment(getName(paramString));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public DocLink getDocLink(SectionName paramSectionName) {
-/* 138 */     return DocLink.fragment(paramSectionName.getName());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public DocLink getDocLink(SectionName paramSectionName, String paramString) {
-/* 151 */     return DocLink.fragment(paramSectionName.getName() + getName(paramString));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getName(String paramString) {
-/* 161 */     StringBuilder stringBuilder = new StringBuilder();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */     
-/* 173 */     for (byte b = 0; b < paramString.length(); b++) {
-/* 174 */       char c = paramString.charAt(b);
-/* 175 */       switch (c) {
-/*     */         case '(':
-/*     */         case ')':
-/*     */         case ',':
-/*     */         case '<':
-/*     */         case '>':
-/* 181 */           stringBuilder.append('-');
-/*     */           break;
-/*     */         case ' ':
-/*     */         case '[':
-/*     */           break;
-/*     */         case ']':
-/* 187 */           stringBuilder.append(":A");
-/*     */           break;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */         
-/*     */         case '$':
-/* 194 */           if (b == 0)
-/* 195 */             stringBuilder.append("Z:Z"); 
-/* 196 */           stringBuilder.append(":D");
-/*     */           break;
-/*     */ 
-/*     */         
-/*     */         case '_':
-/* 201 */           if (b == 0)
-/* 202 */             stringBuilder.append("Z:Z"); 
-/* 203 */           stringBuilder.append(c);
-/*     */           break;
-/*     */         default:
-/* 206 */           stringBuilder.append(c); break;
-/*     */       } 
-/*     */     } 
-/* 209 */     return stringBuilder.toString();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getHyperLink(DocPath paramDocPath, Content paramContent) {
-/* 220 */     return getHyperLink(paramDocPath, paramContent, "", "");
-/*     */   }
-/*     */   
-/*     */   public Content getHyperLink(DocLink paramDocLink, Content paramContent) {
-/* 224 */     return getHyperLink(paramDocLink, paramContent, "", "");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getHyperLink(DocPath paramDocPath, Content paramContent, boolean paramBoolean, String paramString1, String paramString2, String paramString3) {
-/* 230 */     return getHyperLink(new DocLink(paramDocPath), paramContent, paramBoolean, paramString1, paramString2, paramString3);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getHyperLink(DocLink paramDocLink, Content paramContent, boolean paramBoolean, String paramString1, String paramString2, String paramString3) {
-/* 237 */     Content content = paramContent;
-/* 238 */     if (paramBoolean) {
-/* 239 */       content = HtmlTree.SPAN(HtmlStyle.typeNameLink, content);
-/*     */     }
-/* 241 */     if (paramString1 != null && paramString1.length() != 0) {
-/* 242 */       HtmlTree htmlTree1 = new HtmlTree(HtmlTag.FONT, new Content[] { content });
-/* 243 */       htmlTree1.addAttr(HtmlAttr.CLASS, paramString1);
-/* 244 */       content = htmlTree1;
-/*     */     } 
-/* 246 */     HtmlTree htmlTree = HtmlTree.A(paramDocLink.toString(), content);
-/* 247 */     if (paramString2 != null && paramString2.length() != 0) {
-/* 248 */       htmlTree.addAttr(HtmlAttr.TITLE, paramString2);
-/*     */     }
-/* 250 */     if (paramString3 != null && paramString3.length() != 0) {
-/* 251 */       htmlTree.addAttr(HtmlAttr.TARGET, paramString3);
-/*     */     }
-/* 253 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getHyperLink(DocPath paramDocPath, Content paramContent, String paramString1, String paramString2) {
-/* 267 */     return getHyperLink(new DocLink(paramDocPath), paramContent, paramString1, paramString2);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public Content getHyperLink(DocLink paramDocLink, Content paramContent, String paramString1, String paramString2) {
-/* 272 */     HtmlTree htmlTree = HtmlTree.A(paramDocLink.toString(), paramContent);
-/* 273 */     if (paramString1 != null && paramString1.length() != 0) {
-/* 274 */       htmlTree.addAttr(HtmlAttr.TITLE, paramString1);
-/*     */     }
-/* 276 */     if (paramString2 != null && paramString2.length() != 0) {
-/* 277 */       htmlTree.addAttr(HtmlAttr.TARGET, paramString2);
-/*     */     }
-/* 279 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getPkgName(ClassDoc paramClassDoc) {
-/* 288 */     String str = paramClassDoc.containingPackage().name();
-/* 289 */     if (str.length() > 0) {
-/* 290 */       str = str + ".";
-/* 291 */       return str;
-/*     */     } 
-/* 293 */     return "";
-/*     */   }
-/*     */   
-/*     */   public boolean getMemberDetailsListPrinted() {
-/* 297 */     return this.memberDetailsListPrinted;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void printFramesetDocument(String paramString, boolean paramBoolean, Content paramContent) throws IOException {
-/* 310 */     DocType docType = DocType.FRAMESET;
-/* 311 */     Comment comment = new Comment(this.configuration.getText("doclet.New_Page"));
-/* 312 */     HtmlTree htmlTree1 = new HtmlTree(HtmlTag.HEAD);
-/* 313 */     htmlTree1.addContent(getGeneratedBy(!paramBoolean));
-/* 314 */     if (this.configuration.charset.length() > 0) {
-/* 315 */       HtmlTree htmlTree = HtmlTree.META("Content-Type", "text/html", this.configuration.charset);
-/*     */       
-/* 317 */       htmlTree1.addContent(htmlTree);
-/*     */     } 
-/* 319 */     HtmlTree htmlTree2 = HtmlTree.TITLE(new StringContent(paramString));
-/* 320 */     htmlTree1.addContent(htmlTree2);
-/* 321 */     htmlTree1.addContent(getFramesetJavaScript());
-/* 322 */     HtmlTree htmlTree3 = HtmlTree.HTML(this.configuration.getLocale().getLanguage(), htmlTree1, paramContent);
-/*     */     
-/* 324 */     HtmlDocument htmlDocument = new HtmlDocument(docType, comment, htmlTree3);
-/*     */     
-/* 326 */     write(htmlDocument);
-/*     */   }
-/*     */   
-/*     */   protected Comment getGeneratedBy(boolean paramBoolean) {
-/* 330 */     String str = "Generated by javadoc";
-/* 331 */     if (paramBoolean) {
-/* 332 */       GregorianCalendar gregorianCalendar = new GregorianCalendar(TimeZone.getDefault());
-/* 333 */       Date date = gregorianCalendar.getTime();
-/* 334 */       str = str + " (" + this.configuration.getDocletSpecificBuildDate() + ") on " + date;
-/*     */     } 
-/* 336 */     return new Comment(str);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\markup\HtmlDocWriter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html.markup;
+
+import java.io.*;
+import java.util.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.ConfigurationImpl;
+import com.sun.tools.doclets.formats.html.SectionName;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.DocFile;
+import com.sun.tools.doclets.internal.toolkit.util.DocLink;
+import com.sun.tools.doclets.internal.toolkit.util.DocPath;
+
+
+/**
+ * Class for the Html Format Code Generation specific to JavaDoc.
+ * This Class contains methods related to the Html Code Generation which
+ * are used by the Sub-Classes in the package com.sun.tools.doclets.standard
+ * and com.sun.tools.doclets.oneone.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @since 1.2
+ * @author Atul M Dambalkar
+ * @author Robert Field
+ */
+public abstract class HtmlDocWriter extends HtmlWriter {
+
+    public static final String CONTENT_TYPE = "text/html";
+
+    /**
+     * Constructor. Initializes the destination file name through the super
+     * class HtmlWriter.
+     *
+     * @param filename String file name.
+     */
+    public HtmlDocWriter(Configuration configuration, DocPath filename)
+            throws IOException {
+        super(configuration, filename);
+        configuration.message.notice("doclet.Generating_0",
+            DocFile.createFileForOutput(configuration, filename).getPath());
+    }
+
+    /**
+     * Accessor for configuration.
+     */
+    public abstract Configuration configuration();
+
+    public Content getHyperLink(DocPath link, String label) {
+        return getHyperLink(link, new StringContent(label), false, "", "", "");
+    }
+
+    /**
+     * Get Html Hyper Link Content.
+     *
+     * @param where      Position of the link in the file. Character '#' is not
+     *                   needed.
+     * @param label      Tag for the link.
+     * @return a content tree for the hyper link
+     */
+    public Content getHyperLink(String where,
+                               Content label) {
+        return getHyperLink(getDocLink(where), label, "", "");
+    }
+
+    /**
+     * Get Html Hyper Link Content.
+     *
+     * @param sectionName      The section name to which the link will be created.
+     * @param label            Tag for the link.
+     * @return a content tree for the hyper link
+     */
+    public Content getHyperLink(SectionName sectionName,
+                               Content label) {
+        return getHyperLink(getDocLink(sectionName), label, "", "");
+    }
+
+    /**
+     * Get Html Hyper Link Content.
+     *
+     * @param sectionName      The section name combined with where to which the link
+     *                         will be created.
+     * @param where            The fragment combined with sectionName to which the link
+     *                         will be created.
+     * @param label            Tag for the link.
+     * @return a content tree for the hyper link
+     */
+    public Content getHyperLink(SectionName sectionName, String where,
+                               Content label) {
+        return getHyperLink(getDocLink(sectionName, where), label, "", "");
+    }
+
+    /**
+     * Get the link.
+     *
+     * @param where      Position of the link in the file.
+     * @return a DocLink object for the hyper link
+     */
+    public DocLink getDocLink(String where) {
+        return DocLink.fragment(getName(where));
+    }
+
+    /**
+     * Get the link.
+     *
+     * @param sectionName      The section name to which the link will be created.
+     * @return a DocLink object for the hyper link
+     */
+    public DocLink getDocLink(SectionName sectionName) {
+        return DocLink.fragment(sectionName.getName());
+    }
+
+    /**
+     * Get the link.
+     *
+     * @param sectionName      The section name combined with where to which the link
+     *                         will be created.
+     * @param where            The fragment combined with sectionName to which the link
+     *                         will be created.
+     * @return a DocLink object for the hyper link
+     */
+    public DocLink getDocLink(SectionName sectionName, String where) {
+        return DocLink.fragment(sectionName.getName() + getName(where));
+    }
+
+    /**
+     * Convert the name to a valid HTML name.
+     *
+     * @param name the name that needs to be converted to valid HTML name.
+     * @return a valid HTML name string.
+     */
+    public String getName(String name) {
+        StringBuilder sb = new StringBuilder();
+        char ch;
+        /* The HTML 4 spec at http://www.w3.org/TR/html4/types.html#h-6.2 mentions
+         * that the name/id should begin with a letter followed by other valid characters.
+         * The HTML 5 spec (draft) is more permissive on names/ids where the only restriction
+         * is that it should be at least one character long and should not contain spaces.
+         * The spec draft is @ http://www.w3.org/html/wg/drafts/html/master/dom.html#the-id-attribute.
+         *
+         * For HTML 4, we need to check for non-characters at the beginning of the name and
+         * substitute it accordingly, "_" and "$" can appear at the beginning of a member name.
+         * The method substitutes "$" with "Z:Z:D" and will prefix "_" with "Z:Z".
+         */
+        for (int i = 0; i < name.length(); i++) {
+            ch = name.charAt(i);
+            switch (ch) {
+                case '(':
+                case ')':
+                case '<':
+                case '>':
+                case ',':
+                    sb.append('-');
+                    break;
+                case ' ':
+                case '[':
+                    break;
+                case ']':
+                    sb.append(":A");
+                    break;
+                // Any appearance of $ needs to be substituted with ":D" and not with hyphen
+                // since a field name "P$$ and a method P(), both valid member names, can end
+                // up as "P--". A member name beginning with $ needs to be substituted with
+                // "Z:Z:D".
+                case '$':
+                    if (i == 0)
+                        sb.append("Z:Z");
+                    sb.append(":D");
+                    break;
+                // A member name beginning with _ needs to be prefixed with "Z:Z" since valid anchor
+                // names can only begin with a letter.
+                case '_':
+                    if (i == 0)
+                        sb.append("Z:Z");
+                    sb.append(ch);
+                    break;
+                default:
+                    sb.append(ch);
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Get Html hyperlink.
+     *
+     * @param link       path of the file.
+     * @param label      Tag for the link.
+     * @return a content tree for the hyper link
+     */
+    public Content getHyperLink(DocPath link, Content label) {
+        return getHyperLink(link, label, "", "");
+    }
+
+    public Content getHyperLink(DocLink link, Content label) {
+        return getHyperLink(link, label, "", "");
+    }
+
+    public Content getHyperLink(DocPath link,
+                               Content label, boolean strong,
+                               String stylename, String title, String target) {
+        return getHyperLink(new DocLink(link), label, strong,
+                stylename, title, target);
+    }
+
+    public Content getHyperLink(DocLink link,
+                               Content label, boolean strong,
+                               String stylename, String title, String target) {
+        Content body = label;
+        if (strong) {
+            body = HtmlTree.SPAN(HtmlStyle.typeNameLink, body);
+        }
+        if (stylename != null && stylename.length() != 0) {
+            HtmlTree t = new HtmlTree(HtmlTag.FONT, body);
+            t.addAttr(HtmlAttr.CLASS, stylename);
+            body = t;
+        }
+        HtmlTree l = HtmlTree.A(link.toString(), body);
+        if (title != null && title.length() != 0) {
+            l.addAttr(HtmlAttr.TITLE, title);
+        }
+        if (target != null && target.length() != 0) {
+            l.addAttr(HtmlAttr.TARGET, target);
+        }
+        return l;
+    }
+
+    /**
+     * Get Html Hyper Link.
+     *
+     * @param link       String name of the file.
+     * @param label      Tag for the link.
+     * @param title      String that describes the link's content for accessibility.
+     * @param target     Target frame.
+     * @return a content tree for the hyper link.
+     */
+    public Content getHyperLink(DocPath link,
+            Content label, String title, String target) {
+        return getHyperLink(new DocLink(link), label, title, target);
+    }
+
+    public Content getHyperLink(DocLink link,
+            Content label, String title, String target) {
+        HtmlTree anchor = HtmlTree.A(link.toString(), label);
+        if (title != null && title.length() != 0) {
+            anchor.addAttr(HtmlAttr.TITLE, title);
+        }
+        if (target != null && target.length() != 0) {
+            anchor.addAttr(HtmlAttr.TARGET, target);
+        }
+        return anchor;
+    }
+
+    /**
+     * Get the name of the package, this class is in.
+     *
+     * @param cd    ClassDoc.
+     */
+    public String getPkgName(ClassDoc cd) {
+        String pkgName = cd.containingPackage().name();
+        if (pkgName.length() > 0) {
+            pkgName += ".";
+            return pkgName;
+        }
+        return "";
+    }
+
+    public boolean getMemberDetailsListPrinted() {
+        return memberDetailsListPrinted;
+    }
+
+    /**
+     * Print the frameset version of the Html file header.
+     * Called only when generating an HTML frameset file.
+     *
+     * @param title Title of this HTML document
+     * @param noTimeStamp If true, don't print time stamp in header
+     * @param frameset the frameset to be added to the HTML document
+     */
+    public void printFramesetDocument(String title, boolean noTimeStamp,
+            Content frameset) throws IOException {
+        Content htmlDocType = DocType.FRAMESET;
+        Content htmlComment = new Comment(configuration.getText("doclet.New_Page"));
+        Content head = new HtmlTree(HtmlTag.HEAD);
+        head.addContent(getGeneratedBy(!noTimeStamp));
+        if (configuration.charset.length() > 0) {
+            Content meta = HtmlTree.META("Content-Type", CONTENT_TYPE,
+                    configuration.charset);
+            head.addContent(meta);
+        }
+        Content windowTitle = HtmlTree.TITLE(new StringContent(title));
+        head.addContent(windowTitle);
+        head.addContent(getFramesetJavaScript());
+        Content htmlTree = HtmlTree.HTML(configuration.getLocale().getLanguage(),
+                head, frameset);
+        Content htmlDocument = new HtmlDocument(htmlDocType,
+                htmlComment, htmlTree);
+        write(htmlDocument);
+    }
+
+    protected Comment getGeneratedBy(boolean timestamp) {
+        String text = "Generated by javadoc"; // marker string, deliberately not localized
+        if (timestamp) {
+            Calendar calendar = new GregorianCalendar(TimeZone.getDefault());
+            Date today = calendar.getTime();
+            text += " ("+ configuration.getDocletSpecificBuildDate() + ") on " + today;
+        }
+        return new Comment(text);
+    }
+}

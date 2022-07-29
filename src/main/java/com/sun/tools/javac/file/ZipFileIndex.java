@@ -1,1175 +1,1169 @@
-/*      */ package com.sun.tools.javac.file;
-/*      */
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import java.io.File;
-/*      */ import java.io.FileNotFoundException;
-/*      */ import java.io.IOException;
-/*      */ import java.io.RandomAccessFile;
-/*      */ import java.lang.ref.Reference;
-/*      */ import java.lang.ref.SoftReference;
-/*      */ import java.util.ArrayList;
-/*      */ import java.util.Arrays;
-/*      */ import java.util.Calendar;
-/*      */ import java.util.Collections;
-/*      */ import java.util.HashMap;
-/*      */ import java.util.LinkedHashMap;
-/*      */ import java.util.LinkedHashSet;
-/*      */ import java.util.List;
-/*      */ import java.util.Map;
-/*      */ import java.util.Set;
-/*      */ import java.util.zip.DataFormatException;
-/*      */ import java.util.zip.Inflater;
-/*      */ import java.util.zip.ZipException;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class ZipFileIndex
-/*      */ {
-/*   80 */   private static final String MIN_CHAR = String.valueOf(false);
-/*   81 */   private static final String MAX_CHAR = String.valueOf('￿');
-/*      */
-/*      */
-/*      */   public static final long NOT_MODIFIED = -9223372036854775808L;
-/*      */
-/*   86 */   private static final boolean NON_BATCH_MODE = (System.getProperty("nonBatchMode") != null);
-/*      */
-/*      */
-/*   89 */   private Map<RelativePath.RelativeDirectory, DirectoryEntry> directories = Collections.emptyMap();
-/*      */
-/*   91 */   private Set<RelativePath.RelativeDirectory> allDirs = Collections.emptySet();
-/*      */
-/*      */   final File zipFile;
-/*      */
-/*      */   private Reference<File> absFileRef;
-/*   96 */   long zipFileLastModified = Long.MIN_VALUE;
-/*      */
-/*      */   private RandomAccessFile zipRandomFile;
-/*      */   private Entry[] entries;
-/*      */   private boolean readFromIndex = false;
-/*  101 */   private File zipIndexFile = null;
-/*      */   private boolean triedToReadIndex = false;
-/*      */   final RelativePath.RelativeDirectory symbolFilePrefix;
-/*      */   private final int symbolFilePrefixLength;
-/*      */   private boolean hasPopulatedData = false;
-/*  106 */   long lastReferenceTimeStamp = Long.MIN_VALUE;
-/*      */
-/*      */   private final boolean usePreindexedCache;
-/*      */
-/*      */   private final String preindexedCacheLocation;
-/*      */
-/*      */   private boolean writeIndex = false;
-/*  113 */   private Map<String, SoftReference<RelativePath.RelativeDirectory>> relativeDirectoryCache = new HashMap<>();
-/*      */
-/*      */   private SoftReference<Inflater> inflaterRef;
-/*      */
-/*      */   public synchronized boolean isOpen() {
-/*  118 */     return (this.zipRandomFile != null);
-/*      */   }
-/*      */
-/*      */
-/*      */   ZipFileIndex(File paramFile, RelativePath.RelativeDirectory paramRelativeDirectory, boolean paramBoolean1, boolean paramBoolean2, String paramString) throws IOException {
-/*  123 */     this.zipFile = paramFile;
-/*  124 */     this.symbolFilePrefix = paramRelativeDirectory;
-/*  125 */     this
-/*  126 */       .symbolFilePrefixLength = (paramRelativeDirectory == null) ? 0 : (paramRelativeDirectory.getPath().getBytes("UTF-8")).length;
-/*  127 */     this.writeIndex = paramBoolean1;
-/*  128 */     this.usePreindexedCache = paramBoolean2;
-/*  129 */     this.preindexedCacheLocation = paramString;
-/*      */
-/*  131 */     if (paramFile != null) {
-/*  132 */       this.zipFileLastModified = paramFile.lastModified();
-/*      */     }
-/*      */
-/*      */
-/*  136 */     checkIndex();
-/*      */   }
-/*      */
-/*      */
-/*      */   public String toString() {
-/*  141 */     return "ZipFileIndex[" + this.zipFile + "]";
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   protected void finalize() throws Throwable {
-/*  147 */     closeFile();
-/*  148 */     super.finalize();
-/*      */   }
-/*      */
-/*      */   private boolean isUpToDate() {
-/*  152 */     if (this.zipFile != null && (!NON_BATCH_MODE || this.zipFileLastModified == this.zipFile
-/*  153 */       .lastModified()) && this.hasPopulatedData)
-/*      */     {
-/*  155 */       return true;
-/*      */     }
-/*      */
-/*  158 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void checkIndex() throws IOException {
-/*  166 */     boolean bool = true;
-/*  167 */     if (!isUpToDate()) {
-/*  168 */       closeFile();
-/*  169 */       bool = false;
-/*      */     }
-/*      */
-/*  172 */     if (this.zipRandomFile != null || bool) {
-/*  173 */       this.lastReferenceTimeStamp = System.currentTimeMillis();
-/*      */
-/*      */       return;
-/*      */     }
-/*  177 */     this.hasPopulatedData = true;
-/*      */
-/*  179 */     if (readIndex()) {
-/*  180 */       this.lastReferenceTimeStamp = System.currentTimeMillis();
-/*      */
-/*      */       return;
-/*      */     }
-/*  184 */     this.directories = Collections.emptyMap();
-/*  185 */     this.allDirs = Collections.emptySet();
-/*      */
-/*      */     try {
-/*  188 */       openFile();
-/*  189 */       long l = this.zipRandomFile.length();
-/*  190 */       ZipDirectory zipDirectory = new ZipDirectory(this.zipRandomFile, 0L, l, this);
-/*  191 */       zipDirectory.buildIndex();
-/*      */     } finally {
-/*  193 */       if (this.zipRandomFile != null) {
-/*  194 */         closeFile();
-/*      */       }
-/*      */     }
-/*      */
-/*  198 */     this.lastReferenceTimeStamp = System.currentTimeMillis();
-/*      */   }
-/*      */
-/*      */   private void openFile() throws FileNotFoundException {
-/*  202 */     if (this.zipRandomFile == null && this.zipFile != null) {
-/*  203 */       this.zipRandomFile = new RandomAccessFile(this.zipFile, "r");
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   private void cleanupState() {
-/*  209 */     this.entries = Entry.EMPTY_ARRAY;
-/*  210 */     this.directories = Collections.emptyMap();
-/*  211 */     this.zipFileLastModified = Long.MIN_VALUE;
-/*  212 */     this.allDirs = Collections.emptySet();
-/*      */   }
-/*      */
-/*      */   public synchronized void close() {
-/*  216 */     writeIndex();
-/*  217 */     closeFile();
-/*      */   }
-/*      */
-/*      */   private void closeFile() {
-/*  221 */     if (this.zipRandomFile != null) {
-/*      */       try {
-/*  223 */         this.zipRandomFile.close();
-/*  224 */       } catch (IOException iOException) {}
-/*      */
-/*  226 */       this.zipRandomFile = null;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   synchronized Entry getZipIndexEntry(RelativePath paramRelativePath) {
-/*      */     try {
-/*  235 */       checkIndex();
-/*  236 */       DirectoryEntry directoryEntry = this.directories.get(paramRelativePath.dirname());
-/*  237 */       String str = paramRelativePath.basename();
-/*  238 */       return (directoryEntry == null) ? null : directoryEntry.getEntry(str);
-/*      */     }
-/*  240 */     catch (IOException iOException) {
-/*  241 */       return null;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public synchronized List<String> getFiles(RelativePath.RelativeDirectory paramRelativeDirectory) {
-/*      */     try {
-/*  250 */       checkIndex();
-/*      */
-/*  252 */       DirectoryEntry directoryEntry = this.directories.get(paramRelativeDirectory);
-/*  253 */       List<String> list = (directoryEntry == null) ? null : directoryEntry.getFiles();
-/*      */
-/*  255 */       if (list == null) {
-/*  256 */         return List.nil();
-/*      */       }
-/*  258 */       return list;
-/*      */     }
-/*  260 */     catch (IOException iOException) {
-/*  261 */       return List.nil();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public synchronized List<String> getDirectories(RelativePath.RelativeDirectory paramRelativeDirectory) {
-/*      */     try {
-/*  267 */       checkIndex();
-/*      */
-/*  269 */       DirectoryEntry directoryEntry = this.directories.get(paramRelativeDirectory);
-/*  270 */       List list = (directoryEntry == null) ? null : directoryEntry.getDirectories();
-/*      */
-/*  272 */       if (list == null) {
-/*  273 */         return (List<String>)List.nil();
-/*      */       }
-/*      */
-/*  276 */       return (List<String>)list;
-/*      */     }
-/*  278 */     catch (IOException iOException) {
-/*  279 */       return (List<String>)List.nil();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public synchronized Set<RelativePath.RelativeDirectory> getAllDirectories() {
-/*      */     try {
-/*  285 */       checkIndex();
-/*  286 */       if (this.allDirs == Collections.EMPTY_SET) {
-/*  287 */         this.allDirs = new LinkedHashSet<>(this.directories.keySet());
-/*      */       }
-/*      */
-/*  290 */       return this.allDirs;
-/*      */     }
-/*  292 */     catch (IOException iOException) {
-/*  293 */       return Collections.emptySet();
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public synchronized boolean contains(RelativePath paramRelativePath) {
-/*      */     try {
-/*  306 */       checkIndex();
-/*  307 */       return (getZipIndexEntry(paramRelativePath) != null);
-/*      */     }
-/*  309 */     catch (IOException iOException) {
-/*  310 */       return false;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public synchronized boolean isDirectory(RelativePath paramRelativePath) throws IOException {
-/*  316 */     if (paramRelativePath.getPath().length() == 0) {
-/*  317 */       this.lastReferenceTimeStamp = System.currentTimeMillis();
-/*  318 */       return true;
-/*      */     }
-/*      */
-/*  321 */     checkIndex();
-/*  322 */     return (this.directories.get(paramRelativePath) != null);
-/*      */   }
-/*      */
-/*      */   public synchronized long getLastModified(RelativePath.RelativeFile paramRelativeFile) throws IOException {
-/*  326 */     Entry entry = getZipIndexEntry(paramRelativeFile);
-/*  327 */     if (entry == null)
-/*  328 */       throw new FileNotFoundException();
-/*  329 */     return entry.getLastModified();
-/*      */   }
-/*      */
-/*      */   public synchronized int length(RelativePath.RelativeFile paramRelativeFile) throws IOException {
-/*  333 */     Entry entry = getZipIndexEntry(paramRelativeFile);
-/*  334 */     if (entry == null) {
-/*  335 */       throw new FileNotFoundException();
-/*      */     }
-/*  337 */     if (entry.isDir) {
-/*  338 */       return 0;
-/*      */     }
-/*      */
-/*  341 */     byte[] arrayOfByte = getHeader(entry);
-/*      */
-/*  343 */     if (get2ByteLittleEndian(arrayOfByte, 8) == 0) {
-/*  344 */       return entry.compressedSize;
-/*      */     }
-/*  346 */     return entry.size;
-/*      */   }
-/*      */
-/*      */
-/*      */   public synchronized byte[] read(RelativePath.RelativeFile paramRelativeFile) throws IOException {
-/*  351 */     Entry entry = getZipIndexEntry(paramRelativeFile);
-/*  352 */     if (entry == null)
-/*  353 */       throw new FileNotFoundException("Path not found in ZIP: " + paramRelativeFile.path);
-/*  354 */     return read(entry);
-/*      */   }
-/*      */
-/*      */   synchronized byte[] read(Entry paramEntry) throws IOException {
-/*  358 */     openFile();
-/*  359 */     byte[] arrayOfByte = readBytes(paramEntry);
-/*  360 */     closeFile();
-/*  361 */     return arrayOfByte;
-/*      */   }
-/*      */
-/*      */   public synchronized int read(RelativePath.RelativeFile paramRelativeFile, byte[] paramArrayOfbyte) throws IOException {
-/*  365 */     Entry entry = getZipIndexEntry(paramRelativeFile);
-/*  366 */     if (entry == null)
-/*  367 */       throw new FileNotFoundException();
-/*  368 */     return read(entry, paramArrayOfbyte);
-/*      */   }
-/*      */
-/*      */
-/*      */   synchronized int read(Entry paramEntry, byte[] paramArrayOfbyte) throws IOException {
-/*  373 */     return readBytes(paramEntry, paramArrayOfbyte);
-/*      */   }
-/*      */
-/*      */
-/*      */   private byte[] readBytes(Entry paramEntry) throws IOException {
-/*  378 */     byte[] arrayOfByte1 = getHeader(paramEntry);
-/*  379 */     int i = paramEntry.compressedSize;
-/*  380 */     byte[] arrayOfByte2 = new byte[i];
-/*  381 */     this.zipRandomFile.skipBytes(get2ByteLittleEndian(arrayOfByte1, 26) + get2ByteLittleEndian(arrayOfByte1, 28));
-/*  382 */     this.zipRandomFile.readFully(arrayOfByte2, 0, i);
-/*      */
-/*      */
-/*  385 */     if (get2ByteLittleEndian(arrayOfByte1, 8) == 0) {
-/*  386 */       return arrayOfByte2;
-/*      */     }
-/*  388 */     int j = paramEntry.size;
-/*  389 */     byte[] arrayOfByte3 = new byte[j];
-/*  390 */     if (inflate(arrayOfByte2, arrayOfByte3) != j) {
-/*  391 */       throw new ZipException("corrupted zip file");
-/*      */     }
-/*  393 */     return arrayOfByte3;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private int readBytes(Entry paramEntry, byte[] paramArrayOfbyte) throws IOException {
-/*  400 */     byte[] arrayOfByte1 = getHeader(paramEntry);
-/*      */
-/*      */
-/*  403 */     if (get2ByteLittleEndian(arrayOfByte1, 8) == 0) {
-/*  404 */       this.zipRandomFile.skipBytes(get2ByteLittleEndian(arrayOfByte1, 26) + get2ByteLittleEndian(arrayOfByte1, 28));
-/*  405 */       int k = 0;
-/*  406 */       int m = paramArrayOfbyte.length;
-/*  407 */       while (k < m) {
-/*  408 */         int n = this.zipRandomFile.read(paramArrayOfbyte, k, m - k);
-/*  409 */         if (n == -1)
-/*      */           break;
-/*  411 */         k += n;
-/*      */       }
-/*  413 */       return paramEntry.size;
-/*      */     }
-/*      */
-/*  416 */     int i = paramEntry.compressedSize;
-/*  417 */     byte[] arrayOfByte2 = new byte[i];
-/*  418 */     this.zipRandomFile.skipBytes(get2ByteLittleEndian(arrayOfByte1, 26) + get2ByteLittleEndian(arrayOfByte1, 28));
-/*  419 */     this.zipRandomFile.readFully(arrayOfByte2, 0, i);
-/*      */
-/*  421 */     int j = inflate(arrayOfByte2, paramArrayOfbyte);
-/*  422 */     if (j == -1) {
-/*  423 */       throw new ZipException("corrupted zip file");
-/*      */     }
-/*  425 */     return paramEntry.size;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private byte[] getHeader(Entry paramEntry) throws IOException {
-/*  433 */     this.zipRandomFile.seek(paramEntry.offset);
-/*  434 */     byte[] arrayOfByte = new byte[30];
-/*  435 */     this.zipRandomFile.readFully(arrayOfByte);
-/*  436 */     if (get4ByteLittleEndian(arrayOfByte, 0) != 67324752)
-/*  437 */       throw new ZipException("corrupted zip file");
-/*  438 */     if ((get2ByteLittleEndian(arrayOfByte, 6) & 0x1) != 0)
-/*  439 */       throw new ZipException("encrypted zip file");
-/*  440 */     return arrayOfByte;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private int inflate(byte[] paramArrayOfbyte1, byte[] paramArrayOfbyte2) {
-/*  448 */     Inflater inflater = (this.inflaterRef == null) ? null : this.inflaterRef.get();
-/*      */
-/*      */
-/*  451 */     if (inflater == null) {
-/*  452 */       this.inflaterRef = new SoftReference<>(inflater = new Inflater(true));
-/*      */     }
-/*  454 */     inflater.reset();
-/*  455 */     inflater.setInput(paramArrayOfbyte1);
-/*      */     try {
-/*  457 */       return inflater.inflate(paramArrayOfbyte2);
-/*  458 */     } catch (DataFormatException dataFormatException) {
-/*  459 */       return -1;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private static int get2ByteLittleEndian(byte[] paramArrayOfbyte, int paramInt) {
-/*  468 */     return (paramArrayOfbyte[paramInt] & 0xFF) + ((paramArrayOfbyte[paramInt + 1] & 0xFF) << 8);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private static int get4ByteLittleEndian(byte[] paramArrayOfbyte, int paramInt) {
-/*  475 */     return (paramArrayOfbyte[paramInt] & 0xFF) + ((paramArrayOfbyte[paramInt + 1] & 0xFF) << 8) + ((paramArrayOfbyte[paramInt + 2] & 0xFF) << 16) + ((paramArrayOfbyte[paramInt + 3] & 0xFF) << 24);
-/*      */   }
-/*      */
-/*      */
-/*      */   private class ZipDirectory
-/*      */   {
-/*      */     private RelativePath.RelativeDirectory lastDir;
-/*      */
-/*      */     private int lastStart;
-/*      */
-/*      */     private int lastLen;
-/*      */
-/*      */     byte[] zipDir;
-/*      */
-/*  489 */     RandomAccessFile zipRandomFile = null;
-/*  490 */     ZipFileIndex zipFileIndex = null;
-/*      */
-/*      */     public ZipDirectory(RandomAccessFile param1RandomAccessFile, long param1Long1, long param1Long2, ZipFileIndex param1ZipFileIndex1) throws IOException {
-/*  493 */       this.zipRandomFile = param1RandomAccessFile;
-/*  494 */       this.zipFileIndex = param1ZipFileIndex1;
-/*  495 */       hasValidHeader();
-/*  496 */       findCENRecord(param1Long1, param1Long2);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private boolean hasValidHeader() throws IOException {
-/*  504 */       long l = this.zipRandomFile.getFilePointer();
-/*      */       try {
-/*  506 */         if (this.zipRandomFile.read() == 80 &&
-/*  507 */           this.zipRandomFile.read() == 75 &&
-/*  508 */           this.zipRandomFile.read() == 3 &&
-/*  509 */           this.zipRandomFile.read() == 4) {
-/*  510 */           return true;
-/*      */
-/*      */         }
-/*      */       }
-/*      */       finally {
-/*      */
-/*  516 */         this.zipRandomFile.seek(l);
-/*      */       }
-/*  518 */       throw new ZipFormatException("invalid zip magic");
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private void findCENRecord(long param1Long1, long param1Long2) throws IOException {
-/*  527 */       long l1 = param1Long2 - param1Long1;
-/*  528 */       int i = 1024;
-/*  529 */       byte[] arrayOfByte = new byte[i];
-/*  530 */       long l2 = param1Long2 - param1Long1;
-/*      */
-/*      */
-/*  533 */       while (l2 >= 22L) {
-/*  534 */         if (l2 < i)
-/*  535 */           i = (int)l2;
-/*  536 */         long l = l2 - i;
-/*  537 */         this.zipRandomFile.seek(param1Long1 + l);
-/*  538 */         this.zipRandomFile.readFully(arrayOfByte, 0, i);
-/*  539 */         int j = i - 22;
-/*  540 */         while (j >= 0 && (arrayOfByte[j] != 80 || arrayOfByte[j + 1] != 75 || arrayOfByte[j + 2] != 5 || arrayOfByte[j + 3] != 6 || l + j + 22L + ZipFileIndex
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  546 */           .get2ByteLittleEndian(arrayOfByte, j + 20) != l1)) {
-/*  547 */           j--;
-/*      */         }
-/*      */
-/*  550 */         if (j >= 0) {
-/*  551 */           this.zipDir = new byte[ZipFileIndex.get4ByteLittleEndian(arrayOfByte, j + 12)];
-/*  552 */           int k = ZipFileIndex.get4ByteLittleEndian(arrayOfByte, j + 16);
-/*      */
-/*      */
-/*  555 */           if (k < 0 || ZipFileIndex.get2ByteLittleEndian(arrayOfByte, j + 10) == 65535) {
-/*  556 */             throw new ZipFormatException("detected a zip64 archive");
-/*      */           }
-/*  558 */           this.zipRandomFile.seek(param1Long1 + k);
-/*  559 */           this.zipRandomFile.readFully(this.zipDir, 0, this.zipDir.length);
-/*      */           return;
-/*      */         }
-/*  562 */         l2 = l + 21L;
-/*      */       }
-/*      */
-/*  565 */       throw new ZipException("cannot read zip file");
-/*      */     }
-/*      */
-/*      */     private void buildIndex() throws IOException {
-/*  569 */       int i = this.zipDir.length;
-/*      */
-/*      */
-/*  572 */       if (i > 0) {
-/*  573 */         ZipFileIndex.this.directories = (Map)new LinkedHashMap<>();
-/*  574 */         ArrayList<Entry> arrayList = new ArrayList();
-/*  575 */         for (int j = 0; j < i;) {
-/*  576 */           j = readEntry(j, arrayList, ZipFileIndex.this.directories);
-/*      */         }
-/*      */
-/*      */
-/*  580 */         for (RelativePath.RelativeDirectory relativeDirectory1 : ZipFileIndex.this.directories.keySet()) {
-/*      */
-/*  582 */           RelativePath.RelativeDirectory relativeDirectory2 = ZipFileIndex.this.getRelativeDirectory(relativeDirectory1.dirname().getPath());
-/*  583 */           String str = relativeDirectory1.basename();
-/*  584 */           Entry entry = new Entry(relativeDirectory2, str);
-/*  585 */           entry.isDir = true;
-/*  586 */           arrayList.add(entry);
-/*      */         }
-/*      */
-/*  589 */         ZipFileIndex.this.entries = arrayList.<Entry>toArray(new Entry[arrayList.size()]);
-/*  590 */         Arrays.sort((Object[])ZipFileIndex.this.entries);
-/*      */       } else {
-/*  592 */         ZipFileIndex.this.cleanupState();
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     private int readEntry(int param1Int, List<Entry> param1List, Map<RelativePath.RelativeDirectory, DirectoryEntry> param1Map) throws IOException {
-/*  598 */       if (ZipFileIndex.get4ByteLittleEndian(this.zipDir, param1Int) != 33639248) {
-/*  599 */         throw new ZipException("cannot read zip file entry");
-/*      */       }
-/*      */
-/*  602 */       int i = param1Int + 46;
-/*  603 */       int j = i;
-/*  604 */       int k = j + ZipFileIndex.get2ByteLittleEndian(this.zipDir, param1Int + 28);
-/*      */
-/*  606 */       if (this.zipFileIndex.symbolFilePrefixLength != 0 && k - j >= ZipFileIndex.this
-/*  607 */         .symbolFilePrefixLength) {
-/*  608 */         i += this.zipFileIndex.symbolFilePrefixLength;
-/*  609 */         j += this.zipFileIndex.symbolFilePrefixLength;
-/*      */       }
-/*      */
-/*  612 */       for (int m = j; m < k; m++) {
-/*  613 */         byte b = this.zipDir[m];
-/*  614 */         if (b == 92) {
-/*  615 */           this.zipDir[m] = 47;
-/*  616 */           j = m + 1;
-/*  617 */         } else if (b == 47) {
-/*  618 */           j = m + 1;
-/*      */         }
-/*      */       }
-/*      */
-/*  622 */       RelativePath.RelativeDirectory relativeDirectory = null;
-/*  623 */       if (j == i) {
-/*  624 */         relativeDirectory = ZipFileIndex.this.getRelativeDirectory("");
-/*  625 */       } else if (this.lastDir != null && this.lastLen == j - i - 1) {
-/*  626 */         int n = this.lastLen - 1;
-/*  627 */         while (this.zipDir[this.lastStart + n] == this.zipDir[i + n]) {
-/*  628 */           if (n == 0) {
-/*  629 */             relativeDirectory = this.lastDir;
-/*      */             break;
-/*      */           }
-/*  632 */           n--;
-/*      */         }
-/*      */       }
-/*      */
-/*      */
-/*  637 */       if (relativeDirectory == null) {
-/*  638 */         this.lastStart = i;
-/*  639 */         this.lastLen = j - i - 1;
-/*      */
-/*  641 */         relativeDirectory = ZipFileIndex.this.getRelativeDirectory(new String(this.zipDir, i, this.lastLen, "UTF-8"));
-/*  642 */         this.lastDir = relativeDirectory;
-/*      */
-/*      */
-/*  645 */         RelativePath.RelativeDirectory relativeDirectory1 = relativeDirectory;
-/*      */
-/*  647 */         while (param1Map.get(relativeDirectory1) == null) {
-/*  648 */           param1Map.put(relativeDirectory1, new DirectoryEntry(relativeDirectory1, this.zipFileIndex));
-/*  649 */           if (relativeDirectory1.path.indexOf("/") == relativeDirectory1.path.length() - 1) {
-/*      */             break;
-/*      */           }
-/*      */
-/*  653 */           relativeDirectory1 = ZipFileIndex.this.getRelativeDirectory(relativeDirectory1.dirname().getPath());
-/*      */
-/*      */         }
-/*      */
-/*      */       }
-/*  658 */       else if (param1Map.get(relativeDirectory) == null) {
-/*  659 */         param1Map.put(relativeDirectory, new DirectoryEntry(relativeDirectory, this.zipFileIndex));
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*  664 */       if (j != k) {
-/*  665 */         Entry entry = new Entry(relativeDirectory, new String(this.zipDir, j, k - j, "UTF-8"));
-/*      */
-/*      */
-/*  668 */         entry.setNativeTime(ZipFileIndex.get4ByteLittleEndian(this.zipDir, param1Int + 12));
-/*  669 */         entry.compressedSize = ZipFileIndex.get4ByteLittleEndian(this.zipDir, param1Int + 20);
-/*  670 */         entry.size = ZipFileIndex.get4ByteLittleEndian(this.zipDir, param1Int + 24);
-/*  671 */         entry.offset = ZipFileIndex.get4ByteLittleEndian(this.zipDir, param1Int + 42);
-/*  672 */         param1List.add(entry);
-/*      */       }
-/*      */
-/*  675 */       return param1Int + 46 + ZipFileIndex
-/*  676 */         .get2ByteLittleEndian(this.zipDir, param1Int + 28) + ZipFileIndex
-/*  677 */         .get2ByteLittleEndian(this.zipDir, param1Int + 30) + ZipFileIndex
-/*  678 */         .get2ByteLittleEndian(this.zipDir, param1Int + 32);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public long getZipFileLastModified() throws IOException {
-/*  687 */     synchronized (this) {
-/*  688 */       checkIndex();
-/*  689 */       return this.zipFileLastModified;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   static class DirectoryEntry
-/*      */   {
-/*      */     private boolean filesInited;
-/*      */
-/*      */     private boolean directoriesInited;
-/*      */
-/*      */     private boolean zipFileEntriesInited;
-/*      */
-/*      */     private boolean entriesInited;
-/*  703 */     private long writtenOffsetOffset = 0L;
-/*      */
-/*      */     private RelativePath.RelativeDirectory dirName;
-/*      */
-/*  707 */     private List<String> zipFileEntriesFiles = List.nil();
-/*  708 */     private List<String> zipFileEntriesDirectories = List.nil();
-/*  709 */     private List<Entry> zipFileEntries = List.nil();
-/*      */
-/*  711 */     private List<Entry> entries = new ArrayList<>();
-/*      */
-/*      */     private ZipFileIndex zipFileIndex;
-/*      */
-/*      */     private int numEntries;
-/*      */
-/*      */     DirectoryEntry(RelativePath.RelativeDirectory param1RelativeDirectory, ZipFileIndex param1ZipFileIndex) {
-/*  718 */       this.filesInited = false;
-/*  719 */       this.directoriesInited = false;
-/*  720 */       this.entriesInited = false;
-/*      */
-/*  722 */       this.dirName = param1RelativeDirectory;
-/*  723 */       this.zipFileIndex = param1ZipFileIndex;
-/*      */     }
-/*      */
-/*      */     private List<String> getFiles() {
-/*  727 */       if (!this.filesInited) {
-/*  728 */         initEntries();
-/*  729 */         for (Entry entry : this.entries) {
-/*  730 */           if (!entry.isDir) {
-/*  731 */             this.zipFileEntriesFiles = this.zipFileEntriesFiles.append(entry.name);
-/*      */           }
-/*      */         }
-/*  734 */         this.filesInited = true;
-/*      */       }
-/*  736 */       return this.zipFileEntriesFiles;
-/*      */     }
-/*      */
-/*      */     private List<String> getDirectories() {
-/*  740 */       if (!this.directoriesInited) {
-/*  741 */         initEntries();
-/*  742 */         for (Entry entry : this.entries) {
-/*  743 */           if (entry.isDir) {
-/*  744 */             this.zipFileEntriesDirectories = this.zipFileEntriesDirectories.append(entry.name);
-/*      */           }
-/*      */         }
-/*  747 */         this.directoriesInited = true;
-/*      */       }
-/*  749 */       return this.zipFileEntriesDirectories;
-/*      */     }
-/*      */
-/*      */     private List<Entry> getEntries() {
-/*  753 */       if (!this.zipFileEntriesInited) {
-/*  754 */         initEntries();
-/*  755 */         this.zipFileEntries = List.nil();
-/*  756 */         for (Entry entry : this.entries) {
-/*  757 */           this.zipFileEntries = this.zipFileEntries.append(entry);
-/*      */         }
-/*  759 */         this.zipFileEntriesInited = true;
-/*      */       }
-/*  761 */       return this.zipFileEntries;
-/*      */     }
-/*      */
-/*      */     private Entry getEntry(String param1String) {
-/*  765 */       initEntries();
-/*  766 */       int i = Collections.binarySearch((List)this.entries, new Entry(this.dirName, param1String));
-/*  767 */       if (i < 0) {
-/*  768 */         return null;
-/*      */       }
-/*      */
-/*  771 */       return this.entries.get(i);
-/*      */     }
-/*      */
-/*      */     private void initEntries() {
-/*  775 */       if (this.entriesInited) {
-/*      */         return;
-/*      */       }
-/*      */
-/*  779 */       if (!this.zipFileIndex.readFromIndex) {
-/*  780 */         int i = -Arrays.binarySearch((Object[])this.zipFileIndex.entries, new Entry(this.dirName, ZipFileIndex
-/*  781 */               .MIN_CHAR)) - 1;
-/*  782 */         int j = -Arrays.binarySearch((Object[])this.zipFileIndex.entries, new Entry(this.dirName, ZipFileIndex
-/*  783 */               .MAX_CHAR)) - 1;
-/*      */
-/*  785 */         for (int k = i; k < j; k++) {
-/*  786 */           this.entries.add(this.zipFileIndex.entries[k]);
-/*      */         }
-/*      */       } else {
-/*  789 */         File file = this.zipFileIndex.getIndexFile();
-/*  790 */         if (file != null) {
-/*  791 */           RandomAccessFile randomAccessFile = null;
-/*      */
-/*  793 */           try { randomAccessFile = new RandomAccessFile(file, "r");
-/*  794 */             randomAccessFile.seek(this.writtenOffsetOffset);
-/*      */
-/*  796 */             for (byte b = 0; b < this.numEntries; b++) {
-/*      */
-/*  798 */               int i = randomAccessFile.readInt();
-/*  799 */               byte[] arrayOfByte = new byte[i];
-/*  800 */               randomAccessFile.read(arrayOfByte);
-/*  801 */               String str = new String(arrayOfByte, "UTF-8");
-/*      */
-/*      */
-/*  804 */               boolean bool = (randomAccessFile.readByte() == 0) ? false : true;
-/*      */
-/*      */
-/*  807 */               int j = randomAccessFile.readInt();
-/*      */
-/*      */
-/*  810 */               int k = randomAccessFile.readInt();
-/*      */
-/*      */
-/*  813 */               int m = randomAccessFile.readInt();
-/*      */
-/*      */
-/*  816 */               long l = randomAccessFile.readLong();
-/*      */
-/*  818 */               Entry entry = new Entry(this.dirName, str);
-/*  819 */               entry.isDir = bool;
-/*  820 */               entry.offset = j;
-/*  821 */               entry.size = k;
-/*  822 */               entry.compressedSize = m;
-/*  823 */               entry.javatime = l;
-/*  824 */               this.entries.add(entry);
-/*      */             }  }
-/*  826 */           catch (Throwable throwable)
-/*      */
-/*      */           {
-/*      */             try {
-/*  830 */               if (randomAccessFile != null) {
-/*  831 */                 randomAccessFile.close();
-/*      */               }
-/*  833 */             } catch (Throwable throwable1) {} } finally { try { if (randomAccessFile != null) randomAccessFile.close();  } catch (Throwable throwable) {} }
-/*      */
-/*      */         }
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*  840 */       this.entriesInited = true;
-/*      */     }
-/*      */
-/*      */     List<Entry> getEntriesAsCollection() {
-/*  844 */       initEntries();
-/*      */
-/*  846 */       return this.entries;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private boolean readIndex() {
-/*  851 */     if (this.triedToReadIndex || !this.usePreindexedCache) {
-/*  852 */       return false;
-/*      */     }
-/*      */
-/*  855 */     boolean bool = false;
-/*  856 */     synchronized (this) {
-/*  857 */       this.triedToReadIndex = true;
-/*  858 */       RandomAccessFile randomAccessFile = null;
-/*      */       try {
-/*  860 */         File file = getIndexFile();
-/*  861 */         randomAccessFile = new RandomAccessFile(file, "r");
-/*      */
-/*  863 */         long l = randomAccessFile.readLong();
-/*  864 */         if (this.zipFile.lastModified() != l) {
-/*  865 */           bool = false;
-/*      */         } else {
-/*  867 */           this.directories = new LinkedHashMap<>();
-/*  868 */           int i = randomAccessFile.readInt();
-/*  869 */           for (byte b = 0; b < i; b++) {
-/*  870 */             int j = randomAccessFile.readInt();
-/*  871 */             byte[] arrayOfByte = new byte[j];
-/*  872 */             randomAccessFile.read(arrayOfByte);
-/*      */
-/*  874 */             RelativePath.RelativeDirectory relativeDirectory = getRelativeDirectory(new String(arrayOfByte, "UTF-8"));
-/*  875 */             DirectoryEntry directoryEntry = new DirectoryEntry(relativeDirectory, this);
-/*  876 */             directoryEntry.numEntries = randomAccessFile.readInt();
-/*  877 */             directoryEntry.writtenOffsetOffset = randomAccessFile.readLong();
-/*  878 */             this.directories.put(relativeDirectory, directoryEntry);
-/*      */           }
-/*  880 */           bool = true;
-/*  881 */           this.zipFileLastModified = l;
-/*      */         }
-/*  883 */       } catch (Throwable throwable) {
-/*      */
-/*      */       } finally {
-/*  886 */         if (randomAccessFile != null) {
-/*      */           try {
-/*  888 */             randomAccessFile.close();
-/*  889 */           } catch (Throwable throwable) {}
-/*      */         }
-/*      */       }
-/*      */
-/*      */
-/*  894 */       if (bool == true) {
-/*  895 */         this.readFromIndex = true;
-/*      */       }
-/*      */     }
-/*      */
-/*  899 */     return bool;
-/*      */   }
-/*      */
-/*      */   private boolean writeIndex() {
-/*  903 */     boolean bool = false;
-/*  904 */     if (this.readFromIndex || !this.usePreindexedCache) {
-/*  905 */       return true;
-/*      */     }
-/*      */
-/*  908 */     if (!this.writeIndex) {
-/*  909 */       return true;
-/*      */     }
-/*      */
-/*  912 */     File file = getIndexFile();
-/*  913 */     if (file == null) {
-/*  914 */       return false;
-/*      */     }
-/*      */
-/*  917 */     RandomAccessFile randomAccessFile = null;
-/*  918 */     long l = 0L;
-/*      */
-/*  920 */     try { randomAccessFile = new RandomAccessFile(file, "rw");
-/*      */
-/*  922 */       randomAccessFile.writeLong(this.zipFileLastModified);
-/*  923 */       l += 8L;
-/*      */
-/*  925 */       ArrayList<DirectoryEntry> arrayList = new ArrayList();
-/*  926 */       HashMap<Object, Object> hashMap = new HashMap<>();
-/*  927 */       randomAccessFile.writeInt(this.directories.keySet().size());
-/*  928 */       l += 4L;
-/*      */
-/*  930 */       for (RelativePath.RelativeDirectory relativeDirectory : this.directories.keySet()) {
-/*  931 */         DirectoryEntry directoryEntry = this.directories.get(relativeDirectory);
-/*      */
-/*  933 */         arrayList.add(directoryEntry);
-/*      */
-/*      */
-/*  936 */         byte[] arrayOfByte = relativeDirectory.getPath().getBytes("UTF-8");
-/*  937 */         int i = arrayOfByte.length;
-/*  938 */         randomAccessFile.writeInt(i);
-/*  939 */         l += 4L;
-/*      */
-/*  941 */         randomAccessFile.write(arrayOfByte);
-/*  942 */         l += i;
-/*      */
-/*      */
-/*  945 */         List<Entry> list = directoryEntry.getEntriesAsCollection();
-/*  946 */         randomAccessFile.writeInt(list.size());
-/*  947 */         l += 4L;
-/*      */
-/*  949 */         hashMap.put(relativeDirectory, new Long(l));
-/*      */
-/*      */
-/*  952 */         directoryEntry.writtenOffsetOffset = 0L;
-/*  953 */         randomAccessFile.writeLong(0L);
-/*  954 */         l += 8L;
-/*      */       }
-/*      */
-/*  957 */       for (DirectoryEntry directoryEntry : arrayList) {
-/*      */
-/*  959 */         long l1 = randomAccessFile.getFilePointer();
-/*      */
-/*  961 */         long l2 = ((Long)hashMap.get(directoryEntry.dirName)).longValue();
-/*  962 */         randomAccessFile.seek(l2);
-/*  963 */         randomAccessFile.writeLong(l);
-/*      */
-/*  965 */         randomAccessFile.seek(l1);
-/*      */
-/*      */
-/*  968 */         List<Entry> list = directoryEntry.getEntriesAsCollection();
-/*  969 */         for (Entry entry : list) {
-/*      */
-/*  971 */           byte[] arrayOfByte = entry.name.getBytes("UTF-8");
-/*  972 */           int i = arrayOfByte.length;
-/*  973 */           randomAccessFile.writeInt(i);
-/*  974 */           l += 4L;
-/*  975 */           randomAccessFile.write(arrayOfByte);
-/*  976 */           l += i;
-/*      */
-/*      */
-/*  979 */           randomAccessFile.writeByte(entry.isDir ? 1 : 0);
-/*  980 */           l++;
-/*      */
-/*      */
-/*  983 */           randomAccessFile.writeInt(entry.offset);
-/*  984 */           l += 4L;
-/*      */
-/*      */
-/*  987 */           randomAccessFile.writeInt(entry.size);
-/*  988 */           l += 4L;
-/*      */
-/*      */
-/*  991 */           randomAccessFile.writeInt(entry.compressedSize);
-/*  992 */           l += 4L;
-/*      */
-/*      */
-/*  995 */           randomAccessFile.writeLong(entry.getLastModified());
-/*  996 */           l += 8L;
-/*      */         }
-/*      */       }  }
-/*  999 */     catch (Throwable throwable)
-/*      */
-/*      */     {
-/*      */       try {
-/* 1003 */         if (randomAccessFile != null) {
-/* 1004 */           randomAccessFile.close();
-/*      */         }
-/* 1006 */       } catch (IOException iOException) {} } finally { try { if (randomAccessFile != null) randomAccessFile.close();  } catch (IOException iOException) {} }
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1011 */     return bool;
-/*      */   }
-/*      */
-/*      */   public boolean writeZipIndex() {
-/* 1015 */     synchronized (this) {
-/* 1016 */       return writeIndex();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private File getIndexFile() {
-/* 1021 */     if (this.zipIndexFile == null) {
-/* 1022 */       if (this.zipFile == null) {
-/* 1023 */         return null;
-/*      */       }
-/*      */
-/* 1026 */       this
-/* 1027 */         .zipIndexFile = new File(((this.preindexedCacheLocation == null) ? "" : this.preindexedCacheLocation) + this.zipFile.getName() + ".index");
-/*      */     }
-/*      */
-/* 1030 */     return this.zipIndexFile;
-/*      */   }
-/*      */
-/*      */   public File getZipFile() {
-/* 1034 */     return this.zipFile;
-/*      */   }
-/*      */
-/*      */   File getAbsoluteFile() {
-/* 1038 */     File file = (this.absFileRef == null) ? null : this.absFileRef.get();
-/* 1039 */     if (file == null) {
-/* 1040 */       file = this.zipFile.getAbsoluteFile();
-/* 1041 */       this.absFileRef = new SoftReference<>(file);
-/*      */     }
-/* 1043 */     return file;
-/*      */   }
-/*      */
-/*      */
-/*      */   private RelativePath.RelativeDirectory getRelativeDirectory(String paramString) {
-/* 1048 */     SoftReference<RelativePath.RelativeDirectory> softReference = this.relativeDirectoryCache.get(paramString);
-/* 1049 */     if (softReference != null) {
-/* 1050 */       RelativePath.RelativeDirectory relativeDirectory1 = softReference.get();
-/* 1051 */       if (relativeDirectory1 != null)
-/* 1052 */         return relativeDirectory1;
-/*      */     }
-/* 1054 */     RelativePath.RelativeDirectory relativeDirectory = new RelativePath.RelativeDirectory(paramString);
-/* 1055 */     this.relativeDirectoryCache.put(paramString, new SoftReference<>(relativeDirectory));
-/* 1056 */     return relativeDirectory;
-/*      */   }
-/*      */
-/*      */   static class Entry implements Comparable<Entry> {
-/* 1060 */     public static final Entry[] EMPTY_ARRAY = new Entry[0];
-/*      */
-/*      */     RelativePath.RelativeDirectory dir;
-/*      */
-/*      */     boolean isDir;
-/*      */
-/*      */     String name;
-/*      */
-/*      */     int offset;
-/*      */
-/*      */     int size;
-/*      */
-/*      */     int compressedSize;
-/*      */     long javatime;
-/*      */     private int nativetime;
-/*      */
-/*      */     public Entry(RelativePath param1RelativePath) {
-/* 1077 */       this(param1RelativePath.dirname(), param1RelativePath.basename());
-/*      */     }
-/*      */
-/*      */     public Entry(RelativePath.RelativeDirectory param1RelativeDirectory, String param1String) {
-/* 1081 */       this.dir = param1RelativeDirectory;
-/* 1082 */       this.name = param1String;
-/*      */     }
-/*      */
-/*      */     public String getName() {
-/* 1086 */       return (new RelativePath.RelativeFile(this.dir, this.name)).getPath();
-/*      */     }
-/*      */
-/*      */     public String getFileName() {
-/* 1090 */       return this.name;
-/*      */     }
-/*      */
-/*      */     public long getLastModified() {
-/* 1094 */       if (this.javatime == 0L) {
-/* 1095 */         this.javatime = dosToJavaTime(this.nativetime);
-/*      */       }
-/* 1097 */       return this.javatime;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     private static long dosToJavaTime(int param1Int) {
-/* 1103 */       Calendar calendar = Calendar.getInstance();
-/* 1104 */       calendar.set(1, (param1Int >> 25 & 0x7F) + 1980);
-/* 1105 */       calendar.set(2, (param1Int >> 21 & 0xF) - 1);
-/* 1106 */       calendar.set(5, param1Int >> 16 & 0x1F);
-/* 1107 */       calendar.set(11, param1Int >> 11 & 0x1F);
-/* 1108 */       calendar.set(12, param1Int >> 5 & 0x3F);
-/* 1109 */       calendar.set(13, param1Int << 1 & 0x3E);
-/* 1110 */       calendar.set(14, 0);
-/* 1111 */       return calendar.getTimeInMillis();
-/*      */     }
-/*      */
-/*      */     void setNativeTime(int param1Int) {
-/* 1115 */       this.nativetime = param1Int;
-/*      */     }
-/*      */
-/*      */     public boolean isDirectory() {
-/* 1119 */       return this.isDir;
-/*      */     }
-/*      */
-/*      */     public int compareTo(Entry param1Entry) {
-/* 1123 */       RelativePath.RelativeDirectory relativeDirectory = param1Entry.dir;
-/* 1124 */       if (this.dir != relativeDirectory) {
-/* 1125 */         int i = this.dir.compareTo(relativeDirectory);
-/* 1126 */         if (i != 0)
-/* 1127 */           return i;
-/*      */       }
-/* 1129 */       return this.name.compareTo(param1Entry.name);
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean equals(Object param1Object) {
-/* 1134 */       if (!(param1Object instanceof Entry))
-/* 1135 */         return false;
-/* 1136 */       Entry entry = (Entry)param1Object;
-/* 1137 */       return (this.dir.equals(entry.dir) && this.name.equals(entry.name));
-/*      */     }
-/*      */
-/*      */
-/*      */     public int hashCode() {
-/* 1142 */       int i = 7;
-/* 1143 */       i = 97 * i + ((this.dir != null) ? this.dir.hashCode() : 0);
-/* 1144 */       i = 97 * i + ((this.name != null) ? this.name.hashCode() : 0);
-/* 1145 */       return i;
-/*      */     }
-/*      */
-/*      */
-/*      */     public String toString() {
-/* 1150 */       return this.isDir ? ("Dir:" + this.dir + " : " + this.name) : (this.dir + ":" + this.name);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   static final class ZipFormatException
-/*      */     extends IOException
-/*      */   {
-/*      */     private static final long serialVersionUID = 8000196834066748623L;
-/*      */
-/*      */
-/*      */     protected ZipFormatException(String param1String) {
-/* 1162 */       super(param1String);
-/*      */     }
-/*      */
-/*      */     protected ZipFormatException(String param1String, Throwable param1Throwable) {
-/* 1166 */       super(param1String, param1Throwable);
-/*      */     }
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\file\ZipFileIndex.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2007, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.file;
+
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.lang.ref.Reference;
+import java.lang.ref.SoftReference;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
+import java.util.zip.ZipException;
+
+import com.sun.tools.javac.file.RelativePath.RelativeDirectory;
+import com.sun.tools.javac.file.RelativePath.RelativeFile;
+
+/**
+ * This class implements the building of index of a zip archive and access to
+ * its context. It also uses a prebuilt index if available.
+ * It supports invocations where it will serialize an optimized zip index file
+ * to disk.
+ *
+ * In order to use a secondary index file, set "usezipindex" in the Options
+ * object when JavacFileManager is invoked. (You can pass "-XDusezipindex" on
+ * the command line.)
+ *
+ * Location where to look for/generate optimized zip index files can be
+ * provided using "{@code -XDcachezipindexdir=<directory>}". If this flag is not
+ * provided, the default location is the value of the "java.io.tmpdir" system
+ * property.
+ *
+ * If "-XDwritezipindexfiles" is specified, there will be new optimized index
+ * file created for each archive, used by the compiler for compilation, at the
+ * location specified by the "cachezipindexdir" option.
+ *
+ * If system property nonBatchMode option is specified the compiler will use
+ * timestamp checking to reindex the zip files if it is needed. In batch mode
+ * the timestamps are not checked and the compiler uses the cached indexes.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own risk.
+ * This code and its internal interfaces are subject to change or
+ * deletion without notice.</b>
+ */
+public class ZipFileIndex {
+    private static final String MIN_CHAR = String.valueOf(Character.MIN_VALUE);
+    private static final String MAX_CHAR = String.valueOf(Character.MAX_VALUE);
+
+    public final static long NOT_MODIFIED = Long.MIN_VALUE;
+
+
+    private static final boolean NON_BATCH_MODE = System.getProperty("nonBatchMode") != null;// TODO: Use -XD compiler switch for this.
+
+    private Map<RelativeDirectory, DirectoryEntry> directories =
+            Collections.<RelativeDirectory, DirectoryEntry>emptyMap();
+    private Set<RelativeDirectory> allDirs =
+            Collections.<RelativeDirectory>emptySet();
+
+    // ZipFileIndex data entries
+    final File zipFile;
+    private Reference<File> absFileRef;
+    long zipFileLastModified = NOT_MODIFIED;
+    private RandomAccessFile zipRandomFile;
+    private Entry[] entries;
+
+    private boolean readFromIndex = false;
+    private File zipIndexFile = null;
+    private boolean triedToReadIndex = false;
+    final RelativeDirectory symbolFilePrefix;
+    private final int symbolFilePrefixLength;
+    private boolean hasPopulatedData = false;
+    long lastReferenceTimeStamp = NOT_MODIFIED;
+
+    private final boolean usePreindexedCache;
+    private final String preindexedCacheLocation;
+
+    private boolean writeIndex = false;
+
+    private Map<String, SoftReference<RelativeDirectory>> relativeDirectoryCache =
+            new HashMap<String, SoftReference<RelativeDirectory>>();
+
+
+    public synchronized boolean isOpen() {
+        return (zipRandomFile != null);
+    }
+
+    ZipFileIndex(File zipFile, RelativeDirectory symbolFilePrefix, boolean writeIndex,
+            boolean useCache, String cacheLocation) throws IOException {
+        this.zipFile = zipFile;
+        this.symbolFilePrefix = symbolFilePrefix;
+        this.symbolFilePrefixLength = (symbolFilePrefix == null ? 0 :
+            symbolFilePrefix.getPath().getBytes("UTF-8").length);
+        this.writeIndex = writeIndex;
+        this.usePreindexedCache = useCache;
+        this.preindexedCacheLocation = cacheLocation;
+
+        if (zipFile != null) {
+            this.zipFileLastModified = zipFile.lastModified();
+        }
+
+        // Validate integrity of the zip file
+        checkIndex();
+    }
+
+    @Override
+    public String toString() {
+        return "ZipFileIndex[" + zipFile + "]";
+    }
+
+    // Just in case...
+    @Override
+    protected void finalize() throws Throwable {
+        closeFile();
+        super.finalize();
+    }
+
+    private boolean isUpToDate() {
+        if (zipFile != null
+                && ((!NON_BATCH_MODE) || zipFileLastModified == zipFile.lastModified())
+                && hasPopulatedData) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Here we need to make sure that the ZipFileIndex is valid. Check the timestamp of the file and
+     * if its the same as the one at the time the index was build we don't need to reopen anything.
+     */
+    private void checkIndex() throws IOException {
+        boolean isUpToDate = true;
+        if (!isUpToDate()) {
+            closeFile();
+            isUpToDate = false;
+        }
+
+        if (zipRandomFile != null || isUpToDate) {
+            lastReferenceTimeStamp = System.currentTimeMillis();
+            return;
+        }
+
+        hasPopulatedData = true;
+
+        if (readIndex()) {
+            lastReferenceTimeStamp = System.currentTimeMillis();
+            return;
+        }
+
+        directories = Collections.<RelativeDirectory, DirectoryEntry>emptyMap();
+        allDirs = Collections.<RelativeDirectory>emptySet();
+
+        try {
+            openFile();
+            long totalLength = zipRandomFile.length();
+            ZipDirectory directory = new ZipDirectory(zipRandomFile, 0L, totalLength, this);
+            directory.buildIndex();
+        } finally {
+            if (zipRandomFile != null) {
+                closeFile();
+            }
+        }
+
+        lastReferenceTimeStamp = System.currentTimeMillis();
+    }
+
+    private void openFile() throws FileNotFoundException {
+        if (zipRandomFile == null && zipFile != null) {
+            zipRandomFile = new RandomAccessFile(zipFile, "r");
+        }
+    }
+
+    private void cleanupState() {
+        // Make sure there is a valid but empty index if the file doesn't exist
+        entries = Entry.EMPTY_ARRAY;
+        directories = Collections.<RelativeDirectory, DirectoryEntry>emptyMap();
+        zipFileLastModified = NOT_MODIFIED;
+        allDirs = Collections.<RelativeDirectory>emptySet();
+    }
+
+    public synchronized void close() {
+        writeIndex();
+        closeFile();
+    }
+
+    private void closeFile() {
+        if (zipRandomFile != null) {
+            try {
+                zipRandomFile.close();
+            } catch (IOException ex) {
+            }
+            zipRandomFile = null;
+        }
+    }
+
+    /**
+     * Returns the ZipFileIndexEntry for a path, if there is one.
+     */
+    synchronized Entry getZipIndexEntry(RelativePath path) {
+        try {
+            checkIndex();
+            DirectoryEntry de = directories.get(path.dirname());
+            String lookFor = path.basename();
+            return (de == null) ? null : de.getEntry(lookFor);
+        }
+        catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Returns a javac List of filenames within a directory in the ZipFileIndex.
+     */
+    public synchronized com.sun.tools.javac.util.List<String> getFiles(RelativeDirectory path) {
+        try {
+            checkIndex();
+
+            DirectoryEntry de = directories.get(path);
+            com.sun.tools.javac.util.List<String> ret = de == null ? null : de.getFiles();
+
+            if (ret == null) {
+                return com.sun.tools.javac.util.List.<String>nil();
+            }
+            return ret;
+        }
+        catch (IOException e) {
+            return com.sun.tools.javac.util.List.<String>nil();
+        }
+    }
+
+    public synchronized List<String> getDirectories(RelativeDirectory path) {
+        try {
+            checkIndex();
+
+            DirectoryEntry de = directories.get(path);
+            com.sun.tools.javac.util.List<String> ret = de == null ? null : de.getDirectories();
+
+            if (ret == null) {
+                return com.sun.tools.javac.util.List.<String>nil();
+            }
+
+            return ret;
+        }
+        catch (IOException e) {
+            return com.sun.tools.javac.util.List.<String>nil();
+        }
+    }
+
+    public synchronized Set<RelativeDirectory> getAllDirectories() {
+        try {
+            checkIndex();
+            if (allDirs == Collections.EMPTY_SET) {
+                allDirs = new java.util.LinkedHashSet<RelativeDirectory>(directories.keySet());
+            }
+
+            return allDirs;
+        }
+        catch (IOException e) {
+            return Collections.<RelativeDirectory>emptySet();
+        }
+    }
+
+    /**
+     * Tests if a specific path exists in the zip.  This method will return true
+     * for file entries and directories.
+     *
+     * @param path A path within the zip.
+     * @return True if the path is a file or dir, false otherwise.
+     */
+    public synchronized boolean contains(RelativePath path) {
+        try {
+            checkIndex();
+            return getZipIndexEntry(path) != null;
+        }
+        catch (IOException e) {
+            return false;
+        }
+    }
+
+    public synchronized boolean isDirectory(RelativePath path) throws IOException {
+        // The top level in a zip file is always a directory.
+        if (path.getPath().length() == 0) {
+            lastReferenceTimeStamp = System.currentTimeMillis();
+            return true;
+        }
+
+        checkIndex();
+        return directories.get(path) != null;
+    }
+
+    public synchronized long getLastModified(RelativeFile path) throws IOException {
+        Entry entry = getZipIndexEntry(path);
+        if (entry == null)
+            throw new FileNotFoundException();
+        return entry.getLastModified();
+    }
+
+    public synchronized int length(RelativeFile path) throws IOException {
+        Entry entry = getZipIndexEntry(path);
+        if (entry == null)
+            throw new FileNotFoundException();
+
+        if (entry.isDir) {
+            return 0;
+        }
+
+        byte[] header = getHeader(entry);
+        // entry is not compressed?
+        if (get2ByteLittleEndian(header, 8) == 0) {
+            return entry.compressedSize;
+        } else {
+            return entry.size;
+        }
+    }
+
+    public synchronized byte[] read(RelativeFile path) throws IOException {
+        Entry entry = getZipIndexEntry(path);
+        if (entry == null)
+            throw new FileNotFoundException("Path not found in ZIP: " + path.path);
+        return read(entry);
+    }
+
+    synchronized byte[] read(Entry entry) throws IOException {
+        openFile();
+        byte[] result = readBytes(entry);
+        closeFile();
+        return result;
+    }
+
+    public synchronized int read(RelativeFile path, byte[] buffer) throws IOException {
+        Entry entry = getZipIndexEntry(path);
+        if (entry == null)
+            throw new FileNotFoundException();
+        return read(entry, buffer);
+    }
+
+    synchronized int read(Entry entry, byte[] buffer)
+            throws IOException {
+        int result = readBytes(entry, buffer);
+        return  result;
+    }
+
+    private byte[] readBytes(Entry entry) throws IOException {
+        byte[] header = getHeader(entry);
+        int csize = entry.compressedSize;
+        byte[] cbuf = new byte[csize];
+        zipRandomFile.skipBytes(get2ByteLittleEndian(header, 26) + get2ByteLittleEndian(header, 28));
+        zipRandomFile.readFully(cbuf, 0, csize);
+
+        // is this compressed - offset 8 in the ZipEntry header
+        if (get2ByteLittleEndian(header, 8) == 0)
+            return cbuf;
+
+        int size = entry.size;
+        byte[] buf = new byte[size];
+        if (inflate(cbuf, buf) != size)
+            throw new ZipException("corrupted zip file");
+
+        return buf;
+    }
+
+    /**
+     *
+     */
+    private int readBytes(Entry entry, byte[] buffer) throws IOException {
+        byte[] header = getHeader(entry);
+
+        // entry is not compressed?
+        if (get2ByteLittleEndian(header, 8) == 0) {
+            zipRandomFile.skipBytes(get2ByteLittleEndian(header, 26) + get2ByteLittleEndian(header, 28));
+            int offset = 0;
+            int size = buffer.length;
+            while (offset < size) {
+                int count = zipRandomFile.read(buffer, offset, size - offset);
+                if (count == -1)
+                    break;
+                offset += count;
+            }
+            return entry.size;
+        }
+
+        int csize = entry.compressedSize;
+        byte[] cbuf = new byte[csize];
+        zipRandomFile.skipBytes(get2ByteLittleEndian(header, 26) + get2ByteLittleEndian(header, 28));
+        zipRandomFile.readFully(cbuf, 0, csize);
+
+        int count = inflate(cbuf, buffer);
+        if (count == -1)
+            throw new ZipException("corrupted zip file");
+
+        return entry.size;
+    }
+
+    //----------------------------------------------------------------------------
+    // Zip utilities
+    //----------------------------------------------------------------------------
+
+    private byte[] getHeader(Entry entry) throws IOException {
+        zipRandomFile.seek(entry.offset);
+        byte[] header = new byte[30];
+        zipRandomFile.readFully(header);
+        if (get4ByteLittleEndian(header, 0) != 0x04034b50)
+            throw new ZipException("corrupted zip file");
+        if ((get2ByteLittleEndian(header, 6) & 1) != 0)
+            throw new ZipException("encrypted zip file"); // offset 6 in the header of the ZipFileEntry
+        return header;
+    }
+
+  /*
+   * Inflate using the java.util.zip.Inflater class
+   */
+    private SoftReference<Inflater> inflaterRef;
+    private int inflate(byte[] src, byte[] dest) {
+        Inflater inflater = (inflaterRef == null ? null : inflaterRef.get());
+
+        // construct the inflater object or reuse an existing one
+        if (inflater == null)
+            inflaterRef = new SoftReference<Inflater>(inflater = new Inflater(true));
+
+        inflater.reset();
+        inflater.setInput(src);
+        try {
+            return inflater.inflate(dest);
+        } catch (DataFormatException ex) {
+            return -1;
+        }
+    }
+
+    /**
+     * return the two bytes buf[pos], buf[pos+1] as an unsigned integer in little
+     * endian format.
+     */
+    private static int get2ByteLittleEndian(byte[] buf, int pos) {
+        return (buf[pos] & 0xFF) + ((buf[pos+1] & 0xFF) << 8);
+    }
+
+    /**
+     * return the 4 bytes buf[i..i+3] as an integer in little endian format.
+     */
+    private static int get4ByteLittleEndian(byte[] buf, int pos) {
+        return (buf[pos] & 0xFF) + ((buf[pos + 1] & 0xFF) << 8) +
+                ((buf[pos + 2] & 0xFF) << 16) + ((buf[pos + 3] & 0xFF) << 24);
+    }
+
+    /* ----------------------------------------------------------------------------
+     * ZipDirectory
+     * ----------------------------------------------------------------------------*/
+
+    private class ZipDirectory {
+        private RelativeDirectory lastDir;
+        private int lastStart;
+        private int lastLen;
+
+        byte[] zipDir;
+        RandomAccessFile zipRandomFile = null;
+        ZipFileIndex zipFileIndex = null;
+
+        public ZipDirectory(RandomAccessFile zipRandomFile, long start, long end, ZipFileIndex index) throws IOException {
+            this.zipRandomFile = zipRandomFile;
+            this.zipFileIndex = index;
+            hasValidHeader();
+            findCENRecord(start, end);
+        }
+
+        /*
+         * the zip entry signature should be at offset 0, otherwise allow the
+         * calling logic to take evasive action by throwing ZipFormatException.
+         */
+        private boolean hasValidHeader() throws IOException {
+            final long pos = zipRandomFile.getFilePointer();
+            try {
+                if (zipRandomFile.read() == 'P') {
+                    if (zipRandomFile.read() == 'K') {
+                        if (zipRandomFile.read() == 0x03) {
+                            if (zipRandomFile.read() == 0x04) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            } finally {
+                zipRandomFile.seek(pos);
+            }
+            throw new ZipFormatException("invalid zip magic");
+        }
+
+        /*
+         * Reads zip file central directory.
+         * For more details see readCEN in zip_util.c from the JDK sources.
+         * This is a Java port of that function.
+         */
+        private void findCENRecord(long start, long end) throws IOException {
+            long totalLength = end - start;
+            int endbuflen = 1024;
+            byte[] endbuf = new byte[endbuflen];
+            long endbufend = end - start;
+
+            // There is a variable-length field after the dir offset record. We need to do consequential search.
+            while (endbufend >= 22) {
+                if (endbufend < endbuflen)
+                    endbuflen = (int)endbufend;
+                long endbufpos = endbufend - endbuflen;
+                zipRandomFile.seek(start + endbufpos);
+                zipRandomFile.readFully(endbuf, 0, endbuflen);
+                int i = endbuflen - 22;
+                while (i >= 0 &&
+                        !(endbuf[i] == 0x50 &&
+                        endbuf[i + 1] == 0x4b &&
+                        endbuf[i + 2] == 0x05 &&
+                        endbuf[i + 3] == 0x06 &&
+                        endbufpos + i + 22 +
+                        get2ByteLittleEndian(endbuf, i + 20) == totalLength)) {
+                    i--;
+                }
+
+                if (i >= 0) {
+                    zipDir = new byte[get4ByteLittleEndian(endbuf, i + 12)];
+                    int sz = get4ByteLittleEndian(endbuf, i + 16);
+                    // a negative offset or the entries field indicates a
+                    // potential zip64 archive
+                    if (sz < 0 || get2ByteLittleEndian(endbuf, i + 10) == 0xffff) {
+                        throw new ZipFormatException("detected a zip64 archive");
+                    }
+                    zipRandomFile.seek(start + sz);
+                    zipRandomFile.readFully(zipDir, 0, zipDir.length);
+                    return;
+                } else {
+                    endbufend = endbufpos + 21;
+                }
+            }
+            throw new ZipException("cannot read zip file");
+        }
+
+        private void buildIndex() throws IOException {
+            int len = zipDir.length;
+
+            // Add each of the files
+            if (len > 0) {
+                directories = new LinkedHashMap<RelativeDirectory, DirectoryEntry>();
+                ArrayList<Entry> entryList = new ArrayList<Entry>();
+                for (int pos = 0; pos < len; ) {
+                    pos = readEntry(pos, entryList, directories);
+                }
+
+                // Add the accumulated dirs into the same list
+                for (RelativeDirectory d: directories.keySet()) {
+                    // use shared RelativeDirectory objects for parent dirs
+                    RelativeDirectory parent = getRelativeDirectory(d.dirname().getPath());
+                    String file = d.basename();
+                    Entry zipFileIndexEntry = new Entry(parent, file);
+                    zipFileIndexEntry.isDir = true;
+                    entryList.add(zipFileIndexEntry);
+                }
+
+                entries = entryList.toArray(new Entry[entryList.size()]);
+                Arrays.sort(entries);
+            } else {
+                cleanupState();
+            }
+        }
+
+        private int readEntry(int pos, List<Entry> entryList,
+                Map<RelativeDirectory, DirectoryEntry> directories) throws IOException {
+            if (get4ByteLittleEndian(zipDir, pos) != 0x02014b50) {
+                throw new ZipException("cannot read zip file entry");
+            }
+
+            int dirStart = pos + 46;
+            int fileStart = dirStart;
+            int fileEnd = fileStart + get2ByteLittleEndian(zipDir, pos + 28);
+
+            if (zipFileIndex.symbolFilePrefixLength != 0 &&
+                    ((fileEnd - fileStart) >= symbolFilePrefixLength)) {
+                dirStart += zipFileIndex.symbolFilePrefixLength;
+               fileStart += zipFileIndex.symbolFilePrefixLength;
+            }
+            // Force any '\' to '/'. Keep the position of the last separator.
+            for (int index = fileStart; index < fileEnd; index++) {
+                byte nextByte = zipDir[index];
+                if (nextByte == (byte)'\\') {
+                    zipDir[index] = (byte)'/';
+                    fileStart = index + 1;
+                } else if (nextByte == (byte)'/') {
+                    fileStart = index + 1;
+                }
+            }
+
+            RelativeDirectory directory = null;
+            if (fileStart == dirStart)
+                directory = getRelativeDirectory("");
+            else if (lastDir != null && lastLen == fileStart - dirStart - 1) {
+                int index = lastLen - 1;
+                while (zipDir[lastStart + index] == zipDir[dirStart + index]) {
+                    if (index == 0) {
+                        directory = lastDir;
+                        break;
+                    }
+                    index--;
+                }
+            }
+
+            // Sub directories
+            if (directory == null) {
+                lastStart = dirStart;
+                lastLen = fileStart - dirStart - 1;
+
+                directory = getRelativeDirectory(new String(zipDir, dirStart, lastLen, "UTF-8"));
+                lastDir = directory;
+
+                // Enter also all the parent directories
+                RelativeDirectory tempDirectory = directory;
+
+                while (directories.get(tempDirectory) == null) {
+                    directories.put(tempDirectory, new DirectoryEntry(tempDirectory, zipFileIndex));
+                    if (tempDirectory.path.indexOf("/") == tempDirectory.path.length() - 1)
+                        break;
+                    else {
+                        // use shared RelativeDirectory objects for parent dirs
+                        tempDirectory = getRelativeDirectory(tempDirectory.dirname().getPath());
+                    }
+                }
+            }
+            else {
+                if (directories.get(directory) == null) {
+                    directories.put(directory, new DirectoryEntry(directory, zipFileIndex));
+                }
+            }
+
+            // For each dir create also a file
+            if (fileStart != fileEnd) {
+                Entry entry = new Entry(directory,
+                        new String(zipDir, fileStart, fileEnd - fileStart, "UTF-8"));
+
+                entry.setNativeTime(get4ByteLittleEndian(zipDir, pos + 12));
+                entry.compressedSize = get4ByteLittleEndian(zipDir, pos + 20);
+                entry.size = get4ByteLittleEndian(zipDir, pos + 24);
+                entry.offset = get4ByteLittleEndian(zipDir, pos + 42);
+                entryList.add(entry);
+            }
+
+            return pos + 46 +
+                    get2ByteLittleEndian(zipDir, pos + 28) +
+                    get2ByteLittleEndian(zipDir, pos + 30) +
+                    get2ByteLittleEndian(zipDir, pos + 32);
+        }
+    }
+
+    /**
+     * Returns the last modified timestamp of a zip file.
+     * @return long
+     */
+    public long getZipFileLastModified() throws IOException {
+        synchronized (this) {
+            checkIndex();
+            return zipFileLastModified;
+        }
+    }
+
+    /** ------------------------------------------------------------------------
+     *  DirectoryEntry class
+     * -------------------------------------------------------------------------*/
+
+    static class DirectoryEntry {
+        private boolean filesInited;
+        private boolean directoriesInited;
+        private boolean zipFileEntriesInited;
+        private boolean entriesInited;
+
+        private long writtenOffsetOffset = 0;
+
+        private RelativeDirectory dirName;
+
+        private com.sun.tools.javac.util.List<String> zipFileEntriesFiles = com.sun.tools.javac.util.List.<String>nil();
+        private com.sun.tools.javac.util.List<String> zipFileEntriesDirectories = com.sun.tools.javac.util.List.<String>nil();
+        private com.sun.tools.javac.util.List<Entry>  zipFileEntries = com.sun.tools.javac.util.List.<Entry>nil();
+
+        private List<Entry> entries = new ArrayList<Entry>();
+
+        private ZipFileIndex zipFileIndex;
+
+        private int numEntries;
+
+        DirectoryEntry(RelativeDirectory dirName, ZipFileIndex index) {
+            filesInited = false;
+            directoriesInited = false;
+            entriesInited = false;
+
+            this.dirName = dirName;
+            this.zipFileIndex = index;
+        }
+
+        private com.sun.tools.javac.util.List<String> getFiles() {
+            if (!filesInited) {
+                initEntries();
+                for (Entry e : entries) {
+                    if (!e.isDir) {
+                        zipFileEntriesFiles = zipFileEntriesFiles.append(e.name);
+                    }
+                }
+                filesInited = true;
+            }
+            return zipFileEntriesFiles;
+        }
+
+        private com.sun.tools.javac.util.List<String> getDirectories() {
+            if (!directoriesInited) {
+                initEntries();
+                for (Entry e : entries) {
+                    if (e.isDir) {
+                        zipFileEntriesDirectories = zipFileEntriesDirectories.append(e.name);
+                    }
+                }
+                directoriesInited = true;
+            }
+            return zipFileEntriesDirectories;
+        }
+
+        private com.sun.tools.javac.util.List<Entry> getEntries() {
+            if (!zipFileEntriesInited) {
+                initEntries();
+                zipFileEntries = com.sun.tools.javac.util.List.nil();
+                for (Entry zfie : entries) {
+                    zipFileEntries = zipFileEntries.append(zfie);
+                }
+                zipFileEntriesInited = true;
+            }
+            return zipFileEntries;
+        }
+
+        private Entry getEntry(String rootName) {
+            initEntries();
+            int index = Collections.binarySearch(entries, new Entry(dirName, rootName));
+            if (index < 0) {
+                return null;
+            }
+
+            return entries.get(index);
+        }
+
+        private void initEntries() {
+            if (entriesInited) {
+                return;
+            }
+
+            if (!zipFileIndex.readFromIndex) {
+                int from = -Arrays.binarySearch(zipFileIndex.entries,
+                        new Entry(dirName, ZipFileIndex.MIN_CHAR)) - 1;
+                int to = -Arrays.binarySearch(zipFileIndex.entries,
+                        new Entry(dirName, MAX_CHAR)) - 1;
+
+                for (int i = from; i < to; i++) {
+                    entries.add(zipFileIndex.entries[i]);
+                }
+            } else {
+                File indexFile = zipFileIndex.getIndexFile();
+                if (indexFile != null) {
+                    RandomAccessFile raf = null;
+                    try {
+                        raf = new RandomAccessFile(indexFile, "r");
+                        raf.seek(writtenOffsetOffset);
+
+                        for (int nFiles = 0; nFiles < numEntries; nFiles++) {
+                            // Read the name bytes
+                            int zfieNameBytesLen = raf.readInt();
+                            byte [] zfieNameBytes = new byte[zfieNameBytesLen];
+                            raf.read(zfieNameBytes);
+                            String eName = new String(zfieNameBytes, "UTF-8");
+
+                            // Read isDir
+                            boolean eIsDir = raf.readByte() == (byte)0 ? false : true;
+
+                            // Read offset of bytes in the real Jar/Zip file
+                            int eOffset = raf.readInt();
+
+                            // Read size of the file in the real Jar/Zip file
+                            int eSize = raf.readInt();
+
+                            // Read compressed size of the file in the real Jar/Zip file
+                            int eCsize = raf.readInt();
+
+                            // Read java time stamp of the file in the real Jar/Zip file
+                            long eJavaTimestamp = raf.readLong();
+
+                            Entry rfie = new Entry(dirName, eName);
+                            rfie.isDir = eIsDir;
+                            rfie.offset = eOffset;
+                            rfie.size = eSize;
+                            rfie.compressedSize = eCsize;
+                            rfie.javatime = eJavaTimestamp;
+                            entries.add(rfie);
+                        }
+                    } catch (Throwable t) {
+                        // Do nothing
+                    } finally {
+                        try {
+                            if (raf != null) {
+                                raf.close();
+                            }
+                        } catch (Throwable t) {
+                            // Do nothing
+                        }
+                    }
+                }
+            }
+
+            entriesInited = true;
+        }
+
+        List<Entry> getEntriesAsCollection() {
+            initEntries();
+
+            return entries;
+        }
+    }
+
+    private boolean readIndex() {
+        if (triedToReadIndex || !usePreindexedCache) {
+            return false;
+        }
+
+        boolean ret = false;
+        synchronized (this) {
+            triedToReadIndex = true;
+            RandomAccessFile raf = null;
+            try {
+                File indexFileName = getIndexFile();
+                raf = new RandomAccessFile(indexFileName, "r");
+
+                long fileStamp = raf.readLong();
+                if (zipFile.lastModified() != fileStamp) {
+                    ret = false;
+                } else {
+                    directories = new LinkedHashMap<RelativeDirectory, DirectoryEntry>();
+                    int numDirs = raf.readInt();
+                    for (int nDirs = 0; nDirs < numDirs; nDirs++) {
+                        int dirNameBytesLen = raf.readInt();
+                        byte [] dirNameBytes = new byte[dirNameBytesLen];
+                        raf.read(dirNameBytes);
+
+                        RelativeDirectory dirNameStr = getRelativeDirectory(new String(dirNameBytes, "UTF-8"));
+                        DirectoryEntry de = new DirectoryEntry(dirNameStr, this);
+                        de.numEntries = raf.readInt();
+                        de.writtenOffsetOffset = raf.readLong();
+                        directories.put(dirNameStr, de);
+                    }
+                    ret = true;
+                    zipFileLastModified = fileStamp;
+                }
+            } catch (Throwable t) {
+                // Do nothing
+            } finally {
+                if (raf != null) {
+                    try {
+                        raf.close();
+                    } catch (Throwable tt) {
+                        // Do nothing
+                    }
+                }
+            }
+            if (ret == true) {
+                readFromIndex = true;
+            }
+        }
+
+        return ret;
+    }
+
+    private boolean writeIndex() {
+        boolean ret = false;
+        if (readFromIndex || !usePreindexedCache) {
+            return true;
+        }
+
+        if (!writeIndex) {
+            return true;
+        }
+
+        File indexFile = getIndexFile();
+        if (indexFile == null) {
+            return false;
+        }
+
+        RandomAccessFile raf = null;
+        long writtenSoFar = 0;
+        try {
+            raf = new RandomAccessFile(indexFile, "rw");
+
+            raf.writeLong(zipFileLastModified);
+            writtenSoFar += 8;
+
+            List<DirectoryEntry> directoriesToWrite = new ArrayList<DirectoryEntry>();
+            Map<RelativeDirectory, Long> offsets = new HashMap<RelativeDirectory, Long>();
+            raf.writeInt(directories.keySet().size());
+            writtenSoFar += 4;
+
+            for (RelativeDirectory dirName: directories.keySet()) {
+                DirectoryEntry dirEntry = directories.get(dirName);
+
+                directoriesToWrite.add(dirEntry);
+
+                // Write the dir name bytes
+                byte [] dirNameBytes = dirName.getPath().getBytes("UTF-8");
+                int dirNameBytesLen = dirNameBytes.length;
+                raf.writeInt(dirNameBytesLen);
+                writtenSoFar += 4;
+
+                raf.write(dirNameBytes);
+                writtenSoFar += dirNameBytesLen;
+
+                // Write the number of files in the dir
+                List<Entry> dirEntries = dirEntry.getEntriesAsCollection();
+                raf.writeInt(dirEntries.size());
+                writtenSoFar += 4;
+
+                offsets.put(dirName, new Long(writtenSoFar));
+
+                // Write the offset of the file's data in the dir
+                dirEntry.writtenOffsetOffset = 0L;
+                raf.writeLong(0L);
+                writtenSoFar += 8;
+            }
+
+            for (DirectoryEntry de : directoriesToWrite) {
+                // Fix up the offset in the directory table
+                long currFP = raf.getFilePointer();
+
+                long offsetOffset = offsets.get(de.dirName).longValue();
+                raf.seek(offsetOffset);
+                raf.writeLong(writtenSoFar);
+
+                raf.seek(currFP);
+
+                // Now write each of the files in the DirectoryEntry
+                List<Entry> list = de.getEntriesAsCollection();
+                for (Entry zfie : list) {
+                    // Write the name bytes
+                    byte [] zfieNameBytes = zfie.name.getBytes("UTF-8");
+                    int zfieNameBytesLen = zfieNameBytes.length;
+                    raf.writeInt(zfieNameBytesLen);
+                    writtenSoFar += 4;
+                    raf.write(zfieNameBytes);
+                    writtenSoFar += zfieNameBytesLen;
+
+                    // Write isDir
+                    raf.writeByte(zfie.isDir ? (byte)1 : (byte)0);
+                    writtenSoFar += 1;
+
+                    // Write offset of bytes in the real Jar/Zip file
+                    raf.writeInt(zfie.offset);
+                    writtenSoFar += 4;
+
+                    // Write size of the file in the real Jar/Zip file
+                    raf.writeInt(zfie.size);
+                    writtenSoFar += 4;
+
+                    // Write compressed size of the file in the real Jar/Zip file
+                    raf.writeInt(zfie.compressedSize);
+                    writtenSoFar += 4;
+
+                    // Write java time stamp of the file in the real Jar/Zip file
+                    raf.writeLong(zfie.getLastModified());
+                    writtenSoFar += 8;
+                }
+            }
+        } catch (Throwable t) {
+            // Do nothing
+        } finally {
+            try {
+                if (raf != null) {
+                    raf.close();
+                }
+            } catch(IOException ioe) {
+                // Do nothing
+            }
+        }
+
+        return ret;
+    }
+
+    public boolean writeZipIndex() {
+        synchronized (this) {
+            return writeIndex();
+        }
+    }
+
+    private File getIndexFile() {
+        if (zipIndexFile == null) {
+            if (zipFile == null) {
+                return null;
+            }
+
+            zipIndexFile = new File((preindexedCacheLocation == null ? "" : preindexedCacheLocation) +
+                    zipFile.getName() + ".index");
+        }
+
+        return zipIndexFile;
+    }
+
+    public File getZipFile() {
+        return zipFile;
+    }
+
+    File getAbsoluteFile() {
+        File absFile = (absFileRef == null ? null : absFileRef.get());
+        if (absFile == null) {
+            absFile = zipFile.getAbsoluteFile();
+            absFileRef = new SoftReference<File>(absFile);
+        }
+        return absFile;
+    }
+
+    private RelativeDirectory getRelativeDirectory(String path) {
+        RelativeDirectory rd;
+        SoftReference<RelativeDirectory> ref = relativeDirectoryCache.get(path);
+        if (ref != null) {
+            rd = ref.get();
+            if (rd != null)
+                return rd;
+        }
+        rd = new RelativeDirectory(path);
+        relativeDirectoryCache.put(path, new SoftReference<RelativeDirectory>(rd));
+        return rd;
+    }
+
+    static class Entry implements Comparable<Entry> {
+        public static final Entry[] EMPTY_ARRAY = {};
+
+        // Directory related
+        RelativeDirectory dir;
+        boolean isDir;
+
+        // File related
+        String name;
+
+        int offset;
+        int size;
+        int compressedSize;
+        long javatime;
+
+        private int nativetime;
+
+        public Entry(RelativePath path) {
+            this(path.dirname(), path.basename());
+        }
+
+        public Entry(RelativeDirectory directory, String name) {
+            this.dir = directory;
+            this.name = name;
+        }
+
+        public String getName() {
+            return new RelativeFile(dir, name).getPath();
+        }
+
+        public String getFileName() {
+            return name;
+        }
+
+        public long getLastModified() {
+            if (javatime == 0) {
+                    javatime = dosToJavaTime(nativetime);
+            }
+            return javatime;
+        }
+
+        // based on dosToJavaTime in java.util.Zip, but avoiding the
+        // use of deprecated Date constructor
+        private static long dosToJavaTime(int dtime) {
+            Calendar c = Calendar.getInstance();
+            c.set(Calendar.YEAR,        ((dtime >> 25) & 0x7f) + 1980);
+            c.set(Calendar.MONTH,       ((dtime >> 21) & 0x0f) - 1);
+            c.set(Calendar.DATE,        ((dtime >> 16) & 0x1f));
+            c.set(Calendar.HOUR_OF_DAY, ((dtime >> 11) & 0x1f));
+            c.set(Calendar.MINUTE,      ((dtime >>  5) & 0x3f));
+            c.set(Calendar.SECOND,      ((dtime <<  1) & 0x3e));
+            c.set(Calendar.MILLISECOND, 0);
+            return c.getTimeInMillis();
+        }
+
+        void setNativeTime(int natTime) {
+            nativetime = natTime;
+        }
+
+        public boolean isDirectory() {
+            return isDir;
+        }
+
+        public int compareTo(Entry other) {
+            RelativeDirectory otherD = other.dir;
+            if (dir != otherD) {
+                int c = dir.compareTo(otherD);
+                if (c != 0)
+                    return c;
+            }
+            return name.compareTo(other.name);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof Entry))
+                return false;
+            Entry other = (Entry) o;
+            return dir.equals(other.dir) && name.equals(other.name);
+        }
+
+        @Override
+        public int hashCode() {
+            int hash = 7;
+            hash = 97 * hash + (this.dir != null ? this.dir.hashCode() : 0);
+            hash = 97 * hash + (this.name != null ? this.name.hashCode() : 0);
+            return hash;
+        }
+
+        @Override
+        public String toString() {
+            return isDir ? ("Dir:" + dir + " : " + name) :
+                (dir + ":" + name);
+        }
+    }
+
+    /*
+     * Exception primarily used to implement a failover, used exclusively here.
+     */
+
+    static final class ZipFormatException extends IOException {
+        private static final long serialVersionUID = 8000196834066748623L;
+        protected ZipFormatException(String message) {
+            super(message);
+        }
+
+        protected ZipFormatException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+}

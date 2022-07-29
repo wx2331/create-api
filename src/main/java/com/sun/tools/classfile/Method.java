@@ -1,66 +1,65 @@
-/*    */ package com.sun.tools.classfile;
-/*    */ 
-/*    */ import java.io.IOException;
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ public class Method
-/*    */ {
-/*    */   public final AccessFlags access_flags;
-/*    */   public final int name_index;
-/*    */   public final Descriptor descriptor;
-/*    */   public final Attributes attributes;
-/*    */   
-/*    */   Method(ClassReader paramClassReader) throws IOException {
-/* 38 */     this.access_flags = new AccessFlags(paramClassReader);
-/* 39 */     this.name_index = paramClassReader.readUnsignedShort();
-/* 40 */     this.descriptor = new Descriptor(paramClassReader);
-/* 41 */     this.attributes = new Attributes(paramClassReader);
-/*    */   }
-/*    */ 
-/*    */ 
-/*    */   
-/*    */   public Method(AccessFlags paramAccessFlags, int paramInt, Descriptor paramDescriptor, Attributes paramAttributes) {
-/* 47 */     this.access_flags = paramAccessFlags;
-/* 48 */     this.name_index = paramInt;
-/* 49 */     this.descriptor = paramDescriptor;
-/* 50 */     this.attributes = paramAttributes;
-/*    */   }
-/*    */   
-/*    */   public int byteLength() {
-/* 54 */     return 6 + this.attributes.byteLength();
-/*    */   }
-/*    */   
-/*    */   public String getName(ConstantPool paramConstantPool) throws ConstantPoolException {
-/* 58 */     return paramConstantPool.getUTF8Value(this.name_index);
-/*    */   }
-/*    */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\classfile\Method.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2007, 2008, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.classfile;
+
+import java.io.IOException;
+
+/*
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Method {
+    Method(ClassReader cr) throws IOException {
+        access_flags = new AccessFlags(cr);
+        name_index = cr.readUnsignedShort();
+        descriptor = new Descriptor(cr);
+        attributes = new Attributes(cr);
+    }
+
+    public Method(AccessFlags access_flags,
+            int name_index, Descriptor descriptor,
+            Attributes attributes) {
+        this.access_flags = access_flags;
+        this.name_index = name_index;
+        this.descriptor = descriptor;
+        this.attributes = attributes;
+    }
+
+    public int byteLength() {
+        return 6 + attributes.byteLength();
+    }
+
+    public String getName(ConstantPool constant_pool) throws ConstantPoolException {
+        return constant_pool.getUTF8Value(name_index);
+    }
+
+    public final AccessFlags access_flags;
+    public final int name_index;
+    public final Descriptor descriptor;
+    public final Attributes attributes;
+}

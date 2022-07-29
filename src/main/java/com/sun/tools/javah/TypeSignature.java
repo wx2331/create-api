@@ -1,284 +1,278 @@
-/*     */ package com.sun.tools.javah;
-/*     */ 
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.StringTokenizer;
-/*     */ import javax.lang.model.element.Name;
-/*     */ import javax.lang.model.element.TypeElement;
-/*     */ import javax.lang.model.type.ArrayType;
-/*     */ import javax.lang.model.type.DeclaredType;
-/*     */ import javax.lang.model.type.NoType;
-/*     */ import javax.lang.model.type.PrimitiveType;
-/*     */ import javax.lang.model.type.TypeKind;
-/*     */ import javax.lang.model.type.TypeMirror;
-/*     */ import javax.lang.model.type.TypeVariable;
-/*     */ import javax.lang.model.util.Elements;
-/*     */ import javax.lang.model.util.SimpleTypeVisitor8;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class TypeSignature
-/*     */ {
-/*     */   Elements elems;
-/*     */   private static final String SIG_VOID = "V";
-/*     */   private static final String SIG_BOOLEAN = "Z";
-/*     */   private static final String SIG_BYTE = "B";
-/*     */   private static final String SIG_CHAR = "C";
-/*     */   private static final String SIG_SHORT = "S";
-/*     */   private static final String SIG_INT = "I";
-/*     */   private static final String SIG_LONG = "J";
-/*     */   private static final String SIG_FLOAT = "F";
-/*     */   private static final String SIG_DOUBLE = "D";
-/*     */   private static final String SIG_ARRAY = "[";
-/*     */   private static final String SIG_CLASS = "L";
-/*     */   
-/*     */   static class SignatureException
-/*     */     extends Exception
-/*     */   {
-/*     */     private static final long serialVersionUID = 1L;
-/*     */     
-/*     */     SignatureException(String param1String) {
-/*  58 */       super(param1String);
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public TypeSignature(Elements paramElements) {
-/*  81 */     this.elems = paramElements;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getTypeSignature(String paramString) throws SignatureException {
-/*  88 */     return getParamJVMSignature(paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getTypeSignature(String paramString, TypeMirror paramTypeMirror) throws SignatureException {
-/*  96 */     String str1 = null;
-/*  97 */     String str2 = null;
-/*  98 */     ArrayList<String> arrayList = new ArrayList();
-/*  99 */     String str3 = null;
-/* 100 */     String str4 = null;
-/* 101 */     String str5 = null;
-/* 102 */     String str6 = null;
-/* 103 */     int i = 0;
-/*     */     
-/* 105 */     int j = -1;
-/* 106 */     int k = -1;
-/* 107 */     StringTokenizer stringTokenizer = null;
-/* 108 */     boolean bool = false;
-/*     */ 
-/*     */     
-/* 111 */     if (paramString != null) {
-/* 112 */       j = paramString.indexOf("(");
-/* 113 */       k = paramString.indexOf(")");
-/*     */     } 
-/*     */     
-/* 116 */     if (j != -1 && k != -1 && j + 1 < paramString
-/* 117 */       .length() && k < paramString
-/* 118 */       .length()) {
-/* 119 */       str1 = paramString.substring(j + 1, k);
-/*     */     }
-/*     */ 
-/*     */     
-/* 123 */     if (str1 != null) {
-/* 124 */       if (str1.indexOf(",") != -1) {
-/* 125 */         stringTokenizer = new StringTokenizer(str1, ",");
-/* 126 */         if (stringTokenizer != null) {
-/* 127 */           while (stringTokenizer.hasMoreTokens()) {
-/* 128 */             arrayList.add(stringTokenizer.nextToken());
-/*     */           }
-/*     */         }
-/*     */       } else {
-/* 132 */         arrayList.add(str1);
-/*     */       } 
-/*     */     }
-/*     */ 
-/*     */     
-/* 137 */     str2 = "(";
-/*     */ 
-/*     */     
-/* 140 */     while (arrayList.isEmpty() != true) {
-/* 141 */       str3 = ((String)arrayList.remove(bool)).trim();
-/* 142 */       str4 = getParamJVMSignature(str3);
-/* 143 */       if (str4 != null) {
-/* 144 */         str2 = str2 + str4;
-/*     */       }
-/*     */     } 
-/*     */     
-/* 148 */     str2 = str2 + ")";
-/*     */ 
-/*     */ 
-/*     */     
-/* 152 */     str6 = "";
-/* 153 */     if (paramTypeMirror != null) {
-/* 154 */       i = dimensions(paramTypeMirror);
-/*     */     }
-/*     */ 
-/*     */     
-/* 158 */     while (i-- > 0) {
-/* 159 */       str6 = str6 + "[";
-/*     */     }
-/* 161 */     if (paramTypeMirror != null) {
-/* 162 */       str5 = qualifiedTypeName(paramTypeMirror);
-/* 163 */       str6 = str6 + getComponentType(str5);
-/*     */     } else {
-/* 165 */       System.out.println("Invalid return type.");
-/*     */     } 
-/*     */     
-/* 168 */     str2 = str2 + str6;
-/*     */     
-/* 170 */     return str2;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private String getParamJVMSignature(String paramString) throws SignatureException {
-/* 177 */     String str1 = "";
-/* 178 */     String str2 = "";
-/*     */     
-/* 180 */     if (paramString != null) {
-/*     */       
-/* 182 */       if (paramString.indexOf("[]") != -1) {
-/*     */         
-/* 184 */         int i = paramString.indexOf("[]");
-/* 185 */         str2 = paramString.substring(0, i);
-/* 186 */         String str = paramString.substring(i);
-/* 187 */         if (str != null)
-/* 188 */           while (str.indexOf("[]") != -1) {
-/* 189 */             str1 = str1 + "[";
-/* 190 */             int j = str.indexOf("]") + 1;
-/* 191 */             if (j < str.length()) {
-/* 192 */               str = str.substring(j); continue;
-/*     */             } 
-/* 194 */             str = "";
-/*     */           }  
-/*     */       } else {
-/* 197 */         str2 = paramString;
-/*     */       } 
-/* 199 */       str1 = str1 + getComponentType(str2);
-/*     */     } 
-/* 201 */     return str1;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private String getComponentType(String paramString) throws SignatureException {
-/* 209 */     String str = "";
-/*     */     
-/* 211 */     if (paramString != null) {
-/* 212 */       if (paramString.equals("void")) { str = str + "V"; }
-/* 213 */       else if (paramString.equals("boolean")) { str = str + "Z"; }
-/* 214 */       else if (paramString.equals("byte")) { str = str + "B"; }
-/* 215 */       else if (paramString.equals("char")) { str = str + "C"; }
-/* 216 */       else if (paramString.equals("short")) { str = str + "S"; }
-/* 217 */       else if (paramString.equals("int")) { str = str + "I"; }
-/* 218 */       else if (paramString.equals("long")) { str = str + "J"; }
-/* 219 */       else if (paramString.equals("float")) { str = str + "F"; }
-/* 220 */       else if (paramString.equals("double")) { str = str + "D"; }
-/*     */       
-/* 222 */       else if (!paramString.equals(""))
-/* 223 */       { TypeElement typeElement = this.elems.getTypeElement(paramString);
-/*     */         
-/* 225 */         if (typeElement == null) {
-/* 226 */           throw new SignatureException(paramString);
-/*     */         }
-/* 228 */         String str1 = typeElement.getQualifiedName().toString();
-/* 229 */         String str2 = str1.replace('.', '/');
-/* 230 */         str = str + "L";
-/* 231 */         str = str + str2;
-/* 232 */         str = str + ";"; }
-/*     */     
-/*     */     }
-/*     */ 
-/*     */     
-/* 237 */     return str;
-/*     */   }
-/*     */   
-/*     */   int dimensions(TypeMirror paramTypeMirror) {
-/* 241 */     if (paramTypeMirror.getKind() != TypeKind.ARRAY)
-/* 242 */       return 0; 
-/* 243 */     return 1 + dimensions(((ArrayType)paramTypeMirror).getComponentType());
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   String qualifiedTypeName(TypeMirror paramTypeMirror) {
-/* 248 */     SimpleTypeVisitor8<Name, Void> simpleTypeVisitor8 = new SimpleTypeVisitor8<Name, Void>()
-/*     */       {
-/*     */         public Name visitArray(ArrayType param1ArrayType, Void param1Void) {
-/* 251 */           return param1ArrayType.getComponentType().<Name, Void>accept(this, param1Void);
-/*     */         }
-/*     */ 
-/*     */         
-/*     */         public Name visitDeclared(DeclaredType param1DeclaredType, Void param1Void) {
-/* 256 */           return ((TypeElement)param1DeclaredType.asElement()).getQualifiedName();
-/*     */         }
-/*     */ 
-/*     */         
-/*     */         public Name visitPrimitive(PrimitiveType param1PrimitiveType, Void param1Void) {
-/* 261 */           return TypeSignature.this.elems.getName(param1PrimitiveType.toString());
-/*     */         }
-/*     */ 
-/*     */         
-/*     */         public Name visitNoType(NoType param1NoType, Void param1Void) {
-/* 266 */           if (param1NoType.getKind() == TypeKind.VOID)
-/* 267 */             return TypeSignature.this.elems.getName("void"); 
-/* 268 */           return defaultAction(param1NoType, param1Void);
-/*     */         }
-/*     */ 
-/*     */         
-/*     */         public Name visitTypeVariable(TypeVariable param1TypeVariable, Void param1Void) {
-/* 273 */           return param1TypeVariable.getUpperBound().<Name, Void>accept(this, param1Void);
-/*     */         }
-/*     */       };
-/* 276 */     return ((Name)simpleTypeVisitor8.visit(paramTypeMirror)).toString();
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javah\TypeSignature.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2002, 2011, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+
+package com.sun.tools.javah;
+
+import java.util.*;
+import javax.lang.model.element.Name;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.ArrayType;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.NoType;
+import javax.lang.model.type.PrimitiveType;
+import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
+import javax.lang.model.type.TypeVisitor;
+import javax.lang.model.util.Elements;
+import javax.lang.model.util.SimpleTypeVisitor8;
+
+/**
+ * Returns internal type signature.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own
+ * risk.  This code and its internal interfaces are subject to change
+ * or deletion without notice.</b></p>
+ *
+ * @author Sucheta Dambalkar
+ */
+
+public class TypeSignature {
+    static class SignatureException extends Exception {
+        private static final long serialVersionUID = 1L;
+        SignatureException(String reason) {
+            super(reason);
+        }
+    }
+
+    Elements elems;
+
+    /* Signature Characters */
+
+    private static final String SIG_VOID                   = "V";
+    private static final String SIG_BOOLEAN                = "Z";
+    private static final String SIG_BYTE                   = "B";
+    private static final String SIG_CHAR                   = "C";
+    private static final String SIG_SHORT                  = "S";
+    private static final String SIG_INT                    = "I";
+    private static final String SIG_LONG                   = "J";
+    private static final String SIG_FLOAT                  = "F";
+    private static final String SIG_DOUBLE                 = "D";
+    private static final String SIG_ARRAY                  = "[";
+    private static final String SIG_CLASS                  = "L";
+
+
+
+    public TypeSignature(Elements elems){
+        this.elems = elems;
+    }
+
+    /*
+     * Returns the type signature of a field according to JVM specs
+     */
+    public String getTypeSignature(String javasignature) throws SignatureException {
+        return getParamJVMSignature(javasignature);
+    }
+
+    /*
+     * Returns the type signature of a method according to JVM specs
+     */
+    public String getTypeSignature(String javasignature, TypeMirror returnType)
+            throws SignatureException {
+        String signature = null; //Java type signature.
+        String typeSignature = null; //Internal type signature.
+        List<String> params = new ArrayList<String>(); //List of parameters.
+        String paramsig = null; //Java parameter signature.
+        String paramJVMSig = null; //Internal parameter signature.
+        String returnSig = null; //Java return type signature.
+        String returnJVMType = null; //Internal return type signature.
+        int dimensions = 0; //Array dimension.
+
+        int startIndex = -1;
+        int endIndex = -1;
+        StringTokenizer st = null;
+        int i = 0;
+
+        // Gets the actual java signature without parentheses.
+        if (javasignature != null) {
+            startIndex = javasignature.indexOf("(");
+            endIndex = javasignature.indexOf(")");
+        }
+
+        if (((startIndex != -1) && (endIndex != -1))
+            &&(startIndex+1 < javasignature.length())
+            &&(endIndex < javasignature.length())) {
+            signature = javasignature.substring(startIndex+1, endIndex);
+        }
+
+        // Separates parameters.
+        if (signature != null) {
+            if (signature.indexOf(",") != -1) {
+                st = new StringTokenizer(signature, ",");
+                if (st != null) {
+                    while (st.hasMoreTokens()) {
+                        params.add(st.nextToken());
+                    }
+                }
+            } else {
+                params.add(signature);
+            }
+        }
+
+        /* JVM type signature. */
+        typeSignature = "(";
+
+        // Gets indivisual internal parameter signature.
+        while (params.isEmpty() != true) {
+            paramsig = params.remove(i).trim();
+            paramJVMSig  = getParamJVMSignature(paramsig);
+            if (paramJVMSig != null) {
+                typeSignature += paramJVMSig;
+            }
+        }
+
+        typeSignature += ")";
+
+        // Get internal return type signature.
+
+        returnJVMType = "";
+        if (returnType != null) {
+            dimensions = dimensions(returnType);
+        }
+
+        //Gets array dimension of return type.
+        while (dimensions-- > 0) {
+            returnJVMType += "[";
+        }
+        if (returnType != null) {
+            returnSig = qualifiedTypeName(returnType);
+            returnJVMType += getComponentType(returnSig);
+        } else {
+            System.out.println("Invalid return type.");
+        }
+
+        typeSignature += returnJVMType;
+
+        return typeSignature;
+    }
+
+    /*
+     * Returns internal signature of a parameter.
+     */
+    private String getParamJVMSignature(String paramsig) throws SignatureException {
+        String paramJVMSig = "";
+        String componentType ="";
+
+        if(paramsig != null){
+
+            if(paramsig.indexOf("[]") != -1) {
+                // Gets array dimension.
+                int endindex = paramsig.indexOf("[]");
+                componentType = paramsig.substring(0, endindex);
+                String dimensionString =  paramsig.substring(endindex);
+                if(dimensionString != null){
+                    while(dimensionString.indexOf("[]") != -1){
+                        paramJVMSig += "[";
+                        int beginindex = dimensionString.indexOf("]") + 1;
+                        if(beginindex < dimensionString.length()){
+                            dimensionString = dimensionString.substring(beginindex);
+                        }else
+                            dimensionString = "";
+                    }
+                }
+            } else componentType = paramsig;
+
+            paramJVMSig += getComponentType(componentType);
+        }
+        return paramJVMSig;
+    }
+
+    /*
+     * Returns internal signature of a component.
+     */
+    private String getComponentType(String componentType) throws SignatureException {
+
+        String JVMSig = "";
+
+        if(componentType != null){
+            if(componentType.equals("void")) JVMSig += SIG_VOID ;
+            else if(componentType.equals("boolean"))  JVMSig += SIG_BOOLEAN ;
+            else if(componentType.equals("byte")) JVMSig += SIG_BYTE ;
+            else if(componentType.equals("char"))  JVMSig += SIG_CHAR ;
+            else if(componentType.equals("short"))  JVMSig += SIG_SHORT ;
+            else if(componentType.equals("int"))  JVMSig += SIG_INT ;
+            else if(componentType.equals("long"))  JVMSig += SIG_LONG ;
+            else if(componentType.equals("float")) JVMSig += SIG_FLOAT ;
+            else if(componentType.equals("double"))  JVMSig += SIG_DOUBLE ;
+            else {
+                if(!componentType.equals("")){
+                    TypeElement classNameDoc = elems.getTypeElement(componentType);
+
+                    if(classNameDoc == null){
+                        throw new SignatureException(componentType);
+                    }else {
+                        String classname = classNameDoc.getQualifiedName().toString();
+                        String newclassname = classname.replace('.', '/');
+                        JVMSig += "L";
+                        JVMSig += newclassname;
+                        JVMSig += ";";
+                    }
+                }
+            }
+        }
+        return JVMSig;
+    }
+
+    int dimensions(TypeMirror t) {
+        if (t.getKind() != TypeKind.ARRAY)
+            return 0;
+        return 1 + dimensions(((ArrayType) t).getComponentType());
+    }
+
+
+    String qualifiedTypeName(TypeMirror type) {
+        TypeVisitor<Name, Void> v = new SimpleTypeVisitor8<Name, Void>() {
+            @Override
+            public Name visitArray(ArrayType t, Void p) {
+                return t.getComponentType().accept(this, p);
+            }
+
+            @Override
+            public Name visitDeclared(DeclaredType t, Void p) {
+                return ((TypeElement) t.asElement()).getQualifiedName();
+            }
+
+            @Override
+            public Name visitPrimitive(PrimitiveType t, Void p) {
+                return elems.getName(t.toString());
+            }
+
+            @Override
+            public Name visitNoType(NoType t, Void p) {
+                if (t.getKind() == TypeKind.VOID)
+                    return elems.getName("void");
+                return defaultAction(t, p);
+            }
+
+            @Override
+            public Name visitTypeVariable(TypeVariable t, Void p) {
+                return t.getUpperBound().accept(this, p);
+            }
+        };
+        return v.visit(type).toString();
+    }
+}

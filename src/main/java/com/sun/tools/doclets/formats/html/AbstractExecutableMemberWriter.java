@@ -1,316 +1,310 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.AnnotationDesc;
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.ExecutableMemberDoc;
-/*     */ import com.sun.javadoc.MemberDoc;
-/*     */ import com.sun.javadoc.MethodDoc;
-/*     */ import com.sun.javadoc.Parameter;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.javadoc.Type;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocletConstants;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public abstract class AbstractExecutableMemberWriter
-/*     */   extends AbstractMemberWriter
-/*     */ {
-/*     */   public AbstractExecutableMemberWriter(SubWriterHolderWriter paramSubWriterHolderWriter, ClassDoc paramClassDoc) {
-/*  49 */     super(paramSubWriterHolderWriter, paramClassDoc);
-/*     */   }
-/*     */   
-/*     */   public AbstractExecutableMemberWriter(SubWriterHolderWriter paramSubWriterHolderWriter) {
-/*  53 */     super(paramSubWriterHolderWriter);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addTypeParameters(ExecutableMemberDoc paramExecutableMemberDoc, Content paramContent) {
-/*  64 */     Content content = getTypeParameters(paramExecutableMemberDoc);
-/*  65 */     if (!content.isEmpty()) {
-/*  66 */       paramContent.addContent(content);
-/*  67 */       paramContent.addContent(this.writer.getSpace());
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getTypeParameters(ExecutableMemberDoc paramExecutableMemberDoc) {
-/*  78 */     LinkInfoImpl linkInfoImpl = new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.MEMBER_TYPE_PARAMS, paramExecutableMemberDoc);
-/*     */     
-/*  80 */     return this.writer.getTypeParameterLinks(linkInfoImpl);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getDeprecatedLink(ProgramElementDoc paramProgramElementDoc) {
-/*  87 */     ExecutableMemberDoc executableMemberDoc = (ExecutableMemberDoc)paramProgramElementDoc;
-/*  88 */     return this.writer.getDocLink(LinkInfoImpl.Kind.MEMBER, (MemberDoc)executableMemberDoc, executableMemberDoc
-/*  89 */         .qualifiedName() + executableMemberDoc.flatSignature());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addSummaryLink(LinkInfoImpl.Kind paramKind, ClassDoc paramClassDoc, ProgramElementDoc paramProgramElementDoc, Content paramContent) {
-/* 102 */     ExecutableMemberDoc executableMemberDoc = (ExecutableMemberDoc)paramProgramElementDoc;
-/* 103 */     String str = executableMemberDoc.name();
-/* 104 */     HtmlTree htmlTree1 = HtmlTree.SPAN(HtmlStyle.memberNameLink, this.writer
-/* 105 */         .getDocLink(paramKind, paramClassDoc, (MemberDoc)executableMemberDoc, str, false));
-/*     */     
-/* 107 */     HtmlTree htmlTree2 = HtmlTree.CODE((Content)htmlTree1);
-/* 108 */     addParameters(executableMemberDoc, false, (Content)htmlTree2, str.length() - 1);
-/* 109 */     paramContent.addContent((Content)htmlTree2);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addInheritedSummaryLink(ClassDoc paramClassDoc, ProgramElementDoc paramProgramElementDoc, Content paramContent) {
-/* 121 */     paramContent.addContent(this.writer
-/* 122 */         .getDocLink(LinkInfoImpl.Kind.MEMBER, paramClassDoc, (MemberDoc)paramProgramElementDoc, paramProgramElementDoc
-/* 123 */           .name(), false));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addParam(ExecutableMemberDoc paramExecutableMemberDoc, Parameter paramParameter, boolean paramBoolean, Content paramContent) {
-/* 136 */     if (paramParameter.type() != null) {
-/* 137 */       Content content = this.writer.getLink((new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.EXECUTABLE_MEMBER_PARAM, paramParameter
-/*     */             
-/* 139 */             .type())).varargs(paramBoolean));
-/* 140 */       paramContent.addContent(content);
-/*     */     } 
-/* 142 */     if (paramParameter.name().length() > 0) {
-/* 143 */       paramContent.addContent(this.writer.getSpace());
-/* 144 */       paramContent.addContent(paramParameter.name());
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addReceiverAnnotations(ExecutableMemberDoc paramExecutableMemberDoc, Type paramType, AnnotationDesc[] paramArrayOfAnnotationDesc, Content paramContent) {
-/* 158 */     this.writer.addReceiverAnnotationInfo(paramExecutableMemberDoc, paramArrayOfAnnotationDesc, paramContent);
-/* 159 */     paramContent.addContent(this.writer.getSpace());
-/* 160 */     paramContent.addContent(paramType.typeName());
-/* 161 */     LinkInfoImpl linkInfoImpl = new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.CLASS_SIGNATURE, paramType);
-/*     */     
-/* 163 */     paramContent.addContent(this.writer.getTypeParameterLinks(linkInfoImpl));
-/* 164 */     paramContent.addContent(this.writer.getSpace());
-/* 165 */     paramContent.addContent("this");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addParameters(ExecutableMemberDoc paramExecutableMemberDoc, Content paramContent, int paramInt) {
-/* 176 */     addParameters(paramExecutableMemberDoc, true, paramContent, paramInt);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addParameters(ExecutableMemberDoc paramExecutableMemberDoc, boolean paramBoolean, Content paramContent, int paramInt) {
-/* 188 */     paramContent.addContent("(");
-/* 189 */     String str1 = "";
-/* 190 */     Parameter[] arrayOfParameter = paramExecutableMemberDoc.parameters();
-/* 191 */     String str2 = makeSpace(paramInt + 1);
-/* 192 */     Type type = paramExecutableMemberDoc.receiverType();
-/* 193 */     if (paramBoolean && type instanceof com.sun.javadoc.AnnotatedType) {
-/* 194 */       AnnotationDesc[] arrayOfAnnotationDesc = type.asAnnotatedType().annotations();
-/* 195 */       if (arrayOfAnnotationDesc.length > 0) {
-/* 196 */         addReceiverAnnotations(paramExecutableMemberDoc, type, arrayOfAnnotationDesc, paramContent);
-/* 197 */         str1 = "," + DocletConstants.NL + str2;
-/*     */       } 
-/*     */     } 
-/*     */     byte b;
-/* 201 */     for (b = 0; b < arrayOfParameter.length; b++) {
-/* 202 */       paramContent.addContent(str1);
-/* 203 */       Parameter parameter = arrayOfParameter[b];
-/* 204 */       if (!parameter.name().startsWith("this$")) {
-/* 205 */         if (paramBoolean) {
-/*     */           
-/* 207 */           boolean bool = this.writer.addAnnotationInfo(str2.length(), (Doc)paramExecutableMemberDoc, parameter, paramContent);
-/*     */           
-/* 209 */           if (bool) {
-/* 210 */             paramContent.addContent(DocletConstants.NL);
-/* 211 */             paramContent.addContent(str2);
-/*     */           } 
-/*     */         } 
-/* 214 */         addParam(paramExecutableMemberDoc, parameter, (b == arrayOfParameter.length - 1 && paramExecutableMemberDoc
-/* 215 */             .isVarArgs()), paramContent);
-/*     */         
-/*     */         break;
-/*     */       } 
-/*     */     } 
-/* 220 */     for (int i = b + 1; i < arrayOfParameter.length; i++) {
-/* 221 */       paramContent.addContent(",");
-/* 222 */       paramContent.addContent(DocletConstants.NL);
-/* 223 */       paramContent.addContent(str2);
-/* 224 */       if (paramBoolean) {
-/*     */         
-/* 226 */         boolean bool = this.writer.addAnnotationInfo(str2.length(), (Doc)paramExecutableMemberDoc, arrayOfParameter[i], paramContent);
-/*     */         
-/* 228 */         if (bool) {
-/* 229 */           paramContent.addContent(DocletConstants.NL);
-/* 230 */           paramContent.addContent(str2);
-/*     */         } 
-/*     */       } 
-/* 233 */       addParam(paramExecutableMemberDoc, arrayOfParameter[i], (i == arrayOfParameter.length - 1 && paramExecutableMemberDoc.isVarArgs()), paramContent);
-/*     */     } 
-/*     */     
-/* 236 */     paramContent.addContent(")");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addExceptions(ExecutableMemberDoc paramExecutableMemberDoc, Content paramContent, int paramInt) {
-/* 246 */     Type[] arrayOfType = paramExecutableMemberDoc.thrownExceptionTypes();
-/* 247 */     if (arrayOfType.length > 0) {
-/* 248 */       LinkInfoImpl linkInfoImpl = new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.MEMBER, paramExecutableMemberDoc);
-/*     */       
-/* 250 */       String str = makeSpace(paramInt + 1 - 7);
-/* 251 */       paramContent.addContent(DocletConstants.NL);
-/* 252 */       paramContent.addContent(str);
-/* 253 */       paramContent.addContent("throws ");
-/* 254 */       str = makeSpace(paramInt + 1);
-/* 255 */       Content content = this.writer.getLink(new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.MEMBER, arrayOfType[0]));
-/*     */       
-/* 257 */       paramContent.addContent(content);
-/* 258 */       for (byte b = 1; b < arrayOfType.length; b++) {
-/* 259 */         paramContent.addContent(",");
-/* 260 */         paramContent.addContent(DocletConstants.NL);
-/* 261 */         paramContent.addContent(str);
-/* 262 */         Content content1 = this.writer.getLink(new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.MEMBER, arrayOfType[b]));
-/*     */         
-/* 264 */         paramContent.addContent(content1);
-/*     */       } 
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   protected ClassDoc implementsMethodInIntfac(MethodDoc paramMethodDoc, ClassDoc[] paramArrayOfClassDoc) {
-/* 271 */     for (byte b = 0; b < paramArrayOfClassDoc.length; b++) {
-/* 272 */       MethodDoc[] arrayOfMethodDoc = paramArrayOfClassDoc[b].methods();
-/* 273 */       if (arrayOfMethodDoc.length > 0) {
-/* 274 */         for (byte b1 = 0; b1 < arrayOfMethodDoc.length; b1++) {
-/* 275 */           if (arrayOfMethodDoc[b1].name().equals(paramMethodDoc.name()) && arrayOfMethodDoc[b1]
-/* 276 */             .signature().equals(paramMethodDoc.signature())) {
-/* 277 */             return paramArrayOfClassDoc[b];
-/*     */           }
-/*     */         } 
-/*     */       }
-/*     */     } 
-/* 282 */     return null;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected String getErasureAnchor(ExecutableMemberDoc paramExecutableMemberDoc) {
-/* 294 */     StringBuilder stringBuilder = new StringBuilder(paramExecutableMemberDoc.name() + "(");
-/* 295 */     Parameter[] arrayOfParameter = paramExecutableMemberDoc.parameters();
-/* 296 */     boolean bool = false;
-/* 297 */     for (byte b = 0; b < arrayOfParameter.length; b++) {
-/* 298 */       if (b > 0) {
-/* 299 */         stringBuilder.append(",");
-/*     */       }
-/* 301 */       Type type = arrayOfParameter[b].type();
-/* 302 */       bool = (bool || type.asTypeVariable() != null) ? true : false;
-/* 303 */       stringBuilder.append(type.isPrimitive() ? type
-/* 304 */           .typeName() : type.asClassDoc().qualifiedName());
-/* 305 */       stringBuilder.append(type.dimension());
-/*     */     } 
-/* 307 */     stringBuilder.append(")");
-/* 308 */     return bool ? this.writer.getName(stringBuilder.toString()) : null;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\AbstractExecutableMemberWriter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Print method and constructor info.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Robert Field
+ * @author Atul M Dambalkar
+ * @author Bhavesh Patel (Modified)
+ */
+public abstract class AbstractExecutableMemberWriter extends AbstractMemberWriter {
+
+    public AbstractExecutableMemberWriter(SubWriterHolderWriter writer,
+            ClassDoc classdoc) {
+        super(writer, classdoc);
+    }
+
+    public AbstractExecutableMemberWriter(SubWriterHolderWriter writer) {
+        super(writer);
+    }
+
+    /**
+     * Add the type parameters for the executable member.
+     *
+     * @param member the member to write type parameters for.
+     * @param htmltree the content tree to which the parameters will be added.
+     * @return the display length required to write this information.
+     */
+    protected void addTypeParameters(ExecutableMemberDoc member, Content htmltree) {
+        Content typeParameters = getTypeParameters(member);
+        if (!typeParameters.isEmpty()) {
+            htmltree.addContent(typeParameters);
+            htmltree.addContent(writer.getSpace());
+        }
+    }
+
+    /**
+     * Get the type parameters for the executable member.
+     *
+     * @param member the member for which to get the type parameters.
+     * @return the type parameters.
+     */
+    protected Content getTypeParameters(ExecutableMemberDoc member) {
+        LinkInfoImpl linkInfo = new LinkInfoImpl(configuration,
+            LinkInfoImpl.Kind.MEMBER_TYPE_PARAMS, member);
+        return writer.getTypeParameterLinks(linkInfo);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected Content getDeprecatedLink(ProgramElementDoc member) {
+        ExecutableMemberDoc emd = (ExecutableMemberDoc)member;
+        return writer.getDocLink(LinkInfoImpl.Kind.MEMBER, (MemberDoc) emd,
+                emd.qualifiedName() + emd.flatSignature());
+    }
+
+    /**
+     * Add the summary link for the member.
+     *
+     * @param context the id of the context where the link will be printed
+     * @param cd the classDoc that we should link to
+     * @param member the member being linked to
+     * @param tdSummary the content tree to which the link will be added
+     */
+    protected void addSummaryLink(LinkInfoImpl.Kind context, ClassDoc cd, ProgramElementDoc member,
+            Content tdSummary) {
+        ExecutableMemberDoc emd = (ExecutableMemberDoc)member;
+        String name = emd.name();
+        Content memberLink = HtmlTree.SPAN(HtmlStyle.memberNameLink,
+                writer.getDocLink(context, cd, (MemberDoc) emd,
+                name, false));
+        Content code = HtmlTree.CODE(memberLink);
+        addParameters(emd, false, code, name.length() - 1);
+        tdSummary.addContent(code);
+    }
+
+    /**
+     * Add the inherited summary link for the member.
+     *
+     * @param cd the classDoc that we should link to
+     * @param member the member being linked to
+     * @param linksTree the content tree to which the link will be added
+     */
+    protected void addInheritedSummaryLink(ClassDoc cd,
+            ProgramElementDoc member, Content linksTree) {
+        linksTree.addContent(
+                writer.getDocLink(LinkInfoImpl.Kind.MEMBER, cd, (MemberDoc) member,
+                member.name(), false));
+    }
+
+    /**
+     * Add the parameter for the executable member.
+     *
+     * @param member the member to write parameter for.
+     * @param param the parameter that needs to be written.
+     * @param isVarArg true if this is a link to var arg.
+     * @param tree the content tree to which the parameter information will be added.
+     */
+    protected void addParam(ExecutableMemberDoc member, Parameter param,
+            boolean isVarArg, Content tree) {
+        if (param.type() != null) {
+            Content link = writer.getLink(new LinkInfoImpl(
+                    configuration, LinkInfoImpl.Kind.EXECUTABLE_MEMBER_PARAM,
+                    param.type()).varargs(isVarArg));
+            tree.addContent(link);
+        }
+        if(param.name().length() > 0) {
+            tree.addContent(writer.getSpace());
+            tree.addContent(param.name());
+        }
+    }
+
+    /**
+     * Add the receiver annotations information.
+     *
+     * @param member the member to write receiver annotations for.
+     * @param rcvrType the receiver type.
+     * @param descList list of annotation description.
+     * @param tree the content tree to which the information will be added.
+     */
+    protected void addReceiverAnnotations(ExecutableMemberDoc member, Type rcvrType,
+            AnnotationDesc[] descList, Content tree) {
+        writer.addReceiverAnnotationInfo(member, descList, tree);
+        tree.addContent(writer.getSpace());
+        tree.addContent(rcvrType.typeName());
+        LinkInfoImpl linkInfo = new LinkInfoImpl(configuration,
+                LinkInfoImpl.Kind.CLASS_SIGNATURE, rcvrType);
+        tree.addContent(writer.getTypeParameterLinks(linkInfo));
+        tree.addContent(writer.getSpace());
+        tree.addContent("this");
+    }
+
+
+    /**
+     * Add all the parameters for the executable member.
+     *
+     * @param member the member to write parameters for.
+     * @param htmltree the content tree to which the parameters information will be added.
+     */
+    protected void addParameters(ExecutableMemberDoc member, Content htmltree, int indentSize) {
+        addParameters(member, true, htmltree, indentSize);
+    }
+
+    /**
+     * Add all the parameters for the executable member.
+     *
+     * @param member the member to write parameters for.
+     * @param includeAnnotations true if annotation information needs to be added.
+     * @param htmltree the content tree to which the parameters information will be added.
+     */
+    protected void addParameters(ExecutableMemberDoc member,
+            boolean includeAnnotations, Content htmltree, int indentSize) {
+        htmltree.addContent("(");
+        String sep = "";
+        Parameter[] params = member.parameters();
+        String indent = makeSpace(indentSize + 1);
+        Type rcvrType = member.receiverType();
+        if (includeAnnotations && rcvrType instanceof AnnotatedType) {
+            AnnotationDesc[] descList = rcvrType.asAnnotatedType().annotations();
+            if (descList.length > 0) {
+                addReceiverAnnotations(member, rcvrType, descList, htmltree);
+                sep = "," + DocletConstants.NL + indent;
+            }
+        }
+        int paramstart;
+        for (paramstart = 0; paramstart < params.length; paramstart++) {
+            htmltree.addContent(sep);
+            Parameter param = params[paramstart];
+            if (!param.name().startsWith("this$")) {
+                if (includeAnnotations) {
+                    boolean foundAnnotations =
+                            writer.addAnnotationInfo(indent.length(),
+                            member, param, htmltree);
+                    if (foundAnnotations) {
+                        htmltree.addContent(DocletConstants.NL);
+                        htmltree.addContent(indent);
+                    }
+                }
+                addParam(member, param,
+                    (paramstart == params.length - 1) && member.isVarArgs(), htmltree);
+                break;
+            }
+        }
+
+        for (int i = paramstart + 1; i < params.length; i++) {
+            htmltree.addContent(",");
+            htmltree.addContent(DocletConstants.NL);
+            htmltree.addContent(indent);
+            if (includeAnnotations) {
+                boolean foundAnnotations =
+                        writer.addAnnotationInfo(indent.length(), member, params[i],
+                        htmltree);
+                if (foundAnnotations) {
+                    htmltree.addContent(DocletConstants.NL);
+                    htmltree.addContent(indent);
+                }
+            }
+            addParam(member, params[i], (i == params.length - 1) && member.isVarArgs(),
+                    htmltree);
+        }
+        htmltree.addContent(")");
+    }
+
+    /**
+     * Add exceptions for the executable member.
+     *
+     * @param member the member to write exceptions for.
+     * @param htmltree the content tree to which the exceptions information will be added.
+     */
+    protected void addExceptions(ExecutableMemberDoc member, Content htmltree, int indentSize) {
+        Type[] exceptions = member.thrownExceptionTypes();
+        if (exceptions.length > 0) {
+            LinkInfoImpl memberTypeParam = new LinkInfoImpl(configuration,
+                    LinkInfoImpl.Kind.MEMBER, member);
+            String indent = makeSpace(indentSize + 1 - 7);
+            htmltree.addContent(DocletConstants.NL);
+            htmltree.addContent(indent);
+            htmltree.addContent("throws ");
+            indent = makeSpace(indentSize + 1);
+            Content link = writer.getLink(new LinkInfoImpl(configuration,
+                    LinkInfoImpl.Kind.MEMBER, exceptions[0]));
+            htmltree.addContent(link);
+            for(int i = 1; i < exceptions.length; i++) {
+                htmltree.addContent(",");
+                htmltree.addContent(DocletConstants.NL);
+                htmltree.addContent(indent);
+                Content exceptionLink = writer.getLink(new LinkInfoImpl(
+                        configuration, LinkInfoImpl.Kind.MEMBER, exceptions[i]));
+                htmltree.addContent(exceptionLink);
+            }
+        }
+    }
+
+    protected ClassDoc implementsMethodInIntfac(MethodDoc method,
+                                                ClassDoc[] intfacs) {
+        for (int i = 0; i < intfacs.length; i++) {
+            MethodDoc[] methods = intfacs[i].methods();
+            if (methods.length > 0) {
+                for (int j = 0; j < methods.length; j++) {
+                    if (methods[j].name().equals(method.name()) &&
+                          methods[j].signature().equals(method.signature())) {
+                        return intfacs[i];
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * For backward compatibility, include an anchor using the erasures of the
+     * parameters.  NOTE:  We won't need this method anymore after we fix
+     * see tags so that they use the type instead of the erasure.
+     *
+     * @param emd the ExecutableMemberDoc to anchor to.
+     * @return the 1.4.x style anchor for the ExecutableMemberDoc.
+     */
+    protected String getErasureAnchor(ExecutableMemberDoc emd) {
+        StringBuilder buf = new StringBuilder(emd.name() + "(");
+        Parameter[] params = emd.parameters();
+        boolean foundTypeVariable = false;
+        for (int i = 0; i < params.length; i++) {
+            if (i > 0) {
+                buf.append(",");
+            }
+            Type t = params[i].type();
+            foundTypeVariable = foundTypeVariable || t.asTypeVariable() != null;
+            buf.append(t.isPrimitive() ?
+                t.typeName() : t.asClassDoc().qualifiedName());
+            buf.append(t.dimension());
+        }
+        buf.append(")");
+        return foundTypeVariable ? writer.getName(buf.toString()) : null;
+    }
+}

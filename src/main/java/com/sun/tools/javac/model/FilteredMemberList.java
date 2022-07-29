@@ -1,121 +1,115 @@
-/*     */ package com.sun.tools.javac.model;
-/*     */ 
-/*     */ import com.sun.tools.javac.code.Scope;
-/*     */ import com.sun.tools.javac.code.Symbol;
-/*     */ import java.util.AbstractList;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.NoSuchElementException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class FilteredMemberList
-/*     */   extends AbstractList<Symbol>
-/*     */ {
-/*     */   private final Scope scope;
-/*     */   
-/*     */   public FilteredMemberList(Scope paramScope) {
-/*  51 */     this.scope = paramScope;
-/*     */   }
-/*     */   
-/*     */   public int size() {
-/*  55 */     byte b = 0;
-/*  56 */     for (Scope.Entry entry = this.scope.elems; entry != null; entry = entry.sibling) {
-/*  57 */       if (!unwanted(entry.sym))
-/*  58 */         b++; 
-/*     */     } 
-/*  60 */     return b;
-/*     */   }
-/*     */   
-/*     */   public Symbol get(int paramInt) {
-/*  64 */     for (Scope.Entry entry = this.scope.elems; entry != null; entry = entry.sibling) {
-/*  65 */       if (!unwanted(entry.sym) && paramInt-- == 0)
-/*  66 */         return entry.sym; 
-/*     */     } 
-/*  68 */     throw new IndexOutOfBoundsException();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public Iterator<Symbol> iterator() {
-/*  73 */     return new Iterator<Symbol>()
-/*     */       {
-/*     */         
-/*  76 */         private Scope.Entry nextEntry = FilteredMemberList.this.scope.elems;
-/*     */         
-/*     */         private boolean hasNextForSure = false;
-/*     */         
-/*     */         public boolean hasNext() {
-/*  81 */           if (this.hasNextForSure) {
-/*  82 */             return true;
-/*     */           }
-/*  84 */           while (this.nextEntry != null && FilteredMemberList.unwanted(this.nextEntry.sym)) {
-/*  85 */             this.nextEntry = this.nextEntry.sibling;
-/*     */           }
-/*  87 */           this.hasNextForSure = (this.nextEntry != null);
-/*  88 */           return this.hasNextForSure;
-/*     */         }
-/*     */         
-/*     */         public Symbol next() {
-/*  92 */           if (hasNext()) {
-/*  93 */             Symbol symbol = this.nextEntry.sym;
-/*  94 */             this.nextEntry = this.nextEntry.sibling;
-/*  95 */             this.hasNextForSure = false;
-/*  96 */             return symbol;
-/*     */           } 
-/*  98 */           throw new NoSuchElementException();
-/*     */         }
-/*     */ 
-/*     */         
-/*     */         public void remove() {
-/* 103 */           throw new UnsupportedOperationException();
-/*     */         }
-/*     */       };
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static boolean unwanted(Symbol paramSymbol) {
-/* 113 */     return (paramSymbol == null || (paramSymbol.flags() & 0x1000L) != 0L);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\model\FilteredMemberList.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2005, 2008, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.model;
+
+import java.util.AbstractList;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import com.sun.tools.javac.code.Scope;
+import com.sun.tools.javac.code.Symbol;
+
+import static com.sun.tools.javac.code.Flags.*;
+
+/**
+ * Utility to construct a view of a symbol's members,
+ * filtering out unwanted elements such as synthetic ones.
+ * This view is most efficiently accessed through its iterator() method.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own risk.
+ * This code and its internal interfaces are subject to change or
+ * deletion without notice.</b>
+ */
+public class FilteredMemberList extends AbstractList<Symbol> {
+
+    private final Scope scope;
+
+    public FilteredMemberList(Scope scope) {
+        this.scope = scope;
+    }
+
+    public int size() {
+        int cnt = 0;
+        for (Scope.Entry e = scope.elems; e != null; e = e.sibling) {
+            if (!unwanted(e.sym))
+                cnt++;
+        }
+        return cnt;
+    }
+
+    public Symbol get(int index) {
+        for (Scope.Entry e = scope.elems; e != null; e = e.sibling) {
+            if (!unwanted(e.sym) && (index-- == 0))
+                return e.sym;
+        }
+        throw new IndexOutOfBoundsException();
+    }
+
+    // A more efficient implementation than AbstractList's.
+    public Iterator<Symbol> iterator() {
+        return new Iterator<Symbol>() {
+
+            /** The next entry to examine, or null if none. */
+            private Scope.Entry nextEntry = scope.elems;
+
+            private boolean hasNextForSure = false;
+
+            public boolean hasNext() {
+                if (hasNextForSure) {
+                    return true;
+                }
+                while (nextEntry != null && unwanted(nextEntry.sym)) {
+                    nextEntry = nextEntry.sibling;
+                }
+                hasNextForSure = (nextEntry != null);
+                return hasNextForSure;
+            }
+
+            public Symbol next() {
+                if (hasNext()) {
+                    Symbol result = nextEntry.sym;
+                    nextEntry = nextEntry.sibling;
+                    hasNextForSure = false;
+                    return result;
+                } else {
+                    throw new NoSuchElementException();
+                }
+            }
+
+            public void remove() {
+                throw new UnsupportedOperationException();
+            }
+        };
+    }
+
+    /**
+     * Tests whether this is a symbol that should never be seen by
+     * clients, such as a synthetic class.  Returns true for null.
+     */
+    private static boolean unwanted(Symbol s) {
+        return s == null  ||  (s.flags() & SYNTHETIC) != 0;
+    }
+}

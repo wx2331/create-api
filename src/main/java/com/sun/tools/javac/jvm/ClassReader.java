@@ -1,2983 +1,2965 @@
-/*      */ package com.sun.tools.javac.jvm;
-/*      */
-/*      */ import com.sun.tools.javac.code.Attribute;
-/*      */ import com.sun.tools.javac.code.BoundKind;
-/*      */ import com.sun.tools.javac.code.Lint;
-/*      */ import com.sun.tools.javac.code.Scope;
-/*      */ import com.sun.tools.javac.code.Source;
-/*      */ import com.sun.tools.javac.code.Symbol;
-/*      */ import com.sun.tools.javac.code.Symtab;
-/*      */ import com.sun.tools.javac.code.TargetType;
-/*      */ import com.sun.tools.javac.code.Type;
-/*      */ import com.sun.tools.javac.code.TypeAnnotationPosition;
-/*      */ import com.sun.tools.javac.code.TypeTag;
-/*      */ import com.sun.tools.javac.code.Types;
-/*      */ import com.sun.tools.javac.comp.Annotate;
-/*      */ import com.sun.tools.javac.file.BaseFileObject;
-/*      */ import com.sun.tools.javac.main.Option;
-/*      */ import com.sun.tools.javac.util.Assert;
-/*      */ import com.sun.tools.javac.util.Context;
-/*      */ import com.sun.tools.javac.util.Convert;
-/*      */ import com.sun.tools.javac.util.JCDiagnostic;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.Name;
-/*      */ import com.sun.tools.javac.util.Names;
-/*      */ import com.sun.tools.javac.util.Options;
-/*      */ import com.sun.tools.javac.util.Pair;
-/*      */ import java.io.ByteArrayInputStream;
-/*      */ import java.io.DataInputStream;
-/*      */ import java.io.File;
-/*      */ import java.io.IOException;
-/*      */ import java.io.InputStream;
-/*      */ import java.io.OutputStream;
-/*      */ import java.io.Reader;
-/*      */ import java.io.Writer;
-/*      */ import java.net.URI;
-/*      */ import java.net.URISyntaxException;
-/*      */ import java.nio.CharBuffer;
-/*      */ import java.util.Arrays;
-/*      */ import java.util.EnumSet;
-/*      */ import java.util.HashMap;
-/*      */ import java.util.HashSet;
-/*      */ import java.util.List;
-/*      */ import java.util.Map;
-/*      */ import java.util.Set;
-/*      */ import javax.lang.model.SourceVersion;
-/*      */ import javax.lang.model.type.TypeMirror;
-/*      */ import javax.tools.JavaFileManager;
-/*      */ import javax.tools.JavaFileObject;
-/*      */ import javax.tools.StandardJavaFileManager;
-/*      */ import javax.tools.StandardLocation;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class ClassReader
-/*      */ {
-/*   78 */   protected static final Context.Key<ClassReader> classReaderKey = new Context.Key();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static final int INITIAL_BUFFER_SIZE = 65520;
-/*      */
-/*      */
-/*      */
-/*      */   Annotate annotate;
-/*      */
-/*      */
-/*      */
-/*      */   boolean verbose;
-/*      */
-/*      */
-/*      */
-/*      */   boolean checkClassFile;
-/*      */
-/*      */
-/*      */
-/*      */   public boolean readAllOfClassFile = false;
-/*      */
-/*      */
-/*      */
-/*      */   boolean allowGenerics;
-/*      */
-/*      */
-/*      */
-/*      */   boolean allowVarargs;
-/*      */
-/*      */
-/*      */
-/*      */   boolean allowAnnotations;
-/*      */
-/*      */
-/*      */
-/*      */   boolean allowSimplifiedVarargs;
-/*      */
-/*      */
-/*      */
-/*      */   boolean lintClassfile;
-/*      */
-/*      */
-/*      */
-/*      */   public boolean saveParameterNames;
-/*      */
-/*      */
-/*      */
-/*      */   private boolean cacheCompletionFailure;
-/*      */
-/*      */
-/*      */
-/*      */   public boolean preferSource;
-/*      */
-/*      */
-/*      */
-/*      */   public final Profile profile;
-/*      */
-/*      */
-/*      */
-/*      */   final Log log;
-/*      */
-/*      */
-/*      */
-/*      */   Symtab syms;
-/*      */
-/*      */
-/*      */
-/*      */   Types types;
-/*      */
-/*      */
-/*      */
-/*      */   final Names names;
-/*      */
-/*      */
-/*      */
-/*      */   final Name completionFailureName;
-/*      */
-/*      */
-/*      */
-/*      */   private final JavaFileManager fileManager;
-/*      */
-/*      */
-/*      */
-/*      */   JCDiagnostic.Factory diagFactory;
-/*      */
-/*      */
-/*      */
-/*  167 */   public SourceCompleter sourceCompleter = null;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private Map<Name, Symbol.ClassSymbol> classes;
-/*      */
-/*      */
-/*      */
-/*      */   private Map<Name, Symbol.PackageSymbol> packages;
-/*      */
-/*      */
-/*      */
-/*      */   protected Scope typevars;
-/*      */
-/*      */
-/*      */
-/*  184 */   protected JavaFileObject currentClassFile = null;
-/*      */
-/*      */
-/*      */
-/*  188 */   protected Symbol currentOwner = null;
-/*      */
-/*      */
-/*      */
-/*  192 */   byte[] buf = new byte[65520];
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected int bp;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Object[] poolObj;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int[] poolIdx;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int majorVersion;
-/*      */
-/*      */
-/*      */
-/*      */   int minorVersion;
-/*      */
-/*      */
-/*      */
-/*      */   int[] parameterNameIndices;
-/*      */
-/*      */
-/*      */
-/*      */   boolean haveParameterNameIndices;
-/*      */
-/*      */
-/*      */
-/*      */   boolean sawMethodParameters;
-/*      */
-/*      */
-/*      */
-/*  232 */   Set<Name> warnedAttrs = new HashSet<>();
-/*      */
-/*      */
-/*      */
-/*      */
-/*  237 */   private final Symbol.Completer thisCompleter = new Symbol.Completer()
-/*      */     {
-/*      */       public void complete(Symbol param1Symbol) throws Symbol.CompletionFailure {
-/*  240 */         ClassReader.this.complete(param1Symbol);
-/*      */       }
-/*      */     };
-/*      */   byte[] signature; int sigp; int siglimit; boolean sigEnterPhase; byte[] signatureBuffer; int sbp; protected Set<AttributeKind> CLASS_ATTRIBUTE; protected Set<AttributeKind> MEMBER_ATTRIBUTE; protected Set<AttributeKind> CLASS_OR_MEMBER_ATTRIBUTE; protected Map<Name, AttributeReader> attributeReaders; private boolean readingClassAttr; private List<Type> missingTypeVariables; private List<Type> foundTypeVariables; private boolean filling; private Symbol.CompletionFailure cachedCompletionFailure; protected JavaFileManager.Location currentLoc;
-/*      */   private boolean verbosePath;
-/*      */
-/*      */   public static ClassReader instance(Context paramContext) {
-/*  247 */     ClassReader classReader = (ClassReader)paramContext.get(classReaderKey);
-/*  248 */     if (classReader == null)
-/*  249 */       classReader = new ClassReader(paramContext, true);
-/*  250 */     return classReader;
-/*      */   }
-/*      */
-/*      */
-/*      */   public void init(Symtab paramSymtab) {
-/*  255 */     init(paramSymtab, true);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void init(Symtab paramSymtab, boolean paramBoolean) {
-/*  262 */     if (this.classes != null)
-/*      */       return;
-/*  264 */     if (paramBoolean) {
-/*  265 */       Assert.check((this.packages == null || this.packages == paramSymtab.packages));
-/*  266 */       this.packages = paramSymtab.packages;
-/*  267 */       Assert.check((this.classes == null || this.classes == paramSymtab.classes));
-/*  268 */       this.classes = paramSymtab.classes;
-/*      */     } else {
-/*  270 */       this.packages = new HashMap<>();
-/*  271 */       this.classes = new HashMap<>();
-/*      */     }
-/*      */
-/*  274 */     this.packages.put(this.names.empty, paramSymtab.rootPackage);
-/*  275 */     paramSymtab.rootPackage.completer = this.thisCompleter;
-/*  276 */     paramSymtab.unnamedPackage.completer = this.thisCompleter;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void enterMember(Symbol.ClassSymbol paramClassSymbol, Symbol paramSymbol) {
-/*  330 */     if ((paramSymbol.flags_field & 0x80001000L) != 4096L || paramSymbol.name.startsWith(this.names.lambda)) {
-/*  331 */       paramClassSymbol.members_field.enter(paramSymbol);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public class BadClassFile
-/*      */     extends Symbol.CompletionFailure
-/*      */   {
-/*      */     private static final long serialVersionUID = 0L;
-/*      */
-/*      */
-/*      */     public BadClassFile(Symbol.TypeSymbol param1TypeSymbol, JavaFileObject param1JavaFileObject, JCDiagnostic param1JCDiagnostic) {
-/*  343 */       super((Symbol)param1TypeSymbol, ClassReader.this.createBadClassFileDiagnostic(param1JavaFileObject, param1JCDiagnostic));
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private JCDiagnostic createBadClassFileDiagnostic(JavaFileObject paramJavaFileObject, JCDiagnostic paramJCDiagnostic) {
-/*  348 */     String str = (paramJavaFileObject.getKind() == JavaFileObject.Kind.SOURCE) ? "bad.source.file.header" : "bad.class.file.header";
-/*      */
-/*  350 */     return this.diagFactory.fragment(str, new Object[] { paramJavaFileObject, paramJCDiagnostic });
-/*      */   }
-/*      */
-/*      */   public BadClassFile badClassFile(String paramString, Object... paramVarArgs) {
-/*  354 */     return new BadClassFile((Symbol.TypeSymbol)this.currentOwner
-/*  355 */         .enclClass(), this.currentClassFile, this.diagFactory
-/*      */
-/*  357 */         .fragment(paramString, paramVarArgs));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   char nextChar() {
-/*  367 */     return (char)(((this.buf[this.bp++] & 0xFF) << 8) + (this.buf[this.bp++] & 0xFF));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   int nextByte() {
-/*  373 */     return this.buf[this.bp++] & 0xFF;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   int nextInt() {
-/*  379 */     return ((this.buf[this.bp++] & 0xFF) << 24) + ((this.buf[this.bp++] & 0xFF) << 16) + ((this.buf[this.bp++] & 0xFF) << 8) + (this.buf[this.bp++] & 0xFF);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   char getChar(int paramInt) {
-/*  389 */     return (char)(((this.buf[paramInt] & 0xFF) << 8) + (this.buf[paramInt + 1] & 0xFF));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int getInt(int paramInt) {
-/*  396 */     return ((this.buf[paramInt] & 0xFF) << 24) + ((this.buf[paramInt + 1] & 0xFF) << 16) + ((this.buf[paramInt + 2] & 0xFF) << 8) + (this.buf[paramInt + 3] & 0xFF);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   long getLong(int paramInt) {
-/*  407 */     DataInputStream dataInputStream = new DataInputStream(new ByteArrayInputStream(this.buf, paramInt, 8));
-/*      */
-/*      */     try {
-/*  410 */       return dataInputStream.readLong();
-/*  411 */     } catch (IOException iOException) {
-/*  412 */       throw new AssertionError(iOException);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   float getFloat(int paramInt) {
-/*  419 */     DataInputStream dataInputStream = new DataInputStream(new ByteArrayInputStream(this.buf, paramInt, 4));
-/*      */
-/*      */     try {
-/*  422 */       return dataInputStream.readFloat();
-/*  423 */     } catch (IOException iOException) {
-/*  424 */       throw new AssertionError(iOException);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   double getDouble(int paramInt) {
-/*  431 */     DataInputStream dataInputStream = new DataInputStream(new ByteArrayInputStream(this.buf, paramInt, 8));
-/*      */
-/*      */     try {
-/*  434 */       return dataInputStream.readDouble();
-/*  435 */     } catch (IOException iOException) {
-/*  436 */       throw new AssertionError(iOException);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void indexPool() {
-/*  448 */     this.poolIdx = new int[nextChar()];
-/*  449 */     this.poolObj = new Object[this.poolIdx.length];
-/*  450 */     byte b = 1;
-/*  451 */     while (b < this.poolIdx.length) {
-/*  452 */       char c; this.poolIdx[b++] = this.bp;
-/*  453 */       byte b1 = this.buf[this.bp++];
-/*  454 */       switch (b1) { case 1:
-/*      */         case 2:
-/*  456 */           c = nextChar();
-/*  457 */           this.bp += c;
-/*      */           continue;
-/*      */
-/*      */         case 7:
-/*      */         case 8:
-/*      */         case 16:
-/*  463 */           this.bp += 2;
-/*      */           continue;
-/*      */         case 15:
-/*  466 */           this.bp += 3;
-/*      */           continue;
-/*      */         case 3:
-/*      */         case 4:
-/*      */         case 9:
-/*      */         case 10:
-/*      */         case 11:
-/*      */         case 12:
-/*      */         case 18:
-/*  475 */           this.bp += 4;
-/*      */           continue;
-/*      */         case 5:
-/*      */         case 6:
-/*  479 */           this.bp += 8;
-/*  480 */           b++;
-/*      */           continue; }
-/*      */
-/*  483 */       throw badClassFile("bad.const.pool.tag.at", new Object[] {
-/*  484 */             Byte.toString(b1),
-/*  485 */             Integer.toString(this.bp - 1)
-/*      */           });
-/*      */     }
-/*      */   }
-/*      */
-/*      */   Object readPool(int paramInt) {
-/*      */     Symbol.ClassSymbol classSymbol;
-/*      */     ClassFile.NameAndType nameAndType;
-/*  493 */     Object object = this.poolObj[paramInt];
-/*  494 */     if (object != null) return object;
-/*      */
-/*  496 */     int i = this.poolIdx[paramInt];
-/*  497 */     if (i == 0) return null;
-/*      */
-/*  499 */     byte b = this.buf[i];
-/*  500 */     switch (b) {
-/*      */       case 1:
-/*  502 */         this.poolObj[paramInt] = this.names.fromUtf(this.buf, i + 3, getChar(i + 1));
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  555 */         return this.poolObj[paramInt];case 2: throw badClassFile("unicode.str.not.supported", new Object[0]);case 7: this.poolObj[paramInt] = readClassOrType(getChar(i + 1)); return this.poolObj[paramInt];case 8: this.poolObj[paramInt] = readName(getChar(i + 1)).toString(); return this.poolObj[paramInt];case 9: classSymbol = readClassSymbol(getChar(i + 1)); nameAndType = readNameAndType(getChar(i + 3)); this.poolObj[paramInt] = new Symbol.VarSymbol(0L, nameAndType.name, nameAndType.uniqueType.type, (Symbol)classSymbol); return this.poolObj[paramInt];case 10: case 11: classSymbol = readClassSymbol(getChar(i + 1)); nameAndType = readNameAndType(getChar(i + 3)); this.poolObj[paramInt] = new Symbol.MethodSymbol(0L, nameAndType.name, nameAndType.uniqueType.type, (Symbol)classSymbol); return this.poolObj[paramInt];case 12: this.poolObj[paramInt] = new ClassFile.NameAndType(readName(getChar(i + 1)), readType(getChar(i + 3)), this.types); return this.poolObj[paramInt];case 3: this.poolObj[paramInt] = Integer.valueOf(getInt(i + 1)); return this.poolObj[paramInt];case 4: this.poolObj[paramInt] = new Float(getFloat(i + 1)); return this.poolObj[paramInt];case 5: this.poolObj[paramInt] = new Long(getLong(i + 1)); return this.poolObj[paramInt];case 6: this.poolObj[paramInt] = new Double(getDouble(i + 1)); return this.poolObj[paramInt];case 15: skipBytes(4); return this.poolObj[paramInt];case 16: skipBytes(3); return this.poolObj[paramInt];case 18: skipBytes(5); return this.poolObj[paramInt];
-/*      */     }
-/*      */     throw badClassFile("bad.const.pool.tag", new Object[] { Byte.toString(b) });
-/*      */   }
-/*      */
-/*      */   Type readType(int paramInt) {
-/*  561 */     int i = this.poolIdx[paramInt];
-/*  562 */     return sigToType(this.buf, i + 3, getChar(i + 1));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Object readClassOrType(int paramInt) {
-/*  569 */     int i = this.poolIdx[paramInt];
-/*  570 */     char c = getChar(i + 1);
-/*  571 */     int j = i + 3;
-/*  572 */     Assert.check((this.buf[j] == 91 || this.buf[j + c - 1] != 59));
-/*      */
-/*      */
-/*  575 */     return (this.buf[j] == 91 || this.buf[j + c - 1] == 59) ?
-/*  576 */       sigToType(this.buf, j, c) :
-/*  577 */       enterClass(this.names.fromUtf(ClassFile.internalize(this.buf, j, c)));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   List<Type> readTypeParams(int paramInt) {
-/*  584 */     int i = this.poolIdx[paramInt];
-/*  585 */     return sigToTypeParams(this.buf, i + 3, getChar(i + 1));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   Symbol.ClassSymbol readClassSymbol(int paramInt) {
-/*  591 */     Object object = readPool(paramInt);
-/*  592 */     if (object != null && !(object instanceof Symbol.ClassSymbol))
-/*  593 */       throw badClassFile("bad.const.pool.entry", new Object[] { this.currentClassFile
-/*  594 */             .toString(), "CONSTANT_Class_info",
-/*  595 */             Integer.valueOf(paramInt) });
-/*  596 */     return (Symbol.ClassSymbol)object;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   Name readName(int paramInt) {
-/*  602 */     Object object = readPool(paramInt);
-/*  603 */     if (object != null && !(object instanceof Name))
-/*  604 */       throw badClassFile("bad.const.pool.entry", new Object[] { this.currentClassFile
-/*  605 */             .toString(), "CONSTANT_Utf8_info or CONSTANT_String_info",
-/*  606 */             Integer.valueOf(paramInt) });
-/*  607 */     return (Name)object;
-/*      */   } Type sigToType(byte[] paramArrayOfbyte, int paramInt1, int paramInt2) { this.signature = paramArrayOfbyte; this.sigp = paramInt1; this.siglimit = paramInt1 + paramInt2; return sigToType(); } Type sigToType() { int i; Type type1; List<Type> list; Type type2; List list1; List list2; Type.ForAll forAll; switch ((char)this.signature[this.sigp]) { case 'T': i = ++this.sigp; for (; this.signature[this.sigp] != 59; this.sigp++); this.sigp++; return this.sigEnterPhase ? (Type)Type.noType : findTypeVar(this.names.fromUtf(this.signature, i, this.sigp - 1 - i));case '+': this.sigp++; type1 = sigToType(); return (Type)new Type.WildcardType(type1, BoundKind.EXTENDS, (Symbol.TypeSymbol)this.syms.boundClass);case '*': this.sigp++; return (Type)new Type.WildcardType(this.syms.objectType, BoundKind.UNBOUND, (Symbol.TypeSymbol)this.syms.boundClass);case '-': this.sigp++; type1 = sigToType(); return (Type)new Type.WildcardType(type1, BoundKind.SUPER, (Symbol.TypeSymbol)this.syms.boundClass);case 'B': this.sigp++; return (Type)this.syms.byteType;case 'C': this.sigp++; return (Type)this.syms.charType;case 'D': this.sigp++; return (Type)this.syms.doubleType;case 'F': this.sigp++; return (Type)this.syms.floatType;case 'I': this.sigp++; return (Type)this.syms.intType;case 'J': this.sigp++; return (Type)this.syms.longType;case 'L': type1 = classSigToType(); if (this.sigp < this.siglimit && this.signature[this.sigp] == 46) throw badClassFile("deprecated inner class signature syntax (please recompile from source)", new Object[0]);  return type1;case 'S': this.sigp++; return (Type)this.syms.shortType;case 'V': this.sigp++; return (Type)this.syms.voidType;case 'Z': this.sigp++; return (Type)this.syms.booleanType;case '[': this.sigp++; return (Type)new Type.ArrayType(sigToType(), (Symbol.TypeSymbol)this.syms.arrayClass);case '(': this.sigp++; list = sigToTypes(')'); type2 = sigToType(); list1 = List.nil(); while (this.signature[this.sigp] == 94) { this.sigp++; list1 = list1.prepend(sigToType()); }  for (list2 = list1; list2.nonEmpty(); list2 = list2.tail) { if (((Type)list2.head).hasTag(TypeTag.TYPEVAR)) ((Type)list2.head).tsym.flags_field |= 0x800000000000L;  }  return (Type)new Type.MethodType(list, type2, list1.reverse(), (Symbol.TypeSymbol)this.syms.methodClass);case '<': this.typevars = this.typevars.dup(this.currentOwner); forAll = new Type.ForAll(sigToTypeParams(), sigToType()); this.typevars = this.typevars.leave(); return (Type)forAll; }  throw badClassFile("bad.signature", new Object[] { Convert.utf2string(this.signature, this.sigp, 10) }); } Type classSigToType() { if (this.signature[this.sigp] != 76) throw badClassFile("bad.class.signature", new Object[] { Convert.utf2string(this.signature, this.sigp, 10) });  this.sigp++; Type.JCNoType jCNoType = Type.noType; int i = this.sbp; while (true) { Type.ClassType classType; Symbol.ClassSymbol classSymbol; byte b = this.signature[this.sigp++]; switch (b) { case 59: classSymbol = enterClass(this.names.fromUtf(this.signatureBuffer, i, this.sbp - i)); try { return (Type)((jCNoType == Type.noType) ? classSymbol.erasure(this.types) : new Type.ClassType((Type)jCNoType, List.nil(), (Symbol.TypeSymbol)classSymbol)); } finally { this.sbp = i; } case 60: classSymbol = enterClass(this.names.fromUtf(this.signatureBuffer, i, this.sbp - i)); classType = new Type.ClassType((Type)jCNoType, sigToTypes('>'), (Symbol.TypeSymbol)classSymbol) { boolean completed = false; public Type getEnclosingType() { if (!this.completed) { this.completed = true; this.tsym.complete(); Type type = this.tsym.type.getEnclosingType(); if (type != Type.noType) { List list1 = super.getEnclosingType().allparams(); List list2 = type.allparams(); if (list2.length() != list1.length()) { super.setEnclosingType(ClassReader.this.types.erasure(type)); } else { super.setEnclosingType(ClassReader.this.types.subst(type, list2, list1)); }  } else { super.setEnclosingType((Type)Type.noType); }  }  return super.getEnclosingType(); } public void setEnclosingType(Type param1Type) { throw new UnsupportedOperationException(); } }
-/*      */             ; switch (this.signature[this.sigp++]) { case 59: if (this.sigp < this.signature.length && this.signature[this.sigp] == 46) { this.sigp += this.sbp - i + 3; this.signatureBuffer[this.sbp++] = 36; continue; }  this.sbp = i; return (Type)classType;case 46: this.signatureBuffer[this.sbp++] = 36; continue; }  throw new AssertionError(this.signature[this.sigp - 1]);case 46: if (classType != Type.noType) { classSymbol = enterClass(this.names.fromUtf(this.signatureBuffer, i, this.sbp - i)); classType = new Type.ClassType((Type)classType, List.nil(), (Symbol.TypeSymbol)classSymbol); }  this.signatureBuffer[this.sbp++] = 36; continue;case 47: this.signatureBuffer[this.sbp++] = 46; continue; }  this.signatureBuffer[this.sbp++] = b; }  } List<Type> sigToTypes(char paramChar) { List list1 = List.of(null); List list2 = list1; while (this.signature[this.sigp] != paramChar) list2 = list2.setTail(List.of(sigToType()));  this.sigp++; return list1.tail; } List<Type> sigToTypeParams(byte[] paramArrayOfbyte, int paramInt1, int paramInt2) { this.signature = paramArrayOfbyte; this.sigp = paramInt1; this.siglimit = paramInt1 + paramInt2; return sigToTypeParams(); } List<Type> sigToTypeParams() { List list = List.nil(); if (this.signature[this.sigp] == 60) { int i = ++this.sigp; this.sigEnterPhase = true; while (this.signature[this.sigp] != 62) list = list.prepend(sigToTypeParam());  this.sigEnterPhase = false; this.sigp = i; while (this.signature[this.sigp] != 62) sigToTypeParam();  this.sigp++; }  return list.reverse(); } Type sigToTypeParam() { Type.TypeVar typeVar; int i = this.sigp; for (; this.signature[this.sigp] != 58; this.sigp++); Name name = this.names.fromUtf(this.signature, i, this.sigp - i); if (this.sigEnterPhase) { typeVar = new Type.TypeVar(name, this.currentOwner, this.syms.botType); this.typevars.enter((Symbol)typeVar.tsym); } else { typeVar = (Type.TypeVar)findTypeVar(name); }  List list = List.nil(); boolean bool = false; if (this.signature[this.sigp] == 58 && this.signature[this.sigp + 1] == 58) { this.sigp++; bool = true; }  while (this.signature[this.sigp] == 58) { this.sigp++; list = list.prepend(sigToType()); }  if (!this.sigEnterPhase) this.types.setBounds(typeVar, list.reverse(), bool);  return (Type)typeVar; } Type findTypeVar(Name paramName) { Scope.Entry entry = this.typevars.lookup(paramName); if (entry.scope != null) return entry.sym.type;  if (this.readingClassAttr) { Type.TypeVar typeVar = new Type.TypeVar(paramName, this.currentOwner, this.syms.botType); this.missingTypeVariables = this.missingTypeVariables.prepend(typeVar); return (Type)typeVar; }  throw badClassFile("undecl.type.var", new Object[] { paramName }); } protected enum AttributeKind {
-/*      */     CLASS, MEMBER; } protected abstract class AttributeReader {
-/*      */     protected final Name name; protected final ClassFile.Version version; protected final Set<AttributeKind> kinds; protected AttributeReader(Name param1Name, ClassFile.Version param1Version, Set<AttributeKind> param1Set) { this.name = param1Name; this.version = param1Version; this.kinds = param1Set; } protected boolean accepts(AttributeKind param1AttributeKind) { if (this.kinds.contains(param1AttributeKind)) { if (ClassReader.this.majorVersion > this.version.major || (ClassReader.this.majorVersion == this.version.major && ClassReader.this.minorVersion >= this.version.minor)) return true;  if (ClassReader.this.lintClassfile && !ClassReader.this.warnedAttrs.contains(this.name)) { JavaFileObject javaFileObject = ClassReader.this.log.useSource(ClassReader.this.currentClassFile); try { ClassReader.this.log.warning(Lint.LintCategory.CLASSFILE, (JCDiagnostic.DiagnosticPosition)null, "future.attr", new Object[] { this.name, Integer.valueOf(this.version.major), Integer.valueOf(this.version.minor), Integer.valueOf(this.this$0.majorVersion), Integer.valueOf(this.this$0.minorVersion) }); } finally { ClassReader.this.log.useSource(javaFileObject); }  ClassReader.this.warnedAttrs.add(this.name); }  }  return false; } protected abstract void read(Symbol param1Symbol, int param1Int); } private void initAttributeReaders() { AttributeReader[] arrayOfAttributeReader = { new AttributeReader(this.names.Code, ClassFile.Version.V45_3, this.MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { if (ClassReader.this.readAllOfClassFile || ClassReader.this.saveParameterNames) { ((Symbol.MethodSymbol)param1Symbol).code = ClassReader.this.readCode(param1Symbol); } else { ClassReader.this.bp += param1Int; }  } }
-/*      */         , new AttributeReader(this.names.ConstantValue, ClassFile.Version.V45_3, this.MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { Object object = ClassReader.this.readPool(ClassReader.this.nextChar()); if ((param1Symbol.flags() & 0x10L) != 0L) ((Symbol.VarSymbol)param1Symbol).setData(object);  } }
-/*  613 */         , new AttributeReader(this.names.Deprecated, ClassFile.Version.V45_3, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { param1Symbol.flags_field |= 0x20000L; } }, new AttributeReader(this.names.Exceptions, ClassFile.Version.V45_3, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { char c = ClassReader.this.nextChar(); List list = List.nil(); for (byte b = 0; b < c; b++) list = list.prepend((ClassReader.this.readClassSymbol(ClassReader.this.nextChar())).type);  if (param1Symbol.type.getThrownTypes().isEmpty()) (param1Symbol.type.asMethodType()).thrown = list.reverse();  } }, new AttributeReader(this.names.InnerClasses, ClassFile.Version.V45_3, this.CLASS_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)param1Symbol; ClassReader.this.readInnerClasses(classSymbol); } }, new AttributeReader(this.names.LocalVariableTable, ClassFile.Version.V45_3, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { int i = ClassReader.this.bp + param1Int; if (ClassReader.this.saveParameterNames && !ClassReader.this.sawMethodParameters) { char c = ClassReader.this.nextChar(); for (byte b = 0; b < c; b++) { char c1 = ClassReader.this.nextChar(); char c2 = ClassReader.this.nextChar(); char c3 = ClassReader.this.nextChar(); char c4 = ClassReader.this.nextChar(); char c5 = ClassReader.this.nextChar(); if (c1 == '\000') { if (c5 >= ClassReader.this.parameterNameIndices.length) { int j = Math.max(c5, ClassReader.this.parameterNameIndices.length + 8); ClassReader.this.parameterNameIndices = Arrays.copyOf(ClassReader.this.parameterNameIndices, j); }  ClassReader.this.parameterNameIndices[c5] = c3; ClassReader.this.haveParameterNameIndices = true; }  }  }  ClassReader.this.bp = i; } }, new AttributeReader(this.names.MethodParameters, ClassFile.Version.V52, this.MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { int i = ClassReader.this.bp + param1Int; if (ClassReader.this.saveParameterNames) { ClassReader.this.sawMethodParameters = true; int j = ClassReader.this.nextByte(); ClassReader.this.parameterNameIndices = new int[j]; ClassReader.this.haveParameterNameIndices = true; for (byte b = 0; b < j; b++) { char c1 = ClassReader.this.nextChar(); char c2 = ClassReader.this.nextChar(); ClassReader.this.parameterNameIndices[b] = c1; }  }  ClassReader.this.bp = i; } }, new AttributeReader(this.names.SourceFile, ClassFile.Version.V45_3, this.CLASS_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)param1Symbol; Name name = ClassReader.this.readName(ClassReader.this.nextChar()); classSymbol.sourcefile = (JavaFileObject)new SourceFileObject(name, classSymbol.flatname); String str = name.toString(); if (classSymbol.owner.kind == 1 && str.endsWith(".java") && !str.equals(classSymbol.name.toString() + ".java")) classSymbol.flags_field |= 0x100000000000L;  } }, new AttributeReader(this.names.Synthetic, ClassFile.Version.V45_3, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { if (ClassReader.this.allowGenerics || (param1Symbol.flags_field & 0x80000000L) == 0L) param1Symbol.flags_field |= 0x1000L;  } }, new AttributeReader(this.names.EnclosingMethod, ClassFile.Version.V49, this.CLASS_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { int i = ClassReader.this.bp + param1Int; ClassReader.this.readEnclosingMethodAttr(param1Symbol); ClassReader.this.bp = i; } }, new AttributeReader(this.names.Signature, ClassFile.Version.V49, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected boolean accepts(AttributeKind param1AttributeKind) { return (super.accepts(param1AttributeKind) && ClassReader.this.allowGenerics); } protected void read(Symbol param1Symbol, int param1Int) { if (param1Symbol.kind == 2) { Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)param1Symbol; ClassReader.this.readingClassAttr = true; try { Type.ClassType classType = (Type.ClassType)classSymbol.type; Assert.check((classSymbol == ClassReader.this.currentOwner)); classType.typarams_field = ClassReader.this.readTypeParams(ClassReader.this.nextChar()); classType.supertype_field = ClassReader.this.sigToType(); ListBuffer listBuffer = new ListBuffer(); for (; ClassReader.this.sigp != ClassReader.this.siglimit; listBuffer.append(ClassReader.this.sigToType())); classType.interfaces_field = listBuffer.toList(); } finally { ClassReader.this.readingClassAttr = false; }  } else { List list = param1Symbol.type.getThrownTypes(); param1Symbol.type = ClassReader.this.readType(ClassReader.this.nextChar()); if (param1Symbol.kind == 16 && param1Symbol.type.getThrownTypes().isEmpty()) (param1Symbol.type.asMethodType()).thrown = list;  }  } }, new AttributeReader(this.names.AnnotationDefault, ClassFile.Version.V49, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { ClassReader.this.attachAnnotationDefault(param1Symbol); } }, new AttributeReader(this.names.RuntimeInvisibleAnnotations, ClassFile.Version.V49, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { ClassReader.this.attachAnnotations(param1Symbol); } }, new AttributeReader(this.names.RuntimeInvisibleParameterAnnotations, ClassFile.Version.V49, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { ClassReader.this.attachParameterAnnotations(param1Symbol); } }, new AttributeReader(this.names.RuntimeVisibleAnnotations, ClassFile.Version.V49, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { ClassReader.this.attachAnnotations(param1Symbol); } }, new AttributeReader(this.names.RuntimeVisibleParameterAnnotations, ClassFile.Version.V49, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { ClassReader.this.attachParameterAnnotations(param1Symbol); } }, new AttributeReader(this.names.Annotation, ClassFile.Version.V49, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { if (ClassReader.this.allowAnnotations) param1Symbol.flags_field |= 0x2000L;  } }, new AttributeReader(this.names.Bridge, ClassFile.Version.V49, this.MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { param1Symbol.flags_field |= 0x80000000L; if (!ClassReader.this.allowGenerics) param1Symbol.flags_field &= 0xFFFFFFFFFFFFEFFFL;  } }, new AttributeReader(this.names.Enum, ClassFile.Version.V49, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { param1Symbol.flags_field |= 0x4000L; } }, new AttributeReader(this.names.Varargs, ClassFile.Version.V49, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { if (ClassReader.this.allowVarargs) param1Symbol.flags_field |= 0x400000000L;  } }, new AttributeReader(this.names.RuntimeVisibleTypeAnnotations, ClassFile.Version.V52, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { ClassReader.this.attachTypeAnnotations(param1Symbol); } }, new AttributeReader(this.names.RuntimeInvisibleTypeAnnotations, ClassFile.Version.V52, this.CLASS_OR_MEMBER_ATTRIBUTE) { protected void read(Symbol param1Symbol, int param1Int) { ClassReader.this.attachTypeAnnotations(param1Symbol); } } }; for (AttributeReader attributeReader : arrayOfAttributeReader) this.attributeReaders.put(attributeReader.name, attributeReader);  } void unrecognized(Name paramName) { if (this.checkClassFile) printCCF("ccf.unrecognized.attribute", paramName);  } protected void readEnclosingMethodAttr(Symbol paramSymbol) { paramSymbol.owner.members().remove(paramSymbol); Symbol.ClassSymbol classSymbol1 = (Symbol.ClassSymbol)paramSymbol; Symbol.ClassSymbol classSymbol2 = readClassSymbol(nextChar()); ClassFile.NameAndType nameAndType = readNameAndType(nextChar()); if (classSymbol2.members_field == null) throw badClassFile("bad.enclosing.class", new Object[] { classSymbol1, classSymbol2 });  Symbol.MethodSymbol methodSymbol = findMethod(nameAndType, classSymbol2.members_field, classSymbol1.flags()); if (nameAndType != null && methodSymbol == null) throw badClassFile("bad.enclosing.method", new Object[] { classSymbol1 });  classSymbol1.name = simpleBinaryName(classSymbol1.flatname, classSymbol2.flatname); classSymbol1.owner = (methodSymbol != null) ? (Symbol)methodSymbol : (Symbol)classSymbol2; if (classSymbol1.name.isEmpty()) { classSymbol1.fullname = this.names.empty; } else { classSymbol1.fullname = Symbol.ClassSymbol.formFullName(classSymbol1.name, classSymbol1.owner); }  if (methodSymbol != null) { ((Type.ClassType)paramSymbol.type).setEnclosingType(methodSymbol.type); } else if ((classSymbol1.flags_field & 0x8L) == 0L) { ((Type.ClassType)paramSymbol.type).setEnclosingType(classSymbol2.type); } else { ((Type.ClassType)paramSymbol.type).setEnclosingType((Type)Type.noType); }  enterTypevars((Symbol)classSymbol1); if (!this.missingTypeVariables.isEmpty()) { ListBuffer listBuffer = new ListBuffer(); for (Type type : this.missingTypeVariables) listBuffer.append(findTypeVar(type.tsym.name));  this.foundTypeVariables = listBuffer.toList(); } else { this.foundTypeVariables = List.nil(); }  } private Name simpleBinaryName(Name paramName1, Name paramName2) { String str = paramName1.toString().substring(paramName2.toString().length()); if (str.length() < 1 || str.charAt(0) != '$') throw badClassFile("bad.enclosing.method", new Object[] { paramName1 });  byte b = 1; while (b < str.length() && isAsciiDigit(str.charAt(b))) b++;  return this.names.fromString(str.substring(b)); } private Symbol.MethodSymbol findMethod(ClassFile.NameAndType paramNameAndType, Scope paramScope, long paramLong) { if (paramNameAndType == null) return null;  Type.MethodType methodType = paramNameAndType.uniqueType.type.asMethodType(); for (Scope.Entry entry = paramScope.lookup(paramNameAndType.name); entry.scope != null; entry = entry.next()) { if (entry.sym.kind == 16 && isSameBinaryType(entry.sym.type.asMethodType(), methodType)) return (Symbol.MethodSymbol)entry.sym;  }  if (paramNameAndType.name != this.names.init) return null;  if ((paramLong & 0x200L) != 0L) return null;  if (paramNameAndType.uniqueType.type.getParameterTypes().isEmpty()) return null;  paramNameAndType.setType((Type)new Type.MethodType((paramNameAndType.uniqueType.type.getParameterTypes()).tail, paramNameAndType.uniqueType.type.getReturnType(), paramNameAndType.uniqueType.type.getThrownTypes(), (Symbol.TypeSymbol)this.syms.methodClass)); return findMethod(paramNameAndType, paramScope, paramLong); } private boolean isSameBinaryType(Type.MethodType paramMethodType1, Type.MethodType paramMethodType2) { List list1 = this.types.erasure(paramMethodType1.getParameterTypes()).prepend(this.types.erasure(paramMethodType1.getReturnType())); List list2 = paramMethodType2.getParameterTypes().prepend(paramMethodType2.getReturnType()); while (!list1.isEmpty() && !list2.isEmpty()) { if (((Type)list1.head).tsym != ((Type)list2.head).tsym) return false;  list1 = list1.tail; list2 = list2.tail; }  return (list1.isEmpty() && list2.isEmpty()); } private static boolean isAsciiDigit(char paramChar) { return ('0' <= paramChar && paramChar <= '9'); } void readMemberAttrs(Symbol paramSymbol) { readAttrs(paramSymbol, AttributeKind.MEMBER); } ClassFile.NameAndType readNameAndType(int paramInt) { Object object = readPool(paramInt);
-/*  614 */     if (object != null && !(object instanceof ClassFile.NameAndType))
-/*  615 */       throw badClassFile("bad.const.pool.entry", new Object[] { this.currentClassFile
-/*  616 */             .toString(), "CONSTANT_NameAndType_info",
-/*  617 */             Integer.valueOf(paramInt) });
-/*  618 */     return (ClassFile.NameAndType)object; }
-/*      */   void readAttrs(Symbol paramSymbol, AttributeKind paramAttributeKind) { char c = nextChar(); for (byte b = 0; b < c; b++) { Name name = readName(nextChar()); int i = nextInt(); AttributeReader attributeReader = this.attributeReaders.get(name); if (attributeReader != null && attributeReader.accepts(paramAttributeKind)) { attributeReader.read(paramSymbol, i); } else { unrecognized(name); this.bp += i; }  }  }
-/*      */   void readClassAttrs(Symbol.ClassSymbol paramClassSymbol) { readAttrs((Symbol)paramClassSymbol, AttributeKind.CLASS); }
-/*      */   Code readCode(Symbol paramSymbol) { nextChar(); nextChar(); int i = nextInt(); this.bp += i; char c = nextChar(); this.bp += c * 8; readMemberAttrs(paramSymbol); return null; }
-/*      */   void attachAnnotations(Symbol paramSymbol) { char c = nextChar(); if (c != '\000') { ListBuffer listBuffer = new ListBuffer(); for (byte b = 0; b < c; b++) { CompoundAnnotationProxy compoundAnnotationProxy = readCompoundAnnotation(); if (compoundAnnotationProxy.type.tsym == this.syms.proprietaryType.tsym) { paramSymbol.flags_field |= 0x4000000000L; } else if (compoundAnnotationProxy.type.tsym == this.syms.profileType.tsym) { if (this.profile != Profile.DEFAULT) for (Pair<Name, Attribute> pair : compoundAnnotationProxy.values) { if (pair.fst == this.names.value && pair.snd instanceof Attribute.Constant) { Attribute.Constant constant = (Attribute.Constant)pair.snd; if (constant.type == this.syms.intType && ((Integer)constant.value).intValue() > this.profile.value) paramSymbol.flags_field |= 0x200000000000L;  }  }   } else { listBuffer.append(compoundAnnotationProxy); }  }  this.annotate.normal(new AnnotationCompleter(paramSymbol, listBuffer.toList())); }  }
-/*      */   void attachParameterAnnotations(Symbol paramSymbol) { Symbol.MethodSymbol methodSymbol = (Symbol.MethodSymbol)paramSymbol; int i = this.buf[this.bp++] & 0xFF; List list = methodSymbol.params(); byte b = 0; while (list.tail != null) { attachAnnotations((Symbol)list.head); list = list.tail; b++; }  if (b != i)
-/*      */       throw badClassFile("bad.runtime.invisible.param.annotations", new Object[] { methodSymbol });  }
-/*      */   void attachTypeAnnotations(Symbol paramSymbol) { char c = nextChar(); if (c != '\000') { ListBuffer listBuffer = new ListBuffer(); for (byte b = 0; b < c; b++)
-/*      */         listBuffer.append(readTypeAnnotation());  this.annotate.normal(new TypeAnnotationCompleter(paramSymbol, listBuffer.toList())); }  }
-/*      */   void attachAnnotationDefault(Symbol paramSymbol) { Symbol.MethodSymbol methodSymbol = (Symbol.MethodSymbol)paramSymbol; Attribute attribute = readAttributeValue(); methodSymbol.defaultValue = attribute; this.annotate.normal(new AnnotationDefaultCompleter(methodSymbol, attribute)); }
-/*      */   Type readTypeOrClassSymbol(int paramInt) { if (this.buf[this.poolIdx[paramInt]] == 7)
-/*      */       return (readClassSymbol(paramInt)).type;  return readType(paramInt); }
-/*      */   Type readEnumType(int paramInt) { int i = this.poolIdx[paramInt]; char c = getChar(i + 1); if (this.buf[i + c + 2] != 59)
-/*  631 */       return (enterClass(readName(paramInt))).type;  return readType(paramInt); } protected ClassReader(Context paramContext, boolean paramBoolean) { this.sigEnterPhase = false;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  744 */     this.signatureBuffer = new byte[0];
-/*  745 */     this.sbp = 0;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  990 */     this
-/*  991 */       .CLASS_ATTRIBUTE = EnumSet.of(AttributeKind.CLASS);
-/*  992 */     this
-/*  993 */       .MEMBER_ATTRIBUTE = EnumSet.of(AttributeKind.MEMBER);
-/*  994 */     this
-/*  995 */       .CLASS_OR_MEMBER_ATTRIBUTE = EnumSet.of(AttributeKind.CLASS, AttributeKind.MEMBER);
-/*      */
-/*  997 */     this.attributeReaders = new HashMap<>();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1389 */     this.readingClassAttr = false;
-/* 1390 */     this.missingTypeVariables = List.nil();
-/* 1391 */     this.foundTypeVariables = List.nil();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2484 */     this.filling = false;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2609 */     this.cachedCompletionFailure = new Symbol.CompletionFailure(null, (JCDiagnostic)null);
-/*      */
-/*      */
-/* 2612 */     this.cachedCompletionFailure.setStackTrace(new StackTraceElement[0]);
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2739 */     this.verbosePath = true; if (paramBoolean) paramContext.put(classReaderKey, this);  this.names = Names.instance(paramContext); this.syms = Symtab.instance(paramContext); this.types = Types.instance(paramContext); this.fileManager = (JavaFileManager)paramContext.get(JavaFileManager.class); if (this.fileManager == null) throw new AssertionError("FileManager initialization error");  this.diagFactory = JCDiagnostic.Factory.instance(paramContext); init(this.syms, paramBoolean); this.log = Log.instance(paramContext); Options options = Options.instance(paramContext); this.annotate = Annotate.instance(paramContext); this.verbose = options.isSet(Option.VERBOSE); this.checkClassFile = options.isSet("-checkclassfile"); Source source = Source.instance(paramContext); this.allowGenerics = source.allowGenerics(); this.allowVarargs = source.allowVarargs(); this.allowAnnotations = source.allowAnnotations(); this.allowSimplifiedVarargs = source.allowSimplifiedVarargs(); this.saveParameterNames = options.isSet("save-parameter-names"); this.cacheCompletionFailure = options.isUnset("dev"); this.preferSource = "source".equals(options.get("-Xprefer")); this.profile = Profile.instance(paramContext); this.completionFailureName = options.isSet("failcomplete") ? this.names.fromString(options.get("failcomplete")) : null; this.typevars = new Scope((Symbol)this.syms.noSymbol); this.lintClassfile = Lint.instance(paramContext).isEnabled(Lint.LintCategory.CLASSFILE); initAttributeReaders(); } CompoundAnnotationProxy readCompoundAnnotation() { Type type = readTypeOrClassSymbol(nextChar()); char c = nextChar(); ListBuffer listBuffer = new ListBuffer(); for (byte b = 0; b < c; b++) { Name name = readName(nextChar()); Attribute attribute = readAttributeValue(); listBuffer.append(new Pair(name, attribute)); }  return new CompoundAnnotationProxy(type, listBuffer.toList()); } TypeAnnotationProxy readTypeAnnotation() { TypeAnnotationPosition typeAnnotationPosition = readPosition(); CompoundAnnotationProxy compoundAnnotationProxy = readCompoundAnnotation(); return new TypeAnnotationProxy(compoundAnnotationProxy, typeAnnotationPosition); } TypeAnnotationPosition readPosition() { char c; byte b1; int i = nextByte(); if (!TargetType.isValidTargetTypeValue(i)) throw badClassFile("bad.type.annotation.value", new Object[] { String.format("0x%02X", new Object[] { Integer.valueOf(i) }) });  TypeAnnotationPosition typeAnnotationPosition = new TypeAnnotationPosition(); TargetType targetType = TargetType.fromTargetTypeValue(i); typeAnnotationPosition.type = targetType; switch (targetType) { case CLASS: case SOURCE: case null: case null: typeAnnotationPosition.offset = nextChar(); break;case null: case null: c = nextChar(); typeAnnotationPosition.lvarOffset = new int[c]; typeAnnotationPosition.lvarLength = new int[c]; typeAnnotationPosition.lvarIndex = new int[c]; for (b1 = 0; b1 < c; b1++) { typeAnnotationPosition.lvarOffset[b1] = nextChar(); typeAnnotationPosition.lvarLength[b1] = nextChar(); typeAnnotationPosition.lvarIndex[b1] = nextChar(); }  break;case null: typeAnnotationPosition.exception_index = nextChar(); break;case null: break;case null: case null: typeAnnotationPosition.parameter_index = nextByte(); break;case null: case null: typeAnnotationPosition.parameter_index = nextByte(); typeAnnotationPosition.bound_index = nextByte(); break;case null: typeAnnotationPosition.type_index = nextChar(); break;case null: typeAnnotationPosition.type_index = nextChar(); break;case null: typeAnnotationPosition.parameter_index = nextByte(); break;case null: case null: case null: case null: case null: typeAnnotationPosition.offset = nextChar(); typeAnnotationPosition.type_index = nextByte(); break;case null: case null: break;case null: throw new AssertionError("jvm.ClassReader: UNKNOWN target type should never occur!");default: throw new AssertionError("jvm.ClassReader: Unknown target type for position: " + typeAnnotationPosition); }  int j = nextByte(); ListBuffer listBuffer = new ListBuffer(); for (byte b2 = 0; b2 < j * 2; b2++) listBuffer = listBuffer.append(Integer.valueOf(nextByte()));  typeAnnotationPosition.location = TypeAnnotationPosition.getTypePathFromBinary((List)listBuffer.toList()); return typeAnnotationPosition; } Attribute readAttributeValue() { char c2; ListBuffer listBuffer; byte b; char c1 = (char)this.buf[this.bp++]; switch (c1) { case 'B': return (Attribute)new Attribute.Constant((Type)this.syms.byteType, readPool(nextChar()));case 'C': return (Attribute)new Attribute.Constant((Type)this.syms.charType, readPool(nextChar()));case 'D': return (Attribute)new Attribute.Constant((Type)this.syms.doubleType, readPool(nextChar()));case 'F': return (Attribute)new Attribute.Constant((Type)this.syms.floatType, readPool(nextChar()));case 'I': return (Attribute)new Attribute.Constant((Type)this.syms.intType, readPool(nextChar()));case 'J': return (Attribute)new Attribute.Constant((Type)this.syms.longType, readPool(nextChar()));case 'S': return (Attribute)new Attribute.Constant((Type)this.syms.shortType, readPool(nextChar()));case 'Z': return (Attribute)new Attribute.Constant((Type)this.syms.booleanType, readPool(nextChar()));case 's': return (Attribute)new Attribute.Constant(this.syms.stringType, readPool(nextChar()).toString());case 'e': return new EnumAttributeProxy(readEnumType(nextChar()), readName(nextChar()));case 'c': return (Attribute)new Attribute.Class(this.types, readTypeOrClassSymbol(nextChar()));case '[': c2 = nextChar(); listBuffer = new ListBuffer(); for (b = 0; b < c2; b++) listBuffer.append(readAttributeValue());  return new ArrayAttributeProxy(listBuffer.toList());case '@': return readCompoundAnnotation(); }  throw new AssertionError("unknown annotation tag '" + c1 + "'"); } static class EnumAttributeProxy extends Attribute {
-/*      */     Type enumType; Name enumerator; public EnumAttributeProxy(Type param1Type, Name param1Name) { super(null); this.enumType = param1Type; this.enumerator = param1Name; } public void accept(Visitor param1Visitor) { ((ProxyVisitor)param1Visitor).visitEnumAttributeProxy(this); } public String toString() { return "/*proxy enum*/" + this.enumType + "." + this.enumerator; } } static class ArrayAttributeProxy extends Attribute {
-/*      */     List<Attribute> values; ArrayAttributeProxy(List<Attribute> param1List) { super(null); this.values = param1List; } public void accept(Visitor param1Visitor) { ((ProxyVisitor)param1Visitor).visitArrayAttributeProxy(this); } public String toString() { return "{" + this.values + "}"; } } static class CompoundAnnotationProxy extends Attribute {
-/*      */     final List<Pair<Name, Attribute>> values; public CompoundAnnotationProxy(Type param1Type, List<Pair<Name, Attribute>> param1List) { super(param1Type); this.values = param1List; } public void accept(Visitor param1Visitor) { ((ProxyVisitor)param1Visitor).visitCompoundAnnotationProxy(this); } public String toString() { StringBuilder stringBuilder = new StringBuilder(); stringBuilder.append("@"); stringBuilder.append((CharSequence)this.type.tsym.getQualifiedName()); stringBuilder.append("/*proxy*/{"); boolean bool = true; List<Pair<Name, Attribute>> list = this.values; for (; list.nonEmpty(); list = list.tail) { Pair pair = (Pair)list.head; if (!bool) stringBuilder.append(",");  bool = false; stringBuilder.append((CharSequence)pair.fst); stringBuilder.append("="); stringBuilder.append(pair.snd); }  stringBuilder.append("}"); return stringBuilder.toString(); } } static class TypeAnnotationProxy {
-/*      */     final CompoundAnnotationProxy compound; final TypeAnnotationPosition position; public TypeAnnotationProxy(CompoundAnnotationProxy param1CompoundAnnotationProxy, TypeAnnotationPosition param1TypeAnnotationPosition) { this.compound = param1CompoundAnnotationProxy; this.position = param1TypeAnnotationPosition; } } class AnnotationDeproxy implements ProxyVisitor {
-/* 2744 */     private Symbol.ClassSymbol requestingOwner = (ClassReader.this.currentOwner.kind == 16) ? ClassReader.this.currentOwner.enclClass() : (Symbol.ClassSymbol)ClassReader.this.currentOwner; Attribute result; Type type; List<Attribute.Compound> deproxyCompoundList(List<CompoundAnnotationProxy> param1List) { ListBuffer listBuffer = new ListBuffer(); for (List<CompoundAnnotationProxy> list = param1List; list.nonEmpty(); list = list.tail) listBuffer.append(deproxyCompound((CompoundAnnotationProxy)list.head));  return listBuffer.toList(); } Attribute.Compound deproxyCompound(CompoundAnnotationProxy param1CompoundAnnotationProxy) { ListBuffer listBuffer = new ListBuffer(); List<Pair<Name, Attribute>> list = param1CompoundAnnotationProxy.values; for (; list.nonEmpty(); list = list.tail) { Symbol.MethodSymbol methodSymbol = findAccessMethod(param1CompoundAnnotationProxy.type, (Name)((Pair)list.head).fst); listBuffer.append(new Pair(methodSymbol, deproxy(methodSymbol.type.getReturnType(), (Attribute)((Pair)list.head).snd))); }  return new Attribute.Compound(param1CompoundAnnotationProxy.type, listBuffer.toList()); } Symbol.MethodSymbol findAccessMethod(Type param1Type, Name param1Name) { Symbol.CompletionFailure completionFailure = null; try { Scope.Entry entry = param1Type.tsym.members().lookup(param1Name); for (; entry.scope != null; entry = entry.next()) { Symbol symbol = entry.sym; if (symbol.kind == 16 && symbol.type.getParameterTypes().length() == 0) return (Symbol.MethodSymbol)symbol;  }  } catch (Symbol.CompletionFailure completionFailure1) { completionFailure = completionFailure1; }  JavaFileObject javaFileObject = ClassReader.this.log.useSource(this.requestingOwner.classfile); try { if (ClassReader.this.lintClassfile) if (completionFailure == null) { ClassReader.this.log.warning("annotation.method.not.found", new Object[] { param1Type, param1Name }); } else { ClassReader.this.log.warning("annotation.method.not.found.reason", new Object[] { param1Type, param1Name, completionFailure.getDetailValue() }); }   } finally { ClassReader.this.log.useSource(javaFileObject); }  Type.MethodType methodType = new Type.MethodType(List.nil(), ClassReader.this.syms.botType, List.nil(), (Symbol.TypeSymbol)ClassReader.this.syms.methodClass); return new Symbol.MethodSymbol(1025L, param1Name, (Type)methodType, (Symbol)param1Type.tsym); } Attribute deproxy(Type param1Type, Attribute param1Attribute) { Type type = this.type; try { this.type = param1Type; param1Attribute.accept(this); return this.result; } finally { this.type = type; }  } public void visitConstant(Attribute.Constant param1Constant) { this.result = (Attribute)param1Constant; } public void visitClass(Attribute.Class param1Class) { this.result = (Attribute)param1Class; } public void visitEnum(Attribute.Enum param1Enum) { throw new AssertionError(); } public void visitCompound(Attribute.Compound param1Compound) { throw new AssertionError(); } public void visitArray(Attribute.Array param1Array) { throw new AssertionError(); } public void visitError(Attribute.Error param1Error) { throw new AssertionError(); } public void visitEnumAttributeProxy(EnumAttributeProxy param1EnumAttributeProxy) { Symbol.TypeSymbol typeSymbol = param1EnumAttributeProxy.enumType.tsym; Symbol.VarSymbol varSymbol = null; Symbol.CompletionFailure completionFailure = null; try { Scope.Entry entry = typeSymbol.members().lookup(param1EnumAttributeProxy.enumerator); for (; entry.scope != null; entry = entry.next()) { if (entry.sym.kind == 4) { varSymbol = (Symbol.VarSymbol)entry.sym; break; }  }  } catch (Symbol.CompletionFailure completionFailure1) { completionFailure = completionFailure1; }  if (varSymbol == null) { if (completionFailure != null) { ClassReader.this.log.warning("unknown.enum.constant.reason", new Object[] { this.this$0.currentClassFile, typeSymbol, param1EnumAttributeProxy.enumerator, completionFailure.getDiagnostic() }); } else { ClassReader.this.log.warning("unknown.enum.constant", new Object[] { this.this$0.currentClassFile, typeSymbol, param1EnumAttributeProxy.enumerator }); }  this.result = (Attribute)new Attribute.Enum(typeSymbol.type, new Symbol.VarSymbol(0L, param1EnumAttributeProxy.enumerator, ClassReader.this.syms.botType, (Symbol)typeSymbol)); } else { this.result = (Attribute)new Attribute.Enum(typeSymbol.type, varSymbol); }  } public void visitArrayAttributeProxy(ArrayAttributeProxy param1ArrayAttributeProxy) { int i = param1ArrayAttributeProxy.values.length(); Attribute[] arrayOfAttribute = new Attribute[i]; Type type = ClassReader.this.types.elemtype(this.type); byte b = 0; for (List<Attribute> list = param1ArrayAttributeProxy.values; list.nonEmpty(); list = list.tail) arrayOfAttribute[b++] = deproxy(type, (Attribute)list.head);  this.result = (Attribute)new Attribute.Array(this.type, arrayOfAttribute); } public void visitCompoundAnnotationProxy(CompoundAnnotationProxy param1CompoundAnnotationProxy) { this.result = (Attribute)deproxyCompound(param1CompoundAnnotationProxy); } } private void fillIn(Symbol.PackageSymbol paramPackageSymbol) throws IOException { if (paramPackageSymbol.members_field == null) paramPackageSymbol.members_field = new Scope((Symbol)paramPackageSymbol);
-/* 2745 */     String str = paramPackageSymbol.fullname.toString();
-/*      */
-/* 2747 */     EnumSet<JavaFileObject.Kind> enumSet1 = getPackageFileKinds();
-/*      */
-/* 2749 */     fillIn(paramPackageSymbol, StandardLocation.PLATFORM_CLASS_PATH, this.fileManager
-/* 2750 */         .list(StandardLocation.PLATFORM_CLASS_PATH, str,
-/*      */
-/* 2752 */           EnumSet.of(JavaFileObject.Kind.CLASS), false));
-/*      */
-/*      */
-/* 2755 */     EnumSet<JavaFileObject.Kind> enumSet2 = EnumSet.copyOf(enumSet1);
-/* 2756 */     enumSet2.remove(JavaFileObject.Kind.SOURCE);
-/* 2757 */     boolean bool1 = !enumSet2.isEmpty() ? true : false;
-/*      */
-/* 2759 */     EnumSet<JavaFileObject.Kind> enumSet3 = EnumSet.copyOf(enumSet1);
-/* 2760 */     enumSet3.remove(JavaFileObject.Kind.CLASS);
-/* 2761 */     boolean bool2 = !enumSet3.isEmpty() ? true : false;
-/*      */
-/* 2763 */     boolean bool = this.fileManager.hasLocation(StandardLocation.SOURCE_PATH);
-/*      */
-/* 2765 */     if (this.verbose && this.verbosePath &&
-/* 2766 */       this.fileManager instanceof StandardJavaFileManager) {
-/* 2767 */       StandardJavaFileManager standardJavaFileManager = (StandardJavaFileManager)this.fileManager;
-/* 2768 */       if (bool && bool2) {
-/* 2769 */         List list = List.nil();
-/* 2770 */         for (File file : standardJavaFileManager.getLocation(StandardLocation.SOURCE_PATH)) {
-/* 2771 */           list = list.prepend(file);
-/*      */         }
-/* 2773 */         this.log.printVerbose("sourcepath", new Object[] { list.reverse().toString() });
-/* 2774 */       } else if (bool2) {
-/* 2775 */         List list = List.nil();
-/* 2776 */         for (File file : standardJavaFileManager.getLocation(StandardLocation.CLASS_PATH)) {
-/* 2777 */           list = list.prepend(file);
-/*      */         }
-/* 2779 */         this.log.printVerbose("sourcepath", new Object[] { list.reverse().toString() });
-/*      */       }
-/* 2781 */       if (bool1) {
-/* 2782 */         List list = List.nil();
-/* 2783 */         for (File file : standardJavaFileManager.getLocation(StandardLocation.PLATFORM_CLASS_PATH)) {
-/* 2784 */           list = list.prepend(file);
-/*      */         }
-/* 2786 */         for (File file : standardJavaFileManager.getLocation(StandardLocation.CLASS_PATH)) {
-/* 2787 */           list = list.prepend(file);
-/*      */         }
-/* 2789 */         this.log.printVerbose("classpath", new Object[] { list.reverse().toString() });
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/* 2794 */     if (bool2 && !bool) {
-/* 2795 */       fillIn(paramPackageSymbol, StandardLocation.CLASS_PATH, this.fileManager
-/* 2796 */           .list(StandardLocation.CLASS_PATH, str, enumSet1, false));
-/*      */
-/*      */     }
-/*      */     else {
-/*      */
-/* 2801 */       if (bool1) {
-/* 2802 */         fillIn(paramPackageSymbol, StandardLocation.CLASS_PATH, this.fileManager
-/* 2803 */             .list(StandardLocation.CLASS_PATH, str, enumSet2, false));
-/*      */       }
-/*      */
-/*      */
-/* 2807 */       if (bool2) {
-/* 2808 */         fillIn(paramPackageSymbol, StandardLocation.SOURCE_PATH, this.fileManager
-/* 2809 */             .list(StandardLocation.SOURCE_PATH, str, enumSet3, false));
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/* 2814 */     this.verbosePath = false; } class AnnotationDefaultCompleter extends AnnotationDeproxy implements Annotate.Worker {
-/*      */     final Symbol.MethodSymbol sym; final Attribute value; final JavaFileObject classFile = ClassReader.this.currentClassFile; public String toString() { return " ClassReader store default for " + this.sym.owner + "." + this.sym + " is " + this.value; } AnnotationDefaultCompleter(Symbol.MethodSymbol param1MethodSymbol, Attribute param1Attribute) { this.sym = param1MethodSymbol; this.value = param1Attribute; } public void run() { JavaFileObject javaFileObject = ClassReader.this.currentClassFile; try { this.sym.defaultValue = null; ClassReader.this.currentClassFile = this.classFile; this.sym.defaultValue = deproxy(this.sym.type.getReturnType(), this.value); } finally { ClassReader.this.currentClassFile = javaFileObject; }  } } class AnnotationCompleter extends AnnotationDeproxy implements Annotate.Worker {
-/*      */     final Symbol sym; final List<CompoundAnnotationProxy> l; final JavaFileObject classFile; public String toString() { return " ClassReader annotate " + this.sym.owner + "." + this.sym + " with " + this.l; } AnnotationCompleter(Symbol param1Symbol, List<CompoundAnnotationProxy> param1List) { this.sym = param1Symbol; this.l = param1List; this.classFile = ClassReader.this.currentClassFile; } public void run() { JavaFileObject javaFileObject = ClassReader.this.currentClassFile; try { ClassReader.this.currentClassFile = this.classFile; List<Attribute.Compound> list = deproxyCompoundList(this.l); if (this.sym.annotationsPendingCompletion()) { this.sym.setDeclarationAttributes(list); } else { this.sym.appendAttributes(list); }  } finally { ClassReader.this.currentClassFile = javaFileObject; }  } } class TypeAnnotationCompleter extends AnnotationCompleter {
-/*      */     List<TypeAnnotationProxy> proxies; TypeAnnotationCompleter(Symbol param1Symbol, List<TypeAnnotationProxy> param1List) { super(param1Symbol, List.nil()); this.proxies = param1List; } List<Attribute.TypeCompound> deproxyTypeCompoundList(List<TypeAnnotationProxy> param1List) { ListBuffer listBuffer = new ListBuffer(); for (TypeAnnotationProxy typeAnnotationProxy : param1List) { Attribute.Compound compound = deproxyCompound(typeAnnotationProxy.compound); Attribute.TypeCompound typeCompound = new Attribute.TypeCompound(compound, typeAnnotationProxy.position); listBuffer.add(typeCompound); }  return listBuffer.toList(); } public void run() { JavaFileObject javaFileObject = ClassReader.this.currentClassFile; try { ClassReader.this.currentClassFile = this.classFile; List<Attribute.TypeCompound> list = deproxyTypeCompoundList(this.proxies); this.sym.setTypeAttributes(list.prependList(this.sym.getRawTypeAttributes())); } finally { ClassReader.this.currentClassFile = javaFileObject; }  } } Symbol.VarSymbol readField() { long l = adjustFieldFlags(nextChar()); Name name = readName(nextChar()); Type type = readType(nextChar()); Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(l, name, type, this.currentOwner); readMemberAttrs((Symbol)varSymbol); return varSymbol; } Symbol.MethodSymbol readMethod() { Type.MethodType methodType; long l = adjustMethodFlags(nextChar()); Name name = readName(nextChar()); Type type = readType(nextChar()); if (this.currentOwner.isInterface() && (l & 0x400L) == 0L && !name.equals(this.names.clinit)) if (this.majorVersion > Target.JDK1_8.majorVersion || (this.majorVersion == Target.JDK1_8.majorVersion && this.minorVersion >= Target.JDK1_8.minorVersion)) { if ((l & 0x8L) == 0L) { this.currentOwner.flags_field |= 0x80000000000L; l |= 0x80000000400L; }  } else { throw badClassFile(((l & 0x8L) == 0L) ? "invalid.default.interface" : "invalid.static.interface", new Object[] { Integer.toString(this.majorVersion), Integer.toString(this.minorVersion) }); }   if (name == this.names.init && this.currentOwner.hasOuterInstance()) if (!this.currentOwner.name.isEmpty()) methodType = new Type.MethodType(adjustMethodParams(l, type.getParameterTypes()), type.getReturnType(), type.getThrownTypes(), (Symbol.TypeSymbol)this.syms.methodClass);   Symbol.MethodSymbol methodSymbol = new Symbol.MethodSymbol(l, name, (Type)methodType, this.currentOwner); if (this.types.isSignaturePolymorphic(methodSymbol)) methodSymbol.flags_field |= 0x400000000000L;  if (this.saveParameterNames) initParameterNames(methodSymbol);  Symbol symbol = this.currentOwner; this.currentOwner = (Symbol)methodSymbol; try { readMemberAttrs((Symbol)methodSymbol); } finally { this.currentOwner = symbol; }  if (this.saveParameterNames) setParameterNames(methodSymbol, (Type)methodType);  return methodSymbol; } private List<Type> adjustMethodParams(long paramLong, List<Type> paramList) { boolean bool = ((paramLong & 0x400000000L) != 0L) ? true : false; if (bool) { Type type = (Type)paramList.last(); ListBuffer listBuffer = new ListBuffer(); for (Type type1 : paramList) listBuffer.append((type1 != type) ? type1 : ((Type.ArrayType)type1).makeVarargs());  paramList = listBuffer.toList(); }  return paramList.tail; } void initParameterNames(Symbol.MethodSymbol paramMethodSymbol) { int i = Code.width(paramMethodSymbol.type.getParameterTypes()) + 4; if (this.parameterNameIndices == null || this.parameterNameIndices.length < i) { this.parameterNameIndices = new int[i]; } else { Arrays.fill(this.parameterNameIndices, 0); }  this.haveParameterNameIndices = false; this.sawMethodParameters = false; } void setParameterNames(Symbol.MethodSymbol paramMethodSymbol, Type paramType) { if (!this.haveParameterNameIndices) return;  int i = 0; if (!this.sawMethodParameters) { i = ((paramMethodSymbol.flags() & 0x8L) == 0L) ? 1 : 0; if (paramMethodSymbol.name == this.names.init && this.currentOwner.hasOuterInstance()) if (!this.currentOwner.name.isEmpty()) i++;   if (paramMethodSymbol.type != paramType) { int k = Code.width(paramType.getParameterTypes()) - Code.width(paramMethodSymbol.type.getParameterTypes()); i += k; }  }  List list = List.nil(); int j = i; for (Type type : paramMethodSymbol.type.getParameterTypes()) { boolean bool = (j < this.parameterNameIndices.length) ? this.parameterNameIndices[j] : false; Name name = !bool ? this.names.empty : readName(bool); list = list.prepend(name); j += Code.width(type); }  paramMethodSymbol.savedParameterNames = list.reverse(); } void skipBytes(int paramInt) { this.bp += paramInt; } void skipMember() { this.bp += 6; char c = nextChar(); for (byte b = 0; b < c; b++) { this.bp += 2; int i = nextInt(); this.bp += i; }  } protected void enterTypevars(Type paramType) { if (paramType.getEnclosingType() != null && paramType.getEnclosingType().hasTag(TypeTag.CLASS)) enterTypevars(paramType.getEnclosingType());  for (List list = paramType.getTypeArguments(); list.nonEmpty(); list = list.tail) this.typevars.enter((Symbol)((Type)list.head).tsym);  } protected void enterTypevars(Symbol paramSymbol) { if (paramSymbol.owner.kind == 16) { enterTypevars(paramSymbol.owner); enterTypevars(paramSymbol.owner.owner); }  enterTypevars(paramSymbol.type); } void readClass(Symbol.ClassSymbol paramClassSymbol) { Type.ClassType classType = (Type.ClassType)paramClassSymbol.type; paramClassSymbol.members_field = new Scope((Symbol)paramClassSymbol); this.typevars = this.typevars.dup(this.currentOwner); if (classType.getEnclosingType().hasTag(TypeTag.CLASS)) enterTypevars(classType.getEnclosingType());  long l = adjustClassFlags(nextChar()); if (paramClassSymbol.owner.kind == 1) paramClassSymbol.flags_field = l;  Symbol.ClassSymbol classSymbol = readClassSymbol(nextChar()); if (paramClassSymbol != classSymbol) throw badClassFile("class.file.wrong.class", new Object[] { classSymbol.flatname });  int i = this.bp; nextChar(); char c1 = nextChar(); this.bp += c1 * 2; char c2 = nextChar(); char c3; for (c3 = Character.MIN_VALUE; c3 < c2; ) { skipMember(); c3++; }  c3 = nextChar(); char c4; for (c4 = Character.MIN_VALUE; c4 < c3; ) { skipMember(); c4++; }  readClassAttrs(paramClassSymbol); if (this.readAllOfClassFile) { for (c4 = '\001'; c4 < this.poolObj.length; ) { readPool(c4); c4++; }  paramClassSymbol.pool = new Pool(this.poolObj.length, this.poolObj, this.types); }  this.bp = i; c4 = nextChar(); if (classType.supertype_field == null) classType.supertype_field = (c4 == '\000') ? (Type)Type.noType : readClassSymbol(c4).erasure(this.types);  c4 = nextChar(); List list = List.nil(); byte b; for (b = 0; b < c4; b++) { Type type = readClassSymbol(nextChar()).erasure(this.types); list = list.prepend(type); }  if (classType.interfaces_field == null) classType.interfaces_field = list.reverse();  Assert.check((c2 == nextChar())); for (b = 0; b < c2; ) { enterMember(paramClassSymbol, (Symbol)readField()); b++; }  Assert.check((c3 == nextChar())); for (b = 0; b < c3; ) { enterMember(paramClassSymbol, (Symbol)readMethod()); b++; }  this.typevars = this.typevars.leave(); } void readInnerClasses(Symbol.ClassSymbol paramClassSymbol) { char c = nextChar(); for (byte b = 0; b < c; b++) { nextChar(); Symbol.ClassSymbol classSymbol = readClassSymbol(nextChar()); Name name = readName(nextChar()); if (name == null) name = this.names.empty;  long l = adjustClassFlags(nextChar()); if (classSymbol != null) { if (name == this.names.empty) name = this.names.one;  Symbol.ClassSymbol classSymbol1 = enterClass(name, (Symbol.TypeSymbol)classSymbol); if ((l & 0x8L) == 0L) { ((Type.ClassType)classSymbol1.type).setEnclosingType(classSymbol.type); if (classSymbol1.erasure_field != null) ((Type.ClassType)classSymbol1.erasure_field).setEnclosingType(this.types.erasure(classSymbol.type));  }  if (paramClassSymbol == classSymbol) { classSymbol1.flags_field = l; enterMember(paramClassSymbol, (Symbol)classSymbol1); }  }  }  } private void readClassFile(Symbol.ClassSymbol paramClassSymbol) throws IOException { int i = nextInt(); if (i != -889275714) throw badClassFile("illegal.start.of.class.file", new Object[0]);  this.minorVersion = nextChar(); this.majorVersion = nextChar(); int j = (Target.MAX()).majorVersion; int k = (Target.MAX()).minorVersion; if (this.majorVersion > j || this.majorVersion * 1000 + this.minorVersion < (Target.MIN()).majorVersion * 1000 + (Target.MIN()).minorVersion) { if (this.majorVersion == j + 1) { this.log.warning("big.major.version", new Object[] { this.currentClassFile, Integer.valueOf(this.majorVersion), Integer.valueOf(j) }); } else { throw badClassFile("wrong.version", new Object[] { Integer.toString(this.majorVersion), Integer.toString(this.minorVersion), Integer.toString(j), Integer.toString(k) }); }  } else if (this.checkClassFile && this.majorVersion == j && this.minorVersion > k) { printCCF("found.later.version", Integer.toString(this.minorVersion)); }  indexPool(); if (this.signatureBuffer.length < this.bp) { int m = Integer.highestOneBit(this.bp) << 1; this.signatureBuffer = new byte[m]; }  readClass(paramClassSymbol); }
-/*      */   long adjustFieldFlags(long paramLong) { return paramLong; }
-/*      */   long adjustMethodFlags(long paramLong) { if ((paramLong & 0x40L) != 0L) { paramLong &= 0xFFFFFFFFFFFFFFBFL; paramLong |= 0x80000000L; if (!this.allowGenerics) paramLong &= 0xFFFFFFFFFFFFEFFFL;  }  if ((paramLong & 0x80L) != 0L) { paramLong &= 0xFFFFFFFFFFFFFF7FL; paramLong |= 0x400000000L; }  return paramLong; }
-/*      */   long adjustClassFlags(long paramLong) { return paramLong & 0xFFFFFFFFFFFFFFDFL; }
-/* 2821 */   private void fillIn(Symbol.PackageSymbol paramPackageSymbol, JavaFileManager.Location paramLocation, Iterable<JavaFileObject> paramIterable) { this.currentLoc = paramLocation;
-/* 2822 */     for (JavaFileObject javaFileObject : paramIterable)
-/* 2823 */     { String str1, str2; switch (javaFileObject.getKind()) {
-/*      */
-/*      */         case CLASS:
-/*      */         case SOURCE:
-/* 2827 */           str1 = this.fileManager.inferBinaryName(this.currentLoc, javaFileObject);
-/* 2828 */           str2 = str1.substring(str1.lastIndexOf(".") + 1);
-/* 2829 */           if (SourceVersion.isIdentifier(str2) || str2
-/* 2830 */             .equals("package-info")) {
-/* 2831 */             includeClassFile(paramPackageSymbol, javaFileObject);
-/*      */           }
-/*      */           continue;
-/*      */       }
-/* 2835 */       extraFileActions(paramPackageSymbol, javaFileObject); }  } public Symbol.ClassSymbol defineClass(Name paramName, Symbol paramSymbol) { Symbol.ClassSymbol classSymbol = new Symbol.ClassSymbol(0L, paramName, paramSymbol); if (paramSymbol.kind == 1) Assert.checkNull(this.classes.get(classSymbol.flatname), classSymbol);  classSymbol.completer = this.thisCompleter; return classSymbol; } public Symbol.ClassSymbol enterClass(Name paramName, Symbol.TypeSymbol paramTypeSymbol) { Name name = Symbol.TypeSymbol.formFlatName(paramName, (Symbol)paramTypeSymbol); Symbol.ClassSymbol classSymbol = this.classes.get(name); if (classSymbol == null) { classSymbol = defineClass(paramName, (Symbol)paramTypeSymbol); this.classes.put(name, classSymbol); } else if ((classSymbol.name != paramName || classSymbol.owner != paramTypeSymbol) && paramTypeSymbol.kind == 2 && classSymbol.owner.kind == 1) { classSymbol.owner.members().remove((Symbol)classSymbol); classSymbol.name = paramName; classSymbol.owner = (Symbol)paramTypeSymbol; classSymbol.fullname = Symbol.ClassSymbol.formFullName(paramName, (Symbol)paramTypeSymbol); }  return classSymbol; } public Symbol.ClassSymbol enterClass(Name paramName, JavaFileObject paramJavaFileObject) { Symbol.ClassSymbol classSymbol = this.classes.get(paramName); if (classSymbol != null) { String str = Log.format("%s: completer = %s; class file = %s; source file = %s", new Object[] { classSymbol.fullname, classSymbol.completer, classSymbol.classfile, classSymbol.sourcefile }); throw new AssertionError(str); }  Name name = Convert.packagePart(paramName); Symbol.PackageSymbol packageSymbol = name.isEmpty() ? this.syms.unnamedPackage : enterPackage(name); classSymbol = defineClass(Convert.shortName(paramName), (Symbol)packageSymbol); classSymbol.classfile = paramJavaFileObject; this.classes.put(paramName, classSymbol); return classSymbol; } public Symbol.ClassSymbol enterClass(Name paramName) { Symbol.ClassSymbol classSymbol = this.classes.get(paramName); if (classSymbol == null) return enterClass(paramName, (JavaFileObject)null);  return classSymbol; } private void complete(Symbol paramSymbol) throws Symbol.CompletionFailure { if (paramSymbol.kind == 2) { Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)paramSymbol; classSymbol.members_field = (Scope)new Scope.ErrorScope((Symbol)classSymbol); this.annotate.enterStart(); try { completeOwners(classSymbol.owner); completeEnclosing(classSymbol); } finally { this.annotate.enterDoneWithoutFlush(); }  fillIn(classSymbol); } else if (paramSymbol.kind == 1) { Symbol.PackageSymbol packageSymbol = (Symbol.PackageSymbol)paramSymbol; try { fillIn(packageSymbol); } catch (IOException iOException) { throw (new Symbol.CompletionFailure(paramSymbol, iOException.getLocalizedMessage())).initCause(iOException); }  }  if (!this.filling) this.annotate.flush();  } private void completeOwners(Symbol paramSymbol) { if (paramSymbol.kind != 1) completeOwners(paramSymbol.owner);  paramSymbol.complete(); } private void completeEnclosing(Symbol.ClassSymbol paramClassSymbol) { if (paramClassSymbol.owner.kind == 1) { Symbol symbol = paramClassSymbol.owner; for (Name name : Convert.enclosingCandidates(Convert.shortName(paramClassSymbol.name))) { Symbol symbol1 = (symbol.members().lookup(name)).sym; if (symbol1 == null) symbol1 = (Symbol)this.classes.get(Symbol.TypeSymbol.formFlatName(name, symbol));  if (symbol1 != null) symbol1.complete();  }  }  } private void fillIn(Symbol.ClassSymbol paramClassSymbol) { if (this.completionFailureName == paramClassSymbol.fullname) throw new Symbol.CompletionFailure(paramClassSymbol, "user-selected completion failure by class name");  this.currentOwner = (Symbol)paramClassSymbol; this.warnedAttrs.clear(); JavaFileObject javaFileObject = paramClassSymbol.classfile; if (javaFileObject != null) { JavaFileObject javaFileObject1 = this.currentClassFile; try { if (this.filling) Assert.error("Filling " + javaFileObject.toUri() + " during " + javaFileObject1);  this.currentClassFile = javaFileObject; if (this.verbose) this.log.printVerbose("loading", new Object[] { this.currentClassFile.toString() });  if (javaFileObject.getKind() == JavaFileObject.Kind.CLASS) { this.filling = true; try { this.bp = 0; this.buf = readInputStream(this.buf, javaFileObject.openInputStream()); readClassFile(paramClassSymbol); if (!this.missingTypeVariables.isEmpty() && !this.foundTypeVariables.isEmpty()) { List<Type> list1 = this.missingTypeVariables; List<Type> list2 = this.foundTypeVariables; this.missingTypeVariables = List.nil(); this.foundTypeVariables = List.nil(); this.filling = false; Type.ClassType classType = (Type.ClassType)this.currentOwner.type; classType.supertype_field = this.types.subst(classType.supertype_field, list1, list2); classType.interfaces_field = this.types.subst(classType.interfaces_field, list1, list2); } else if (this.missingTypeVariables.isEmpty() != this.foundTypeVariables.isEmpty()) { Name name = ((Type)this.missingTypeVariables.head).tsym.name; throw badClassFile("undecl.type.var", new Object[] { name }); }  } finally { this.missingTypeVariables = List.nil(); this.foundTypeVariables = List.nil(); this.filling = false; }  } else if (this.sourceCompleter != null) { this.sourceCompleter.complete(paramClassSymbol); } else { throw new IllegalStateException("Source completer required to read " + javaFileObject.toUri()); }  return; } catch (IOException iOException) { throw badClassFile("unable.to.access.file", new Object[] { iOException.getMessage() }); } finally { this.currentClassFile = javaFileObject1; }  }  JCDiagnostic jCDiagnostic = this.diagFactory.fragment("class.file.not.found", new Object[] { paramClassSymbol.flatname }); throw newCompletionFailure(paramClassSymbol, jCDiagnostic); } private static byte[] readInputStream(byte[] paramArrayOfbyte, InputStream paramInputStream) throws IOException { try { paramArrayOfbyte = ensureCapacity(paramArrayOfbyte, paramInputStream.available()); int i = paramInputStream.read(paramArrayOfbyte); int j = 0; while (i != -1) { j += i; paramArrayOfbyte = ensureCapacity(paramArrayOfbyte, j); i = paramInputStream.read(paramArrayOfbyte, j, paramArrayOfbyte.length - j); }  return paramArrayOfbyte; } finally { try { paramInputStream.close(); } catch (IOException iOException) {} }  } private static byte[] ensureCapacity(byte[] paramArrayOfbyte, int paramInt) { if (paramArrayOfbyte.length <= paramInt) { byte[] arrayOfByte = paramArrayOfbyte; paramArrayOfbyte = new byte[Integer.highestOneBit(paramInt) << 1]; System.arraycopy(arrayOfByte, 0, paramArrayOfbyte, 0, arrayOfByte.length); }  return paramArrayOfbyte; }
-/*      */   private Symbol.CompletionFailure newCompletionFailure(Symbol.TypeSymbol paramTypeSymbol, JCDiagnostic paramJCDiagnostic) { if (!this.cacheCompletionFailure) return new Symbol.CompletionFailure((Symbol)paramTypeSymbol, paramJCDiagnostic);  Symbol.CompletionFailure completionFailure = this.cachedCompletionFailure; completionFailure.sym = (Symbol)paramTypeSymbol; completionFailure.diag = paramJCDiagnostic; return completionFailure; }
-/*      */   public Symbol.ClassSymbol loadClass(Name paramName) throws Symbol.CompletionFailure { boolean bool = (this.classes.get(paramName) == null) ? true : false; Symbol.ClassSymbol classSymbol = enterClass(paramName); if (classSymbol.members_field == null && classSymbol.completer != null) try { classSymbol.complete(); } catch (Symbol.CompletionFailure completionFailure) { if (bool) this.classes.remove(paramName);  throw completionFailure; }   return classSymbol; }
-/*      */   public boolean packageExists(Name paramName) { return enterPackage(paramName).exists(); }
-/*      */   public Symbol.PackageSymbol enterPackage(Name paramName) { Symbol.PackageSymbol packageSymbol = this.packages.get(paramName); if (packageSymbol == null) { Assert.check(!paramName.isEmpty(), "rootPackage missing!"); packageSymbol = new Symbol.PackageSymbol(Convert.shortName(paramName), (Symbol)enterPackage(Convert.packagePart(paramName))); packageSymbol.completer = this.thisCompleter; this.packages.put(paramName, packageSymbol); }  return packageSymbol; }
-/*      */   public Symbol.PackageSymbol enterPackage(Name paramName, Symbol.PackageSymbol paramPackageSymbol) { return enterPackage(Symbol.TypeSymbol.formFullName(paramName, (Symbol)paramPackageSymbol)); }
-/*      */   protected void includeClassFile(Symbol.PackageSymbol paramPackageSymbol, JavaFileObject paramJavaFileObject) { int i; if ((paramPackageSymbol.flags_field & 0x800000L) == 0L) for (Symbol.PackageSymbol packageSymbol = paramPackageSymbol; packageSymbol != null && ((Symbol)packageSymbol).kind == 1; symbol = ((Symbol)packageSymbol).owner) { Symbol symbol; ((Symbol)packageSymbol).flags_field |= 0x800000L; }   JavaFileObject.Kind kind = paramJavaFileObject.getKind(); if (kind == JavaFileObject.Kind.CLASS) { i = 33554432; } else { i = 67108864; }  String str = this.fileManager.inferBinaryName(this.currentLoc, paramJavaFileObject); int j = str.lastIndexOf("."); Name name = this.names.fromString(str.substring(j + 1)); boolean bool = (name == this.names.package_info) ? true : false; Symbol.ClassSymbol classSymbol = bool ? paramPackageSymbol.package_info : (Symbol.ClassSymbol)(paramPackageSymbol.members_field.lookup(name)).sym; if (classSymbol == null) { classSymbol = enterClass(name, (Symbol.TypeSymbol)paramPackageSymbol); if (classSymbol.classfile == null) classSymbol.classfile = paramJavaFileObject;  if (bool) { paramPackageSymbol.package_info = classSymbol; } else if (classSymbol.owner == paramPackageSymbol) { paramPackageSymbol.members_field.enter((Symbol)classSymbol); }  } else if (classSymbol.classfile != null && (classSymbol.flags_field & i) == 0L) { if ((classSymbol.flags_field & 0x6000000L) != 0L) classSymbol.classfile = preferredFileObject(paramJavaFileObject, classSymbol.classfile);  }  classSymbol.flags_field |= i; }
-/*      */   protected JavaFileObject preferredFileObject(JavaFileObject paramJavaFileObject1, JavaFileObject paramJavaFileObject2) { if (this.preferSource) return (paramJavaFileObject1.getKind() == JavaFileObject.Kind.SOURCE) ? paramJavaFileObject1 : paramJavaFileObject2;  long l1 = paramJavaFileObject1.getLastModified(); long l2 = paramJavaFileObject2.getLastModified(); return (l1 > l2) ? paramJavaFileObject1 : paramJavaFileObject2; }
-/*      */   protected EnumSet<JavaFileObject.Kind> getPackageFileKinds() { return EnumSet.of(JavaFileObject.Kind.CLASS, JavaFileObject.Kind.SOURCE); }
-/*      */   protected void extraFileActions(Symbol.PackageSymbol paramPackageSymbol, JavaFileObject paramJavaFileObject) {}
-/* 2845 */   private void printCCF(String paramString, Object paramObject) { this.log.printLines(paramString, new Object[] { paramObject }); }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private static class SourceFileObject
-/*      */     extends BaseFileObject
-/*      */   {
-/*      */     private Name name;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private Name flatname;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public SourceFileObject(Name param1Name1, Name param1Name2) {
-/* 2868 */       super(null);
-/* 2869 */       this.name = param1Name1;
-/* 2870 */       this.flatname = param1Name2;
-/*      */     }
-/*      */
-/*      */
-/*      */     public URI toUri() {
-/*      */       try {
-/* 2876 */         return new URI(null, this.name.toString(), null);
-/* 2877 */       } catch (URISyntaxException uRISyntaxException) {
-/* 2878 */         throw new CannotCreateUriError(this.name.toString(), uRISyntaxException);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public String getName() {
-/* 2884 */       return this.name.toString();
-/*      */     }
-/*      */
-/*      */
-/*      */     public String getShortName() {
-/* 2889 */       return getName();
-/*      */     }
-/*      */
-/*      */
-/*      */     public Kind getKind() {
-/* 2894 */       return getKind(getName());
-/*      */     }
-/*      */
-/*      */
-/*      */     public InputStream openInputStream() {
-/* 2899 */       throw new UnsupportedOperationException();
-/*      */     }
-/*      */
-/*      */
-/*      */     public OutputStream openOutputStream() {
-/* 2904 */       throw new UnsupportedOperationException();
-/*      */     }
-/*      */
-/*      */
-/*      */     public CharBuffer getCharContent(boolean param1Boolean) {
-/* 2909 */       throw new UnsupportedOperationException();
-/*      */     }
-/*      */
-/*      */
-/*      */     public Reader openReader(boolean param1Boolean) {
-/* 2914 */       throw new UnsupportedOperationException();
-/*      */     }
-/*      */
-/*      */
-/*      */     public Writer openWriter() {
-/* 2919 */       throw new UnsupportedOperationException();
-/*      */     }
-/*      */
-/*      */
-/*      */     public long getLastModified() {
-/* 2924 */       throw new UnsupportedOperationException();
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean delete() {
-/* 2929 */       throw new UnsupportedOperationException();
-/*      */     }
-/*      */
-/*      */
-/*      */     protected String inferBinaryName(Iterable<? extends File> param1Iterable) {
-/* 2934 */       return this.flatname.toString();
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean isNameCompatible(String param1String, Kind param1Kind) {
-/* 2939 */       return true;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public boolean equals(Object param1Object) {
-/* 2950 */       if (this == param1Object) {
-/* 2951 */         return true;
-/*      */       }
-/* 2953 */       if (!(param1Object instanceof SourceFileObject)) {
-/* 2954 */         return false;
-/*      */       }
-/* 2956 */       SourceFileObject sourceFileObject = (SourceFileObject)param1Object;
-/* 2957 */       return this.name.equals(sourceFileObject.name);
-/*      */     }
-/*      */
-/*      */
-/*      */     public int hashCode() {
-/* 2962 */       return this.name.hashCode();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   static interface ProxyVisitor extends Attribute.Visitor {
-/*      */     void visitEnumAttributeProxy(EnumAttributeProxy param1EnumAttributeProxy);
-/*      */
-/*      */     void visitArrayAttributeProxy(ArrayAttributeProxy param1ArrayAttributeProxy);
-/*      */
-/*      */     void visitCompoundAnnotationProxy(CompoundAnnotationProxy param1CompoundAnnotationProxy);
-/*      */   }
-/*      */
-/*      */   public static interface SourceCompleter {
-/*      */     void complete(Symbol.ClassSymbol param1ClassSymbol) throws Symbol.CompletionFailure;
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\jvm\ClassReader.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2015, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.jvm;
+
+import java.io.*;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.CharBuffer;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import javax.lang.model.SourceVersion;
+import javax.tools.JavaFileObject;
+import javax.tools.JavaFileManager;
+import javax.tools.JavaFileManager.Location;
+import javax.tools.StandardJavaFileManager;
+
+import static javax.tools.StandardLocation.*;
+
+import com.sun.tools.javac.comp.Annotate;
+import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.code.Lint.LintCategory;
+import com.sun.tools.javac.code.Type.*;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.code.Symtab;
+import com.sun.tools.javac.file.BaseFileObject;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
+
+import static com.sun.tools.javac.code.Flags.*;
+import static com.sun.tools.javac.code.Kinds.*;
+import static com.sun.tools.javac.code.TypeTag.CLASS;
+import static com.sun.tools.javac.code.TypeTag.TYPEVAR;
+import static com.sun.tools.javac.jvm.ClassFile.*;
+import static com.sun.tools.javac.jvm.ClassFile.Version.*;
+
+import static com.sun.tools.javac.main.Option.*;
+
+/** This class provides operations to read a classfile into an internal
+ *  representation. The internal representation is anchored in a
+ *  ClassSymbol which contains in its scope symbol representations
+ *  for all other definitions in the classfile. Top-level Classes themselves
+ *  appear as members of the scopes of PackageSymbols.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class ClassReader {
+    /** The context key for the class reader. */
+    protected static final Context.Key<ClassReader> classReaderKey =
+        new Context.Key<ClassReader>();
+
+    public static final int INITIAL_BUFFER_SIZE = 0x0fff0;
+
+    Annotate annotate;
+
+    /** Switch: verbose output.
+     */
+    boolean verbose;
+
+    /** Switch: check class file for correct minor version, unrecognized
+     *  attributes.
+     */
+    boolean checkClassFile;
+
+    /** Switch: read constant pool and code sections. This switch is initially
+     *  set to false but can be turned on from outside.
+     */
+    public boolean readAllOfClassFile = false;
+
+    /** Switch: read GJ signature information.
+     */
+    boolean allowGenerics;
+
+    /** Switch: read varargs attribute.
+     */
+    boolean allowVarargs;
+
+    /** Switch: allow annotations.
+     */
+    boolean allowAnnotations;
+
+    /** Switch: allow simplified varargs.
+     */
+    boolean allowSimplifiedVarargs;
+
+   /** Lint option: warn about classfile issues
+     */
+    boolean lintClassfile;
+
+    /** Switch: preserve parameter names from the variable table.
+     */
+    public boolean saveParameterNames;
+
+    /**
+     * Switch: cache completion failures unless -XDdev is used
+     */
+    private boolean cacheCompletionFailure;
+
+    /**
+     * Switch: prefer source files instead of newer when both source
+     * and class are available
+     **/
+    public boolean preferSource;
+
+    /**
+     * The currently selected profile.
+     */
+    public final Profile profile;
+
+    /** The log to use for verbose output
+     */
+    final Log log;
+
+    /** The symbol table. */
+    Symtab syms;
+
+    Types types;
+
+    /** The name table. */
+    final Names names;
+
+    /** Force a completion failure on this name
+     */
+    final Name completionFailureName;
+
+    /** Access to files
+     */
+    private final JavaFileManager fileManager;
+
+    /** Factory for diagnostics
+     */
+    JCDiagnostic.Factory diagFactory;
+
+    /** Can be reassigned from outside:
+     *  the completer to be used for ".java" files. If this remains unassigned
+     *  ".java" files will not be loaded.
+     */
+    public SourceCompleter sourceCompleter = null;
+
+    /** A hashtable containing the encountered top-level and member classes,
+     *  indexed by flat names. The table does not contain local classes.
+     */
+    private Map<Name,ClassSymbol> classes;
+
+    /** A hashtable containing the encountered packages.
+     */
+    private Map<Name, PackageSymbol> packages;
+
+    /** The current scope where type variables are entered.
+     */
+    protected Scope typevars;
+
+    /** The path name of the class file currently being read.
+     */
+    protected JavaFileObject currentClassFile = null;
+
+    /** The class or method currently being read.
+     */
+    protected Symbol currentOwner = null;
+
+    /** The buffer containing the currently read class file.
+     */
+    byte[] buf = new byte[INITIAL_BUFFER_SIZE];
+
+    /** The current input pointer.
+     */
+    protected int bp;
+
+    /** The objects of the constant pool.
+     */
+    Object[] poolObj;
+
+    /** For every constant pool entry, an index into buf where the
+     *  defining section of the entry is found.
+     */
+    int[] poolIdx;
+
+    /** The major version number of the class file being read. */
+    int majorVersion;
+    /** The minor version number of the class file being read. */
+    int minorVersion;
+
+    /** A table to hold the constant pool indices for method parameter
+     * names, as given in LocalVariableTable attributes.
+     */
+    int[] parameterNameIndices;
+
+    /**
+     * Whether or not any parameter names have been found.
+     */
+    boolean haveParameterNameIndices;
+
+    /** Set this to false every time we start reading a method
+     * and are saving parameter names.  Set it to true when we see
+     * MethodParameters, if it's set when we see a LocalVariableTable,
+     * then we ignore the parameter names from the LVT.
+     */
+    boolean sawMethodParameters;
+
+    /**
+     * The set of attribute names for which warnings have been generated for the current class
+     */
+    Set<Name> warnedAttrs = new HashSet<Name>();
+
+    /**
+     * Completer that delegates to the complete-method of this class.
+     */
+    private final Completer thisCompleter = new Completer() {
+        @Override
+        public void complete(Symbol sym) throws CompletionFailure {
+            ClassReader.this.complete(sym);
+        }
+    };
+
+
+    /** Get the ClassReader instance for this invocation. */
+    public static ClassReader instance(Context context) {
+        ClassReader instance = context.get(classReaderKey);
+        if (instance == null)
+            instance = new ClassReader(context, true);
+        return instance;
+    }
+
+    /** Initialize classes and packages, treating this as the definitive classreader. */
+    public void init(Symtab syms) {
+        init(syms, true);
+    }
+
+    /** Initialize classes and packages, optionally treating this as
+     *  the definitive classreader.
+     */
+    private void init(Symtab syms, boolean definitive) {
+        if (classes != null) return;
+
+        if (definitive) {
+            Assert.check(packages == null || packages == syms.packages);
+            packages = syms.packages;
+            Assert.check(classes == null || classes == syms.classes);
+            classes = syms.classes;
+        } else {
+            packages = new HashMap<Name, PackageSymbol>();
+            classes = new HashMap<Name, ClassSymbol>();
+        }
+
+        packages.put(names.empty, syms.rootPackage);
+        syms.rootPackage.completer = thisCompleter;
+        syms.unnamedPackage.completer = thisCompleter;
+    }
+
+    /** Construct a new class reader, optionally treated as the
+     *  definitive classreader for this invocation.
+     */
+    protected ClassReader(Context context, boolean definitive) {
+        if (definitive) context.put(classReaderKey, this);
+
+        names = Names.instance(context);
+        syms = Symtab.instance(context);
+        types = Types.instance(context);
+        fileManager = context.get(JavaFileManager.class);
+        if (fileManager == null)
+            throw new AssertionError("FileManager initialization error");
+        diagFactory = JCDiagnostic.Factory.instance(context);
+
+        init(syms, definitive);
+        log = Log.instance(context);
+
+        Options options = Options.instance(context);
+        annotate = Annotate.instance(context);
+        verbose        = options.isSet(VERBOSE);
+        checkClassFile = options.isSet("-checkclassfile");
+
+        Source source = Source.instance(context);
+        allowGenerics    = source.allowGenerics();
+        allowVarargs     = source.allowVarargs();
+        allowAnnotations = source.allowAnnotations();
+        allowSimplifiedVarargs = source.allowSimplifiedVarargs();
+
+        saveParameterNames = options.isSet("save-parameter-names");
+        cacheCompletionFailure = options.isUnset("dev");
+        preferSource = "source".equals(options.get("-Xprefer"));
+
+        profile = Profile.instance(context);
+
+        completionFailureName =
+            options.isSet("failcomplete")
+            ? names.fromString(options.get("failcomplete"))
+            : null;
+
+        typevars = new Scope(syms.noSymbol);
+
+        lintClassfile = Lint.instance(context).isEnabled(LintCategory.CLASSFILE);
+
+        initAttributeReaders();
+    }
+
+    /** Add member to class unless it is synthetic.
+     */
+    private void enterMember(ClassSymbol c, Symbol sym) {
+        // Synthetic members are not entered -- reason lost to history (optimization?).
+        // Lambda methods must be entered because they may have inner classes (which reference them)
+        if ((sym.flags_field & (SYNTHETIC|BRIDGE)) != SYNTHETIC || sym.name.startsWith(names.lambda))
+            c.members_field.enter(sym);
+    }
+
+/************************************************************************
+ * Error Diagnoses
+ ***********************************************************************/
+
+
+    public class BadClassFile extends CompletionFailure {
+        private static final long serialVersionUID = 0;
+
+        public BadClassFile(TypeSymbol sym, JavaFileObject file, JCDiagnostic diag) {
+            super(sym, createBadClassFileDiagnostic(file, diag));
+        }
+    }
+    // where
+    private JCDiagnostic createBadClassFileDiagnostic(JavaFileObject file, JCDiagnostic diag) {
+        String key = (file.getKind() == JavaFileObject.Kind.SOURCE
+                    ? "bad.source.file.header" : "bad.class.file.header");
+        return diagFactory.fragment(key, file, diag);
+    }
+
+    public BadClassFile badClassFile(String key, Object... args) {
+        return new BadClassFile (
+            currentOwner.enclClass(),
+            currentClassFile,
+            diagFactory.fragment(key, args));
+    }
+
+/************************************************************************
+ * Buffer Access
+ ***********************************************************************/
+
+    /** Read a character.
+     */
+    char nextChar() {
+        return (char)(((buf[bp++] & 0xFF) << 8) + (buf[bp++] & 0xFF));
+    }
+
+    /** Read a byte.
+     */
+    int nextByte() {
+        return buf[bp++] & 0xFF;
+    }
+
+    /** Read an integer.
+     */
+    int nextInt() {
+        return
+            ((buf[bp++] & 0xFF) << 24) +
+            ((buf[bp++] & 0xFF) << 16) +
+            ((buf[bp++] & 0xFF) << 8) +
+            (buf[bp++] & 0xFF);
+    }
+
+    /** Extract a character at position bp from buf.
+     */
+    char getChar(int bp) {
+        return
+            (char)(((buf[bp] & 0xFF) << 8) + (buf[bp+1] & 0xFF));
+    }
+
+    /** Extract an integer at position bp from buf.
+     */
+    int getInt(int bp) {
+        return
+            ((buf[bp] & 0xFF) << 24) +
+            ((buf[bp+1] & 0xFF) << 16) +
+            ((buf[bp+2] & 0xFF) << 8) +
+            (buf[bp+3] & 0xFF);
+    }
+
+
+    /** Extract a long integer at position bp from buf.
+     */
+    long getLong(int bp) {
+        DataInputStream bufin =
+            new DataInputStream(new ByteArrayInputStream(buf, bp, 8));
+        try {
+            return bufin.readLong();
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    /** Extract a float at position bp from buf.
+     */
+    float getFloat(int bp) {
+        DataInputStream bufin =
+            new DataInputStream(new ByteArrayInputStream(buf, bp, 4));
+        try {
+            return bufin.readFloat();
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    /** Extract a double at position bp from buf.
+     */
+    double getDouble(int bp) {
+        DataInputStream bufin =
+            new DataInputStream(new ByteArrayInputStream(buf, bp, 8));
+        try {
+            return bufin.readDouble();
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+/************************************************************************
+ * Constant Pool Access
+ ***********************************************************************/
+
+    /** Index all constant pool entries, writing their start addresses into
+     *  poolIdx.
+     */
+    void indexPool() {
+        poolIdx = new int[nextChar()];
+        poolObj = new Object[poolIdx.length];
+        int i = 1;
+        while (i < poolIdx.length) {
+            poolIdx[i++] = bp;
+            byte tag = buf[bp++];
+            switch (tag) {
+            case CONSTANT_Utf8: case CONSTANT_Unicode: {
+                int len = nextChar();
+                bp = bp + len;
+                break;
+            }
+            case CONSTANT_Class:
+            case CONSTANT_String:
+            case CONSTANT_MethodType:
+                bp = bp + 2;
+                break;
+            case CONSTANT_MethodHandle:
+                bp = bp + 3;
+                break;
+            case CONSTANT_Fieldref:
+            case CONSTANT_Methodref:
+            case CONSTANT_InterfaceMethodref:
+            case CONSTANT_NameandType:
+            case CONSTANT_Integer:
+            case CONSTANT_Float:
+            case CONSTANT_InvokeDynamic:
+                bp = bp + 4;
+                break;
+            case CONSTANT_Long:
+            case CONSTANT_Double:
+                bp = bp + 8;
+                i++;
+                break;
+            default:
+                throw badClassFile("bad.const.pool.tag.at",
+                                   Byte.toString(tag),
+                                   Integer.toString(bp -1));
+            }
+        }
+    }
+
+    /** Read constant pool entry at start address i, use pool as a cache.
+     */
+    Object readPool(int i) {
+        Object result = poolObj[i];
+        if (result != null) return result;
+
+        int index = poolIdx[i];
+        if (index == 0) return null;
+
+        byte tag = buf[index];
+        switch (tag) {
+        case CONSTANT_Utf8:
+            poolObj[i] = names.fromUtf(buf, index + 3, getChar(index + 1));
+            break;
+        case CONSTANT_Unicode:
+            throw badClassFile("unicode.str.not.supported");
+        case CONSTANT_Class:
+            poolObj[i] = readClassOrType(getChar(index + 1));
+            break;
+        case CONSTANT_String:
+            // FIXME: (footprint) do not use toString here
+            poolObj[i] = readName(getChar(index + 1)).toString();
+            break;
+        case CONSTANT_Fieldref: {
+            ClassSymbol owner = readClassSymbol(getChar(index + 1));
+            NameAndType nt = readNameAndType(getChar(index + 3));
+            poolObj[i] = new VarSymbol(0, nt.name, nt.uniqueType.type, owner);
+            break;
+        }
+        case CONSTANT_Methodref:
+        case CONSTANT_InterfaceMethodref: {
+            ClassSymbol owner = readClassSymbol(getChar(index + 1));
+            NameAndType nt = readNameAndType(getChar(index + 3));
+            poolObj[i] = new MethodSymbol(0, nt.name, nt.uniqueType.type, owner);
+            break;
+        }
+        case CONSTANT_NameandType:
+            poolObj[i] = new NameAndType(
+                readName(getChar(index + 1)),
+                readType(getChar(index + 3)), types);
+            break;
+        case CONSTANT_Integer:
+            poolObj[i] = getInt(index + 1);
+            break;
+        case CONSTANT_Float:
+            poolObj[i] = new Float(getFloat(index + 1));
+            break;
+        case CONSTANT_Long:
+            poolObj[i] = new Long(getLong(index + 1));
+            break;
+        case CONSTANT_Double:
+            poolObj[i] = new Double(getDouble(index + 1));
+            break;
+        case CONSTANT_MethodHandle:
+            skipBytes(4);
+            break;
+        case CONSTANT_MethodType:
+            skipBytes(3);
+            break;
+        case CONSTANT_InvokeDynamic:
+            skipBytes(5);
+            break;
+        default:
+            throw badClassFile("bad.const.pool.tag", Byte.toString(tag));
+        }
+        return poolObj[i];
+    }
+
+    /** Read signature and convert to type.
+     */
+    Type readType(int i) {
+        int index = poolIdx[i];
+        return sigToType(buf, index + 3, getChar(index + 1));
+    }
+
+    /** If name is an array type or class signature, return the
+     *  corresponding type; otherwise return a ClassSymbol with given name.
+     */
+    Object readClassOrType(int i) {
+        int index =  poolIdx[i];
+        int len = getChar(index + 1);
+        int start = index + 3;
+        Assert.check(buf[start] == '[' || buf[start + len - 1] != ';');
+        // by the above assertion, the following test can be
+        // simplified to (buf[start] == '[')
+        return (buf[start] == '[' || buf[start + len - 1] == ';')
+            ? (Object)sigToType(buf, start, len)
+            : (Object)enterClass(names.fromUtf(internalize(buf, start,
+                                                           len)));
+    }
+
+    /** Read signature and convert to type parameters.
+     */
+    List<Type> readTypeParams(int i) {
+        int index = poolIdx[i];
+        return sigToTypeParams(buf, index + 3, getChar(index + 1));
+    }
+
+    /** Read class entry.
+     */
+    ClassSymbol readClassSymbol(int i) {
+        Object obj = readPool(i);
+        if (obj != null && !(obj instanceof ClassSymbol))
+            throw badClassFile("bad.const.pool.entry",
+                               currentClassFile.toString(),
+                               "CONSTANT_Class_info", i);
+        return (ClassSymbol)obj;
+    }
+
+    /** Read name.
+     */
+    Name readName(int i) {
+        Object obj = readPool(i);
+        if (obj != null && !(obj instanceof Name))
+            throw badClassFile("bad.const.pool.entry",
+                               currentClassFile.toString(),
+                               "CONSTANT_Utf8_info or CONSTANT_String_info", i);
+        return (Name)obj;
+    }
+
+    /** Read name and type.
+     */
+    NameAndType readNameAndType(int i) {
+        Object obj = readPool(i);
+        if (obj != null && !(obj instanceof NameAndType))
+            throw badClassFile("bad.const.pool.entry",
+                               currentClassFile.toString(),
+                               "CONSTANT_NameAndType_info", i);
+        return (NameAndType)obj;
+    }
+
+/************************************************************************
+ * Reading Types
+ ***********************************************************************/
+
+    /** The unread portion of the currently read type is
+     *  signature[sigp..siglimit-1].
+     */
+    byte[] signature;
+    int sigp;
+    int siglimit;
+    boolean sigEnterPhase = false;
+
+    /** Convert signature to type, where signature is a byte array segment.
+     */
+    Type sigToType(byte[] sig, int offset, int len) {
+        signature = sig;
+        sigp = offset;
+        siglimit = offset + len;
+        return sigToType();
+    }
+
+    /** Convert signature to type, where signature is implicit.
+     */
+    Type sigToType() {
+        switch ((char) signature[sigp]) {
+        case 'T':
+            sigp++;
+            int start = sigp;
+            while (signature[sigp] != ';') sigp++;
+            sigp++;
+            return sigEnterPhase
+                ? Type.noType
+                : findTypeVar(names.fromUtf(signature, start, sigp - 1 - start));
+        case '+': {
+            sigp++;
+            Type t = sigToType();
+            return new WildcardType(t, BoundKind.EXTENDS,
+                                    syms.boundClass);
+        }
+        case '*':
+            sigp++;
+            return new WildcardType(syms.objectType, BoundKind.UNBOUND,
+                                    syms.boundClass);
+        case '-': {
+            sigp++;
+            Type t = sigToType();
+            return new WildcardType(t, BoundKind.SUPER,
+                                    syms.boundClass);
+        }
+        case 'B':
+            sigp++;
+            return syms.byteType;
+        case 'C':
+            sigp++;
+            return syms.charType;
+        case 'D':
+            sigp++;
+            return syms.doubleType;
+        case 'F':
+            sigp++;
+            return syms.floatType;
+        case 'I':
+            sigp++;
+            return syms.intType;
+        case 'J':
+            sigp++;
+            return syms.longType;
+        case 'L':
+            {
+                // int oldsigp = sigp;
+                Type t = classSigToType();
+                if (sigp < siglimit && signature[sigp] == '.')
+                    throw badClassFile("deprecated inner class signature syntax " +
+                                       "(please recompile from source)");
+                /*
+                System.err.println(" decoded " +
+                                   new String(signature, oldsigp, sigp-oldsigp) +
+                                   " => " + t + " outer " + t.outer());
+                */
+                return t;
+            }
+        case 'S':
+            sigp++;
+            return syms.shortType;
+        case 'V':
+            sigp++;
+            return syms.voidType;
+        case 'Z':
+            sigp++;
+            return syms.booleanType;
+        case '[':
+            sigp++;
+            return new ArrayType(sigToType(), syms.arrayClass);
+        case '(':
+            sigp++;
+            List<Type> argtypes = sigToTypes(')');
+            Type restype = sigToType();
+            List<Type> thrown = List.nil();
+            while (signature[sigp] == '^') {
+                sigp++;
+                thrown = thrown.prepend(sigToType());
+            }
+            // if there is a typevar in the throws clause we should state it.
+            for (List<Type> l = thrown; l.nonEmpty(); l = l.tail) {
+                if (l.head.hasTag(TYPEVAR)) {
+                    l.head.tsym.flags_field |= THROWS;
+                }
+            }
+            return new MethodType(argtypes,
+                                  restype,
+                                  thrown.reverse(),
+                                  syms.methodClass);
+        case '<':
+            typevars = typevars.dup(currentOwner);
+            Type poly = new ForAll(sigToTypeParams(), sigToType());
+            typevars = typevars.leave();
+            return poly;
+        default:
+            throw badClassFile("bad.signature",
+                               Convert.utf2string(signature, sigp, 10));
+        }
+    }
+
+    byte[] signatureBuffer = new byte[0];
+    int sbp = 0;
+    /** Convert class signature to type, where signature is implicit.
+     */
+    Type classSigToType() {
+        if (signature[sigp] != 'L')
+            throw badClassFile("bad.class.signature",
+                               Convert.utf2string(signature, sigp, 10));
+        sigp++;
+        Type outer = Type.noType;
+        int startSbp = sbp;
+
+        while (true) {
+            final byte c = signature[sigp++];
+            switch (c) {
+
+            case ';': {         // end
+                ClassSymbol t = enterClass(names.fromUtf(signatureBuffer,
+                                                         startSbp,
+                                                         sbp - startSbp));
+
+                try {
+                    return (outer == Type.noType) ?
+                            t.erasure(types) :
+                            new ClassType(outer, List.<Type>nil(), t);
+                } finally {
+                    sbp = startSbp;
+                }
+            }
+
+            case '<':           // generic arguments
+                ClassSymbol t = enterClass(names.fromUtf(signatureBuffer,
+                                                         startSbp,
+                                                         sbp - startSbp));
+                outer = new ClassType(outer, sigToTypes('>'), t) {
+                        boolean completed = false;
+                        @Override
+                        public Type getEnclosingType() {
+                            if (!completed) {
+                                completed = true;
+                                tsym.complete();
+                                Type enclosingType = tsym.type.getEnclosingType();
+                                if (enclosingType != Type.noType) {
+                                    List<Type> typeArgs =
+                                        super.getEnclosingType().allparams();
+                                    List<Type> typeParams =
+                                        enclosingType.allparams();
+                                    if (typeParams.length() != typeArgs.length()) {
+                                        // no "rare" types
+                                        super.setEnclosingType(types.erasure(enclosingType));
+                                    } else {
+                                        super.setEnclosingType(types.subst(enclosingType,
+                                                                           typeParams,
+                                                                           typeArgs));
+                                    }
+                                } else {
+                                    super.setEnclosingType(Type.noType);
+                                }
+                            }
+                            return super.getEnclosingType();
+                        }
+                        @Override
+                        public void setEnclosingType(Type outer) {
+                            throw new UnsupportedOperationException();
+                        }
+                    };
+                switch (signature[sigp++]) {
+                case ';':
+                    if (sigp < signature.length && signature[sigp] == '.') {
+                        // support old-style GJC signatures
+                        // The signature produced was
+                        // Lfoo/Outer<Lfoo/X;>;.Lfoo/Outer$Inner<Lfoo/Y;>;
+                        // rather than say
+                        // Lfoo/Outer<Lfoo/X;>.Inner<Lfoo/Y;>;
+                        // so we skip past ".Lfoo/Outer$"
+                        sigp += (sbp - startSbp) + // "foo/Outer"
+                            3;  // ".L" and "$"
+                        signatureBuffer[sbp++] = (byte)'$';
+                        break;
+                    } else {
+                        sbp = startSbp;
+                        return outer;
+                    }
+                case '.':
+                    signatureBuffer[sbp++] = (byte)'$';
+                    break;
+                default:
+                    throw new AssertionError(signature[sigp-1]);
+                }
+                continue;
+
+            case '.':
+                //we have seen an enclosing non-generic class
+                if (outer != Type.noType) {
+                    t = enterClass(names.fromUtf(signatureBuffer,
+                                                 startSbp,
+                                                 sbp - startSbp));
+                    outer = new ClassType(outer, List.<Type>nil(), t);
+                }
+                signatureBuffer[sbp++] = (byte)'$';
+                continue;
+            case '/':
+                signatureBuffer[sbp++] = (byte)'.';
+                continue;
+            default:
+                signatureBuffer[sbp++] = c;
+                continue;
+            }
+        }
+    }
+
+    /** Convert (implicit) signature to list of types
+     *  until `terminator' is encountered.
+     */
+    List<Type> sigToTypes(char terminator) {
+        List<Type> head = List.of(null);
+        List<Type> tail = head;
+        while (signature[sigp] != terminator)
+            tail = tail.setTail(List.of(sigToType()));
+        sigp++;
+        return head.tail;
+    }
+
+    /** Convert signature to type parameters, where signature is a byte
+     *  array segment.
+     */
+    List<Type> sigToTypeParams(byte[] sig, int offset, int len) {
+        signature = sig;
+        sigp = offset;
+        siglimit = offset + len;
+        return sigToTypeParams();
+    }
+
+    /** Convert signature to type parameters, where signature is implicit.
+     */
+    List<Type> sigToTypeParams() {
+        List<Type> tvars = List.nil();
+        if (signature[sigp] == '<') {
+            sigp++;
+            int start = sigp;
+            sigEnterPhase = true;
+            while (signature[sigp] != '>')
+                tvars = tvars.prepend(sigToTypeParam());
+            sigEnterPhase = false;
+            sigp = start;
+            while (signature[sigp] != '>')
+                sigToTypeParam();
+            sigp++;
+        }
+        return tvars.reverse();
+    }
+
+    /** Convert (implicit) signature to type parameter.
+     */
+    Type sigToTypeParam() {
+        int start = sigp;
+        while (signature[sigp] != ':') sigp++;
+        Name name = names.fromUtf(signature, start, sigp - start);
+        TypeVar tvar;
+        if (sigEnterPhase) {
+            tvar = new TypeVar(name, currentOwner, syms.botType);
+            typevars.enter(tvar.tsym);
+        } else {
+            tvar = (TypeVar)findTypeVar(name);
+        }
+        List<Type> bounds = List.nil();
+        boolean allInterfaces = false;
+        if (signature[sigp] == ':' && signature[sigp+1] == ':') {
+            sigp++;
+            allInterfaces = true;
+        }
+        while (signature[sigp] == ':') {
+            sigp++;
+            bounds = bounds.prepend(sigToType());
+        }
+        if (!sigEnterPhase) {
+            types.setBounds(tvar, bounds.reverse(), allInterfaces);
+        }
+        return tvar;
+    }
+
+    /** Find type variable with given name in `typevars' scope.
+     */
+    Type findTypeVar(Name name) {
+        Scope.Entry e = typevars.lookup(name);
+        if (e.scope != null) {
+            return e.sym.type;
+        } else {
+            if (readingClassAttr) {
+                // While reading the class attribute, the supertypes
+                // might refer to a type variable from an enclosing element
+                // (method or class).
+                // If the type variable is defined in the enclosing class,
+                // we can actually find it in
+                // currentOwner.owner.type.getTypeArguments()
+                // However, until we have read the enclosing method attribute
+                // we don't know for sure if this owner is correct.  It could
+                // be a method and there is no way to tell before reading the
+                // enclosing method attribute.
+                TypeVar t = new TypeVar(name, currentOwner, syms.botType);
+                missingTypeVariables = missingTypeVariables.prepend(t);
+                // System.err.println("Missing type var " + name);
+                return t;
+            }
+            throw badClassFile("undecl.type.var", name);
+        }
+    }
+
+/************************************************************************
+ * Reading Attributes
+ ***********************************************************************/
+
+    protected enum AttributeKind { CLASS, MEMBER };
+    protected abstract class AttributeReader {
+        protected AttributeReader(Name name, Version version, Set<AttributeKind> kinds) {
+            this.name = name;
+            this.version = version;
+            this.kinds = kinds;
+        }
+
+        protected boolean accepts(AttributeKind kind) {
+            if (kinds.contains(kind)) {
+                if (majorVersion > version.major || (majorVersion == version.major && minorVersion >= version.minor))
+                    return true;
+
+                if (lintClassfile && !warnedAttrs.contains(name)) {
+                    JavaFileObject prev = log.useSource(currentClassFile);
+                    try {
+                        log.warning(LintCategory.CLASSFILE, (DiagnosticPosition) null, "future.attr",
+                                name, version.major, version.minor, majorVersion, minorVersion);
+                    } finally {
+                        log.useSource(prev);
+                    }
+                    warnedAttrs.add(name);
+                }
+            }
+            return false;
+        }
+
+        protected abstract void read(Symbol sym, int attrLen);
+
+        protected final Name name;
+        protected final Version version;
+        protected final Set<AttributeKind> kinds;
+    }
+
+    protected Set<AttributeKind> CLASS_ATTRIBUTE =
+            EnumSet.of(AttributeKind.CLASS);
+    protected Set<AttributeKind> MEMBER_ATTRIBUTE =
+            EnumSet.of(AttributeKind.MEMBER);
+    protected Set<AttributeKind> CLASS_OR_MEMBER_ATTRIBUTE =
+            EnumSet.of(AttributeKind.CLASS, AttributeKind.MEMBER);
+
+    protected Map<Name, AttributeReader> attributeReaders = new HashMap<Name, AttributeReader>();
+
+    private void initAttributeReaders() {
+        AttributeReader[] readers = {
+            // v45.3 attributes
+
+            new AttributeReader(names.Code, V45_3, MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    if (readAllOfClassFile || saveParameterNames)
+                        ((MethodSymbol)sym).code = readCode(sym);
+                    else
+                        bp = bp + attrLen;
+                }
+            },
+
+            new AttributeReader(names.ConstantValue, V45_3, MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    Object v = readPool(nextChar());
+                    // Ignore ConstantValue attribute if field not final.
+                    if ((sym.flags() & FINAL) != 0)
+                        ((VarSymbol) sym).setData(v);
+                }
+            },
+
+            new AttributeReader(names.Deprecated, V45_3, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    sym.flags_field |= DEPRECATED;
+                }
+            },
+
+            new AttributeReader(names.Exceptions, V45_3, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    int nexceptions = nextChar();
+                    List<Type> thrown = List.nil();
+                    for (int j = 0; j < nexceptions; j++)
+                        thrown = thrown.prepend(readClassSymbol(nextChar()).type);
+                    if (sym.type.getThrownTypes().isEmpty())
+                        sym.type.asMethodType().thrown = thrown.reverse();
+                }
+            },
+
+            new AttributeReader(names.InnerClasses, V45_3, CLASS_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    ClassSymbol c = (ClassSymbol) sym;
+                    readInnerClasses(c);
+                }
+            },
+
+            new AttributeReader(names.LocalVariableTable, V45_3, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    int newbp = bp + attrLen;
+                    if (saveParameterNames && !sawMethodParameters) {
+                        // Pick up parameter names from the variable table.
+                        // Parameter names are not explicitly identified as such,
+                        // but all parameter name entries in the LocalVariableTable
+                        // have a start_pc of 0.  Therefore, we record the name
+                        // indicies of all slots with a start_pc of zero in the
+                        // parameterNameIndicies array.
+                        // Note that this implicitly honors the JVMS spec that
+                        // there may be more than one LocalVariableTable, and that
+                        // there is no specified ordering for the entries.
+                        int numEntries = nextChar();
+                        for (int i = 0; i < numEntries; i++) {
+                            int start_pc = nextChar();
+                            int length = nextChar();
+                            int nameIndex = nextChar();
+                            int sigIndex = nextChar();
+                            int register = nextChar();
+                            if (start_pc == 0) {
+                                // ensure array large enough
+                                if (register >= parameterNameIndices.length) {
+                                    int newSize = Math.max(register, parameterNameIndices.length + 8);
+                                    parameterNameIndices =
+                                            Arrays.copyOf(parameterNameIndices, newSize);
+                                }
+                                parameterNameIndices[register] = nameIndex;
+                                haveParameterNameIndices = true;
+                            }
+                        }
+                    }
+                    bp = newbp;
+                }
+            },
+
+            new AttributeReader(names.MethodParameters, V52, MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrlen) {
+                    int newbp = bp + attrlen;
+                    if (saveParameterNames) {
+                        sawMethodParameters = true;
+                        int numEntries = nextByte();
+                        parameterNameIndices = new int[numEntries];
+                        haveParameterNameIndices = true;
+                        for (int i = 0; i < numEntries; i++) {
+                            int nameIndex = nextChar();
+                            int flags = nextChar();
+                            parameterNameIndices[i] = nameIndex;
+                        }
+                    }
+                    bp = newbp;
+                }
+            },
+
+
+            new AttributeReader(names.SourceFile, V45_3, CLASS_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    ClassSymbol c = (ClassSymbol) sym;
+                    Name n = readName(nextChar());
+                    c.sourcefile = new SourceFileObject(n, c.flatname);
+                    // If the class is a toplevel class, originating from a Java source file,
+                    // but the class name does not match the file name, then it is
+                    // an auxiliary class.
+                    String sn = n.toString();
+                    if (c.owner.kind == Kinds.PCK &&
+                        sn.endsWith(".java") &&
+                        !sn.equals(c.name.toString()+".java")) {
+                        c.flags_field |= AUXILIARY;
+                    }
+                }
+            },
+
+            new AttributeReader(names.Synthetic, V45_3, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    // bridge methods are visible when generics not enabled
+                    if (allowGenerics || (sym.flags_field & BRIDGE) == 0)
+                        sym.flags_field |= SYNTHETIC;
+                }
+            },
+
+            // standard v49 attributes
+
+            new AttributeReader(names.EnclosingMethod, V49, CLASS_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    int newbp = bp + attrLen;
+                    readEnclosingMethodAttr(sym);
+                    bp = newbp;
+                }
+            },
+
+            new AttributeReader(names.Signature, V49, CLASS_OR_MEMBER_ATTRIBUTE) {
+                @Override
+                protected boolean accepts(AttributeKind kind) {
+                    return super.accepts(kind) && allowGenerics;
+                }
+
+                protected void read(Symbol sym, int attrLen) {
+                    if (sym.kind == TYP) {
+                        ClassSymbol c = (ClassSymbol) sym;
+                        readingClassAttr = true;
+                        try {
+                            ClassType ct1 = (ClassType)c.type;
+                            Assert.check(c == currentOwner);
+                            ct1.typarams_field = readTypeParams(nextChar());
+                            ct1.supertype_field = sigToType();
+                            ListBuffer<Type> is = new ListBuffer<Type>();
+                            while (sigp != siglimit) is.append(sigToType());
+                            ct1.interfaces_field = is.toList();
+                        } finally {
+                            readingClassAttr = false;
+                        }
+                    } else {
+                        List<Type> thrown = sym.type.getThrownTypes();
+                        sym.type = readType(nextChar());
+                        //- System.err.println(" # " + sym.type);
+                        if (sym.kind == MTH && sym.type.getThrownTypes().isEmpty())
+                            sym.type.asMethodType().thrown = thrown;
+
+                    }
+                }
+            },
+
+            // v49 annotation attributes
+
+            new AttributeReader(names.AnnotationDefault, V49, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    attachAnnotationDefault(sym);
+                }
+            },
+
+            new AttributeReader(names.RuntimeInvisibleAnnotations, V49, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    attachAnnotations(sym);
+                }
+            },
+
+            new AttributeReader(names.RuntimeInvisibleParameterAnnotations, V49, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    attachParameterAnnotations(sym);
+                }
+            },
+
+            new AttributeReader(names.RuntimeVisibleAnnotations, V49, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    attachAnnotations(sym);
+                }
+            },
+
+            new AttributeReader(names.RuntimeVisibleParameterAnnotations, V49, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    attachParameterAnnotations(sym);
+                }
+            },
+
+            // additional "legacy" v49 attributes, superceded by flags
+
+            new AttributeReader(names.Annotation, V49, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    if (allowAnnotations)
+                        sym.flags_field |= ANNOTATION;
+                }
+            },
+
+            new AttributeReader(names.Bridge, V49, MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    sym.flags_field |= BRIDGE;
+                    if (!allowGenerics)
+                        sym.flags_field &= ~SYNTHETIC;
+                }
+            },
+
+            new AttributeReader(names.Enum, V49, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    sym.flags_field |= ENUM;
+                }
+            },
+
+            new AttributeReader(names.Varargs, V49, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    if (allowVarargs)
+                        sym.flags_field |= VARARGS;
+                }
+            },
+
+            new AttributeReader(names.RuntimeVisibleTypeAnnotations, V52, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    attachTypeAnnotations(sym);
+                }
+            },
+
+            new AttributeReader(names.RuntimeInvisibleTypeAnnotations, V52, CLASS_OR_MEMBER_ATTRIBUTE) {
+                protected void read(Symbol sym, int attrLen) {
+                    attachTypeAnnotations(sym);
+                }
+            },
+
+
+            // The following attributes for a Code attribute are not currently handled
+            // StackMapTable
+            // SourceDebugExtension
+            // LineNumberTable
+            // LocalVariableTypeTable
+        };
+
+        for (AttributeReader r: readers)
+            attributeReaders.put(r.name, r);
+    }
+
+    /** Report unrecognized attribute.
+     */
+    void unrecognized(Name attrName) {
+        if (checkClassFile)
+            printCCF("ccf.unrecognized.attribute", attrName);
+    }
+
+
+
+    protected void readEnclosingMethodAttr(Symbol sym) {
+        // sym is a nested class with an "Enclosing Method" attribute
+        // remove sym from it's current owners scope and place it in
+        // the scope specified by the attribute
+        sym.owner.members().remove(sym);
+        ClassSymbol self = (ClassSymbol)sym;
+        ClassSymbol c = readClassSymbol(nextChar());
+        NameAndType nt = readNameAndType(nextChar());
+
+        if (c.members_field == null)
+            throw badClassFile("bad.enclosing.class", self, c);
+
+        MethodSymbol m = findMethod(nt, c.members_field, self.flags());
+        if (nt != null && m == null)
+            throw badClassFile("bad.enclosing.method", self);
+
+        self.name = simpleBinaryName(self.flatname, c.flatname) ;
+        self.owner = m != null ? m : c;
+        if (self.name.isEmpty())
+            self.fullname = names.empty;
+        else
+            self.fullname = ClassSymbol.formFullName(self.name, self.owner);
+
+        if (m != null) {
+            ((ClassType)sym.type).setEnclosingType(m.type);
+        } else if ((self.flags_field & STATIC) == 0) {
+            ((ClassType)sym.type).setEnclosingType(c.type);
+        } else {
+            ((ClassType)sym.type).setEnclosingType(Type.noType);
+        }
+        enterTypevars(self);
+        if (!missingTypeVariables.isEmpty()) {
+            ListBuffer<Type> typeVars =  new ListBuffer<Type>();
+            for (Type typevar : missingTypeVariables) {
+                typeVars.append(findTypeVar(typevar.tsym.name));
+            }
+            foundTypeVariables = typeVars.toList();
+        } else {
+            foundTypeVariables = List.nil();
+        }
+    }
+
+    // See java.lang.Class
+    private Name simpleBinaryName(Name self, Name enclosing) {
+        String simpleBinaryName = self.toString().substring(enclosing.toString().length());
+        if (simpleBinaryName.length() < 1 || simpleBinaryName.charAt(0) != '$')
+            throw badClassFile("bad.enclosing.method", self);
+        int index = 1;
+        while (index < simpleBinaryName.length() &&
+               isAsciiDigit(simpleBinaryName.charAt(index)))
+            index++;
+        return names.fromString(simpleBinaryName.substring(index));
+    }
+
+    private MethodSymbol findMethod(NameAndType nt, Scope scope, long flags) {
+        if (nt == null)
+            return null;
+
+        MethodType type = nt.uniqueType.type.asMethodType();
+
+        for (Scope.Entry e = scope.lookup(nt.name); e.scope != null; e = e.next())
+            if (e.sym.kind == MTH && isSameBinaryType(e.sym.type.asMethodType(), type))
+                return (MethodSymbol)e.sym;
+
+        if (nt.name != names.init)
+            // not a constructor
+            return null;
+        if ((flags & INTERFACE) != 0)
+            // no enclosing instance
+            return null;
+        if (nt.uniqueType.type.getParameterTypes().isEmpty())
+            // no parameters
+            return null;
+
+        // A constructor of an inner class.
+        // Remove the first argument (the enclosing instance)
+        nt.setType(new MethodType(nt.uniqueType.type.getParameterTypes().tail,
+                                 nt.uniqueType.type.getReturnType(),
+                                 nt.uniqueType.type.getThrownTypes(),
+                                 syms.methodClass));
+        // Try searching again
+        return findMethod(nt, scope, flags);
+    }
+
+    /** Similar to Types.isSameType but avoids completion */
+    private boolean isSameBinaryType(MethodType mt1, MethodType mt2) {
+        List<Type> types1 = types.erasure(mt1.getParameterTypes())
+            .prepend(types.erasure(mt1.getReturnType()));
+        List<Type> types2 = mt2.getParameterTypes().prepend(mt2.getReturnType());
+        while (!types1.isEmpty() && !types2.isEmpty()) {
+            if (types1.head.tsym != types2.head.tsym)
+                return false;
+            types1 = types1.tail;
+            types2 = types2.tail;
+        }
+        return types1.isEmpty() && types2.isEmpty();
+    }
+
+    /**
+     * Character.isDigit answers <tt>true</tt> to some non-ascii
+     * digits.  This one does not.  <b>copied from java.lang.Class</b>
+     */
+    private static boolean isAsciiDigit(char c) {
+        return '0' <= c && c <= '9';
+    }
+
+    /** Read member attributes.
+     */
+    void readMemberAttrs(Symbol sym) {
+        readAttrs(sym, AttributeKind.MEMBER);
+    }
+
+    void readAttrs(Symbol sym, AttributeKind kind) {
+        char ac = nextChar();
+        for (int i = 0; i < ac; i++) {
+            Name attrName = readName(nextChar());
+            int attrLen = nextInt();
+            AttributeReader r = attributeReaders.get(attrName);
+            if (r != null && r.accepts(kind))
+                r.read(sym, attrLen);
+            else  {
+                unrecognized(attrName);
+                bp = bp + attrLen;
+            }
+        }
+    }
+
+    private boolean readingClassAttr = false;
+    private List<Type> missingTypeVariables = List.nil();
+    private List<Type> foundTypeVariables = List.nil();
+
+    /** Read class attributes.
+     */
+    void readClassAttrs(ClassSymbol c) {
+        readAttrs(c, AttributeKind.CLASS);
+    }
+
+    /** Read code block.
+     */
+    Code readCode(Symbol owner) {
+        nextChar(); // max_stack
+        nextChar(); // max_locals
+        final int  code_length = nextInt();
+        bp += code_length;
+        final char exception_table_length = nextChar();
+        bp += exception_table_length * 8;
+        readMemberAttrs(owner);
+        return null;
+    }
+
+/************************************************************************
+ * Reading Java-language annotations
+ ***********************************************************************/
+
+    /** Attach annotations.
+     */
+    void attachAnnotations(final Symbol sym) {
+        int numAttributes = nextChar();
+        if (numAttributes != 0) {
+            ListBuffer<CompoundAnnotationProxy> proxies =
+                new ListBuffer<CompoundAnnotationProxy>();
+            for (int i = 0; i<numAttributes; i++) {
+                CompoundAnnotationProxy proxy = readCompoundAnnotation();
+                if (proxy.type.tsym == syms.proprietaryType.tsym)
+                    sym.flags_field |= PROPRIETARY;
+                else if (proxy.type.tsym == syms.profileType.tsym) {
+                    if (profile != Profile.DEFAULT) {
+                        for (Pair<Name,Attribute> v: proxy.values) {
+                            if (v.fst == names.value && v.snd instanceof Attribute.Constant) {
+                                Attribute.Constant c = (Attribute.Constant) v.snd;
+                                if (c.type == syms.intType && ((Integer) c.value) > profile.value) {
+                                    sym.flags_field |= NOT_IN_PROFILE;
+                                }
+                            }
+                        }
+                    }
+                } else
+                    proxies.append(proxy);
+            }
+            annotate.normal(new AnnotationCompleter(sym, proxies.toList()));
+        }
+    }
+
+    /** Attach parameter annotations.
+     */
+    void attachParameterAnnotations(final Symbol method) {
+        final MethodSymbol meth = (MethodSymbol)method;
+        int numParameters = buf[bp++] & 0xFF;
+        List<VarSymbol> parameters = meth.params();
+        int pnum = 0;
+        while (parameters.tail != null) {
+            attachAnnotations(parameters.head);
+            parameters = parameters.tail;
+            pnum++;
+        }
+        if (pnum != numParameters) {
+            throw badClassFile("bad.runtime.invisible.param.annotations", meth);
+        }
+    }
+
+    void attachTypeAnnotations(final Symbol sym) {
+        int numAttributes = nextChar();
+        if (numAttributes != 0) {
+            ListBuffer<TypeAnnotationProxy> proxies = new ListBuffer<>();
+            for (int i = 0; i < numAttributes; i++)
+                proxies.append(readTypeAnnotation());
+            annotate.normal(new TypeAnnotationCompleter(sym, proxies.toList()));
+        }
+    }
+
+    /** Attach the default value for an annotation element.
+     */
+    void attachAnnotationDefault(final Symbol sym) {
+        final MethodSymbol meth = (MethodSymbol)sym; // only on methods
+        final Attribute value = readAttributeValue();
+
+        // The default value is set later during annotation. It might
+        // be the case that the Symbol sym is annotated _after_ the
+        // repeating instances that depend on this default value,
+        // because of this we set an interim value that tells us this
+        // element (most likely) has a default.
+        //
+        // Set interim value for now, reset just before we do this
+        // properly at annotate time.
+        meth.defaultValue = value;
+        annotate.normal(new AnnotationDefaultCompleter(meth, value));
+    }
+
+    Type readTypeOrClassSymbol(int i) {
+        // support preliminary jsr175-format class files
+        if (buf[poolIdx[i]] == CONSTANT_Class)
+            return readClassSymbol(i).type;
+        return readType(i);
+    }
+    Type readEnumType(int i) {
+        // support preliminary jsr175-format class files
+        int index = poolIdx[i];
+        int length = getChar(index + 1);
+        if (buf[index + length + 2] != ';')
+            return enterClass(readName(i)).type;
+        return readType(i);
+    }
+
+    CompoundAnnotationProxy readCompoundAnnotation() {
+        Type t = readTypeOrClassSymbol(nextChar());
+        int numFields = nextChar();
+        ListBuffer<Pair<Name,Attribute>> pairs =
+            new ListBuffer<Pair<Name,Attribute>>();
+        for (int i=0; i<numFields; i++) {
+            Name name = readName(nextChar());
+            Attribute value = readAttributeValue();
+            pairs.append(new Pair<Name,Attribute>(name, value));
+        }
+        return new CompoundAnnotationProxy(t, pairs.toList());
+    }
+
+    TypeAnnotationProxy readTypeAnnotation() {
+        TypeAnnotationPosition position = readPosition();
+        CompoundAnnotationProxy proxy = readCompoundAnnotation();
+
+        return new TypeAnnotationProxy(proxy, position);
+    }
+
+    TypeAnnotationPosition readPosition() {
+        int tag = nextByte(); // TargetType tag is a byte
+
+        if (!TargetType.isValidTargetTypeValue(tag))
+            throw this.badClassFile("bad.type.annotation.value", String.format("0x%02X", tag));
+
+        TypeAnnotationPosition position = new TypeAnnotationPosition();
+        TargetType type = TargetType.fromTargetTypeValue(tag);
+
+        position.type = type;
+
+        switch (type) {
+        // instanceof
+        case INSTANCEOF:
+        // new expression
+        case NEW:
+        // constructor/method reference receiver
+        case CONSTRUCTOR_REFERENCE:
+        case METHOD_REFERENCE:
+            position.offset = nextChar();
+            break;
+        // local variable
+        case LOCAL_VARIABLE:
+        // resource variable
+        case RESOURCE_VARIABLE:
+            int table_length = nextChar();
+            position.lvarOffset = new int[table_length];
+            position.lvarLength = new int[table_length];
+            position.lvarIndex = new int[table_length];
+
+            for (int i = 0; i < table_length; ++i) {
+                position.lvarOffset[i] = nextChar();
+                position.lvarLength[i] = nextChar();
+                position.lvarIndex[i] = nextChar();
+            }
+            break;
+        // exception parameter
+        case EXCEPTION_PARAMETER:
+            position.exception_index = nextChar();
+            break;
+        // method receiver
+        case METHOD_RECEIVER:
+            // Do nothing
+            break;
+        // type parameter
+        case CLASS_TYPE_PARAMETER:
+        case METHOD_TYPE_PARAMETER:
+            position.parameter_index = nextByte();
+            break;
+        // type parameter bound
+        case CLASS_TYPE_PARAMETER_BOUND:
+        case METHOD_TYPE_PARAMETER_BOUND:
+            position.parameter_index = nextByte();
+            position.bound_index = nextByte();
+            break;
+        // class extends or implements clause
+        case CLASS_EXTENDS:
+            position.type_index = nextChar();
+            break;
+        // throws
+        case THROWS:
+            position.type_index = nextChar();
+            break;
+        // method parameter
+        case METHOD_FORMAL_PARAMETER:
+            position.parameter_index = nextByte();
+            break;
+        // type cast
+        case CAST:
+        // method/constructor/reference type argument
+        case CONSTRUCTOR_INVOCATION_TYPE_ARGUMENT:
+        case METHOD_INVOCATION_TYPE_ARGUMENT:
+        case CONSTRUCTOR_REFERENCE_TYPE_ARGUMENT:
+        case METHOD_REFERENCE_TYPE_ARGUMENT:
+            position.offset = nextChar();
+            position.type_index = nextByte();
+            break;
+        // We don't need to worry about these
+        case METHOD_RETURN:
+        case FIELD:
+            break;
+        case UNKNOWN:
+            throw new AssertionError("jvm.ClassReader: UNKNOWN target type should never occur!");
+        default:
+            throw new AssertionError("jvm.ClassReader: Unknown target type for position: " + position);
+        }
+
+        { // See whether there is location info and read it
+            int len = nextByte();
+            ListBuffer<Integer> loc = new ListBuffer<>();
+            for (int i = 0; i < len * TypeAnnotationPosition.TypePathEntry.bytesPerEntry; ++i)
+                loc = loc.append(nextByte());
+            position.location = TypeAnnotationPosition.getTypePathFromBinary(loc.toList());
+        }
+
+        return position;
+    }
+
+    Attribute readAttributeValue() {
+        char c = (char) buf[bp++];
+        switch (c) {
+        case 'B':
+            return new Attribute.Constant(syms.byteType, readPool(nextChar()));
+        case 'C':
+            return new Attribute.Constant(syms.charType, readPool(nextChar()));
+        case 'D':
+            return new Attribute.Constant(syms.doubleType, readPool(nextChar()));
+        case 'F':
+            return new Attribute.Constant(syms.floatType, readPool(nextChar()));
+        case 'I':
+            return new Attribute.Constant(syms.intType, readPool(nextChar()));
+        case 'J':
+            return new Attribute.Constant(syms.longType, readPool(nextChar()));
+        case 'S':
+            return new Attribute.Constant(syms.shortType, readPool(nextChar()));
+        case 'Z':
+            return new Attribute.Constant(syms.booleanType, readPool(nextChar()));
+        case 's':
+            return new Attribute.Constant(syms.stringType, readPool(nextChar()).toString());
+        case 'e':
+            return new EnumAttributeProxy(readEnumType(nextChar()), readName(nextChar()));
+        case 'c':
+            return new Attribute.Class(types, readTypeOrClassSymbol(nextChar()));
+        case '[': {
+            int n = nextChar();
+            ListBuffer<Attribute> l = new ListBuffer<Attribute>();
+            for (int i=0; i<n; i++)
+                l.append(readAttributeValue());
+            return new ArrayAttributeProxy(l.toList());
+        }
+        case '@':
+            return readCompoundAnnotation();
+        default:
+            throw new AssertionError("unknown annotation tag '" + c + "'");
+        }
+    }
+
+    interface ProxyVisitor extends Attribute.Visitor {
+        void visitEnumAttributeProxy(EnumAttributeProxy proxy);
+        void visitArrayAttributeProxy(ArrayAttributeProxy proxy);
+        void visitCompoundAnnotationProxy(CompoundAnnotationProxy proxy);
+    }
+
+    static class EnumAttributeProxy extends Attribute {
+        Type enumType;
+        Name enumerator;
+        public EnumAttributeProxy(Type enumType, Name enumerator) {
+            super(null);
+            this.enumType = enumType;
+            this.enumerator = enumerator;
+        }
+        public void accept(Visitor v) { ((ProxyVisitor)v).visitEnumAttributeProxy(this); }
+        @Override
+        public String toString() {
+            return "/*proxy enum*/" + enumType + "." + enumerator;
+        }
+    }
+
+    static class ArrayAttributeProxy extends Attribute {
+        List<Attribute> values;
+        ArrayAttributeProxy(List<Attribute> values) {
+            super(null);
+            this.values = values;
+        }
+        public void accept(Visitor v) { ((ProxyVisitor)v).visitArrayAttributeProxy(this); }
+        @Override
+        public String toString() {
+            return "{" + values + "}";
+        }
+    }
+
+    /** A temporary proxy representing a compound attribute.
+     */
+    static class CompoundAnnotationProxy extends Attribute {
+        final List<Pair<Name,Attribute>> values;
+        public CompoundAnnotationProxy(Type type,
+                                      List<Pair<Name,Attribute>> values) {
+            super(type);
+            this.values = values;
+        }
+        public void accept(Visitor v) { ((ProxyVisitor)v).visitCompoundAnnotationProxy(this); }
+        @Override
+        public String toString() {
+            StringBuilder buf = new StringBuilder();
+            buf.append("@");
+            buf.append(type.tsym.getQualifiedName());
+            buf.append("/*proxy*/{");
+            boolean first = true;
+            for (List<Pair<Name,Attribute>> v = values;
+                 v.nonEmpty(); v = v.tail) {
+                Pair<Name,Attribute> value = v.head;
+                if (!first) buf.append(",");
+                first = false;
+                buf.append(value.fst);
+                buf.append("=");
+                buf.append(value.snd);
+            }
+            buf.append("}");
+            return buf.toString();
+        }
+    }
+
+    /** A temporary proxy representing a type annotation.
+     */
+    static class TypeAnnotationProxy {
+        final CompoundAnnotationProxy compound;
+        final TypeAnnotationPosition position;
+        public TypeAnnotationProxy(CompoundAnnotationProxy compound,
+                TypeAnnotationPosition position) {
+            this.compound = compound;
+            this.position = position;
+        }
+    }
+
+    class AnnotationDeproxy implements ProxyVisitor {
+        private ClassSymbol requestingOwner = currentOwner.kind == MTH
+            ? currentOwner.enclClass() : (ClassSymbol)currentOwner;
+
+        List<Attribute.Compound> deproxyCompoundList(List<CompoundAnnotationProxy> pl) {
+            // also must fill in types!!!!
+            ListBuffer<Attribute.Compound> buf =
+                new ListBuffer<Attribute.Compound>();
+            for (List<CompoundAnnotationProxy> l = pl; l.nonEmpty(); l=l.tail) {
+                buf.append(deproxyCompound(l.head));
+            }
+            return buf.toList();
+        }
+
+        Attribute.Compound deproxyCompound(CompoundAnnotationProxy a) {
+            ListBuffer<Pair<MethodSymbol,Attribute>> buf =
+                new ListBuffer<Pair<MethodSymbol,Attribute>>();
+            for (List<Pair<Name,Attribute>> l = a.values;
+                 l.nonEmpty();
+                 l = l.tail) {
+                MethodSymbol meth = findAccessMethod(a.type, l.head.fst);
+                buf.append(new Pair<MethodSymbol,Attribute>
+                           (meth, deproxy(meth.type.getReturnType(), l.head.snd)));
+            }
+            return new Attribute.Compound(a.type, buf.toList());
+        }
+
+        MethodSymbol findAccessMethod(Type container, Name name) {
+            CompletionFailure failure = null;
+            try {
+                for (Scope.Entry e = container.tsym.members().lookup(name);
+                     e.scope != null;
+                     e = e.next()) {
+                    Symbol sym = e.sym;
+                    if (sym.kind == MTH && sym.type.getParameterTypes().length() == 0)
+                        return (MethodSymbol) sym;
+                }
+            } catch (CompletionFailure ex) {
+                failure = ex;
+            }
+            // The method wasn't found: emit a warning and recover
+            JavaFileObject prevSource = log.useSource(requestingOwner.classfile);
+            try {
+                if (lintClassfile) {
+                    if (failure == null) {
+                        log.warning("annotation.method.not.found",
+                                    container,
+                                    name);
+                    } else {
+                        log.warning("annotation.method.not.found.reason",
+                                    container,
+                                    name,
+                                    failure.getDetailValue()); //diagnostic, if present
+                    }
+                }
+            } finally {
+                log.useSource(prevSource);
+            }
+            // Construct a new method type and symbol.  Use bottom
+            // type (typeof null) as return type because this type is
+            // a subtype of all reference types and can be converted
+            // to primitive types by unboxing.
+            MethodType mt = new MethodType(List.<Type>nil(),
+                                           syms.botType,
+                                           List.<Type>nil(),
+                                           syms.methodClass);
+            return new MethodSymbol(PUBLIC | ABSTRACT, name, mt, container.tsym);
+        }
+
+        Attribute result;
+        Type type;
+        Attribute deproxy(Type t, Attribute a) {
+            Type oldType = type;
+            try {
+                type = t;
+                a.accept(this);
+                return result;
+            } finally {
+                type = oldType;
+            }
+        }
+
+        // implement Attribute.Visitor below
+
+        public void visitConstant(Attribute.Constant value) {
+            // assert value.type == type;
+            result = value;
+        }
+
+        public void visitClass(Attribute.Class clazz) {
+            result = clazz;
+        }
+
+        public void visitEnum(Attribute.Enum e) {
+            throw new AssertionError(); // shouldn't happen
+        }
+
+        public void visitCompound(Attribute.Compound compound) {
+            throw new AssertionError(); // shouldn't happen
+        }
+
+        public void visitArray(Attribute.Array array) {
+            throw new AssertionError(); // shouldn't happen
+        }
+
+        public void visitError(Attribute.Error e) {
+            throw new AssertionError(); // shouldn't happen
+        }
+
+        public void visitEnumAttributeProxy(EnumAttributeProxy proxy) {
+            // type.tsym.flatName() should == proxy.enumFlatName
+            TypeSymbol enumTypeSym = proxy.enumType.tsym;
+            VarSymbol enumerator = null;
+            CompletionFailure failure = null;
+            try {
+                for (Scope.Entry e = enumTypeSym.members().lookup(proxy.enumerator);
+                     e.scope != null;
+                     e = e.next()) {
+                    if (e.sym.kind == VAR) {
+                        enumerator = (VarSymbol)e.sym;
+                        break;
+                    }
+                }
+            }
+            catch (CompletionFailure ex) {
+                failure = ex;
+            }
+            if (enumerator == null) {
+                if (failure != null) {
+                    log.warning("unknown.enum.constant.reason",
+                              currentClassFile, enumTypeSym, proxy.enumerator,
+                              failure.getDiagnostic());
+                } else {
+                    log.warning("unknown.enum.constant",
+                              currentClassFile, enumTypeSym, proxy.enumerator);
+                }
+                result = new Attribute.Enum(enumTypeSym.type,
+                        new VarSymbol(0, proxy.enumerator, syms.botType, enumTypeSym));
+            } else {
+                result = new Attribute.Enum(enumTypeSym.type, enumerator);
+            }
+        }
+
+        public void visitArrayAttributeProxy(ArrayAttributeProxy proxy) {
+            int length = proxy.values.length();
+            Attribute[] ats = new Attribute[length];
+            Type elemtype = types.elemtype(type);
+            int i = 0;
+            for (List<Attribute> p = proxy.values; p.nonEmpty(); p = p.tail) {
+                ats[i++] = deproxy(elemtype, p.head);
+            }
+            result = new Attribute.Array(type, ats);
+        }
+
+        public void visitCompoundAnnotationProxy(CompoundAnnotationProxy proxy) {
+            result = deproxyCompound(proxy);
+        }
+    }
+
+    class AnnotationDefaultCompleter extends AnnotationDeproxy implements Annotate.Worker {
+        final MethodSymbol sym;
+        final Attribute value;
+        final JavaFileObject classFile = currentClassFile;
+        @Override
+        public String toString() {
+            return " ClassReader store default for " + sym.owner + "." + sym + " is " + value;
+        }
+        AnnotationDefaultCompleter(MethodSymbol sym, Attribute value) {
+            this.sym = sym;
+            this.value = value;
+        }
+        // implement Annotate.Worker.run()
+        public void run() {
+            JavaFileObject previousClassFile = currentClassFile;
+            try {
+                // Reset the interim value set earlier in
+                // attachAnnotationDefault().
+                sym.defaultValue = null;
+                currentClassFile = classFile;
+                sym.defaultValue = deproxy(sym.type.getReturnType(), value);
+            } finally {
+                currentClassFile = previousClassFile;
+            }
+        }
+    }
+
+    class AnnotationCompleter extends AnnotationDeproxy implements Annotate.Worker {
+        final Symbol sym;
+        final List<CompoundAnnotationProxy> l;
+        final JavaFileObject classFile;
+        @Override
+        public String toString() {
+            return " ClassReader annotate " + sym.owner + "." + sym + " with " + l;
+        }
+        AnnotationCompleter(Symbol sym, List<CompoundAnnotationProxy> l) {
+            this.sym = sym;
+            this.l = l;
+            this.classFile = currentClassFile;
+        }
+        // implement Annotate.Worker.run()
+        public void run() {
+            JavaFileObject previousClassFile = currentClassFile;
+            try {
+                currentClassFile = classFile;
+                List<Attribute.Compound> newList = deproxyCompoundList(l);
+                if (sym.annotationsPendingCompletion()) {
+                    sym.setDeclarationAttributes(newList);
+                } else {
+                    sym.appendAttributes(newList);
+                }
+            } finally {
+                currentClassFile = previousClassFile;
+            }
+        }
+    }
+
+    class TypeAnnotationCompleter extends AnnotationCompleter {
+
+        List<TypeAnnotationProxy> proxies;
+
+        TypeAnnotationCompleter(Symbol sym,
+                List<TypeAnnotationProxy> proxies) {
+            super(sym, List.<CompoundAnnotationProxy>nil());
+            this.proxies = proxies;
+        }
+
+        List<Attribute.TypeCompound> deproxyTypeCompoundList(List<TypeAnnotationProxy> proxies) {
+            ListBuffer<Attribute.TypeCompound> buf = new ListBuffer<>();
+            for (TypeAnnotationProxy proxy: proxies) {
+                Attribute.Compound compound = deproxyCompound(proxy.compound);
+                Attribute.TypeCompound typeCompound = new Attribute.TypeCompound(compound, proxy.position);
+                buf.add(typeCompound);
+            }
+            return buf.toList();
+        }
+
+        @Override
+        public void run() {
+            JavaFileObject previousClassFile = currentClassFile;
+            try {
+                currentClassFile = classFile;
+                List<Attribute.TypeCompound> newList = deproxyTypeCompoundList(proxies);
+                sym.setTypeAttributes(newList.prependList(sym.getRawTypeAttributes()));
+            } finally {
+                currentClassFile = previousClassFile;
+            }
+        }
+    }
+
+
+/************************************************************************
+ * Reading Symbols
+ ***********************************************************************/
+
+    /** Read a field.
+     */
+    VarSymbol readField() {
+        long flags = adjustFieldFlags(nextChar());
+        Name name = readName(nextChar());
+        Type type = readType(nextChar());
+        VarSymbol v = new VarSymbol(flags, name, type, currentOwner);
+        readMemberAttrs(v);
+        return v;
+    }
+
+    /** Read a method.
+     */
+    MethodSymbol readMethod() {
+        long flags = adjustMethodFlags(nextChar());
+        Name name = readName(nextChar());
+        Type type = readType(nextChar());
+        if (currentOwner.isInterface() &&
+                (flags & ABSTRACT) == 0 && !name.equals(names.clinit)) {
+            if (majorVersion > Target.JDK1_8.majorVersion ||
+                    (majorVersion == Target.JDK1_8.majorVersion && minorVersion >= Target.JDK1_8.minorVersion)) {
+                if ((flags & STATIC) == 0) {
+                    currentOwner.flags_field |= DEFAULT;
+                    flags |= DEFAULT | ABSTRACT;
+                }
+            } else {
+                //protect against ill-formed classfiles
+                throw badClassFile((flags & STATIC) == 0 ? "invalid.default.interface" : "invalid.static.interface",
+                                   Integer.toString(majorVersion),
+                                   Integer.toString(minorVersion));
+            }
+        }
+        if (name == names.init && currentOwner.hasOuterInstance()) {
+            // Sometimes anonymous classes don't have an outer
+            // instance, however, there is no reliable way to tell so
+            // we never strip this$n
+            if (!currentOwner.name.isEmpty())
+                type = new MethodType(adjustMethodParams(flags, type.getParameterTypes()),
+                                      type.getReturnType(),
+                                      type.getThrownTypes(),
+                                      syms.methodClass);
+        }
+        MethodSymbol m = new MethodSymbol(flags, name, type, currentOwner);
+        if (types.isSignaturePolymorphic(m)) {
+            m.flags_field |= SIGNATURE_POLYMORPHIC;
+        }
+        if (saveParameterNames)
+            initParameterNames(m);
+        Symbol prevOwner = currentOwner;
+        currentOwner = m;
+        try {
+            readMemberAttrs(m);
+        } finally {
+            currentOwner = prevOwner;
+        }
+        if (saveParameterNames)
+            setParameterNames(m, type);
+        return m;
+    }
+
+    private List<Type> adjustMethodParams(long flags, List<Type> args) {
+        boolean isVarargs = (flags & VARARGS) != 0;
+        if (isVarargs) {
+            Type varargsElem = args.last();
+            ListBuffer<Type> adjustedArgs = new ListBuffer<>();
+            for (Type t : args) {
+                adjustedArgs.append(t != varargsElem ?
+                    t :
+                    ((ArrayType)t).makeVarargs());
+            }
+            args = adjustedArgs.toList();
+        }
+        return args.tail;
+    }
+
+    /**
+     * Init the parameter names array.
+     * Parameter names are currently inferred from the names in the
+     * LocalVariableTable attributes of a Code attribute.
+     * (Note: this means parameter names are currently not available for
+     * methods without a Code attribute.)
+     * This method initializes an array in which to store the name indexes
+     * of parameter names found in LocalVariableTable attributes. It is
+     * slightly supersized to allow for additional slots with a start_pc of 0.
+     */
+    void initParameterNames(MethodSymbol sym) {
+        // make allowance for synthetic parameters.
+        final int excessSlots = 4;
+        int expectedParameterSlots =
+                Code.width(sym.type.getParameterTypes()) + excessSlots;
+        if (parameterNameIndices == null
+                || parameterNameIndices.length < expectedParameterSlots) {
+            parameterNameIndices = new int[expectedParameterSlots];
+        } else
+            Arrays.fill(parameterNameIndices, 0);
+        haveParameterNameIndices = false;
+        sawMethodParameters = false;
+    }
+
+    /**
+     * Set the parameter names for a symbol from the name index in the
+     * parameterNameIndicies array. The type of the symbol may have changed
+     * while reading the method attributes (see the Signature attribute).
+     * This may be because of generic information or because anonymous
+     * synthetic parameters were added.   The original type (as read from
+     * the method descriptor) is used to help guess the existence of
+     * anonymous synthetic parameters.
+     * On completion, sym.savedParameter names will either be null (if
+     * no parameter names were found in the class file) or will be set to a
+     * list of names, one per entry in sym.type.getParameterTypes, with
+     * any missing names represented by the empty name.
+     */
+    void setParameterNames(MethodSymbol sym, Type jvmType) {
+        // if no names were found in the class file, there's nothing more to do
+        if (!haveParameterNameIndices)
+            return;
+        // If we get parameter names from MethodParameters, then we
+        // don't need to skip.
+        int firstParam = 0;
+        if (!sawMethodParameters) {
+            firstParam = ((sym.flags() & STATIC) == 0) ? 1 : 0;
+            // the code in readMethod may have skipped the first
+            // parameter when setting up the MethodType. If so, we
+            // make a corresponding allowance here for the position of
+            // the first parameter.  Note that this assumes the
+            // skipped parameter has a width of 1 -- i.e. it is not
+        // a double width type (long or double.)
+        if (sym.name == names.init && currentOwner.hasOuterInstance()) {
+            // Sometimes anonymous classes don't have an outer
+            // instance, however, there is no reliable way to tell so
+            // we never strip this$n
+            if (!currentOwner.name.isEmpty())
+                firstParam += 1;
+        }
+
+        if (sym.type != jvmType) {
+                // reading the method attributes has caused the
+                // symbol's type to be changed. (i.e. the Signature
+                // attribute.)  This may happen if there are hidden
+                // (synthetic) parameters in the descriptor, but not
+                // in the Signature.  The position of these hidden
+                // parameters is unspecified; for now, assume they are
+                // at the beginning, and so skip over them. The
+                // primary case for this is two hidden parameters
+                // passed into Enum constructors.
+            int skip = Code.width(jvmType.getParameterTypes())
+                    - Code.width(sym.type.getParameterTypes());
+            firstParam += skip;
+        }
+        }
+        List<Name> paramNames = List.nil();
+        int index = firstParam;
+        for (Type t: sym.type.getParameterTypes()) {
+            int nameIdx = (index < parameterNameIndices.length
+                    ? parameterNameIndices[index] : 0);
+            Name name = nameIdx == 0 ? names.empty : readName(nameIdx);
+            paramNames = paramNames.prepend(name);
+            index += Code.width(t);
+        }
+        sym.savedParameterNames = paramNames.reverse();
+    }
+
+    /**
+     * skip n bytes
+     */
+    void skipBytes(int n) {
+        bp = bp + n;
+    }
+
+    /** Skip a field or method
+     */
+    void skipMember() {
+        bp = bp + 6;
+        char ac = nextChar();
+        for (int i = 0; i < ac; i++) {
+            bp = bp + 2;
+            int attrLen = nextInt();
+            bp = bp + attrLen;
+        }
+    }
+
+    /** Enter type variables of this classtype and all enclosing ones in
+     *  `typevars'.
+     */
+    protected void enterTypevars(Type t) {
+        if (t.getEnclosingType() != null && t.getEnclosingType().hasTag(CLASS))
+            enterTypevars(t.getEnclosingType());
+        for (List<Type> xs = t.getTypeArguments(); xs.nonEmpty(); xs = xs.tail)
+            typevars.enter(xs.head.tsym);
+    }
+
+    protected void enterTypevars(Symbol sym) {
+        if (sym.owner.kind == MTH) {
+            enterTypevars(sym.owner);
+            enterTypevars(sym.owner.owner);
+        }
+        enterTypevars(sym.type);
+    }
+
+    /** Read contents of a given class symbol `c'. Both external and internal
+     *  versions of an inner class are read.
+     */
+    void readClass(ClassSymbol c) {
+        ClassType ct = (ClassType)c.type;
+
+        // allocate scope for members
+        c.members_field = new Scope(c);
+
+        // prepare type variable table
+        typevars = typevars.dup(currentOwner);
+        if (ct.getEnclosingType().hasTag(CLASS))
+            enterTypevars(ct.getEnclosingType());
+
+        // read flags, or skip if this is an inner class
+        long flags = adjustClassFlags(nextChar());
+        if (c.owner.kind == PCK) c.flags_field = flags;
+
+        // read own class name and check that it matches
+        ClassSymbol self = readClassSymbol(nextChar());
+        if (c != self)
+            throw badClassFile("class.file.wrong.class",
+                               self.flatname);
+
+        // class attributes must be read before class
+        // skip ahead to read class attributes
+        int startbp = bp;
+        nextChar();
+        char interfaceCount = nextChar();
+        bp += interfaceCount * 2;
+        char fieldCount = nextChar();
+        for (int i = 0; i < fieldCount; i++) skipMember();
+        char methodCount = nextChar();
+        for (int i = 0; i < methodCount; i++) skipMember();
+        readClassAttrs(c);
+
+        if (readAllOfClassFile) {
+            for (int i = 1; i < poolObj.length; i++) readPool(i);
+            c.pool = new Pool(poolObj.length, poolObj, types);
+        }
+
+        // reset and read rest of classinfo
+        bp = startbp;
+        int n = nextChar();
+        if (ct.supertype_field == null)
+            ct.supertype_field = (n == 0)
+                ? Type.noType
+                : readClassSymbol(n).erasure(types);
+        n = nextChar();
+        List<Type> is = List.nil();
+        for (int i = 0; i < n; i++) {
+            Type _inter = readClassSymbol(nextChar()).erasure(types);
+            is = is.prepend(_inter);
+        }
+        if (ct.interfaces_field == null)
+            ct.interfaces_field = is.reverse();
+
+        Assert.check(fieldCount == nextChar());
+        for (int i = 0; i < fieldCount; i++) enterMember(c, readField());
+        Assert.check(methodCount == nextChar());
+        for (int i = 0; i < methodCount; i++) enterMember(c, readMethod());
+
+        typevars = typevars.leave();
+    }
+
+    /** Read inner class info. For each inner/outer pair allocate a
+     *  member class.
+     */
+    void readInnerClasses(ClassSymbol c) {
+        int n = nextChar();
+        for (int i = 0; i < n; i++) {
+            nextChar(); // skip inner class symbol
+            ClassSymbol outer = readClassSymbol(nextChar());
+            Name name = readName(nextChar());
+            if (name == null) name = names.empty;
+            long flags = adjustClassFlags(nextChar());
+            if (outer != null) { // we have a member class
+                if (name == names.empty)
+                    name = names.one;
+                ClassSymbol member = enterClass(name, outer);
+                if ((flags & STATIC) == 0) {
+                    ((ClassType)member.type).setEnclosingType(outer.type);
+                    if (member.erasure_field != null)
+                        ((ClassType)member.erasure_field).setEnclosingType(types.erasure(outer.type));
+                }
+                if (c == outer) {
+                    member.flags_field = flags;
+                    enterMember(c, member);
+                }
+            }
+        }
+    }
+
+    /** Read a class file.
+     */
+    private void readClassFile(ClassSymbol c) throws IOException {
+        int magic = nextInt();
+        if (magic != JAVA_MAGIC)
+            throw badClassFile("illegal.start.of.class.file");
+
+        minorVersion = nextChar();
+        majorVersion = nextChar();
+        int maxMajor = Target.MAX().majorVersion;
+        int maxMinor = Target.MAX().minorVersion;
+        if (majorVersion > maxMajor ||
+            majorVersion * 1000 + minorVersion <
+            Target.MIN().majorVersion * 1000 + Target.MIN().minorVersion)
+        {
+            if (majorVersion == (maxMajor + 1))
+                log.warning("big.major.version",
+                            currentClassFile,
+                            majorVersion,
+                            maxMajor);
+            else
+                throw badClassFile("wrong.version",
+                                   Integer.toString(majorVersion),
+                                   Integer.toString(minorVersion),
+                                   Integer.toString(maxMajor),
+                                   Integer.toString(maxMinor));
+        }
+        else if (checkClassFile &&
+                 majorVersion == maxMajor &&
+                 minorVersion > maxMinor)
+        {
+            printCCF("found.later.version",
+                     Integer.toString(minorVersion));
+        }
+        indexPool();
+        if (signatureBuffer.length < bp) {
+            int ns = Integer.highestOneBit(bp) << 1;
+            signatureBuffer = new byte[ns];
+        }
+        readClass(c);
+    }
+
+/************************************************************************
+ * Adjusting flags
+ ***********************************************************************/
+
+    long adjustFieldFlags(long flags) {
+        return flags;
+    }
+    long adjustMethodFlags(long flags) {
+        if ((flags & ACC_BRIDGE) != 0) {
+            flags &= ~ACC_BRIDGE;
+            flags |= BRIDGE;
+            if (!allowGenerics)
+                flags &= ~SYNTHETIC;
+        }
+        if ((flags & ACC_VARARGS) != 0) {
+            flags &= ~ACC_VARARGS;
+            flags |= VARARGS;
+        }
+        return flags;
+    }
+    long adjustClassFlags(long flags) {
+        return flags & ~ACC_SUPER; // SUPER and SYNCHRONIZED bits overloaded
+    }
+
+/************************************************************************
+ * Loading Classes
+ ***********************************************************************/
+
+    /** Define a new class given its name and owner.
+     */
+    public ClassSymbol defineClass(Name name, Symbol owner) {
+        ClassSymbol c = new ClassSymbol(0, name, owner);
+        if (owner.kind == PCK)
+            Assert.checkNull(classes.get(c.flatname), c);
+        c.completer = thisCompleter;
+        return c;
+    }
+
+    /** Create a new toplevel or member class symbol with given name
+     *  and owner and enter in `classes' unless already there.
+     */
+    public ClassSymbol enterClass(Name name, TypeSymbol owner) {
+        Name flatname = TypeSymbol.formFlatName(name, owner);
+        ClassSymbol c = classes.get(flatname);
+        if (c == null) {
+            c = defineClass(name, owner);
+            classes.put(flatname, c);
+        } else if ((c.name != name || c.owner != owner) && owner.kind == TYP && c.owner.kind == PCK) {
+            // reassign fields of classes that might have been loaded with
+            // their flat names.
+            c.owner.members().remove(c);
+            c.name = name;
+            c.owner = owner;
+            c.fullname = ClassSymbol.formFullName(name, owner);
+        }
+        return c;
+    }
+
+    /**
+     * Creates a new toplevel class symbol with given flat name and
+     * given class (or source) file.
+     *
+     * @param flatName a fully qualified binary class name
+     * @param classFile the class file or compilation unit defining
+     * the class (may be {@code null})
+     * @return a newly created class symbol
+     * @throws AssertionError if the class symbol already exists
+     */
+    public ClassSymbol enterClass(Name flatName, JavaFileObject classFile) {
+        ClassSymbol cs = classes.get(flatName);
+        if (cs != null) {
+            String msg = Log.format("%s: completer = %s; class file = %s; source file = %s",
+                                    cs.fullname,
+                                    cs.completer,
+                                    cs.classfile,
+                                    cs.sourcefile);
+            throw new AssertionError(msg);
+        }
+        Name packageName = Convert.packagePart(flatName);
+        PackageSymbol owner = packageName.isEmpty()
+                                ? syms.unnamedPackage
+                                : enterPackage(packageName);
+        cs = defineClass(Convert.shortName(flatName), owner);
+        cs.classfile = classFile;
+        classes.put(flatName, cs);
+        return cs;
+    }
+
+    /** Create a new member or toplevel class symbol with given flat name
+     *  and enter in `classes' unless already there.
+     */
+    public ClassSymbol enterClass(Name flatname) {
+        ClassSymbol c = classes.get(flatname);
+        if (c == null)
+            return enterClass(flatname, (JavaFileObject)null);
+        else
+            return c;
+    }
+
+    /** Completion for classes to be loaded. Before a class is loaded
+     *  we make sure its enclosing class (if any) is loaded.
+     */
+    private void complete(Symbol sym) throws CompletionFailure {
+        if (sym.kind == TYP) {
+            ClassSymbol c = (ClassSymbol)sym;
+            c.members_field = new Scope.ErrorScope(c); // make sure it's always defined
+            annotate.enterStart();
+            try {
+                completeOwners(c.owner);
+                completeEnclosing(c);
+            } finally {
+                // The flush needs to happen only after annotations
+                // are filled in.
+                annotate.enterDoneWithoutFlush();
+            }
+            fillIn(c);
+        } else if (sym.kind == PCK) {
+            PackageSymbol p = (PackageSymbol)sym;
+            try {
+                fillIn(p);
+            } catch (IOException ex) {
+                throw new CompletionFailure(sym, ex.getLocalizedMessage()).initCause(ex);
+            }
+        }
+        if (!filling)
+            annotate.flush(); // finish attaching annotations
+    }
+
+    /** complete up through the enclosing package. */
+    private void completeOwners(Symbol o) {
+        if (o.kind != PCK) completeOwners(o.owner);
+        o.complete();
+    }
+
+    /**
+     * Tries to complete lexically enclosing classes if c looks like a
+     * nested class.  This is similar to completeOwners but handles
+     * the situation when a nested class is accessed directly as it is
+     * possible with the Tree API or javax.lang.model.*.
+     */
+    private void completeEnclosing(ClassSymbol c) {
+        if (c.owner.kind == PCK) {
+            Symbol owner = c.owner;
+            for (Name name : Convert.enclosingCandidates(Convert.shortName(c.name))) {
+                Symbol encl = owner.members().lookup(name).sym;
+                if (encl == null)
+                    encl = classes.get(TypeSymbol.formFlatName(name, owner));
+                if (encl != null)
+                    encl.complete();
+            }
+        }
+    }
+
+    /** We can only read a single class file at a time; this
+     *  flag keeps track of when we are currently reading a class
+     *  file.
+     */
+    private boolean filling = false;
+
+    /** Fill in definition of class `c' from corresponding class or
+     *  source file.
+     */
+    private void fillIn(ClassSymbol c) {
+        if (completionFailureName == c.fullname) {
+            throw new CompletionFailure(c, "user-selected completion failure by class name");
+        }
+        currentOwner = c;
+        warnedAttrs.clear();
+        JavaFileObject classfile = c.classfile;
+        if (classfile != null) {
+            JavaFileObject previousClassFile = currentClassFile;
+            try {
+                if (filling) {
+                    Assert.error("Filling " + classfile.toUri() + " during " + previousClassFile);
+                }
+                currentClassFile = classfile;
+                if (verbose) {
+                    log.printVerbose("loading", currentClassFile.toString());
+                }
+                if (classfile.getKind() == JavaFileObject.Kind.CLASS) {
+                    filling = true;
+                    try {
+                        bp = 0;
+                        buf = readInputStream(buf, classfile.openInputStream());
+                        readClassFile(c);
+                        if (!missingTypeVariables.isEmpty() && !foundTypeVariables.isEmpty()) {
+                            List<Type> missing = missingTypeVariables;
+                            List<Type> found = foundTypeVariables;
+                            missingTypeVariables = List.nil();
+                            foundTypeVariables = List.nil();
+                            filling = false;
+                            ClassType ct = (ClassType)currentOwner.type;
+                            ct.supertype_field =
+                                types.subst(ct.supertype_field, missing, found);
+                            ct.interfaces_field =
+                                types.subst(ct.interfaces_field, missing, found);
+                        } else if (missingTypeVariables.isEmpty() !=
+                                   foundTypeVariables.isEmpty()) {
+                            Name name = missingTypeVariables.head.tsym.name;
+                            throw badClassFile("undecl.type.var", name);
+                        }
+                    } finally {
+                        missingTypeVariables = List.nil();
+                        foundTypeVariables = List.nil();
+                        filling = false;
+                    }
+                } else {
+                    if (sourceCompleter != null) {
+                        sourceCompleter.complete(c);
+                    } else {
+                        throw new IllegalStateException("Source completer required to read "
+                                                        + classfile.toUri());
+                    }
+                }
+                return;
+            } catch (IOException ex) {
+                throw badClassFile("unable.to.access.file", ex.getMessage());
+            } finally {
+                currentClassFile = previousClassFile;
+            }
+        } else {
+            JCDiagnostic diag =
+                diagFactory.fragment("class.file.not.found", c.flatname);
+            throw
+                newCompletionFailure(c, diag);
+        }
+    }
+    // where
+        private static byte[] readInputStream(byte[] buf, InputStream s) throws IOException {
+            try {
+                buf = ensureCapacity(buf, s.available());
+                int r = s.read(buf);
+                int bp = 0;
+                while (r != -1) {
+                    bp += r;
+                    buf = ensureCapacity(buf, bp);
+                    r = s.read(buf, bp, buf.length - bp);
+                }
+                return buf;
+            } finally {
+                try {
+                    s.close();
+                } catch (IOException e) {
+                    /* Ignore any errors, as this stream may have already
+                     * thrown a related exception which is the one that
+                     * should be reported.
+                     */
+                }
+            }
+        }
+        /*
+         * ensureCapacity will increase the buffer as needed, taking note that
+         * the new buffer will always be greater than the needed and never
+         * exactly equal to the needed size or bp. If equal then the read (above)
+         * will infinitely loop as buf.length - bp == 0.
+         */
+        private static byte[] ensureCapacity(byte[] buf, int needed) {
+            if (buf.length <= needed) {
+                byte[] old = buf;
+                buf = new byte[Integer.highestOneBit(needed) << 1];
+                System.arraycopy(old, 0, buf, 0, old.length);
+            }
+            return buf;
+        }
+        /** Static factory for CompletionFailure objects.
+         *  In practice, only one can be used at a time, so we share one
+         *  to reduce the expense of allocating new exception objects.
+         */
+        private CompletionFailure newCompletionFailure(TypeSymbol c,
+                                                       JCDiagnostic diag) {
+            if (!cacheCompletionFailure) {
+                // log.warning("proc.messager",
+                //             Log.getLocalizedString("class.file.not.found", c.flatname));
+                // c.debug.printStackTrace();
+                return new CompletionFailure(c, diag);
+            } else {
+                CompletionFailure result = cachedCompletionFailure;
+                result.sym = c;
+                result.diag = diag;
+                return result;
+            }
+        }
+        private CompletionFailure cachedCompletionFailure =
+            new CompletionFailure(null, (JCDiagnostic) null);
+        {
+            cachedCompletionFailure.setStackTrace(new StackTraceElement[0]);
+        }
+
+    /** Load a toplevel class with given fully qualified name
+     *  The class is entered into `classes' only if load was successful.
+     */
+    public ClassSymbol loadClass(Name flatname) throws CompletionFailure {
+        boolean absent = classes.get(flatname) == null;
+        ClassSymbol c = enterClass(flatname);
+        if (c.members_field == null && c.completer != null) {
+            try {
+                c.complete();
+            } catch (CompletionFailure ex) {
+                if (absent) classes.remove(flatname);
+                throw ex;
+            }
+        }
+        return c;
+    }
+
+/************************************************************************
+ * Loading Packages
+ ***********************************************************************/
+
+    /** Check to see if a package exists, given its fully qualified name.
+     */
+    public boolean packageExists(Name fullname) {
+        return enterPackage(fullname).exists();
+    }
+
+    /** Make a package, given its fully qualified name.
+     */
+    public PackageSymbol enterPackage(Name fullname) {
+        PackageSymbol p = packages.get(fullname);
+        if (p == null) {
+            Assert.check(!fullname.isEmpty(), "rootPackage missing!");
+            p = new PackageSymbol(
+                Convert.shortName(fullname),
+                enterPackage(Convert.packagePart(fullname)));
+            p.completer = thisCompleter;
+            packages.put(fullname, p);
+        }
+        return p;
+    }
+
+    /** Make a package, given its unqualified name and enclosing package.
+     */
+    public PackageSymbol enterPackage(Name name, PackageSymbol owner) {
+        return enterPackage(TypeSymbol.formFullName(name, owner));
+    }
+
+    /** Include class corresponding to given class file in package,
+     *  unless (1) we already have one the same kind (.class or .java), or
+     *         (2) we have one of the other kind, and the given class file
+     *             is older.
+     */
+    protected void includeClassFile(PackageSymbol p, JavaFileObject file) {
+        if ((p.flags_field & EXISTS) == 0)
+            for (Symbol q = p; q != null && q.kind == PCK; q = q.owner)
+                q.flags_field |= EXISTS;
+        JavaFileObject.Kind kind = file.getKind();
+        int seen;
+        if (kind == JavaFileObject.Kind.CLASS)
+            seen = CLASS_SEEN;
+        else
+            seen = SOURCE_SEEN;
+        String binaryName = fileManager.inferBinaryName(currentLoc, file);
+        int lastDot = binaryName.lastIndexOf(".");
+        Name classname = names.fromString(binaryName.substring(lastDot + 1));
+        boolean isPkgInfo = classname == names.package_info;
+        ClassSymbol c = isPkgInfo
+            ? p.package_info
+            : (ClassSymbol) p.members_field.lookup(classname).sym;
+        if (c == null) {
+            c = enterClass(classname, p);
+            if (c.classfile == null) // only update the file if's it's newly created
+                c.classfile = file;
+            if (isPkgInfo) {
+                p.package_info = c;
+            } else {
+                if (c.owner == p)  // it might be an inner class
+                    p.members_field.enter(c);
+            }
+        } else if (c.classfile != null && (c.flags_field & seen) == 0) {
+            // if c.classfile == null, we are currently compiling this class
+            // and no further action is necessary.
+            // if (c.flags_field & seen) != 0, we have already encountered
+            // a file of the same kind; again no further action is necessary.
+            if ((c.flags_field & (CLASS_SEEN | SOURCE_SEEN)) != 0)
+                c.classfile = preferredFileObject(file, c.classfile);
+        }
+        c.flags_field |= seen;
+    }
+
+    /** Implement policy to choose to derive information from a source
+     *  file or a class file when both are present.  May be overridden
+     *  by subclasses.
+     */
+    protected JavaFileObject preferredFileObject(JavaFileObject a,
+                                           JavaFileObject b) {
+
+        if (preferSource)
+            return (a.getKind() == JavaFileObject.Kind.SOURCE) ? a : b;
+        else {
+            long adate = a.getLastModified();
+            long bdate = b.getLastModified();
+            // 6449326: policy for bad lastModifiedTime in ClassReader
+            //assert adate >= 0 && bdate >= 0;
+            return (adate > bdate) ? a : b;
+        }
+    }
+
+    /**
+     * specifies types of files to be read when filling in a package symbol
+     */
+    protected EnumSet<JavaFileObject.Kind> getPackageFileKinds() {
+        return EnumSet.of(JavaFileObject.Kind.CLASS, JavaFileObject.Kind.SOURCE);
+    }
+
+    /**
+     * this is used to support javadoc
+     */
+    protected void extraFileActions(PackageSymbol pack, JavaFileObject fe) {
+    }
+
+    protected Location currentLoc; // FIXME
+
+    private boolean verbosePath = true;
+
+    /** Load directory of package into members scope.
+     */
+    private void fillIn(PackageSymbol p) throws IOException {
+        if (p.members_field == null) p.members_field = new Scope(p);
+        String packageName = p.fullname.toString();
+
+        Set<JavaFileObject.Kind> kinds = getPackageFileKinds();
+
+        fillIn(p, PLATFORM_CLASS_PATH,
+               fileManager.list(PLATFORM_CLASS_PATH,
+                                packageName,
+                                EnumSet.of(JavaFileObject.Kind.CLASS),
+                                false));
+
+        Set<JavaFileObject.Kind> classKinds = EnumSet.copyOf(kinds);
+        classKinds.remove(JavaFileObject.Kind.SOURCE);
+        boolean wantClassFiles = !classKinds.isEmpty();
+
+        Set<JavaFileObject.Kind> sourceKinds = EnumSet.copyOf(kinds);
+        sourceKinds.remove(JavaFileObject.Kind.CLASS);
+        boolean wantSourceFiles = !sourceKinds.isEmpty();
+
+        boolean haveSourcePath = fileManager.hasLocation(SOURCE_PATH);
+
+        if (verbose && verbosePath) {
+            if (fileManager instanceof StandardJavaFileManager) {
+                StandardJavaFileManager fm = (StandardJavaFileManager)fileManager;
+                if (haveSourcePath && wantSourceFiles) {
+                    List<File> path = List.nil();
+                    for (File file : fm.getLocation(SOURCE_PATH)) {
+                        path = path.prepend(file);
+                    }
+                    log.printVerbose("sourcepath", path.reverse().toString());
+                } else if (wantSourceFiles) {
+                    List<File> path = List.nil();
+                    for (File file : fm.getLocation(CLASS_PATH)) {
+                        path = path.prepend(file);
+                    }
+                    log.printVerbose("sourcepath", path.reverse().toString());
+                }
+                if (wantClassFiles) {
+                    List<File> path = List.nil();
+                    for (File file : fm.getLocation(PLATFORM_CLASS_PATH)) {
+                        path = path.prepend(file);
+                    }
+                    for (File file : fm.getLocation(CLASS_PATH)) {
+                        path = path.prepend(file);
+                    }
+                    log.printVerbose("classpath",  path.reverse().toString());
+                }
+            }
+        }
+
+        if (wantSourceFiles && !haveSourcePath) {
+            fillIn(p, CLASS_PATH,
+                   fileManager.list(CLASS_PATH,
+                                    packageName,
+                                    kinds,
+                                    false));
+        } else {
+            if (wantClassFiles)
+                fillIn(p, CLASS_PATH,
+                       fileManager.list(CLASS_PATH,
+                                        packageName,
+                                        classKinds,
+                                        false));
+            if (wantSourceFiles)
+                fillIn(p, SOURCE_PATH,
+                       fileManager.list(SOURCE_PATH,
+                                        packageName,
+                                        sourceKinds,
+                                        false));
+        }
+        verbosePath = false;
+    }
+    // where
+        private void fillIn(PackageSymbol p,
+                            Location location,
+                            Iterable<JavaFileObject> files)
+        {
+            currentLoc = location;
+            for (JavaFileObject fo : files) {
+                switch (fo.getKind()) {
+                case CLASS:
+                case SOURCE: {
+                    // TODO pass binaryName to includeClassFile
+                    String binaryName = fileManager.inferBinaryName(currentLoc, fo);
+                    String simpleName = binaryName.substring(binaryName.lastIndexOf(".") + 1);
+                    if (SourceVersion.isIdentifier(simpleName) ||
+                        simpleName.equals("package-info"))
+                        includeClassFile(p, fo);
+                    break;
+                }
+                default:
+                    extraFileActions(p, fo);
+                }
+            }
+        }
+
+    /** Output for "-checkclassfile" option.
+     *  @param key The key to look up the correct internationalized string.
+     *  @param arg An argument for substitution into the output string.
+     */
+    private void printCCF(String key, Object arg) {
+        log.printLines(key, arg);
+    }
+
+
+    public interface SourceCompleter {
+        void complete(ClassSymbol sym)
+            throws CompletionFailure;
+    }
+
+    /**
+     * A subclass of JavaFileObject for the sourcefile attribute found in a classfile.
+     * The attribute is only the last component of the original filename, so is unlikely
+     * to be valid as is, so operations other than those to access the name throw
+     * UnsupportedOperationException
+     */
+    private static class SourceFileObject extends BaseFileObject {
+
+        /** The file's name.
+         */
+        private Name name;
+        private Name flatname;
+
+        public SourceFileObject(Name name, Name flatname) {
+            super(null); // no file manager; never referenced for this file object
+            this.name = name;
+            this.flatname = flatname;
+        }
+
+        @Override
+        public URI toUri() {
+            try {
+                return new URI(null, name.toString(), null);
+            } catch (URISyntaxException e) {
+                throw new CannotCreateUriError(name.toString(), e);
+            }
+        }
+
+        @Override
+        public String getName() {
+            return name.toString();
+        }
+
+        @Override
+        public String getShortName() {
+            return getName();
+        }
+
+        @Override
+        public Kind getKind() {
+            return getKind(getName());
+        }
+
+        @Override
+        public InputStream openInputStream() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public OutputStream openOutputStream() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CharBuffer getCharContent(boolean ignoreEncodingErrors) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Reader openReader(boolean ignoreEncodingErrors) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Writer openWriter() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public long getLastModified() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public boolean delete() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        protected String inferBinaryName(Iterable<? extends File> path) {
+            return flatname.toString();
+        }
+
+        @Override
+        public boolean isNameCompatible(String simpleName, Kind kind) {
+            return true; // fail-safe mode
+        }
+
+        /**
+         * Check if two file objects are equal.
+         * SourceFileObjects are just placeholder objects for the value of a
+         * SourceFile attribute, and do not directly represent specific files.
+         * Two SourceFileObjects are equal if their names are equal.
+         */
+        @Override
+        public boolean equals(Object other) {
+            if (this == other)
+                return true;
+
+            if (!(other instanceof SourceFileObject))
+                return false;
+
+            SourceFileObject o = (SourceFileObject) other;
+            return name.equals(o.name);
+        }
+
+        @Override
+        public int hashCode() {
+            return name.hashCode();
+        }
+    }
+}

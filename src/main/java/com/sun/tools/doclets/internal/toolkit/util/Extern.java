@@ -1,322 +1,316 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.util;
-/*     */ 
-/*     */ import com.sun.javadoc.DocErrorReporter;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import java.io.BufferedReader;
-/*     */ import java.io.IOException;
-/*     */ import java.io.InputStream;
-/*     */ import java.io.InputStreamReader;
-/*     */ import java.net.MalformedURLException;
-/*     */ import java.net.URISyntaxException;
-/*     */ import java.net.URL;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.Map;
-/*     */ import javax.tools.DocumentationTool;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class Extern
-/*     */ {
-/*     */   private Map<String, Item> packageToItemMap;
-/*     */   private final Configuration configuration;
-/*     */   private boolean linkoffline = false;
-/*     */   
-/*     */   private class Item
-/*     */   {
-/*     */     final String packageName;
-/*     */     final String path;
-/*     */     final boolean relative;
-/*     */     
-/*     */     Item(String param1String1, String param1String2, boolean param1Boolean) {
-/* 103 */       this.packageName = param1String1;
-/* 104 */       this.path = param1String2;
-/* 105 */       this.relative = param1Boolean;
-/* 106 */       if (Extern.this.packageToItemMap == null) {
-/* 107 */         Extern.this.packageToItemMap = (Map)new HashMap<>();
-/*     */       }
-/* 109 */       if (!Extern.this.packageToItemMap.containsKey(param1String1)) {
-/* 110 */         Extern.this.packageToItemMap.put(param1String1, this);
-/*     */       }
-/*     */     }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */     
-/*     */     public String toString() {
-/* 118 */       return this.packageName + (this.relative ? " -> " : " => ") + this.path;
-/*     */     }
-/*     */   }
-/*     */   
-/*     */   public Extern(Configuration paramConfiguration) {
-/* 123 */     this.configuration = paramConfiguration;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isExternal(ProgramElementDoc paramProgramElementDoc) {
-/* 132 */     if (this.packageToItemMap == null) {
-/* 133 */       return false;
-/*     */     }
-/* 135 */     return (this.packageToItemMap.get(paramProgramElementDoc.containingPackage().name()) != null);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public DocLink getExternalLink(String paramString1, DocPath paramDocPath, String paramString2) {
-/* 148 */     return getExternalLink(paramString1, paramDocPath, paramString2, null);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public DocLink getExternalLink(String paramString1, DocPath paramDocPath, String paramString2, String paramString3) {
-/* 153 */     Item item = findPackageItem(paramString1);
-/* 154 */     if (item == null) {
-/* 155 */       return null;
-/*     */     }
-/*     */ 
-/*     */     
-/* 159 */     DocPath docPath = item.relative ? paramDocPath.resolve(item.path).resolve(paramString2) : DocPath.create(item.path).resolve(paramString2);
-/*     */     
-/* 161 */     return new DocLink(docPath, "is-external=true", paramString3);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean link(String paramString1, String paramString2, DocErrorReporter paramDocErrorReporter, boolean paramBoolean) {
-/* 176 */     this.linkoffline = paramBoolean;
-/*     */     try {
-/* 178 */       paramString1 = adjustEndFileSeparator(paramString1);
-/* 179 */       if (isUrl(paramString2)) {
-/* 180 */         readPackageListFromURL(paramString1, toURL(adjustEndFileSeparator(paramString2)));
-/*     */       } else {
-/* 182 */         readPackageListFromFile(paramString1, DocFile.createFileForInput(this.configuration, paramString2));
-/*     */       } 
-/* 184 */       return true;
-/* 185 */     } catch (Fault fault) {
-/* 186 */       paramDocErrorReporter.printWarning(fault.getMessage());
-/* 187 */       return false;
-/*     */     } 
-/*     */   }
-/*     */   
-/*     */   private URL toURL(String paramString) throws Fault {
-/*     */     try {
-/* 193 */       return new URL(paramString);
-/* 194 */     } catch (MalformedURLException malformedURLException) {
-/* 195 */       throw new Fault(this.configuration.getText("doclet.MalformedURL", paramString), malformedURLException);
-/*     */     } 
-/*     */   }
-/*     */   
-/*     */   private class Fault extends Exception {
-/*     */     private static final long serialVersionUID = 0L;
-/*     */     
-/*     */     Fault(String param1String, Exception param1Exception) {
-/* 203 */       super(param1String, param1Exception);
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private Item findPackageItem(String paramString) {
-/* 213 */     if (this.packageToItemMap == null) {
-/* 214 */       return null;
-/*     */     }
-/* 216 */     return this.packageToItemMap.get(paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private String adjustEndFileSeparator(String paramString) {
-/* 223 */     return paramString.endsWith("/") ? paramString : (paramString + '/');
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void readPackageListFromURL(String paramString, URL paramURL) throws Fault {
-/*     */     try {
-/* 235 */       URL uRL = paramURL.toURI().resolve(DocPaths.PACKAGE_LIST.getPath()).toURL();
-/* 236 */       readPackageList(uRL.openStream(), paramString, false);
-/* 237 */     } catch (URISyntaxException uRISyntaxException) {
-/* 238 */       throw new Fault(this.configuration.getText("doclet.MalformedURL", paramURL.toString()), uRISyntaxException);
-/* 239 */     } catch (MalformedURLException malformedURLException) {
-/* 240 */       throw new Fault(this.configuration.getText("doclet.MalformedURL", paramURL.toString()), malformedURLException);
-/* 241 */     } catch (IOException iOException) {
-/* 242 */       throw new Fault(this.configuration.getText("doclet.URL_error", paramURL.toString()), iOException);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void readPackageListFromFile(String paramString, DocFile paramDocFile) throws Fault {
-/* 254 */     DocFile docFile = paramDocFile.resolve(DocPaths.PACKAGE_LIST);
-/* 255 */     if (!docFile.isAbsolute() && !this.linkoffline) {
-/* 256 */       docFile = docFile.resolveAgainst(DocumentationTool.Location.DOCUMENTATION_OUTPUT);
-/*     */     }
-/*     */     try {
-/* 259 */       if (docFile.exists() && docFile.canRead()) {
-/*     */ 
-/*     */         
-/* 262 */         boolean bool = (!DocFile.createFileForInput(this.configuration, paramString).isAbsolute() && !isUrl(paramString)) ? true : false;
-/* 263 */         readPackageList(docFile.openInputStream(), paramString, bool);
-/*     */       } else {
-/* 265 */         throw new Fault(this.configuration.getText("doclet.File_error", docFile.getPath()), null);
-/*     */       } 
-/* 267 */     } catch (IOException iOException) {
-/* 268 */       throw new Fault(this.configuration.getText("doclet.File_error", docFile.getPath()), iOException);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void readPackageList(InputStream paramInputStream, String paramString, boolean paramBoolean) throws IOException {
-/* 283 */     BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(paramInputStream));
-/* 284 */     StringBuilder stringBuilder = new StringBuilder();
-/*     */     try {
-/*     */       int i;
-/* 287 */       while ((i = bufferedReader.read()) >= 0) {
-/* 288 */         char c = (char)i;
-/* 289 */         if (c == '\n' || c == '\r') {
-/* 290 */           if (stringBuilder.length() > 0) {
-/* 291 */             String str1 = stringBuilder.toString();
-/*     */             
-/* 293 */             String str2 = paramString + str1.replace('.', '/') + '/';
-/* 294 */             new Item(str1, str2, paramBoolean);
-/* 295 */             stringBuilder.setLength(0);
-/*     */           }  continue;
-/*     */         } 
-/* 298 */         stringBuilder.append(c);
-/*     */       } 
-/*     */     } finally {
-/*     */       
-/* 302 */       paramInputStream.close();
-/*     */     } 
-/*     */   }
-/*     */   
-/*     */   public boolean isUrl(String paramString) {
-/*     */     try {
-/* 308 */       new URL(paramString);
-/*     */       
-/* 310 */       return true;
-/* 311 */     } catch (MalformedURLException malformedURLException) {
-/*     */       
-/* 313 */       return false;
-/*     */     } 
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolki\\util\Extern.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1998, 2014, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.util;
+
+import java.io.*;
+import java.net.*;
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.tools.DocumentationTool;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+
+/**
+ * Process and manage "-link" and "-linkoffline" to external packages. The
+ * options "-link" and "-linkoffline" both depend on the fact that Javadoc now
+ * generates "package-list"(lists all the packages which are getting
+ * documented) file in the current or the destination directory, while
+ * generating the documentation.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Atul M Dambalkar
+ * @author Robert Field
+ */
+public class Extern {
+
+    /**
+     * Map package names onto Extern Item objects.
+     * Lazily initialized.
+     */
+    private Map<String,Item> packageToItemMap;
+
+    /**
+     * The global configuration information for this run.
+     */
+    private final Configuration configuration;
+
+    /**
+     * True if we are using -linkoffline and false if -link is used instead.
+     */
+    private boolean linkoffline = false;
+
+    /**
+     * Stores the info for one external doc set
+     */
+    private class Item {
+
+        /**
+         * Package name, found in the "package-list" file in the {@link path}.
+         */
+        final String packageName;
+
+        /**
+         * The URL or the directory path at which the package documentation will be
+         * avaliable.
+         */
+        final String path;
+
+        /**
+         * If given path is directory path then true else if it is a URL then false.
+         */
+        final boolean relative;
+
+        /**
+         * Constructor to build a Extern Item object and map it with the package name.
+         * If the same package name is found in the map, then the first mapped
+         * Item object or offline location will be retained.
+         *
+         * @param packageName Package name found in the "package-list" file.
+         * @param path        URL or Directory path from where the "package-list"
+         * file is picked.
+         * @param relative    True if path is URL, false if directory path.
+         */
+        Item(String packageName, String path, boolean relative) {
+            this.packageName = packageName;
+            this.path = path;
+            this.relative = relative;
+            if (packageToItemMap == null) {
+                packageToItemMap = new HashMap<String,Item>();
+            }
+            if (!packageToItemMap.containsKey(packageName)) { // save the previous
+                packageToItemMap.put(packageName, this);        // mapped location
+            }
+        }
+
+        /**
+         * String representation of "this" with packagename and the path.
+         */
+        public String toString() {
+            return packageName + (relative? " -> " : " => ") + path;
+        }
+    }
+
+    public Extern(Configuration configuration) {
+        this.configuration = configuration;
+    }
+
+    /**
+     * Determine if a doc item is externally documented.
+     *
+     * @param doc A ProgramElementDoc.
+     */
+    public boolean isExternal(ProgramElementDoc doc) {
+        if (packageToItemMap == null) {
+            return false;
+        }
+        return packageToItemMap.get(doc.containingPackage().name()) != null;
+    }
+
+    /**
+     * Convert a link to be an external link if appropriate.
+     *
+     * @param pkgName The package name.
+     * @param relativepath    The relative path.
+     * @param filename    The link to convert.
+     * @return if external return converted link else return null
+     */
+    public DocLink getExternalLink(String pkgName,
+                                  DocPath relativepath, String filename) {
+        return getExternalLink(pkgName, relativepath, filename, null);
+    }
+
+    public DocLink getExternalLink(String pkgName,
+                                  DocPath relativepath, String filename, String memberName) {
+        Item fnd = findPackageItem(pkgName);
+        if (fnd == null)
+            return null;
+
+        DocPath p = fnd.relative ?
+                relativepath.resolve(fnd.path).resolve(filename) :
+                DocPath.create(fnd.path).resolve(filename);
+
+        return new DocLink(p, "is-external=true", memberName);
+    }
+
+    /**
+     * Build the extern package list from given URL or the directory path.
+     * Flag error if the "-link" or "-linkoffline" option is already used.
+     *
+     * @param url        URL or Directory path.
+     * @param pkglisturl This can be another URL for "package-list" or ordinary
+     *                   file.
+     * @param reporter   The <code>DocErrorReporter</code> used to report errors.
+     * @param linkoffline True if -linkoffline is used and false if -link is used.
+     */
+    public boolean link(String url, String pkglisturl,
+                              DocErrorReporter reporter, boolean linkoffline) {
+        this.linkoffline = linkoffline;
+        try {
+            url = adjustEndFileSeparator(url);
+            if (isUrl(pkglisturl)) {
+                readPackageListFromURL(url, toURL(adjustEndFileSeparator(pkglisturl)));
+            } else {
+                readPackageListFromFile(url, DocFile.createFileForInput(configuration, pkglisturl));
+            }
+            return true;
+        } catch (Fault f) {
+            reporter.printWarning(f.getMessage());
+            return false;
+        }
+    }
+
+    private URL toURL(String url) throws Fault {
+        try {
+            return new URL(url);
+        } catch (MalformedURLException e) {
+            throw new Fault(configuration.getText("doclet.MalformedURL", url), e);
+        }
+    }
+
+    private class Fault extends Exception {
+        private static final long serialVersionUID = 0;
+
+        Fault(String msg, Exception cause) {
+            super(msg, cause);
+        }
+    }
+
+    /**
+     * Get the Extern Item object associated with this package name.
+     *
+     * @param pkgName Package name.
+     */
+    private Item findPackageItem(String pkgName) {
+        if (packageToItemMap == null) {
+            return null;
+        }
+        return packageToItemMap.get(pkgName);
+    }
+
+    /**
+     * If the URL or Directory path is missing end file separator, add that.
+     */
+    private String adjustEndFileSeparator(String url) {
+        return url.endsWith("/") ? url : url + '/';
+    }
+
+    /**
+     * Fetch the URL and read the "package-list" file.
+     *
+     * @param urlpath        Path to the packages.
+     * @param pkglisturlpath URL or the path to the "package-list" file.
+     */
+    private void readPackageListFromURL(String urlpath, URL pkglisturlpath)
+            throws Fault {
+        try {
+            URL link = pkglisturlpath.toURI().resolve(DocPaths.PACKAGE_LIST.getPath()).toURL();
+            readPackageList(link.openStream(), urlpath, false);
+        } catch (URISyntaxException exc) {
+            throw new Fault(configuration.getText("doclet.MalformedURL", pkglisturlpath.toString()), exc);
+        } catch (MalformedURLException exc) {
+            throw new Fault(configuration.getText("doclet.MalformedURL", pkglisturlpath.toString()), exc);
+        } catch (IOException exc) {
+            throw new Fault(configuration.getText("doclet.URL_error", pkglisturlpath.toString()), exc);
+        }
+    }
+
+    /**
+     * Read the "package-list" file which is available locally.
+     *
+     * @param path URL or directory path to the packages.
+     * @param pkgListPath Path to the local "package-list" file.
+     */
+    private void readPackageListFromFile(String path, DocFile pkgListPath)
+            throws Fault {
+        DocFile file = pkgListPath.resolve(DocPaths.PACKAGE_LIST);
+        if (! (file.isAbsolute() || linkoffline)){
+            file = file.resolveAgainst(DocumentationTool.Location.DOCUMENTATION_OUTPUT);
+        }
+        try {
+            if (file.exists() && file.canRead()) {
+                boolean pathIsRelative =
+                        !DocFile.createFileForInput(configuration, path).isAbsolute()
+                        && !isUrl(path);
+                readPackageList(file.openInputStream(), path, pathIsRelative);
+            } else {
+                throw new Fault(configuration.getText("doclet.File_error", file.getPath()), null);
+            }
+        } catch (IOException exc) {
+           throw new Fault(configuration.getText("doclet.File_error", file.getPath()), exc);
+        }
+    }
+
+    /**
+     * Read the file "package-list" and for each package name found, create
+     * Extern object and associate it with the package name in the map.
+     *
+     * @param input    InputStream from the "package-list" file.
+     * @param path     URL or the directory path to the packages.
+     * @param relative Is path relative?
+     */
+    private void readPackageList(InputStream input, String path,
+                                boolean relative)
+                         throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(input));
+        StringBuilder strbuf = new StringBuilder();
+        try {
+            int c;
+            while ((c = in.read()) >= 0) {
+                char ch = (char)c;
+                if (ch == '\n' || ch == '\r') {
+                    if (strbuf.length() > 0) {
+                        String packname = strbuf.toString();
+                        String packpath = path +
+                                      packname.replace('.', '/') + '/';
+                        new Item(packname, packpath, relative);
+                        strbuf.setLength(0);
+                    }
+                } else {
+                    strbuf.append(ch);
+                }
+            }
+        } finally {
+            input.close();
+        }
+    }
+
+    public boolean isUrl (String urlCandidate) {
+        try {
+            new URL(urlCandidate);
+            //No exception was thrown, so this must really be a URL.
+            return true;
+        } catch (MalformedURLException e) {
+            //Since exception is thrown, this must be a directory path.
+            return false;
+        }
+    }
+}

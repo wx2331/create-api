@@ -1,538 +1,532 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.builders;
-/*     */
-/*     */ import com.sun.javadoc.AnnotationTypeDoc;
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.MethodDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.javadoc.Tag;
-/*     */ import com.sun.tools.doclets.internal.toolkit.AnnotationTypeWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.ClassWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.MemberSummaryWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.WriterFactory;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocFinder;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.Util;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.VisibleMemberMap;
-/*     */ import java.text.MessageFormat;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.Collections;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.LinkedList;
-/*     */ import java.util.List;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class MemberSummaryBuilder
-/*     */   extends AbstractMemberBuilder
-/*     */ {
-/*     */   public static final String NAME = "MemberSummary";
-/*     */   private final VisibleMemberMap[] visibleMemberMaps;
-/*     */   private MemberSummaryWriter[] memberSummaryWriters;
-/*     */   private final ClassDoc classDoc;
-/*     */
-/*     */   private MemberSummaryBuilder(Context paramContext, ClassDoc paramClassDoc) {
-/*  77 */     super(paramContext);
-/*  78 */     this.classDoc = paramClassDoc;
-/*  79 */     this.visibleMemberMaps = new VisibleMemberMap[9];
-/*     */
-/*  81 */     for (byte b = 0; b < 9; b++) {
-/*  82 */       this.visibleMemberMaps[b] = new VisibleMemberMap(paramClassDoc, b, this.configuration);
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static MemberSummaryBuilder getInstance(ClassWriter paramClassWriter, Context paramContext) throws Exception {
-/* 101 */     MemberSummaryBuilder memberSummaryBuilder = new MemberSummaryBuilder(paramContext, paramClassWriter.getClassDoc());
-/* 102 */     memberSummaryBuilder.memberSummaryWriters = new MemberSummaryWriter[9];
-/*     */
-/* 104 */     WriterFactory writerFactory = paramContext.configuration.getWriterFactory();
-/* 105 */     for (byte b = 0; b < 9; b++) {
-/* 106 */       memberSummaryBuilder.memberSummaryWriters[b] =
-/* 107 */         memberSummaryBuilder.visibleMemberMaps[b].noVisibleMembers() ? null : writerFactory
-/*     */
-/* 109 */         .getMemberSummaryWriter(paramClassWriter, b);
-/*     */     }
-/* 111 */     return memberSummaryBuilder;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static MemberSummaryBuilder getInstance(AnnotationTypeWriter paramAnnotationTypeWriter, Context paramContext) throws Exception {
-/* 125 */     MemberSummaryBuilder memberSummaryBuilder = new MemberSummaryBuilder(paramContext, (ClassDoc)paramAnnotationTypeWriter.getAnnotationTypeDoc());
-/* 126 */     memberSummaryBuilder.memberSummaryWriters = new MemberSummaryWriter[9];
-/*     */
-/* 128 */     WriterFactory writerFactory = paramContext.configuration.getWriterFactory();
-/* 129 */     for (byte b = 0; b < 9; b++) {
-/* 130 */       memberSummaryBuilder.memberSummaryWriters[b] =
-/* 131 */         memberSummaryBuilder.visibleMemberMaps[b].noVisibleMembers() ? null : writerFactory
-/*     */
-/* 133 */         .getMemberSummaryWriter(paramAnnotationTypeWriter, b);
-/*     */     }
-/*     */
-/* 136 */     return memberSummaryBuilder;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public String getName() {
-/* 143 */     return "MemberSummary";
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public VisibleMemberMap getVisibleMemberMap(int paramInt) {
-/* 155 */     return this.visibleMemberMaps[paramInt];
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public MemberSummaryWriter getMemberSummaryWriter(int paramInt) {
-/* 167 */     return this.memberSummaryWriters[paramInt];
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public List<ProgramElementDoc> members(int paramInt) {
-/* 180 */     return this.visibleMemberMaps[paramInt].getLeafClassMembers(this.configuration);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public boolean hasMembersToDocument() {
-/* 189 */     if (this.classDoc instanceof AnnotationTypeDoc) {
-/* 190 */       return ((((AnnotationTypeDoc)this.classDoc).elements()).length > 0);
-/*     */     }
-/* 192 */     for (byte b = 0; b < 9; b++) {
-/* 193 */       VisibleMemberMap visibleMemberMap = this.visibleMemberMaps[b];
-/* 194 */       if (!visibleMemberMap.noVisibleMembers()) {
-/* 195 */         return true;
-/*     */       }
-/*     */     }
-/* 198 */     return false;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildEnumConstantsSummary(XMLNode paramXMLNode, Content paramContent) {
-/* 208 */     MemberSummaryWriter memberSummaryWriter = this.memberSummaryWriters[1];
-/*     */
-/* 210 */     VisibleMemberMap visibleMemberMap = this.visibleMemberMaps[1];
-/*     */
-/* 212 */     addSummary(memberSummaryWriter, visibleMemberMap, false, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildAnnotationTypeFieldsSummary(XMLNode paramXMLNode, Content paramContent) {
-/* 222 */     MemberSummaryWriter memberSummaryWriter = this.memberSummaryWriters[5];
-/*     */
-/* 224 */     VisibleMemberMap visibleMemberMap = this.visibleMemberMaps[5];
-/*     */
-/* 226 */     addSummary(memberSummaryWriter, visibleMemberMap, false, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildAnnotationTypeOptionalMemberSummary(XMLNode paramXMLNode, Content paramContent) {
-/* 236 */     MemberSummaryWriter memberSummaryWriter = this.memberSummaryWriters[6];
-/*     */
-/* 238 */     VisibleMemberMap visibleMemberMap = this.visibleMemberMaps[6];
-/*     */
-/* 240 */     addSummary(memberSummaryWriter, visibleMemberMap, false, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildAnnotationTypeRequiredMemberSummary(XMLNode paramXMLNode, Content paramContent) {
-/* 250 */     MemberSummaryWriter memberSummaryWriter = this.memberSummaryWriters[7];
-/*     */
-/* 252 */     VisibleMemberMap visibleMemberMap = this.visibleMemberMaps[7];
-/*     */
-/* 254 */     addSummary(memberSummaryWriter, visibleMemberMap, false, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildFieldsSummary(XMLNode paramXMLNode, Content paramContent) {
-/* 264 */     MemberSummaryWriter memberSummaryWriter = this.memberSummaryWriters[2];
-/*     */
-/* 266 */     VisibleMemberMap visibleMemberMap = this.visibleMemberMaps[2];
-/*     */
-/* 268 */     addSummary(memberSummaryWriter, visibleMemberMap, true, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildPropertiesSummary(XMLNode paramXMLNode, Content paramContent) {
-/* 275 */     MemberSummaryWriter memberSummaryWriter = this.memberSummaryWriters[8];
-/*     */
-/* 277 */     VisibleMemberMap visibleMemberMap = this.visibleMemberMaps[8];
-/*     */
-/* 279 */     addSummary(memberSummaryWriter, visibleMemberMap, true, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildNestedClassesSummary(XMLNode paramXMLNode, Content paramContent) {
-/* 289 */     MemberSummaryWriter memberSummaryWriter = this.memberSummaryWriters[0];
-/*     */
-/* 291 */     VisibleMemberMap visibleMemberMap = this.visibleMemberMaps[0];
-/*     */
-/* 293 */     addSummary(memberSummaryWriter, visibleMemberMap, true, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildMethodsSummary(XMLNode paramXMLNode, Content paramContent) {
-/* 303 */     MemberSummaryWriter memberSummaryWriter = this.memberSummaryWriters[4];
-/*     */
-/* 305 */     VisibleMemberMap visibleMemberMap = this.visibleMemberMaps[4];
-/*     */
-/* 307 */     addSummary(memberSummaryWriter, visibleMemberMap, true, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildConstructorsSummary(XMLNode paramXMLNode, Content paramContent) {
-/* 317 */     MemberSummaryWriter memberSummaryWriter = this.memberSummaryWriters[3];
-/*     */
-/* 319 */     VisibleMemberMap visibleMemberMap = this.visibleMemberMaps[3];
-/*     */
-/* 321 */     addSummary(memberSummaryWriter, visibleMemberMap, false, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private void buildSummary(MemberSummaryWriter paramMemberSummaryWriter, VisibleMemberMap paramVisibleMemberMap, LinkedList<Content> paramLinkedList) {
-/* 333 */     ArrayList<Comparable> arrayList = new ArrayList(paramVisibleMemberMap.getLeafClassMembers(this.configuration));
-/*     */
-/* 335 */     if (arrayList.size() > 0) {
-/* 336 */       Collections.sort(arrayList);
-/* 337 */       LinkedList linkedList = new LinkedList();
-/* 338 */       for (byte b = 0; b < arrayList.size(); b++) {
-/* 339 */         ProgramElementDoc programElementDoc1 = (ProgramElementDoc)arrayList.get(b);
-/*     */
-/* 341 */         ProgramElementDoc programElementDoc2 = paramVisibleMemberMap.getPropertyMemberDoc(programElementDoc1);
-/* 342 */         if (programElementDoc2 != null) {
-/* 343 */           processProperty(paramVisibleMemberMap, programElementDoc1, programElementDoc2);
-/*     */         }
-/* 345 */         Tag[] arrayOfTag = programElementDoc1.firstSentenceTags();
-/* 346 */         if (programElementDoc1 instanceof MethodDoc && arrayOfTag.length == 0) {
-/*     */
-/*     */
-/*     */
-/* 350 */           DocFinder.Output output = DocFinder.search(new DocFinder.Input(programElementDoc1));
-/* 351 */           if (output.holder != null && (output.holder
-/* 352 */             .firstSentenceTags()).length > 0) {
-/* 353 */             arrayOfTag = output.holder.firstSentenceTags();
-/*     */           }
-/*     */         }
-/* 356 */         paramMemberSummaryWriter.addMemberSummary(this.classDoc, programElementDoc1, arrayOfTag, linkedList, b);
-/*     */       }
-/*     */
-/* 359 */       paramLinkedList.add(paramMemberSummaryWriter.getSummaryTableTree(this.classDoc, linkedList));
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private void processProperty(VisibleMemberMap paramVisibleMemberMap, ProgramElementDoc paramProgramElementDoc1, ProgramElementDoc paramProgramElementDoc2) {
-/* 378 */     StringBuilder stringBuilder = new StringBuilder();
-/* 379 */     boolean bool1 = isSetter(paramProgramElementDoc1);
-/* 380 */     boolean bool2 = isGetter(paramProgramElementDoc1);
-/* 381 */     if (bool2 || bool1) {
-/*     */
-/* 383 */       if (bool1)
-/* 384 */         stringBuilder.append(
-/* 385 */             MessageFormat.format(this.configuration
-/* 386 */               .getText("doclet.PropertySetterWithName"), new Object[] {
-/* 387 */                 Util.propertyNameFromMethodName(this.configuration, paramProgramElementDoc1.name())
-/*     */               }));
-/* 389 */       if (bool2)
-/* 390 */         stringBuilder.append(
-/* 391 */             MessageFormat.format(this.configuration
-/* 392 */               .getText("doclet.PropertyGetterWithName"), new Object[] {
-/* 393 */                 Util.propertyNameFromMethodName(this.configuration, paramProgramElementDoc1.name())
-/*     */               }));
-/* 395 */       if (paramProgramElementDoc2.commentText() != null &&
-/* 396 */         !paramProgramElementDoc2.commentText().isEmpty()) {
-/* 397 */         stringBuilder.append(" \n @propertyDescription ");
-/*     */       }
-/*     */     }
-/* 400 */     stringBuilder.append(paramProgramElementDoc2.commentText());
-/*     */
-/*     */
-/* 403 */     LinkedList linkedList = new LinkedList();
-/* 404 */     String[] arrayOfString = { "@defaultValue", "@since" };
-/* 405 */     for (String str : arrayOfString) {
-/* 406 */       Tag[] arrayOfTag = paramProgramElementDoc2.tags(str);
-/* 407 */       if (arrayOfTag != null) {
-/* 408 */         linkedList.addAll(Arrays.asList(arrayOfTag));
-/*     */       }
-/*     */     }
-/* 411 */     for (Tag tag : linkedList) {
-/* 412 */       stringBuilder.append("\n")
-/* 413 */         .append(tag.name())
-/* 414 */         .append(" ")
-/* 415 */         .append(tag.text());
-/*     */     }
-/*     */
-/*     */
-/* 419 */     if (!bool2 && !bool1) {
-/* 420 */       MethodDoc methodDoc1 = (MethodDoc)paramVisibleMemberMap.getGetterForProperty(paramProgramElementDoc1);
-/* 421 */       MethodDoc methodDoc2 = (MethodDoc)paramVisibleMemberMap.getSetterForProperty(paramProgramElementDoc1);
-/*     */
-/* 423 */       if (null != methodDoc1 && stringBuilder
-/* 424 */         .indexOf("@see #" + methodDoc1.name()) == -1) {
-/* 425 */         stringBuilder.append("\n @see #")
-/* 426 */           .append(methodDoc1.name())
-/* 427 */           .append("() ");
-/*     */       }
-/*     */
-/* 430 */       if (null != methodDoc2 && stringBuilder
-/* 431 */         .indexOf("@see #" + methodDoc2.name()) == -1) {
-/* 432 */         String str = methodDoc2.parameters()[0].typeName();
-/*     */
-/* 434 */         str = str.split("<")[0];
-/* 435 */         if (str.contains(".")) {
-/* 436 */           str = str.substring(str.lastIndexOf(".") + 1);
-/*     */         }
-/* 438 */         stringBuilder.append("\n @see #").append(methodDoc2.name());
-/*     */
-/* 440 */         if (methodDoc2.parameters()[0].type().asTypeVariable() == null) {
-/* 441 */           stringBuilder.append("(").append(str).append(")");
-/*     */         }
-/* 443 */         stringBuilder.append(" \n");
-/*     */       }
-/*     */     }
-/* 446 */     paramProgramElementDoc1.setRawCommentText(stringBuilder.toString());
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private boolean isGetter(ProgramElementDoc paramProgramElementDoc) {
-/* 455 */     String str = paramProgramElementDoc.name();
-/* 456 */     return (str.startsWith("get") || str.startsWith("is"));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private boolean isSetter(ProgramElementDoc paramProgramElementDoc) {
-/* 466 */     return paramProgramElementDoc.name().startsWith("set");
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private void buildInheritedSummary(MemberSummaryWriter paramMemberSummaryWriter, VisibleMemberMap paramVisibleMemberMap, LinkedList<Content> paramLinkedList) {
-/* 478 */     Iterator<ClassDoc> iterator = paramVisibleMemberMap.getVisibleClassesList().iterator();
-/* 479 */     while (iterator.hasNext()) {
-/* 480 */       ClassDoc classDoc = iterator.next();
-/* 481 */       if (!classDoc.isPublic() &&
-/* 482 */         !Util.isLinkable(classDoc, this.configuration)) {
-/*     */         continue;
-/*     */       }
-/* 485 */       if (classDoc == this.classDoc) {
-/*     */         continue;
-/*     */       }
-/* 488 */       List<Comparable> list = paramVisibleMemberMap.getMembersFor(classDoc);
-/* 489 */       if (list.size() > 0) {
-/* 490 */         Collections.sort(list);
-/* 491 */         Content content1 = paramMemberSummaryWriter.getInheritedSummaryHeader(classDoc);
-/* 492 */         Content content2 = paramMemberSummaryWriter.getInheritedSummaryLinksTree();
-/* 493 */         for (byte b = 0; b < list.size(); b++) {
-/* 494 */           paramMemberSummaryWriter.addInheritedMemberSummary((classDoc
-/* 495 */               .isPackagePrivate() &&
-/* 496 */               !Util.isLinkable(classDoc, this.configuration)) ? this.classDoc : classDoc, (ProgramElementDoc)list
-/*     */
-/* 498 */               .get(b), (b == 0),
-/*     */
-/* 500 */               (b == list.size() - 1), content2);
-/*     */         }
-/* 502 */         content1.addContent(content2);
-/* 503 */         paramLinkedList.add(paramMemberSummaryWriter.getMemberTree(content1));
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private void addSummary(MemberSummaryWriter paramMemberSummaryWriter, VisibleMemberMap paramVisibleMemberMap, boolean paramBoolean, Content paramContent) {
-/* 519 */     LinkedList<Content> linkedList = new LinkedList();
-/* 520 */     buildSummary(paramMemberSummaryWriter, paramVisibleMemberMap, linkedList);
-/* 521 */     if (paramBoolean)
-/* 522 */       buildInheritedSummary(paramMemberSummaryWriter, paramVisibleMemberMap, linkedList);
-/* 523 */     if (!linkedList.isEmpty()) {
-/* 524 */       Content content = paramMemberSummaryWriter.getMemberSummaryHeader(this.classDoc, paramContent);
-/*     */
-/* 526 */       for (byte b = 0; b < linkedList.size(); b++) {
-/* 527 */         content.addContent(linkedList.get(b));
-/*     */       }
-/* 529 */       paramContent.addContent(paramMemberSummaryWriter.getMemberTree(content));
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolkit\builders\MemberSummaryBuilder.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.builders;
+
+import java.util.*;
+import java.text.MessageFormat;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Builds the member summary.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Jamie Ho
+ * @author Bhavesh Patel (Modified)
+ * @since 1.5
+ */
+public class MemberSummaryBuilder extends AbstractMemberBuilder {
+
+    /**
+     * The XML root for this builder.
+     */
+    public static final String NAME = "MemberSummary";
+
+    /**
+     * The visible members for the given class.
+     */
+    private final VisibleMemberMap[] visibleMemberMaps;
+
+    /**
+     * The member summary writers for the given class.
+     */
+    private MemberSummaryWriter[] memberSummaryWriters;
+
+    /**
+     * The type being documented.
+     */
+    private final ClassDoc classDoc;
+
+    /**
+     * Construct a new MemberSummaryBuilder.
+     *
+     * @param classWriter   the writer for the class whose members are being
+     *                      summarized.
+     * @param context       the build context.
+     */
+    private MemberSummaryBuilder(Context context, ClassDoc classDoc) {
+        super(context);
+        this.classDoc = classDoc;
+        visibleMemberMaps =
+                new VisibleMemberMap[VisibleMemberMap.NUM_MEMBER_TYPES];
+        for (int i = 0; i < VisibleMemberMap.NUM_MEMBER_TYPES; i++) {
+            visibleMemberMaps[i] =
+                    new VisibleMemberMap(
+                    classDoc,
+                    i,
+                    configuration);
+        }
+    }
+
+    /**
+     * Construct a new MemberSummaryBuilder.
+     *
+     * @param classWriter   the writer for the class whose members are being
+     *                      summarized.
+     * @param context       the build context.
+     */
+    public static MemberSummaryBuilder getInstance(
+            ClassWriter classWriter, Context context)
+            throws Exception {
+        MemberSummaryBuilder builder = new MemberSummaryBuilder(context,
+                classWriter.getClassDoc());
+        builder.memberSummaryWriters =
+                new MemberSummaryWriter[VisibleMemberMap.NUM_MEMBER_TYPES];
+        WriterFactory wf = context.configuration.getWriterFactory();
+        for (int i = 0; i < VisibleMemberMap.NUM_MEMBER_TYPES; i++) {
+                builder.memberSummaryWriters[i] =
+                    builder.visibleMemberMaps[i].noVisibleMembers() ?
+                        null :
+                        wf.getMemberSummaryWriter(classWriter, i);
+        }
+        return builder;
+    }
+
+    /**
+     * Construct a new MemberSummaryBuilder.
+     *
+     * @param annotationTypeWriter the writer for the class whose members are
+     *                             being summarized.
+     * @param configuration the current configuration of the doclet.
+     */
+    public static MemberSummaryBuilder getInstance(
+            AnnotationTypeWriter annotationTypeWriter, Context context)
+            throws Exception {
+        MemberSummaryBuilder builder = new MemberSummaryBuilder(context,
+                annotationTypeWriter.getAnnotationTypeDoc());
+        builder.memberSummaryWriters =
+                new MemberSummaryWriter[VisibleMemberMap.NUM_MEMBER_TYPES];
+        WriterFactory wf = context.configuration.getWriterFactory();
+        for (int i = 0; i < VisibleMemberMap.NUM_MEMBER_TYPES; i++) {
+                builder.memberSummaryWriters[i] =
+                    builder.visibleMemberMaps[i].noVisibleMembers()?
+                        null :
+                        wf.getMemberSummaryWriter(
+                        annotationTypeWriter, i);
+        }
+        return builder;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String getName() {
+        return NAME;
+    }
+
+    /**
+     * Return the specified visible member map.
+     *
+     * @param type the type of visible member map to return.
+     * @return the specified visible member map.
+     * @throws ArrayIndexOutOfBoundsException when the type is invalid.
+     * @see VisibleMemberMap
+     */
+    public VisibleMemberMap getVisibleMemberMap(int type) {
+        return visibleMemberMaps[type];
+    }
+
+    /**
+     * Return the specified member summary writer.
+     *
+     * @param type the type of member summary writer to return.
+     * @return the specified member summary writer.
+     * @throws ArrayIndexOutOfBoundsException when the type is invalid.
+     * @see VisibleMemberMap
+     */
+    public MemberSummaryWriter getMemberSummaryWriter(int type) {
+        return memberSummaryWriters[type];
+    }
+
+    /**
+     * Returns a list of methods that will be documented for the given class.
+     * This information can be used for doclet specific documentation
+     * generation.
+     *
+     * @param type the type of members to return.
+     * @return a list of methods that will be documented.
+     * @see VisibleMemberMap
+     */
+    public List<ProgramElementDoc> members(int type) {
+        return visibleMemberMaps[type].getLeafClassMembers(configuration);
+    }
+
+    /**
+     * Return true it there are any members to summarize.
+     *
+     * @return true if there are any members to summarize.
+     */
+    public boolean hasMembersToDocument() {
+        if (classDoc instanceof AnnotationTypeDoc) {
+            return ((AnnotationTypeDoc) classDoc).elements().length > 0;
+        }
+        for (int i = 0; i < VisibleMemberMap.NUM_MEMBER_TYPES; i++) {
+            VisibleMemberMap members = visibleMemberMaps[i];
+            if (!members.noVisibleMembers()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Build the summary for the enum constants.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param memberSummaryTree the content tree to which the documentation will be added
+     */
+    public void buildEnumConstantsSummary(XMLNode node, Content memberSummaryTree) {
+        MemberSummaryWriter writer =
+                memberSummaryWriters[VisibleMemberMap.ENUM_CONSTANTS];
+        VisibleMemberMap visibleMemberMap =
+                visibleMemberMaps[VisibleMemberMap.ENUM_CONSTANTS];
+        addSummary(writer, visibleMemberMap, false, memberSummaryTree);
+    }
+
+    /**
+     * Build the summary for fields.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param memberSummaryTree the content tree to which the documentation will be added
+     */
+    public void buildAnnotationTypeFieldsSummary(XMLNode node, Content memberSummaryTree) {
+        MemberSummaryWriter writer =
+                memberSummaryWriters[VisibleMemberMap.ANNOTATION_TYPE_FIELDS];
+        VisibleMemberMap visibleMemberMap =
+                visibleMemberMaps[VisibleMemberMap.ANNOTATION_TYPE_FIELDS];
+        addSummary(writer, visibleMemberMap, false, memberSummaryTree);
+    }
+
+    /**
+     * Build the summary for the optional members.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param memberSummaryTree the content tree to which the documentation will be added
+     */
+    public void buildAnnotationTypeOptionalMemberSummary(XMLNode node, Content memberSummaryTree) {
+        MemberSummaryWriter writer =
+                memberSummaryWriters[VisibleMemberMap.ANNOTATION_TYPE_MEMBER_OPTIONAL];
+        VisibleMemberMap visibleMemberMap =
+                visibleMemberMaps[VisibleMemberMap.ANNOTATION_TYPE_MEMBER_OPTIONAL];
+        addSummary(writer, visibleMemberMap, false, memberSummaryTree);
+    }
+
+    /**
+     * Build the summary for the optional members.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param memberSummaryTree the content tree to which the documentation will be added
+     */
+    public void buildAnnotationTypeRequiredMemberSummary(XMLNode node, Content memberSummaryTree) {
+        MemberSummaryWriter writer =
+                memberSummaryWriters[VisibleMemberMap.ANNOTATION_TYPE_MEMBER_REQUIRED];
+        VisibleMemberMap visibleMemberMap =
+                visibleMemberMaps[VisibleMemberMap.ANNOTATION_TYPE_MEMBER_REQUIRED];
+        addSummary(writer, visibleMemberMap, false, memberSummaryTree);
+    }
+
+    /**
+     * Build the summary for the fields.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param memberSummaryTree the content tree to which the documentation will be added
+     */
+    public void buildFieldsSummary(XMLNode node, Content memberSummaryTree) {
+        MemberSummaryWriter writer =
+                memberSummaryWriters[VisibleMemberMap.FIELDS];
+        VisibleMemberMap visibleMemberMap =
+                visibleMemberMaps[VisibleMemberMap.FIELDS];
+        addSummary(writer, visibleMemberMap, true, memberSummaryTree);
+    }
+
+    /**
+     * Build the summary for the fields.
+     */
+    public void buildPropertiesSummary(XMLNode node, Content memberSummaryTree) {
+        MemberSummaryWriter writer =
+                memberSummaryWriters[VisibleMemberMap.PROPERTIES];
+        VisibleMemberMap visibleMemberMap =
+                visibleMemberMaps[VisibleMemberMap.PROPERTIES];
+        addSummary(writer, visibleMemberMap, true, memberSummaryTree);
+    }
+
+    /**
+     * Build the summary for the nested classes.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param memberSummaryTree the content tree to which the documentation will be added
+     */
+    public void buildNestedClassesSummary(XMLNode node, Content memberSummaryTree) {
+        MemberSummaryWriter writer =
+                memberSummaryWriters[VisibleMemberMap.INNERCLASSES];
+        VisibleMemberMap visibleMemberMap =
+                visibleMemberMaps[VisibleMemberMap.INNERCLASSES];
+        addSummary(writer, visibleMemberMap, true, memberSummaryTree);
+    }
+
+    /**
+     * Build the method summary.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param memberSummaryTree the content tree to which the documentation will be added
+     */
+    public void buildMethodsSummary(XMLNode node, Content memberSummaryTree) {
+        MemberSummaryWriter writer =
+                memberSummaryWriters[VisibleMemberMap.METHODS];
+        VisibleMemberMap visibleMemberMap =
+                visibleMemberMaps[VisibleMemberMap.METHODS];
+        addSummary(writer, visibleMemberMap, true, memberSummaryTree);
+    }
+
+    /**
+     * Build the constructor summary.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param memberSummaryTree the content tree to which the documentation will be added
+     */
+    public void buildConstructorsSummary(XMLNode node, Content memberSummaryTree) {
+        MemberSummaryWriter writer =
+                memberSummaryWriters[VisibleMemberMap.CONSTRUCTORS];
+        VisibleMemberMap visibleMemberMap =
+                visibleMemberMaps[VisibleMemberMap.CONSTRUCTORS];
+        addSummary(writer, visibleMemberMap, false, memberSummaryTree);
+    }
+
+    /**
+     * Build the member summary for the given members.
+     *
+     * @param writer the summary writer to write the output.
+     * @param visibleMemberMap the given members to summarize.
+     * @param summaryTreeList list of content trees to which the documentation will be added
+     */
+    private void buildSummary(MemberSummaryWriter writer,
+            VisibleMemberMap visibleMemberMap, LinkedList<Content> summaryTreeList) {
+        List<ProgramElementDoc> members = new ArrayList<ProgramElementDoc>(visibleMemberMap.getLeafClassMembers(
+                configuration));
+        if (members.size() > 0) {
+            Collections.sort(members);
+            List<Content> tableContents = new LinkedList<Content>();
+            for (int i = 0; i < members.size(); i++) {
+                ProgramElementDoc member = members.get(i);
+                final ProgramElementDoc propertyDoc =
+                            visibleMemberMap.getPropertyMemberDoc(member);
+                if (propertyDoc != null) {
+                    processProperty(visibleMemberMap, member, propertyDoc);
+                }
+                Tag[] firstSentenceTags = member.firstSentenceTags();
+                if (member instanceof MethodDoc && firstSentenceTags.length == 0) {
+                    //Inherit comments from overriden or implemented method if
+                    //necessary.
+                    DocFinder.Output inheritedDoc =
+                            DocFinder.search(new DocFinder.Input((MethodDoc) member));
+                    if (inheritedDoc.holder != null
+                            && inheritedDoc.holder.firstSentenceTags().length > 0) {
+                        firstSentenceTags = inheritedDoc.holder.firstSentenceTags();
+                    }
+                }
+                writer.addMemberSummary(classDoc, member, firstSentenceTags,
+                        tableContents, i);
+            }
+            summaryTreeList.add(writer.getSummaryTableTree(classDoc, tableContents));
+        }
+    }
+
+    /**
+     * Process the property method, property setter and/or property getter
+     * comment text so that it contains the documentation from
+     * the property field. The method adds the leading sentence,
+     * copied documentation including the defaultValue tag and
+     * the see tags if the appropriate property getter and setter are
+     * available.
+     *
+     * @param visibleMemberMap the members information.
+     * @param member the member which is to be augmented.
+     * @param propertyDoc the original property documentation.
+     */
+    private void processProperty(VisibleMemberMap visibleMemberMap,
+                                 ProgramElementDoc member,
+                                 ProgramElementDoc propertyDoc) {
+        StringBuilder commentTextBuilder = new StringBuilder();
+        final boolean isSetter = isSetter(member);
+        final boolean isGetter = isGetter(member);
+        if (isGetter || isSetter) {
+            //add "[GS]ets the value of the property PROPERTY_NAME."
+            if (isSetter) {
+                commentTextBuilder.append(
+                        MessageFormat.format(
+                                configuration.getText("doclet.PropertySetterWithName"),
+                                Util.propertyNameFromMethodName(configuration, member.name())));
+            }
+            if (isGetter) {
+                commentTextBuilder.append(
+                        MessageFormat.format(
+                                configuration.getText("doclet.PropertyGetterWithName"),
+                                Util.propertyNameFromMethodName(configuration, member.name())));
+            }
+            if (propertyDoc.commentText() != null
+                        && !propertyDoc.commentText().isEmpty()) {
+                commentTextBuilder.append(" \n @propertyDescription ");
+            }
+        }
+        commentTextBuilder.append(propertyDoc.commentText());
+
+        // copy certain tags
+        List<Tag> allTags = new LinkedList<Tag>();
+        String[] tagNames = {"@defaultValue", "@since"};
+        for (String tagName: tagNames) {
+            Tag[] tags = propertyDoc.tags(tagName);
+            if (tags != null) {
+                allTags.addAll(Arrays.asList(tags));
+            }
+        }
+        for (Tag tag: allTags) {
+            commentTextBuilder.append("\n")
+                                .append(tag.name())
+                                .append(" ")
+                                .append(tag.text());
+        }
+
+        //add @see tags
+        if (!isGetter && !isSetter) {
+            MethodDoc getter = (MethodDoc) visibleMemberMap.getGetterForProperty(member);
+            MethodDoc setter = (MethodDoc) visibleMemberMap.getSetterForProperty(member);
+
+            if ((null != getter)
+                    && (commentTextBuilder.indexOf("@see #" + getter.name()) == -1)) {
+                commentTextBuilder.append("\n @see #")
+                                  .append(getter.name())
+                                  .append("() ");
+            }
+
+            if ((null != setter)
+                    && (commentTextBuilder.indexOf("@see #" + setter.name()) == -1)) {
+                String typeName = setter.parameters()[0].typeName();
+                // Removal of type parameters and package information.
+                typeName = typeName.split("<")[0];
+                if (typeName.contains(".")) {
+                    typeName = typeName.substring(typeName.lastIndexOf(".") + 1);
+                }
+                commentTextBuilder.append("\n @see #").append(setter.name());
+
+                if (setter.parameters()[0].type().asTypeVariable() == null) {
+                    commentTextBuilder.append("(").append(typeName).append(")");
+                }
+                commentTextBuilder.append(" \n");
+            }
+        }
+        member.setRawCommentText(commentTextBuilder.toString());
+    }
+    /**
+     * Test whether the method is a getter.
+     * @param ped property method documentation. Needs to be either property
+     * method, property getter, or property setter.
+     * @return true if the given documentation belongs to a getter.
+     */
+    private boolean isGetter(ProgramElementDoc ped) {
+        final String pedName = ped.name();
+        return pedName.startsWith("get") || pedName.startsWith("is");
+    }
+
+    /**
+     * Test whether the method is a setter.
+     * @param ped property method documentation. Needs to be either property
+     * method, property getter, or property setter.
+     * @return true if the given documentation belongs to a setter.
+     */
+    private boolean isSetter(ProgramElementDoc ped) {
+        return ped.name().startsWith("set");
+    }
+
+    /**
+     * Build the inherited member summary for the given methods.
+     *
+     * @param writer the writer for this member summary.
+     * @param visibleMemberMap the map for the members to document.
+     * @param summaryTreeList list of content trees to which the documentation will be added
+     */
+    private void buildInheritedSummary(MemberSummaryWriter writer,
+            VisibleMemberMap visibleMemberMap, LinkedList<Content> summaryTreeList) {
+        for (Iterator<ClassDoc> iter = visibleMemberMap.getVisibleClassesList().iterator();
+                iter.hasNext();) {
+            ClassDoc inhclass = iter.next();
+            if (! (inhclass.isPublic() ||
+                    Util.isLinkable(inhclass, configuration))) {
+                continue;
+            }
+            if (inhclass == classDoc) {
+                continue;
+            }
+            List<ProgramElementDoc> inhmembers = visibleMemberMap.getMembersFor(inhclass);
+            if (inhmembers.size() > 0) {
+                Collections.sort(inhmembers);
+                Content inheritedTree = writer.getInheritedSummaryHeader(inhclass);
+                Content linksTree = writer.getInheritedSummaryLinksTree();
+                for (int j = 0; j < inhmembers.size(); ++j) {
+                    writer.addInheritedMemberSummary(
+                            inhclass.isPackagePrivate() &&
+                            ! Util.isLinkable(inhclass, configuration) ?
+                            classDoc : inhclass,
+                            inhmembers.get(j),
+                            j == 0,
+                            j == inhmembers.size() - 1, linksTree);
+                }
+                inheritedTree.addContent(linksTree);
+                summaryTreeList.add(writer.getMemberTree(inheritedTree));
+            }
+        }
+    }
+
+    /**
+     * Add the summary for the documentation.
+     *
+     * @param writer the writer for this member summary.
+     * @param visibleMemberMap the map for the members to document.
+     * @param showInheritedSummary true if inherited summary should be documented
+     * @param memberSummaryTree the content tree to which the documentation will be added
+     */
+    private void addSummary(MemberSummaryWriter writer,
+            VisibleMemberMap visibleMemberMap, boolean showInheritedSummary,
+            Content memberSummaryTree) {
+        LinkedList<Content> summaryTreeList = new LinkedList<Content>();
+        buildSummary(writer, visibleMemberMap, summaryTreeList);
+        if (showInheritedSummary)
+            buildInheritedSummary(writer, visibleMemberMap, summaryTreeList);
+        if (!summaryTreeList.isEmpty()) {
+            Content memberTree = writer.getMemberSummaryHeader(
+                    classDoc, memberSummaryTree);
+            for (int i = 0; i < summaryTreeList.size(); i++) {
+                memberTree.addContent(summaryTreeList.get(i));
+            }
+            memberSummaryTree.addContent(writer.getMemberTree(memberTree));
+        }
+    }
+}

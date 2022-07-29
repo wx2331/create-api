@@ -1,614 +1,608 @@
-/*     */ package com.sun.tools.javac.model;
-/*     */
-/*     */ import com.sun.tools.javac.code.Attribute;
-/*     */ import com.sun.tools.javac.code.Scope;
-/*     */ import com.sun.tools.javac.code.Symbol;
-/*     */ import com.sun.tools.javac.code.Symtab;
-/*     */ import com.sun.tools.javac.code.Type;
-/*     */ import com.sun.tools.javac.code.TypeTag;
-/*     */ import com.sun.tools.javac.code.Types;
-/*     */ import com.sun.tools.javac.comp.AttrContext;
-/*     */ import com.sun.tools.javac.comp.Enter;
-/*     */ import com.sun.tools.javac.comp.Env;
-/*     */ import com.sun.tools.javac.main.JavaCompiler;
-/*     */ import com.sun.tools.javac.processing.PrintingProcessor;
-/*     */ import com.sun.tools.javac.tree.JCTree;
-/*     */ import com.sun.tools.javac.tree.TreeInfo;
-/*     */ import com.sun.tools.javac.tree.TreeScanner;
-/*     */ import com.sun.tools.javac.util.Constants;
-/*     */ import com.sun.tools.javac.util.Context;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import com.sun.tools.javac.util.Name;
-/*     */ import com.sun.tools.javac.util.Names;
-/*     */ import com.sun.tools.javac.util.Pair;
-/*     */ import java.io.Writer;
-/*     */ import java.util.List;
-/*     */ import java.util.Map;
-/*     */ import javax.lang.model.SourceVersion;
-/*     */ import javax.lang.model.element.AnnotationMirror;
-/*     */ import javax.lang.model.element.AnnotationValue;
-/*     */ import javax.lang.model.element.Element;
-/*     */ import javax.lang.model.element.ElementKind;
-/*     */ import javax.lang.model.element.ExecutableElement;
-/*     */ import javax.lang.model.element.Name;
-/*     */ import javax.lang.model.element.PackageElement;
-/*     */ import javax.lang.model.element.TypeElement;
-/*     */ import javax.lang.model.type.DeclaredType;
-/*     */ import javax.lang.model.util.ElementFilter;
-/*     */ import javax.lang.model.util.Elements;
-/*     */ import javax.tools.JavaFileObject;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class JavacElements
-/*     */   implements Elements
-/*     */ {
-/*     */   private JavaCompiler javaCompiler;
-/*     */   private Symtab syms;
-/*     */   private Names names;
-/*     */   private Types types;
-/*     */   private Enter enter;
-/*     */
-/*     */   public static JavacElements instance(Context paramContext) {
-/*  70 */     JavacElements javacElements = (JavacElements)paramContext.get(JavacElements.class);
-/*  71 */     if (javacElements == null)
-/*  72 */       javacElements = new JavacElements(paramContext);
-/*  73 */     return javacElements;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   protected JavacElements(Context paramContext) {
-/*  80 */     setContext(paramContext);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void setContext(Context paramContext) {
-/*  88 */     paramContext.put(JavacElements.class, this);
-/*  89 */     this.javaCompiler = JavaCompiler.instance(paramContext);
-/*  90 */     this.syms = Symtab.instance(paramContext);
-/*  91 */     this.names = Names.instance(paramContext);
-/*  92 */     this.types = Types.instance(paramContext);
-/*  93 */     this.enter = Enter.instance(paramContext);
-/*     */   }
-/*     */
-/*     */   public Symbol.PackageSymbol getPackageElement(CharSequence paramCharSequence) {
-/*  97 */     String str = paramCharSequence.toString();
-/*  98 */     if (str.equals(""))
-/*  99 */       return this.syms.unnamedPackage;
-/* 100 */     return SourceVersion.isName(str) ?
-/* 101 */       nameToSymbol(str, Symbol.PackageSymbol.class) : null;
-/*     */   }
-/*     */
-/*     */
-/*     */   public Symbol.ClassSymbol getTypeElement(CharSequence paramCharSequence) {
-/* 106 */     String str = paramCharSequence.toString();
-/* 107 */     return SourceVersion.isName(str) ?
-/* 108 */       nameToSymbol(str, Symbol.ClassSymbol.class) : null;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private <S extends Symbol> S nameToSymbol(String paramString, Class<S> paramClass) {
-/* 117 */     Name name = this.names.fromString(paramString);
-/*     */
-/*     */
-/*     */
-/* 121 */     Symbol symbol = (paramClass == Symbol.ClassSymbol.class) ? (Symbol)this.syms.classes.get(name) : (Symbol)this.syms.packages.get(name);
-/*     */
-/*     */     try {
-/* 124 */       if (symbol == null) {
-/* 125 */         symbol = this.javaCompiler.resolveIdent(paramString);
-/*     */       }
-/* 127 */       symbol.complete();
-/*     */
-/* 129 */       return (symbol.kind != 63 && symbol
-/* 130 */         .exists() && paramClass
-/* 131 */         .isInstance(symbol) && name
-/* 132 */         .equals(symbol.getQualifiedName())) ? paramClass
-/* 133 */         .cast(symbol) : null;
-/*     */     }
-/* 135 */     catch (Symbol.CompletionFailure completionFailure) {
-/* 136 */       return null;
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public JavacSourcePosition getSourcePosition(Element paramElement) {
-/* 141 */     Pair<JCTree, JCTree.JCCompilationUnit> pair = getTreeAndTopLevel(paramElement);
-/* 142 */     if (pair == null)
-/* 143 */       return null;
-/* 144 */     JCTree jCTree = (JCTree)pair.fst;
-/* 145 */     JCTree.JCCompilationUnit jCCompilationUnit = (JCTree.JCCompilationUnit)pair.snd;
-/* 146 */     JavaFileObject javaFileObject = jCCompilationUnit.sourcefile;
-/* 147 */     if (javaFileObject == null)
-/* 148 */       return null;
-/* 149 */     return new JavacSourcePosition(javaFileObject, jCTree.pos, jCCompilationUnit.lineMap);
-/*     */   }
-/*     */
-/*     */   public JavacSourcePosition getSourcePosition(Element paramElement, AnnotationMirror paramAnnotationMirror) {
-/* 153 */     Pair<JCTree, JCTree.JCCompilationUnit> pair = getTreeAndTopLevel(paramElement);
-/* 154 */     if (pair == null)
-/* 155 */       return null;
-/* 156 */     JCTree jCTree1 = (JCTree)pair.fst;
-/* 157 */     JCTree.JCCompilationUnit jCCompilationUnit = (JCTree.JCCompilationUnit)pair.snd;
-/* 158 */     JavaFileObject javaFileObject = jCCompilationUnit.sourcefile;
-/* 159 */     if (javaFileObject == null) {
-/* 160 */       return null;
-/*     */     }
-/* 162 */     JCTree jCTree2 = matchAnnoToTree(paramAnnotationMirror, paramElement, jCTree1);
-/* 163 */     if (jCTree2 == null)
-/* 164 */       return null;
-/* 165 */     return new JavacSourcePosition(javaFileObject, jCTree2.pos, jCCompilationUnit.lineMap);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public JavacSourcePosition getSourcePosition(Element paramElement, AnnotationMirror paramAnnotationMirror, AnnotationValue paramAnnotationValue) {
-/* 172 */     return getSourcePosition(paramElement, paramAnnotationMirror);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private JCTree matchAnnoToTree(AnnotationMirror paramAnnotationMirror, Element paramElement, JCTree paramJCTree) {
-/* 181 */     Symbol symbol = cast(Symbol.class, paramElement);
-/*     */     class Vis extends JCTree.Visitor {
-/* 183 */       List<JCTree.JCAnnotation> result = null;
-/*     */       public void visitTopLevel(JCTree.JCCompilationUnit param1JCCompilationUnit) {
-/* 185 */         this.result = param1JCCompilationUnit.packageAnnotations;
-/*     */       }
-/*     */       public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) {
-/* 188 */         this.result = param1JCClassDecl.mods.annotations;
-/*     */       }
-/*     */       public void visitMethodDef(JCTree.JCMethodDecl param1JCMethodDecl) {
-/* 191 */         this.result = param1JCMethodDecl.mods.annotations;
-/*     */       }
-/*     */       public void visitVarDef(JCTree.JCVariableDecl param1JCVariableDecl) {
-/* 194 */         this.result = param1JCVariableDecl.mods.annotations;
-/*     */       }
-/*     */     };
-/* 197 */     Vis vis = new Vis();
-/* 198 */     paramJCTree.accept(vis);
-/* 199 */     if (vis.result == null) {
-/* 200 */       return null;
-/*     */     }
-/* 202 */     List<Attribute.Compound> list = symbol.getRawAttributes();
-/* 203 */     return matchAnnoToTree(cast(Attribute.Compound.class, paramAnnotationMirror), list, vis.result);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private JCTree matchAnnoToTree(Attribute.Compound paramCompound, List<Attribute.Compound> paramList, List<JCTree.JCAnnotation> paramList1) {
-/* 216 */     for (Attribute.Compound compound : paramList) {
-/* 217 */       for (JCTree.JCAnnotation jCAnnotation : paramList1) {
-/* 218 */         JCTree jCTree = matchAnnoToTree(paramCompound, (Attribute)compound, (JCTree)jCAnnotation);
-/* 219 */         if (jCTree != null)
-/* 220 */           return jCTree;
-/*     */       }
-/*     */     }
-/* 223 */     return null;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private JCTree matchAnnoToTree(final Attribute.Compound findme, Attribute paramAttribute, final JCTree tree) {
-/* 234 */     if (paramAttribute == findme)
-/* 235 */       return (tree.type.tsym == findme.type.tsym) ? tree : null;
-/*     */     class Vis implements Attribute.Visitor {
-/*     */       Vis() {
-/* 238 */         this.result = null;
-/*     */       }
-/*     */       JCTree result;
-/*     */       public void visitConstant(Attribute.Constant param1Constant) {}
-/*     */       public void visitClass(Attribute.Class param1Class) {}
-/*     */       public void visitCompound(Attribute.Compound param1Compound) {
-/* 244 */         for (Pair pair : param1Compound.values) {
-/* 245 */           JCTree.JCExpression jCExpression = JavacElements.this.scanForAssign((Symbol.MethodSymbol)pair.fst, tree);
-/* 246 */           if (jCExpression != null) {
-/* 247 */             JCTree jCTree = JavacElements.this.matchAnnoToTree(findme, (Attribute)pair.snd, (JCTree)jCExpression);
-/* 248 */             if (jCTree != null) {
-/* 249 */               this.result = jCTree;
-/*     */               return;
-/*     */             }
-/*     */           }
-/*     */         }
-/*     */       }
-/*     */       public void visitArray(Attribute.Array param1Array) {
-/* 256 */         if (tree.hasTag(JCTree.Tag.NEWARRAY) &&
-/* 257 */           (JavacElements.this.types.elemtype(param1Array.type)).tsym == findme.type.tsym) {
-/* 258 */           List list = ((JCTree.JCNewArray)tree).elems;
-/* 259 */           for (Attribute attribute : param1Array.values) {
-/* 260 */             if (attribute == findme) {
-/* 261 */               this.result = (JCTree)list.head;
-/*     */               return;
-/*     */             }
-/* 264 */             list = list.tail;
-/*     */           }
-/*     */         }
-/*     */       }
-/*     */
-/*     */       public void visitEnum(Attribute.Enum param1Enum) {}
-/*     */
-/*     */       public void visitError(Attribute.Error param1Error) {}
-/*     */     };
-/* 273 */     Vis vis = new Vis();
-/* 274 */     paramAttribute.accept(vis);
-/* 275 */     return vis.result;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private JCTree.JCExpression scanForAssign(final Symbol.MethodSymbol sym, final JCTree tree) {
-/*     */     class TS
-/*     */       extends TreeScanner
-/*     */     {
-/* 285 */       JCTree.JCExpression result = null;
-/*     */       public void scan(JCTree param1JCTree) {
-/* 287 */         if (param1JCTree != null && this.result == null)
-/* 288 */           param1JCTree.accept((JCTree.Visitor)this);
-/*     */       }
-/*     */       public void visitAnnotation(JCTree.JCAnnotation param1JCAnnotation) {
-/* 291 */         if (param1JCAnnotation == tree)
-/* 292 */           scan(param1JCAnnotation.args);
-/*     */       }
-/*     */       public void visitAssign(JCTree.JCAssign param1JCAssign) {
-/* 295 */         if (param1JCAssign.lhs.hasTag(JCTree.Tag.IDENT)) {
-/* 296 */           JCTree.JCIdent jCIdent = (JCTree.JCIdent)param1JCAssign.lhs;
-/* 297 */           if (jCIdent.sym == sym)
-/* 298 */             this.result = param1JCAssign.rhs;
-/*     */         }
-/*     */       }
-/*     */     };
-/* 302 */     TS tS = new TS();
-/* 303 */     tree.accept((JCTree.Visitor)tS);
-/* 304 */     return tS.result;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public JCTree getTree(Element paramElement) {
-/* 312 */     Pair<JCTree, JCTree.JCCompilationUnit> pair = getTreeAndTopLevel(paramElement);
-/* 313 */     return (pair != null) ? (JCTree)pair.fst : null;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public String getDocComment(Element paramElement) {
-/* 321 */     Pair<JCTree, JCTree.JCCompilationUnit> pair = getTreeAndTopLevel(paramElement);
-/* 322 */     if (pair == null)
-/* 323 */       return null;
-/* 324 */     JCTree jCTree = (JCTree)pair.fst;
-/* 325 */     JCTree.JCCompilationUnit jCCompilationUnit = (JCTree.JCCompilationUnit)pair.snd;
-/* 326 */     if (jCCompilationUnit.docComments == null)
-/* 327 */       return null;
-/* 328 */     return jCCompilationUnit.docComments.getCommentText(jCTree);
-/*     */   }
-/*     */
-/*     */   public PackageElement getPackageOf(Element paramElement) {
-/* 332 */     return (PackageElement)((Symbol)cast(Symbol.class, paramElement)).packge();
-/*     */   }
-/*     */
-/*     */   public boolean isDeprecated(Element paramElement) {
-/* 336 */     Symbol symbol = cast(Symbol.class, paramElement);
-/* 337 */     return ((symbol.flags() & 0x20000L) != 0L);
-/*     */   }
-/*     */
-/*     */   public Name getBinaryName(TypeElement paramTypeElement) {
-/* 341 */     return ((Symbol.TypeSymbol)cast(Symbol.TypeSymbol.class, paramTypeElement)).flatName();
-/*     */   }
-/*     */
-/*     */
-/*     */   public Map<Symbol.MethodSymbol, Attribute> getElementValuesWithDefaults(AnnotationMirror paramAnnotationMirror) {
-/* 346 */     Attribute.Compound compound = cast(Attribute.Compound.class, paramAnnotationMirror);
-/* 347 */     DeclaredType declaredType = paramAnnotationMirror.getAnnotationType();
-/* 348 */     Map<Symbol.MethodSymbol, Attribute> map = compound.getElementValues();
-/*     */
-/*     */
-/* 351 */     for (ExecutableElement executableElement : ElementFilter.methodsIn(declaredType.asElement().getEnclosedElements())) {
-/* 352 */       Symbol.MethodSymbol methodSymbol = (Symbol.MethodSymbol)executableElement;
-/* 353 */       Attribute attribute = methodSymbol.getDefaultValue();
-/* 354 */       if (attribute != null && !map.containsKey(methodSymbol)) {
-/* 355 */         map.put(methodSymbol, attribute);
-/*     */       }
-/*     */     }
-/* 358 */     return map;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public FilteredMemberList getAllMembers(TypeElement paramTypeElement) {
-/* 365 */     Symbol symbol = cast(Symbol.class, paramTypeElement);
-/* 366 */     Scope scope = symbol.members().dupUnshared();
-/* 367 */     List list = this.types.closure(symbol.asType());
-/* 368 */     for (Type type : list)
-/* 369 */       addMembers(scope, type);
-/* 370 */     return new FilteredMemberList(scope);
-/*     */   }
-/*     */
-/*     */   private void addMembers(Scope paramScope, Type paramType) {
-/*     */     Scope.Entry entry;
-/* 375 */     label31: for (entry = (paramType.asElement().members()).elems; entry != null; entry = entry.sibling) {
-/* 376 */       Scope.Entry entry1 = paramScope.lookup(entry.sym.getSimpleName());
-/* 377 */       while (entry1.scope != null) {
-/* 378 */         if (entry1.sym.kind == entry.sym.kind && (entry1.sym
-/* 379 */           .flags() & 0x1000L) == 0L)
-/*     */         {
-/* 381 */           if (entry1.sym.getKind() == ElementKind.METHOD &&
-/* 382 */             overrides((ExecutableElement)entry1.sym, (ExecutableElement)entry.sym, (TypeElement)paramType.asElement())) {
-/*     */             continue label31;
-/*     */           }
-/*     */         }
-/* 386 */         entry1 = entry1.next();
-/*     */       }
-/* 388 */       boolean bool1 = (entry.sym.getEnclosingElement() != paramScope.owner) ? true : false;
-/* 389 */       ElementKind elementKind = entry.sym.getKind();
-/* 390 */       boolean bool2 = (elementKind == ElementKind.CONSTRUCTOR || elementKind == ElementKind.INSTANCE_INIT || elementKind == ElementKind.STATIC_INIT) ? true : false;
-/*     */
-/*     */
-/* 393 */       if (!bool1 || (!bool2 && entry.sym.isInheritedIn(paramScope.owner, this.types))) {
-/* 394 */         paramScope.enter(entry.sym);
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public List<Attribute.Compound> getAllAnnotationMirrors(Element paramElement) {
-/* 407 */     Symbol symbol = cast(Symbol.class, paramElement);
-/* 408 */     List<Attribute.Compound> list = symbol.getAnnotationMirrors();
-/* 409 */     while (symbol.getKind() == ElementKind.CLASS) {
-/* 410 */       Type type = ((Symbol.ClassSymbol)symbol).getSuperclass();
-/* 411 */       if (!type.hasTag(TypeTag.CLASS) || type.isErroneous() || type.tsym == this.syms.objectType.tsym) {
-/*     */         break;
-/*     */       }
-/*     */
-/* 415 */       Symbol.TypeSymbol typeSymbol = type.tsym;
-/* 416 */       List<Attribute.Compound> list1 = list;
-/* 417 */       List list2 = typeSymbol.getAnnotationMirrors();
-/* 418 */       for (Attribute.Compound compound : list2) {
-/* 419 */         if (isInherited(compound.type) &&
-/* 420 */           !containsAnnoOfType(list1, compound.type)) {
-/* 421 */           list = list.prepend(compound);
-/*     */         }
-/*     */       }
-/*     */     }
-/* 425 */     return list;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private boolean isInherited(Type paramType) {
-/* 432 */     return (paramType.tsym.attribute((Symbol)this.syms.inheritedType.tsym) != null);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private static boolean containsAnnoOfType(List<Attribute.Compound> paramList, Type paramType) {
-/* 441 */     for (Attribute.Compound compound : paramList) {
-/* 442 */       if (compound.type.tsym == paramType.tsym)
-/* 443 */         return true;
-/*     */     }
-/* 445 */     return false;
-/*     */   }
-/*     */
-/*     */   public boolean hides(Element paramElement1, Element paramElement2) {
-/* 449 */     Symbol symbol1 = cast(Symbol.class, paramElement1);
-/* 450 */     Symbol symbol2 = cast(Symbol.class, paramElement2);
-/*     */
-/*     */
-/*     */
-/* 454 */     if (symbol1 == symbol2 || symbol1.kind != symbol2.kind || symbol1.name != symbol2.name)
-/*     */     {
-/*     */
-/* 457 */       return false;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/* 462 */     if (symbol1.kind == 16 && (
-/* 463 */       !symbol1.isStatic() ||
-/* 464 */       !this.types.isSubSignature(symbol1.type, symbol2.type))) {
-/* 465 */       return false;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 472 */     Symbol.ClassSymbol classSymbol1 = symbol1.owner.enclClass();
-/* 473 */     Symbol.ClassSymbol classSymbol2 = symbol2.owner.enclClass();
-/* 474 */     if (classSymbol1 == null || classSymbol2 == null ||
-/* 475 */       !classSymbol1.isSubClass((Symbol)classSymbol2, this.types)) {
-/* 476 */       return false;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/* 481 */     return symbol2.isInheritedIn((Symbol)classSymbol1, this.types);
-/*     */   }
-/*     */
-/*     */
-/*     */   public boolean overrides(ExecutableElement paramExecutableElement1, ExecutableElement paramExecutableElement2, TypeElement paramTypeElement) {
-/* 486 */     Symbol.MethodSymbol methodSymbol1 = cast(Symbol.MethodSymbol.class, paramExecutableElement1);
-/* 487 */     Symbol.MethodSymbol methodSymbol2 = cast(Symbol.MethodSymbol.class, paramExecutableElement2);
-/* 488 */     Symbol.ClassSymbol classSymbol = cast(Symbol.ClassSymbol.class, paramTypeElement);
-/*     */
-/* 490 */     return (methodSymbol1.name == methodSymbol2.name && methodSymbol1 != methodSymbol2 &&
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 497 */       !methodSymbol1.isStatic() && methodSymbol2
-/*     */
-/*     */
-/* 500 */       .isMemberOf((Symbol.TypeSymbol)classSymbol, this.types) && methodSymbol1
-/*     */
-/*     */
-/* 503 */       .overrides((Symbol)methodSymbol2, (Symbol.TypeSymbol)classSymbol, this.types, false));
-/*     */   }
-/*     */
-/*     */   public String getConstantExpression(Object paramObject) {
-/* 507 */     return Constants.format(paramObject);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void printElements(Writer paramWriter, Element... paramVarArgs) {
-/* 520 */     for (Element element : paramVarArgs)
-/* 521 */       ((PrintingProcessor.PrintingElementVisitor)(new PrintingProcessor.PrintingElementVisitor(paramWriter, this)).visit(element)).flush();
-/*     */   }
-/*     */
-/*     */   public Name getName(CharSequence paramCharSequence) {
-/* 525 */     return this.names.fromString(paramCharSequence.toString());
-/*     */   }
-/*     */
-/*     */
-/*     */   public boolean isFunctionalInterface(TypeElement paramTypeElement) {
-/* 530 */     if (paramTypeElement.getKind() != ElementKind.INTERFACE) {
-/* 531 */       return false;
-/*     */     }
-/* 533 */     Symbol.TypeSymbol typeSymbol = cast(Symbol.TypeSymbol.class, paramTypeElement);
-/* 534 */     return this.types.isFunctionalInterface(typeSymbol);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private Pair<JCTree, JCTree.JCCompilationUnit> getTreeAndTopLevel(Element paramElement) {
-/* 543 */     Symbol symbol = cast(Symbol.class, paramElement);
-/* 544 */     Env<AttrContext> env = getEnterEnv(symbol);
-/* 545 */     if (env == null)
-/* 546 */       return null;
-/* 547 */     JCTree jCTree = TreeInfo.declarationFor(symbol, env.tree);
-/* 548 */     if (jCTree == null || env.toplevel == null)
-/* 549 */       return null;
-/* 550 */     return new Pair(jCTree, env.toplevel);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Pair<JCTree, JCTree.JCCompilationUnit> getTreeAndTopLevel(Element paramElement, AnnotationMirror paramAnnotationMirror, AnnotationValue paramAnnotationValue) {
-/* 564 */     if (paramElement == null) {
-/* 565 */       return null;
-/*     */     }
-/* 567 */     Pair<JCTree, JCTree.JCCompilationUnit> pair = getTreeAndTopLevel(paramElement);
-/* 568 */     if (pair == null) {
-/* 569 */       return null;
-/*     */     }
-/* 571 */     if (paramAnnotationMirror == null) {
-/* 572 */       return pair;
-/*     */     }
-/* 574 */     JCTree jCTree = matchAnnoToTree(paramAnnotationMirror, paramElement, (JCTree)pair.fst);
-/* 575 */     if (jCTree == null) {
-/* 576 */       return pair;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/* 581 */     return new Pair(jCTree, pair.snd);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private Env<AttrContext> getEnterEnv(Symbol paramSymbol) {
-/* 591 */     Symbol.TypeSymbol typeSymbol = (Symbol.TypeSymbol)((paramSymbol.kind != 1) ? paramSymbol.enclClass() : paramSymbol);
-/*     */
-/* 593 */     return (typeSymbol != null) ? this.enter
-/* 594 */       .getEnv(typeSymbol) : null;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private static <T> T cast(Class<T> paramClass, Object paramObject) {
-/* 604 */     if (!paramClass.isInstance(paramObject))
-/* 605 */       throw new IllegalArgumentException(paramObject.toString());
-/* 606 */     return paramClass.cast(paramObject);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\model\JavacElements.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2005, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.model;
+
+import java.util.Map;
+
+import javax.lang.model.SourceVersion;
+import javax.lang.model.element.*;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.util.Elements;
+import javax.tools.JavaFileObject;
+import static javax.lang.model.util.ElementFilter.methodsIn;
+
+import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.comp.AttrContext;
+import com.sun.tools.javac.comp.Enter;
+import com.sun.tools.javac.comp.Env;
+import com.sun.tools.javac.main.JavaCompiler;
+import com.sun.tools.javac.processing.PrintingProcessor;
+import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.*;
+import com.sun.tools.javac.tree.TreeInfo;
+import com.sun.tools.javac.tree.TreeScanner;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.Name;
+import static com.sun.tools.javac.code.TypeTag.CLASS;
+import static com.sun.tools.javac.tree.JCTree.Tag.*;
+
+/**
+ * Utility methods for operating on program elements.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own
+ * risk.  This code and its internal interfaces are subject to change
+ * or deletion without notice.</b></p>
+ */
+public class JavacElements implements Elements {
+
+    private JavaCompiler javaCompiler;
+    private Symtab syms;
+    private Names names;
+    private Types types;
+    private Enter enter;
+
+    public static JavacElements instance(Context context) {
+        JavacElements instance = context.get(JavacElements.class);
+        if (instance == null)
+            instance = new JavacElements(context);
+        return instance;
+    }
+
+    /**
+     * Public for use only by JavacProcessingEnvironment
+     */
+    protected JavacElements(Context context) {
+        setContext(context);
+    }
+
+    /**
+     * Use a new context.  May be called from outside to update
+     * internal state for a new annotation-processing round.
+     */
+    public void setContext(Context context) {
+        context.put(JavacElements.class, this);
+        javaCompiler = JavaCompiler.instance(context);
+        syms = Symtab.instance(context);
+        names = Names.instance(context);
+        types = Types.instance(context);
+        enter = Enter.instance(context);
+    }
+
+    public PackageSymbol getPackageElement(CharSequence name) {
+        String strName = name.toString();
+        if (strName.equals(""))
+            return syms.unnamedPackage;
+        return SourceVersion.isName(strName)
+            ? nameToSymbol(strName, PackageSymbol.class)
+            : null;
+    }
+
+    public ClassSymbol getTypeElement(CharSequence name) {
+        String strName = name.toString();
+        return SourceVersion.isName(strName)
+            ? nameToSymbol(strName, ClassSymbol.class)
+            : null;
+    }
+
+    /**
+     * Returns a symbol given the type's or packages's canonical name,
+     * or null if the name isn't found.
+     */
+    private <S extends Symbol> S nameToSymbol(String nameStr, Class<S> clazz) {
+        Name name = names.fromString(nameStr);
+        // First check cache.
+        Symbol sym = (clazz == ClassSymbol.class)
+                    ? syms.classes.get(name)
+                    : syms.packages.get(name);
+
+        try {
+            if (sym == null)
+                sym = javaCompiler.resolveIdent(nameStr);
+
+            sym.complete();
+
+            return (sym.kind != Kinds.ERR &&
+                    sym.exists() &&
+                    clazz.isInstance(sym) &&
+                    name.equals(sym.getQualifiedName()))
+                ? clazz.cast(sym)
+                : null;
+        } catch (CompletionFailure e) {
+            return null;
+        }
+    }
+
+    public JavacSourcePosition getSourcePosition(Element e) {
+        Pair<JCTree, JCCompilationUnit> treeTop = getTreeAndTopLevel(e);
+        if (treeTop == null)
+            return null;
+        JCTree tree = treeTop.fst;
+        JCCompilationUnit toplevel = treeTop.snd;
+        JavaFileObject sourcefile = toplevel.sourcefile;
+        if (sourcefile == null)
+            return null;
+        return new JavacSourcePosition(sourcefile, tree.pos, toplevel.lineMap);
+    }
+
+    public JavacSourcePosition getSourcePosition(Element e, AnnotationMirror a) {
+        Pair<JCTree, JCCompilationUnit> treeTop = getTreeAndTopLevel(e);
+        if (treeTop == null)
+            return null;
+        JCTree tree = treeTop.fst;
+        JCCompilationUnit toplevel = treeTop.snd;
+        JavaFileObject sourcefile = toplevel.sourcefile;
+        if (sourcefile == null)
+            return null;
+
+        JCTree annoTree = matchAnnoToTree(a, e, tree);
+        if (annoTree == null)
+            return null;
+        return new JavacSourcePosition(sourcefile, annoTree.pos,
+                                       toplevel.lineMap);
+    }
+
+    public JavacSourcePosition getSourcePosition(Element e, AnnotationMirror a,
+                                            AnnotationValue v) {
+        // TODO: better accuracy in getSourcePosition(... AnnotationValue)
+        return getSourcePosition(e, a);
+    }
+
+    /**
+     * Returns the tree for an annotation given the annotated element
+     * and the element's own tree.  Returns null if the tree cannot be found.
+     */
+    private JCTree matchAnnoToTree(AnnotationMirror findme,
+                                   Element e, JCTree tree) {
+        Symbol sym = cast(Symbol.class, e);
+        class Vis extends JCTree.Visitor {
+            List<JCAnnotation> result = null;
+            public void visitTopLevel(JCCompilationUnit tree) {
+                result = tree.packageAnnotations;
+            }
+            public void visitClassDef(JCClassDecl tree) {
+                result = tree.mods.annotations;
+            }
+            public void visitMethodDef(JCMethodDecl tree) {
+                result = tree.mods.annotations;
+            }
+            public void visitVarDef(JCVariableDecl tree) {
+                result = tree.mods.annotations;
+            }
+        }
+        Vis vis = new Vis();
+        tree.accept(vis);
+        if (vis.result == null)
+            return null;
+
+        List<Attribute.Compound> annos = sym.getRawAttributes();
+        return matchAnnoToTree(cast(Attribute.Compound.class, findme),
+                               annos,
+                               vis.result);
+    }
+
+    /**
+     * Returns the tree for an annotation given a list of annotations
+     * in which to search (recursively) and their corresponding trees.
+     * Returns null if the tree cannot be found.
+     */
+    private JCTree matchAnnoToTree(Attribute.Compound findme,
+                                   List<Attribute.Compound> annos,
+                                   List<JCAnnotation> trees) {
+        for (Attribute.Compound anno : annos) {
+            for (JCAnnotation tree : trees) {
+                JCTree match = matchAnnoToTree(findme, anno, tree);
+                if (match != null)
+                    return match;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns the tree for an annotation given an Attribute to
+     * search (recursively) and its corresponding tree.
+     * Returns null if the tree cannot be found.
+     */
+    private JCTree matchAnnoToTree(final Attribute.Compound findme,
+                                   final Attribute attr,
+                                   final JCTree tree) {
+        if (attr == findme)
+            return (tree.type.tsym == findme.type.tsym) ? tree : null;
+
+        class Vis implements Attribute.Visitor {
+            JCTree result = null;
+            public void visitConstant(Attribute.Constant value) {
+            }
+            public void visitClass(Attribute.Class clazz) {
+            }
+            public void visitCompound(Attribute.Compound anno) {
+                for (Pair<MethodSymbol, Attribute> pair : anno.values) {
+                    JCExpression expr = scanForAssign(pair.fst, tree);
+                    if (expr != null) {
+                        JCTree match = matchAnnoToTree(findme, pair.snd, expr);
+                        if (match != null) {
+                            result = match;
+                            return;
+                        }
+                    }
+                }
+            }
+            public void visitArray(Attribute.Array array) {
+                if (tree.hasTag(NEWARRAY) &&
+                        types.elemtype(array.type).tsym == findme.type.tsym) {
+                    List<JCExpression> elems = ((JCNewArray) tree).elems;
+                    for (Attribute value : array.values) {
+                        if (value == findme) {
+                            result = elems.head;
+                            return;
+                        }
+                        elems = elems.tail;
+                    }
+                }
+            }
+            public void visitEnum(Attribute.Enum e) {
+            }
+            public void visitError(Attribute.Error e) {
+            }
+        }
+        Vis vis = new Vis();
+        attr.accept(vis);
+        return vis.result;
+    }
+
+    /**
+     * Scans for a JCAssign node with a LHS matching a given
+     * symbol, and returns its RHS.  Does not scan nested JCAnnotations.
+     */
+    private JCExpression scanForAssign(final MethodSymbol sym,
+                                       final JCTree tree) {
+        class TS extends TreeScanner {
+            JCExpression result = null;
+            public void scan(JCTree t) {
+                if (t != null && result == null)
+                    t.accept(this);
+            }
+            public void visitAnnotation(JCAnnotation t) {
+                if (t == tree)
+                    scan(t.args);
+            }
+            public void visitAssign(JCAssign t) {
+                if (t.lhs.hasTag(IDENT)) {
+                    JCIdent ident = (JCIdent) t.lhs;
+                    if (ident.sym == sym)
+                        result = t.rhs;
+                }
+            }
+        }
+        TS scanner = new TS();
+        tree.accept(scanner);
+        return scanner.result;
+    }
+
+    /**
+     * Returns the tree node corresponding to this element, or null
+     * if none can be found.
+     */
+    public JCTree getTree(Element e) {
+        Pair<JCTree, ?> treeTop = getTreeAndTopLevel(e);
+        return (treeTop != null) ? treeTop.fst : null;
+    }
+
+    public String getDocComment(Element e) {
+        // Our doc comment is contained in a map in our toplevel,
+        // indexed by our tree.  Find our enter environment, which gives
+        // us our toplevel.  It also gives us a tree that contains our
+        // tree:  walk it to find our tree.  This is painful.
+        Pair<JCTree, JCCompilationUnit> treeTop = getTreeAndTopLevel(e);
+        if (treeTop == null)
+            return null;
+        JCTree tree = treeTop.fst;
+        JCCompilationUnit toplevel = treeTop.snd;
+        if (toplevel.docComments == null)
+            return null;
+        return toplevel.docComments.getCommentText(tree);
+    }
+
+    public PackageElement getPackageOf(Element e) {
+        return cast(Symbol.class, e).packge();
+    }
+
+    public boolean isDeprecated(Element e) {
+        Symbol sym = cast(Symbol.class, e);
+        return (sym.flags() & Flags.DEPRECATED) != 0;
+    }
+
+    public Name getBinaryName(TypeElement type) {
+        return cast(TypeSymbol.class, type).flatName();
+    }
+
+    public Map<MethodSymbol, Attribute> getElementValuesWithDefaults(
+                                                        AnnotationMirror a) {
+        Attribute.Compound anno = cast(Attribute.Compound.class, a);
+        DeclaredType annotype = a.getAnnotationType();
+        Map<MethodSymbol, Attribute> valmap = anno.getElementValues();
+
+        for (ExecutableElement ex :
+                 methodsIn(annotype.asElement().getEnclosedElements())) {
+            MethodSymbol meth = (MethodSymbol) ex;
+            Attribute defaultValue = meth.getDefaultValue();
+            if (defaultValue != null && !valmap.containsKey(meth)) {
+                valmap.put(meth, defaultValue);
+            }
+        }
+        return valmap;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public FilteredMemberList getAllMembers(TypeElement element) {
+        Symbol sym = cast(Symbol.class, element);
+        Scope scope = sym.members().dupUnshared();
+        List<Type> closure = types.closure(sym.asType());
+        for (Type t : closure)
+            addMembers(scope, t);
+        return new FilteredMemberList(scope);
+    }
+    // where
+        private void addMembers(Scope scope, Type type) {
+            members:
+            for (Scope.Entry e = type.asElement().members().elems; e != null; e = e.sibling) {
+                Scope.Entry overrider = scope.lookup(e.sym.getSimpleName());
+                while (overrider.scope != null) {
+                    if (overrider.sym.kind == e.sym.kind
+                        && (overrider.sym.flags() & Flags.SYNTHETIC) == 0)
+                    {
+                        if (overrider.sym.getKind() == ElementKind.METHOD
+                        && overrides((ExecutableElement)overrider.sym, (ExecutableElement)e.sym, (TypeElement)type.asElement())) {
+                            continue members;
+                        }
+                    }
+                    overrider = overrider.next();
+                }
+                boolean derived = e.sym.getEnclosingElement() != scope.owner;
+                ElementKind kind = e.sym.getKind();
+                boolean initializer = kind == ElementKind.CONSTRUCTOR
+                    || kind == ElementKind.INSTANCE_INIT
+                    || kind == ElementKind.STATIC_INIT;
+                if (!derived || (!initializer && e.sym.isInheritedIn(scope.owner, types)))
+                    scope.enter(e.sym);
+            }
+        }
+
+    /**
+     * Returns all annotations of an element, whether
+     * inherited or directly present.
+     *
+     * @param e  the element being examined
+     * @return all annotations of the element
+     */
+    @Override
+    public List<Attribute.Compound> getAllAnnotationMirrors(Element e) {
+        Symbol sym = cast(Symbol.class, e);
+        List<Attribute.Compound> annos = sym.getAnnotationMirrors();
+        while (sym.getKind() == ElementKind.CLASS) {
+            Type sup = ((ClassSymbol) sym).getSuperclass();
+            if (!sup.hasTag(CLASS) || sup.isErroneous() ||
+                    sup.tsym == syms.objectType.tsym) {
+                break;
+            }
+            sym = sup.tsym;
+            List<Attribute.Compound> oldAnnos = annos;
+            List<Attribute.Compound> newAnnos = sym.getAnnotationMirrors();
+            for (Attribute.Compound anno : newAnnos) {
+                if (isInherited(anno.type) &&
+                        !containsAnnoOfType(oldAnnos, anno.type)) {
+                    annos = annos.prepend(anno);
+                }
+            }
+        }
+        return annos;
+    }
+
+    /**
+     * Tests whether an annotation type is @Inherited.
+     */
+    private boolean isInherited(Type annotype) {
+        return annotype.tsym.attribute(syms.inheritedType.tsym) != null;
+    }
+
+    /**
+     * Tests whether a list of annotations contains an annotation
+     * of a given type.
+     */
+    private static boolean containsAnnoOfType(List<Attribute.Compound> annos,
+                                              Type type) {
+        for (Attribute.Compound anno : annos) {
+            if (anno.type.tsym == type.tsym)
+                return true;
+        }
+        return false;
+    }
+
+    public boolean hides(Element hiderEl, Element hideeEl) {
+        Symbol hider = cast(Symbol.class, hiderEl);
+        Symbol hidee = cast(Symbol.class, hideeEl);
+
+        // Fields only hide fields; methods only methods; types only types.
+        // Names must match.  Nothing hides itself (just try it).
+        if (hider == hidee ||
+                hider.kind != hidee.kind ||
+                hider.name != hidee.name) {
+            return false;
+        }
+
+        // Only static methods can hide other methods.
+        // Methods only hide methods with matching signatures.
+        if (hider.kind == Kinds.MTH) {
+            if (!hider.isStatic() ||
+                        !types.isSubSignature(hider.type, hidee.type)) {
+                return false;
+            }
+        }
+
+        // Hider must be in a subclass of hidee's class.
+        // Note that if M1 hides M2, and M2 hides M3, and M3 is accessible
+        // in M1's class, then M1 and M2 both hide M3.
+        ClassSymbol hiderClass = hider.owner.enclClass();
+        ClassSymbol hideeClass = hidee.owner.enclClass();
+        if (hiderClass == null || hideeClass == null ||
+                !hiderClass.isSubClass(hideeClass, types)) {
+            return false;
+        }
+
+        // Hidee must be accessible in hider's class.
+        // The method isInheritedIn is poorly named:  it checks only access.
+        return hidee.isInheritedIn(hiderClass, types);
+    }
+
+    public boolean overrides(ExecutableElement riderEl,
+                             ExecutableElement rideeEl, TypeElement typeEl) {
+        MethodSymbol rider = cast(MethodSymbol.class, riderEl);
+        MethodSymbol ridee = cast(MethodSymbol.class, rideeEl);
+        ClassSymbol origin = cast(ClassSymbol.class, typeEl);
+
+        return rider.name == ridee.name &&
+
+               // not reflexive as per JLS
+               rider != ridee &&
+
+               // we don't care if ridee is static, though that wouldn't
+               // compile
+               !rider.isStatic() &&
+
+               // Symbol.overrides assumes the following
+               ridee.isMemberOf(origin, types) &&
+
+               // check access and signatures; don't check return types
+               rider.overrides(ridee, origin, types, false);
+    }
+
+    public String getConstantExpression(Object value) {
+        return Constants.format(value);
+    }
+
+    /**
+     * Print a representation of the elements to the given writer in
+     * the specified order.  The main purpose of this method is for
+     * diagnostics.  The exact format of the output is <em>not</em>
+     * specified and is subject to change.
+     *
+     * @param w the writer to print the output to
+     * @param elements the elements to print
+     */
+    public void printElements(java.io.Writer w, Element... elements) {
+        for (Element element : elements)
+            (new PrintingProcessor.PrintingElementVisitor(w, this)).visit(element).flush();
+    }
+
+    public Name getName(CharSequence cs) {
+        return names.fromString(cs.toString());
+    }
+
+    @Override
+    public boolean isFunctionalInterface(TypeElement element) {
+        if (element.getKind() != ElementKind.INTERFACE)
+            return false;
+        else {
+            TypeSymbol tsym = cast(TypeSymbol.class, element);
+            return types.isFunctionalInterface(tsym);
+        }
+    }
+
+    /**
+     * Returns the tree node and compilation unit corresponding to this
+     * element, or null if they can't be found.
+     */
+    private Pair<JCTree, JCCompilationUnit> getTreeAndTopLevel(Element e) {
+        Symbol sym = cast(Symbol.class, e);
+        Env<AttrContext> enterEnv = getEnterEnv(sym);
+        if (enterEnv == null)
+            return null;
+        JCTree tree = TreeInfo.declarationFor(sym, enterEnv.tree);
+        if (tree == null || enterEnv.toplevel == null)
+            return null;
+        return new Pair<JCTree,JCCompilationUnit>(tree, enterEnv.toplevel);
+    }
+
+    /**
+     * Returns the best approximation for the tree node and compilation unit
+     * corresponding to the given element, annotation and value.
+     * If the element is null, null is returned.
+     * If the annotation is null or cannot be found, the tree node and
+     * compilation unit for the element is returned.
+     * If the annotation value is null or cannot be found, the tree node and
+     * compilation unit for the annotation is returned.
+     */
+    public Pair<JCTree, JCCompilationUnit> getTreeAndTopLevel(
+                      Element e, AnnotationMirror a, AnnotationValue v) {
+        if (e == null)
+            return null;
+
+        Pair<JCTree, JCCompilationUnit> elemTreeTop = getTreeAndTopLevel(e);
+        if (elemTreeTop == null)
+            return null;
+
+        if (a == null)
+            return elemTreeTop;
+
+        JCTree annoTree = matchAnnoToTree(a, e, elemTreeTop.fst);
+        if (annoTree == null)
+            return elemTreeTop;
+
+        // 6388543: if v != null, we should search within annoTree to find
+        // the tree matching v. For now, we ignore v and return the tree of
+        // the annotation.
+        return new Pair<JCTree, JCCompilationUnit>(annoTree, elemTreeTop.snd);
+    }
+
+    /**
+     * Returns a symbol's enter environment, or null if it has none.
+     */
+    private Env<AttrContext> getEnterEnv(Symbol sym) {
+        // Get enclosing class of sym, or sym itself if it is a class
+        // or package.
+        TypeSymbol ts = (sym.kind != Kinds.PCK)
+                        ? sym.enclClass()
+                        : (PackageSymbol) sym;
+        return (ts != null)
+                ? enter.getEnv(ts)
+                : null;
+    }
+
+    /**
+     * Returns an object cast to the specified type.
+     * @throws NullPointerException if the object is {@code null}
+     * @throws IllegalArgumentException if the object is of the wrong type
+     */
+    private static <T> T cast(Class<T> clazz, Object o) {
+        if (! clazz.isInstance(o))
+            throw new IllegalArgumentException(o.toString());
+        return clazz.cast(o);
+    }
+}

@@ -1,186 +1,181 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.formats.html.markup.StringContent;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPath;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPaths;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocletAbortException;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.IndexBuilder;
-/*     */ import java.io.IOException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class SplitIndexWriter
-/*     */   extends AbstractIndexWriter
-/*     */ {
-/*     */   protected int prev;
-/*     */   protected int next;
-/*     */   
-/*     */   public SplitIndexWriter(ConfigurationImpl paramConfigurationImpl, DocPath paramDocPath, IndexBuilder paramIndexBuilder, int paramInt1, int paramInt2) throws IOException {
-/*  71 */     super(paramConfigurationImpl, paramDocPath, paramIndexBuilder);
-/*  72 */     this.prev = paramInt1;
-/*  73 */     this.next = paramInt2;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void generate(ConfigurationImpl paramConfigurationImpl, IndexBuilder paramIndexBuilder) {
-/*  86 */     DocPath docPath1 = DocPath.empty;
-/*  87 */     DocPath docPath2 = DocPaths.INDEX_FILES;
-/*     */     try {
-/*  89 */       for (byte b = 0; b < (paramIndexBuilder.elements()).length; b++) {
-/*  90 */         int i = b + 1;
-/*  91 */         boolean bool1 = (i == 1) ? true : b;
-/*  92 */         boolean bool2 = (i == (paramIndexBuilder.elements()).length) ? true : (i + 1);
-/*  93 */         docPath1 = DocPaths.indexN(i);
-/*     */         
-/*  95 */         SplitIndexWriter splitIndexWriter = new SplitIndexWriter(paramConfigurationImpl, docPath2.resolve(docPath1), paramIndexBuilder, bool1, bool2);
-/*     */         
-/*  97 */         splitIndexWriter.generateIndexFile(
-/*  98 */             (Character)paramIndexBuilder.elements()[b]);
-/*  99 */         splitIndexWriter.close();
-/*     */       } 
-/* 101 */     } catch (IOException iOException) {
-/* 102 */       paramConfigurationImpl.standardmessage.error("doclet.exception_encountered", new Object[] { iOException
-/*     */             
-/* 104 */             .toString(), docPath1.getPath() });
-/* 105 */       throw new DocletAbortException(iOException);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void generateIndexFile(Character paramCharacter) throws IOException {
-/* 117 */     String str = this.configuration.getText("doclet.Window_Split_Index", paramCharacter
-/* 118 */         .toString());
-/* 119 */     HtmlTree htmlTree1 = getBody(true, getWindowTitle(str));
-/* 120 */     addTop((Content)htmlTree1);
-/* 121 */     addNavLinks(true, (Content)htmlTree1);
-/* 122 */     HtmlTree htmlTree2 = new HtmlTree(HtmlTag.DIV);
-/* 123 */     htmlTree2.addStyle(HtmlStyle.contentContainer);
-/* 124 */     addLinksForIndexes((Content)htmlTree2);
-/* 125 */     addContents(paramCharacter, this.indexbuilder.getMemberList(paramCharacter), (Content)htmlTree2);
-/* 126 */     addLinksForIndexes((Content)htmlTree2);
-/* 127 */     htmlTree1.addContent((Content)htmlTree2);
-/* 128 */     addNavLinks(false, (Content)htmlTree1);
-/* 129 */     addBottom((Content)htmlTree1);
-/* 130 */     printHtmlDocument((String[])null, true, (Content)htmlTree1);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addLinksForIndexes(Content paramContent) {
-/* 139 */     Object[] arrayOfObject = this.indexbuilder.elements();
-/* 140 */     for (byte b = 0; b < arrayOfObject.length; b++) {
-/* 141 */       int i = b + 1;
-/* 142 */       paramContent.addContent(getHyperLink(DocPaths.indexN(i), (Content)new StringContent(arrayOfObject[b]
-/* 143 */               .toString())));
-/* 144 */       paramContent.addContent(getSpace());
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getNavLinkPrevious() {
-/* 154 */     Content content1 = getResource("doclet.Prev_Letter");
-/* 155 */     if (this.prev == -1) {
-/* 156 */       return (Content)HtmlTree.LI(content1);
-/*     */     }
-/*     */     
-/* 159 */     Content content2 = getHyperLink(DocPaths.indexN(this.prev), content1);
-/*     */     
-/* 161 */     return (Content)HtmlTree.LI(content2);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getNavLinkNext() {
-/* 171 */     Content content1 = getResource("doclet.Next_Letter");
-/* 172 */     if (this.next == -1) {
-/* 173 */       return (Content)HtmlTree.LI(content1);
-/*     */     }
-/*     */     
-/* 176 */     Content content2 = getHyperLink(DocPaths.indexN(this.next), content1);
-/*     */     
-/* 178 */     return (Content)HtmlTree.LI(content2);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\SplitIndexWriter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1998, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Generate Separate Index Files for all the member names with Indexing in
+ * Unicode Order. This will create "index-files" directory in the current or
+ * destination directory and will generate separate file for each unicode index.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @see Character
+ * @author Atul M Dambalkar
+ * @author Bhavesh Patel (Modified)
+ */
+public class SplitIndexWriter extends AbstractIndexWriter {
+
+    /**
+     * Previous unicode character index in the built index.
+     */
+    protected int prev;
+
+    /**
+     * Next unicode character in the built index.
+     */
+    protected int next;
+
+    /**
+     * Construct the SplitIndexWriter. Uses path to this file and relative path
+     * from this file.
+     *
+     * @param path       Path to the file which is getting generated.
+     * @param indexbuilder Unicode based Index from {@link IndexBuilder}
+     */
+    public SplitIndexWriter(ConfigurationImpl configuration,
+                            DocPath path,
+                            IndexBuilder indexbuilder,
+                            int prev, int next) throws IOException {
+        super(configuration, path, indexbuilder);
+        this.prev = prev;
+        this.next = next;
+    }
+
+    /**
+     * Generate separate index files, for each Unicode character, listing all
+     * the members starting with the particular unicode character.
+     *
+     * @param indexbuilder IndexBuilder built by {@link IndexBuilder}
+     * @throws DocletAbortException
+     */
+    public static void generate(ConfigurationImpl configuration,
+                                IndexBuilder indexbuilder) {
+        SplitIndexWriter indexgen;
+        DocPath filename = DocPath.empty;
+        DocPath path = DocPaths.INDEX_FILES;
+        try {
+            for (int i = 0; i < indexbuilder.elements().length; i++) {
+                int j = i + 1;
+                int prev = (j == 1)? -1: i;
+                int next = (j == indexbuilder.elements().length)? -1: j + 1;
+                filename = DocPaths.indexN(j);
+                indexgen = new SplitIndexWriter(configuration,
+                                                path.resolve(filename),
+                                                indexbuilder, prev, next);
+                indexgen.generateIndexFile((Character)indexbuilder.
+                                                                 elements()[i]);
+                indexgen.close();
+            }
+        } catch (IOException exc) {
+            configuration.standardmessage.error(
+                        "doclet.exception_encountered",
+                        exc.toString(), filename.getPath());
+            throw new DocletAbortException(exc);
+        }
+    }
+
+    /**
+     * Generate the contents of each index file, with Header, Footer,
+     * Member Field, Method and Constructor Description.
+     *
+     * @param unicode Unicode character referring to the character for the
+     * index.
+     */
+    protected void generateIndexFile(Character unicode) throws IOException {
+        String title = configuration.getText("doclet.Window_Split_Index",
+                unicode.toString());
+        Content body = getBody(true, getWindowTitle(title));
+        addTop(body);
+        addNavLinks(true, body);
+        HtmlTree divTree = new HtmlTree(HtmlTag.DIV);
+        divTree.addStyle(HtmlStyle.contentContainer);
+        addLinksForIndexes(divTree);
+        addContents(unicode, indexbuilder.getMemberList(unicode), divTree);
+        addLinksForIndexes(divTree);
+        body.addContent(divTree);
+        addNavLinks(false, body);
+        addBottom(body);
+        printHtmlDocument(null, true, body);
+    }
+
+    /**
+     * Add links for all the Index Files per unicode character.
+     *
+     * @param contentTree the content tree to which the links for indexes will be added
+     */
+    protected void addLinksForIndexes(Content contentTree) {
+        Object[] unicodeChars = indexbuilder.elements();
+        for (int i = 0; i < unicodeChars.length; i++) {
+            int j = i + 1;
+            contentTree.addContent(getHyperLink(DocPaths.indexN(j),
+                    new StringContent(unicodeChars[i].toString())));
+            contentTree.addContent(getSpace());
+        }
+    }
+
+    /**
+     * Get link to the previous unicode character.
+     *
+     * @return a content tree for the link
+     */
+    public Content getNavLinkPrevious() {
+        Content prevletterLabel = getResource("doclet.Prev_Letter");
+        if (prev == -1) {
+            return HtmlTree.LI(prevletterLabel);
+        }
+        else {
+            Content prevLink = getHyperLink(DocPaths.indexN(prev),
+                    prevletterLabel);
+            return HtmlTree.LI(prevLink);
+        }
+    }
+
+    /**
+     * Get link to the next unicode character.
+     *
+     * @return a content tree for the link
+     */
+    public Content getNavLinkNext() {
+        Content nextletterLabel = getResource("doclet.Next_Letter");
+        if (next == -1) {
+            return HtmlTree.LI(nextletterLabel);
+        }
+        else {
+            Content nextLink = getHyperLink(DocPaths.indexN(next),
+                    nextletterLabel);
+            return HtmlTree.LI(nextLink);
+        }
+    }
+}

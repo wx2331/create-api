@@ -1,453 +1,447 @@
-/*     */ package com.sun.tools.javac.parser;
-/*     */
-/*     */ import com.sun.tools.javac.util.Position;
-/*     */ import java.nio.CharBuffer;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class JavadocTokenizer
-/*     */   extends JavaTokenizer
-/*     */ {
-/*     */   protected JavadocTokenizer(ScannerFactory paramScannerFactory, CharBuffer paramCharBuffer) {
-/*  52 */     super(paramScannerFactory, paramCharBuffer);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   protected JavadocTokenizer(ScannerFactory paramScannerFactory, char[] paramArrayOfchar, int paramInt) {
-/*  59 */     super(paramScannerFactory, paramArrayOfchar, paramInt);
-/*     */   }
-/*     */
-/*     */
-/*     */   protected Tokens.Comment processComment(int paramInt1, int paramInt2, Tokens.Comment.CommentStyle paramCommentStyle) {
-/*  64 */     char[] arrayOfChar = this.reader.getRawCharacters(paramInt1, paramInt2);
-/*  65 */     return new JavadocComment(new DocReader(this.fac, arrayOfChar, arrayOfChar.length, paramInt1), paramCommentStyle);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   static class DocReader
-/*     */     extends UnicodeReader
-/*     */   {
-/*     */     int col;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     int startPos;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 103 */     int[] pbuf = new int[128];
-/*     */
-/*     */
-/*     */
-/*     */
-/* 108 */     int pp = 0;
-/*     */
-/*     */     DocReader(ScannerFactory param1ScannerFactory, char[] param1ArrayOfchar, int param1Int1, int param1Int2) {
-/* 111 */       super(param1ScannerFactory, param1ArrayOfchar, param1Int1);
-/* 112 */       this.startPos = param1Int2;
-/*     */     }
-/*     */
-/*     */
-/*     */     protected void convertUnicode() {
-/* 117 */       if (this.ch == '\\' && this.unicodeConversionBp != this.bp) {
-/* 118 */         this.bp++; this.ch = this.buf[this.bp]; this.col++;
-/* 119 */         if (this.ch == 'u') {
-/*     */           while (true) {
-/* 121 */             this.bp++; this.ch = this.buf[this.bp]; this.col++;
-/* 122 */             if (this.ch != 'u') {
-/* 123 */               int i = this.bp + 3;
-/* 124 */               if (i < this.buflen) {
-/* 125 */                 int j = digit(this.bp, 16);
-/* 126 */                 int k = j;
-/* 127 */                 while (this.bp < i && j >= 0) {
-/* 128 */                   this.bp++; this.ch = this.buf[this.bp]; this.col++;
-/* 129 */                   j = digit(this.bp, 16);
-/* 130 */                   k = (k << 4) + j;
-/*     */                 }
-/* 132 */                 if (j >= 0) {
-/* 133 */                   this.ch = (char)k;
-/* 134 */                   this.unicodeConversionBp = this.bp; return;
-/*     */                 }
-/*     */               }  break;
-/*     */             }
-/*     */           }
-/*     */         } else {
-/* 140 */           this.bp--;
-/* 141 */           this.ch = '\\';
-/* 142 */           this.col--;
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */     protected void scanCommentChar() {
-/* 149 */       scanChar();
-/* 150 */       if (this.ch == '\\') {
-/* 151 */         if (peekChar() == '\\' && !isUnicode()) {
-/* 152 */           putChar(this.ch, false);
-/* 153 */           this.bp++; this.col++;
-/*     */         } else {
-/* 155 */           convertUnicode();
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */     protected void scanChar() {
-/* 162 */       this.bp++;
-/* 163 */       this.ch = this.buf[this.bp];
-/* 164 */       switch (this.ch) {
-/*     */         case '\r':
-/* 166 */           this.col = 0;
-/*     */           return;
-/*     */         case '\n':
-/* 169 */           if (this.bp == 0 || this.buf[this.bp - 1] != '\r') {
-/* 170 */             this.col = 0;
-/*     */           }
-/*     */           return;
-/*     */         case '\t':
-/* 174 */           this.col = this.col / 8 * 8 + 8;
-/*     */           return;
-/*     */         case '\\':
-/* 177 */           this.col++;
-/* 178 */           convertUnicode();
-/*     */           return;
-/*     */       }
-/* 181 */       this.col++;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public void putChar(char param1Char, boolean param1Boolean) {
-/* 194 */       if (this.pp == 0 || this.sp - this.pbuf[this.pp - 2] != this.startPos + this.bp - this.pbuf[this.pp - 1]) {
-/*     */
-/* 196 */         if (this.pp + 1 >= this.pbuf.length) {
-/* 197 */           int[] arrayOfInt = new int[this.pbuf.length * 2];
-/* 198 */           System.arraycopy(this.pbuf, 0, arrayOfInt, 0, this.pbuf.length);
-/* 199 */           this.pbuf = arrayOfInt;
-/*     */         }
-/* 201 */         this.pbuf[this.pp] = this.sp;
-/* 202 */         this.pbuf[this.pp + 1] = this.startPos + this.bp;
-/* 203 */         this.pp += 2;
-/*     */       }
-/* 205 */       super.putChar(param1Char, param1Boolean);
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   protected static class JavadocComment
-/*     */     extends BasicComment<DocReader>
-/*     */   {
-/* 214 */     private String docComment = null;
-/* 215 */     private int[] docPosns = null;
-/*     */
-/*     */     JavadocComment(DocReader param1DocReader, CommentStyle param1CommentStyle) {
-/* 218 */       super(param1DocReader, param1CommentStyle);
-/*     */     }
-/*     */
-/*     */
-/*     */     public String getText() {
-/* 223 */       if (!this.scanned && this.cs == CommentStyle.JAVADOC) {
-/* 224 */         scanDocComment();
-/*     */       }
-/* 226 */       return this.docComment;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public int getSourcePos(int param1Int) {
-/* 237 */       if (param1Int == -1)
-/* 238 */         return -1;
-/* 239 */       if (param1Int < 0 || param1Int > this.docComment.length())
-/* 240 */         throw new StringIndexOutOfBoundsException(String.valueOf(param1Int));
-/* 241 */       if (this.docPosns == null)
-/* 242 */         return -1;
-/* 243 */       int i = 0;
-/* 244 */       int j = this.docPosns.length;
-/* 245 */       while (i < j - 2) {
-/*     */
-/* 247 */         int k = (i + j) / 4 * 2;
-/* 248 */         if (this.docPosns[k] < param1Int) {
-/* 249 */           i = k; continue;
-/* 250 */         }  if (this.docPosns[k] == param1Int) {
-/* 251 */           return this.docPosns[k + 1];
-/*     */         }
-/* 253 */         j = k;
-/*     */       }
-/* 255 */       return this.docPosns[i + 1] + param1Int - this.docPosns[i];
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */     protected void scanDocComment() {
-/*     */       try {
-/* 262 */         boolean bool = true;
-/*     */
-/*     */
-/* 265 */         this.comment_reader.scanCommentChar();
-/*     */
-/* 267 */         this.comment_reader.scanCommentChar();
-/*     */
-/*     */
-/* 270 */         while (this.comment_reader.bp < this.comment_reader.buflen && this.comment_reader.ch == '*') {
-/* 271 */           this.comment_reader.scanCommentChar();
-/*     */         }
-/*     */
-/* 274 */         if (this.comment_reader.bp < this.comment_reader.buflen && this.comment_reader.ch == '/') {
-/* 275 */           this.docComment = "";
-/*     */
-/*     */           return;
-/*     */         }
-/*     */
-/* 280 */         if (this.comment_reader.bp < this.comment_reader.buflen) {
-/* 281 */           if (this.comment_reader.ch == '\n') {
-/* 282 */             this.comment_reader.scanCommentChar();
-/* 283 */             bool = false;
-/* 284 */           } else if (this.comment_reader.ch == '\r') {
-/* 285 */             this.comment_reader.scanCommentChar();
-/* 286 */             if (this.comment_reader.ch == '\n') {
-/* 287 */               this.comment_reader.scanCommentChar();
-/* 288 */               bool = false;
-/*     */             }
-/*     */           }
-/*     */         }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 299 */         label88: while (this.comment_reader.bp < this.comment_reader.buflen) {
-/* 300 */           int i = this.comment_reader.bp;
-/* 301 */           char c = this.comment_reader.ch;
-/*     */
-/*     */
-/*     */
-/*     */
-/* 306 */           while (this.comment_reader.bp < this.comment_reader.buflen) {
-/* 307 */             switch (this.comment_reader.ch) {
-/*     */               case ' ':
-/* 309 */                 this.comment_reader.scanCommentChar();
-/*     */
-/*     */               case '\t':
-/* 312 */                 this.comment_reader.col = (this.comment_reader.col - 1) / 8 * 8 + 8;
-/* 313 */                 this.comment_reader.scanCommentChar();
-/*     */
-/*     */               case '\f':
-/* 316 */                 this.comment_reader.col = 0;
-/* 317 */                 this.comment_reader.scanCommentChar();
-/*     */             }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */           }
-/* 342 */           if (this.comment_reader.ch == '*') {
-/*     */
-/*     */             do {
-/* 345 */               this.comment_reader.scanCommentChar();
-/* 346 */             } while (this.comment_reader.ch == '*');
-/*     */
-/*     */
-/* 349 */             if (this.comment_reader.ch == '/')
-/*     */             {
-/*     */               break;
-/*     */             }
-/*     */           }
-/* 354 */           else if (!bool) {
-/*     */
-/*     */
-/* 357 */             this.comment_reader.bp = i;
-/* 358 */             this.comment_reader.ch = c;
-/*     */           }
-/*     */
-/*     */
-/*     */
-/* 363 */           while (this.comment_reader.bp < this.comment_reader.buflen) {
-/* 364 */             switch (this.comment_reader.ch) {
-/*     */
-/*     */
-/*     */               case '*':
-/* 368 */                 this.comment_reader.scanCommentChar();
-/* 369 */                 if (this.comment_reader.ch == '/') {
-/*     */                   break label88;
-/*     */                 }
-/*     */
-/*     */
-/*     */
-/*     */
-/* 376 */                 this.comment_reader.putChar('*', false);
-/*     */                 continue;
-/*     */               case '\t':
-/*     */               case ' ':
-/* 380 */                 this.comment_reader.putChar(this.comment_reader.ch, false);
-/* 381 */                 this.comment_reader.scanCommentChar();
-/*     */                 continue;
-/*     */               case '\f':
-/* 384 */                 this.comment_reader.scanCommentChar();
-/*     */                 break;
-/*     */               case '\r':
-/* 387 */                 this.comment_reader.scanCommentChar();
-/* 388 */                 if (this.comment_reader.ch != '\n') {
-/*     */
-/* 390 */                   this.comment_reader.putChar('\n', false);
-/*     */                   break;
-/*     */                 }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */               case '\n':
-/* 398 */                 this.comment_reader.putChar(this.comment_reader.ch, false);
-/* 399 */                 this.comment_reader.scanCommentChar();
-/*     */                 break;
-/*     */             }
-/*     */
-/* 403 */             this.comment_reader.putChar(this.comment_reader.ch, false);
-/* 404 */             this.comment_reader.scanCommentChar();
-/*     */           }
-/*     */
-/* 407 */           bool = false;
-/*     */         }
-/*     */
-/* 410 */         if (this.comment_reader.sp > 0) {
-/* 411 */           int i = this.comment_reader.sp - 1;
-/*     */
-/* 413 */           while (i > -1) {
-/* 414 */             switch (this.comment_reader.sbuf[i]) {
-/*     */               case '*':
-/* 416 */                 i--;
-/*     */             }
-/*     */
-/*     */
-/*     */
-/*     */           }
-/* 422 */           this.comment_reader.sp = i + 1;
-/*     */
-/*     */
-/* 425 */           this.docComment = this.comment_reader.chars();
-/* 426 */           this.docPosns = new int[this.comment_reader.pp];
-/* 427 */           System.arraycopy(this.comment_reader.pbuf, 0, this.docPosns, 0, this.docPosns.length);
-/*     */         } else {
-/* 429 */           this.docComment = "";
-/*     */         }
-/*     */       } finally {
-/* 432 */         this.scanned = true;
-/* 433 */         this.comment_reader = null;
-/* 434 */         if (this.docComment != null && this.docComment
-/* 435 */           .matches("(?sm).*^\\s*@deprecated( |$).*")) {
-/* 436 */           this.deprecatedFlag = true;
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */   public Position.LineMap getLineMap() {
-/* 444 */     char[] arrayOfChar = this.reader.getRawCharacters();
-/* 445 */     return Position.makeLineMap(arrayOfChar, arrayOfChar.length, true);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\parser\JavadocTokenizer.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2004, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.parser;
+
+import com.sun.tools.javac.parser.Tokens.Comment;
+import com.sun.tools.javac.parser.Tokens.Comment.CommentStyle;
+import com.sun.tools.javac.util.*;
+
+import java.nio.*;
+
+import static com.sun.tools.javac.util.LayoutCharacters.*;
+
+/** An extension to the base lexical analyzer that captures
+ *  and processes the contents of doc comments.  It does so by
+ *  translating Unicode escape sequences and by stripping the
+ *  leading whitespace and starts from each line of the comment.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class JavadocTokenizer extends JavaTokenizer {
+
+    /** Create a scanner from the input buffer.  buffer must implement
+     *  array() and compact(), and remaining() must be less than limit().
+     */
+    protected JavadocTokenizer(ScannerFactory fac, CharBuffer buffer) {
+        super(fac, buffer);
+    }
+
+    /** Create a scanner from the input array.  The array must have at
+     *  least a single character of extra space.
+     */
+    protected JavadocTokenizer(ScannerFactory fac, char[] input, int inputLength) {
+        super(fac, input, inputLength);
+    }
+
+    @Override
+    protected Comment processComment(int pos, int endPos, CommentStyle style) {
+        char[] buf = reader.getRawCharacters(pos, endPos);
+        return new JavadocComment(new DocReader(fac, buf, buf.length, pos), style);
+    }
+
+    /**
+     * This is a specialized version of UnicodeReader that keeps track of the
+     * column position within a given character stream (used for Javadoc processing),
+     * and which builds a table for mapping positions in the comment string to
+     * positions in the source file.
+     */
+    static class DocReader extends UnicodeReader {
+
+         int col;
+         int startPos;
+
+         /**
+          * A buffer for building a table for mapping positions in {@link #sbuf}
+          * to positions in the source buffer.
+          *
+          * The array is organized as a series of pairs of integers: the first
+          * number in each pair specifies a position in the comment text,
+          * the second number in each pair specifies the corresponding position
+          * in the source buffer. The pairs are sorted in ascending order.
+          *
+          * Since the mapping function is generally continuous, with successive
+          * positions in the string corresponding to successive positions in the
+          * source buffer, the table only needs to record discontinuities in
+          * the mapping. The values of intermediate positions can be inferred.
+          *
+          * Discontinuities may occur in a number of places: when a newline
+          * is followed by whitespace and asterisks (which are ignored),
+          * when a tab is expanded into spaces, and when unicode escapes
+          * are used in the source buffer.
+          *
+          * Thus, to find the source position of any position, p, in the comment
+          * string, find the index, i, of the pair whose string offset
+          * ({@code pbuf[i] }) is closest to but not greater than p. Then,
+          * {@code sourcePos(p) = pbuf[i+1] + (p - pbuf[i]) }.
+          */
+         int[] pbuf = new int[128];
+
+         /**
+          * The index of the next empty slot in the pbuf buffer.
+          */
+         int pp = 0;
+
+         DocReader(ScannerFactory fac, char[] input, int inputLength, int startPos) {
+             super(fac, input, inputLength);
+             this.startPos = startPos;
+         }
+
+         @Override
+         protected void convertUnicode() {
+             if (ch == '\\' && unicodeConversionBp != bp) {
+                 bp++; ch = buf[bp]; col++;
+                 if (ch == 'u') {
+                     do {
+                         bp++; ch = buf[bp]; col++;
+                     } while (ch == 'u');
+                     int limit = bp + 3;
+                     if (limit < buflen) {
+                         int d = digit(bp, 16);
+                         int code = d;
+                         while (bp < limit && d >= 0) {
+                             bp++; ch = buf[bp]; col++;
+                             d = digit(bp, 16);
+                             code = (code << 4) + d;
+                         }
+                         if (d >= 0) {
+                             ch = (char)code;
+                             unicodeConversionBp = bp;
+                             return;
+                         }
+                     }
+                     // "illegal.Unicode.esc", reported by base scanner
+                 } else {
+                     bp--;
+                     ch = '\\';
+                     col--;
+                 }
+             }
+         }
+
+         @Override
+         protected void scanCommentChar() {
+             scanChar();
+             if (ch == '\\') {
+                 if (peekChar() == '\\' && !isUnicode()) {
+                     putChar(ch, false);
+                     bp++; col++;
+                 } else {
+                     convertUnicode();
+                 }
+             }
+         }
+
+         @Override
+         protected void scanChar() {
+             bp++;
+             ch = buf[bp];
+             switch (ch) {
+             case '\r': // return
+                 col = 0;
+                 break;
+             case '\n': // newline
+                 if (bp == 0 || buf[bp-1] != '\r') {
+                     col = 0;
+                 }
+                 break;
+             case '\t': // tab
+                 col = (col / TabInc * TabInc) + TabInc;
+                 break;
+             case '\\': // possible Unicode
+                 col++;
+                 convertUnicode();
+                 break;
+             default:
+                 col++;
+                 break;
+             }
+         }
+
+         @Override
+         public void putChar(char ch, boolean scan) {
+             // At this point, bp is the position of the current character in buf,
+             // and sp is the position in sbuf where this character will be put.
+             // Record a new entry in pbuf if pbuf is empty or if sp and its
+             // corresponding source position are not equidistant from the
+             // corresponding values in the latest entry in the pbuf array.
+             // (i.e. there is a discontinuity in the map function.)
+             if ((pp == 0)
+                     || (sp - pbuf[pp - 2] != (startPos + bp) - pbuf[pp - 1])) {
+                 if (pp + 1 >= pbuf.length) {
+                     int[] new_pbuf = new int[pbuf.length * 2];
+                     System.arraycopy(pbuf, 0, new_pbuf, 0, pbuf.length);
+                     pbuf = new_pbuf;
+                 }
+                 pbuf[pp] = sp;
+                 pbuf[pp + 1] = startPos + bp;
+                 pp += 2;
+             }
+             super.putChar(ch, scan);
+         }
+     }
+
+     protected static class JavadocComment extends BasicComment<DocReader> {
+
+        /**
+        * Translated and stripped contents of doc comment
+        */
+        private String docComment = null;
+        private int[] docPosns = null;
+
+        JavadocComment(DocReader reader, CommentStyle cs) {
+            super(reader, cs);
+        }
+
+        @Override
+        public String getText() {
+            if (!scanned && cs == CommentStyle.JAVADOC) {
+                scanDocComment();
+            }
+            return docComment;
+        }
+
+        @Override
+        public int getSourcePos(int pos) {
+            // Binary search to find the entry for which the string index is
+            // less than pos. Since docPosns is a list of pairs of integers
+            // we must make sure the index is always even.
+            // If we find an exact match for pos, the other item in the pair
+            // gives the source pos; otherwise, compute the source position
+            // relative to the best match found in the array.
+            if (pos == Position.NOPOS)
+                return Position.NOPOS;
+            if (pos < 0 || pos > docComment.length())
+                throw new StringIndexOutOfBoundsException(String.valueOf(pos));
+            if (docPosns == null)
+                return Position.NOPOS;
+            int start = 0;
+            int end = docPosns.length;
+            while (start < end - 2) {
+                // find an even index midway between start and end
+                int index = ((start  + end) / 4) * 2;
+                if (docPosns[index] < pos)
+                    start = index;
+                else if (docPosns[index] == pos)
+                    return docPosns[index + 1];
+                else
+                    end = index;
+            }
+            return docPosns[start + 1] + (pos - docPosns[start]);
+        }
+
+        @Override
+        @SuppressWarnings("fallthrough")
+        protected void scanDocComment() {
+             try {
+                 boolean firstLine = true;
+
+                 // Skip over first slash
+                 comment_reader.scanCommentChar();
+                 // Skip over first star
+                 comment_reader.scanCommentChar();
+
+                 // consume any number of stars
+                 while (comment_reader.bp < comment_reader.buflen && comment_reader.ch == '*') {
+                     comment_reader.scanCommentChar();
+                 }
+                 // is the comment in the form /**/, /***/, /****/, etc. ?
+                 if (comment_reader.bp < comment_reader.buflen && comment_reader.ch == '/') {
+                     docComment = "";
+                     return;
+                 }
+
+                 // skip a newline on the first line of the comment.
+                 if (comment_reader.bp < comment_reader.buflen) {
+                     if (comment_reader.ch == LF) {
+                         comment_reader.scanCommentChar();
+                         firstLine = false;
+                     } else if (comment_reader.ch == CR) {
+                         comment_reader.scanCommentChar();
+                         if (comment_reader.ch == LF) {
+                             comment_reader.scanCommentChar();
+                             firstLine = false;
+                         }
+                     }
+                 }
+
+             outerLoop:
+
+                 // The outerLoop processes the doc comment, looping once
+                 // for each line.  For each line, it first strips off
+                 // whitespace, then it consumes any stars, then it
+                 // puts the rest of the line into our buffer.
+                 while (comment_reader.bp < comment_reader.buflen) {
+                     int begin_bp = comment_reader.bp;
+                     char begin_ch = comment_reader.ch;
+                     // The wsLoop consumes whitespace from the beginning
+                     // of each line.
+                 wsLoop:
+
+                     while (comment_reader.bp < comment_reader.buflen) {
+                         switch(comment_reader.ch) {
+                         case ' ':
+                             comment_reader.scanCommentChar();
+                             break;
+                         case '\t':
+                             comment_reader.col = ((comment_reader.col - 1) / TabInc * TabInc) + TabInc;
+                             comment_reader.scanCommentChar();
+                             break;
+                         case FF:
+                             comment_reader.col = 0;
+                             comment_reader.scanCommentChar();
+                             break;
+         // Treat newline at beginning of line (blank line, no star)
+         // as comment text.  Old Javadoc compatibility requires this.
+         /*---------------------------------*
+                         case CR: // (Spec 3.4)
+                             doc_reader.scanCommentChar();
+                             if (ch == LF) {
+                                 col = 0;
+                                 doc_reader.scanCommentChar();
+                             }
+                             break;
+                         case LF: // (Spec 3.4)
+                             doc_reader.scanCommentChar();
+                             break;
+         *---------------------------------*/
+                         default:
+                             // we've seen something that isn't whitespace;
+                             // jump out.
+                             break wsLoop;
+                         }
+                     }
+
+                     // Are there stars here?  If so, consume them all
+                     // and check for the end of comment.
+                     if (comment_reader.ch == '*') {
+                         // skip all of the stars
+                         do {
+                             comment_reader.scanCommentChar();
+                         } while (comment_reader.ch == '*');
+
+                         // check for the closing slash.
+                         if (comment_reader.ch == '/') {
+                             // We're done with the doc comment
+                             // scanChar() and breakout.
+                             break outerLoop;
+                         }
+                     } else if (! firstLine) {
+                         // The current line does not begin with a '*' so we will
+                         // treat it as comment
+                         comment_reader.bp = begin_bp;
+                         comment_reader.ch = begin_ch;
+                     }
+                     // The textLoop processes the rest of the characters
+                     // on the line, adding them to our buffer.
+                 textLoop:
+                     while (comment_reader.bp < comment_reader.buflen) {
+                         switch (comment_reader.ch) {
+                         case '*':
+                             // Is this just a star?  Or is this the
+                             // end of a comment?
+                             comment_reader.scanCommentChar();
+                             if (comment_reader.ch == '/') {
+                                 // This is the end of the comment,
+                                 // set ch and return our buffer.
+                                 break outerLoop;
+                             }
+                             // This is just an ordinary star.  Add it to
+                             // the buffer.
+                             comment_reader.putChar('*', false);
+                             break;
+                         case ' ':
+                         case '\t':
+                             comment_reader.putChar(comment_reader.ch, false);
+                             comment_reader.scanCommentChar();
+                             break;
+                         case FF:
+                             comment_reader.scanCommentChar();
+                             break textLoop; // treat as end of line
+                         case CR: // (Spec 3.4)
+                             comment_reader.scanCommentChar();
+                             if (comment_reader.ch != LF) {
+                                 // Canonicalize CR-only line terminator to LF
+                                 comment_reader.putChar((char)LF, false);
+                                 break textLoop;
+                             }
+                             /* fall through to LF case */
+                         case LF: // (Spec 3.4)
+                             // We've seen a newline.  Add it to our
+                             // buffer and break out of this loop,
+                             // starting fresh on a new line.
+                             comment_reader.putChar(comment_reader.ch, false);
+                             comment_reader.scanCommentChar();
+                             break textLoop;
+                         default:
+                             // Add the character to our buffer.
+                             comment_reader.putChar(comment_reader.ch, false);
+                             comment_reader.scanCommentChar();
+                         }
+                     } // end textLoop
+                     firstLine = false;
+                 } // end outerLoop
+
+                 if (comment_reader.sp > 0) {
+                     int i = comment_reader.sp - 1;
+                 trailLoop:
+                     while (i > -1) {
+                         switch (comment_reader.sbuf[i]) {
+                         case '*':
+                             i--;
+                             break;
+                         default:
+                             break trailLoop;
+                         }
+                     }
+                     comment_reader.sp = i + 1;
+
+                     // Store the text of the doc comment
+                    docComment = comment_reader.chars();
+                    docPosns = new int[comment_reader.pp];
+                    System.arraycopy(comment_reader.pbuf, 0, docPosns, 0, docPosns.length);
+                } else {
+                    docComment = "";
+                }
+            } finally {
+                scanned = true;
+                comment_reader = null;
+                if (docComment != null &&
+                        docComment.matches("(?sm).*^\\s*@deprecated( |$).*")) {
+                    deprecatedFlag = true;
+                }
+            }
+        }
+    }
+
+    @Override
+    public Position.LineMap getLineMap() {
+        char[] buf = reader.getRawCharacters();
+        return Position.makeLineMap(buf, buf.length, true);
+    }
+}

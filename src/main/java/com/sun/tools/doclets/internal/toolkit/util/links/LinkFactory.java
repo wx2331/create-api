@@ -1,267 +1,261 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.util.links;
-/*     */ 
-/*     */ import com.sun.javadoc.AnnotationDesc;
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.javadoc.Type;
-/*     */ import com.sun.javadoc.TypeVariable;
-/*     */ import com.sun.javadoc.WildcardType;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public abstract class LinkFactory
-/*     */ {
-/*     */   protected abstract Content newContent();
-/*     */   
-/*     */   public Content getLink(LinkInfo paramLinkInfo) {
-/*  58 */     if (paramLinkInfo.type != null) {
-/*  59 */       Type type = paramLinkInfo.type;
-/*  60 */       Content content = newContent();
-/*  61 */       if (type.isPrimitive())
-/*     */       
-/*  63 */       { content.addContent(type.typeName()); }
-/*  64 */       else { if (type.asAnnotatedType() != null && type.dimension().length() == 0) {
-/*  65 */           content.addContent(getTypeAnnotationLinks(paramLinkInfo));
-/*  66 */           paramLinkInfo.type = type.asAnnotatedType().underlyingType();
-/*  67 */           content.addContent(getLink(paramLinkInfo));
-/*  68 */           return content;
-/*  69 */         }  if (type.asWildcardType() != null) {
-/*     */           
-/*  71 */           paramLinkInfo.isTypeBound = true;
-/*  72 */           content.addContent("?");
-/*  73 */           WildcardType wildcardType = type.asWildcardType();
-/*  74 */           Type[] arrayOfType1 = wildcardType.extendsBounds();
-/*  75 */           for (byte b1 = 0; b1 < arrayOfType1.length; b1++) {
-/*  76 */             content.addContent((b1 > 0) ? ", " : " extends ");
-/*  77 */             setBoundsLinkInfo(paramLinkInfo, arrayOfType1[b1]);
-/*  78 */             content.addContent(getLink(paramLinkInfo));
-/*     */           } 
-/*  80 */           Type[] arrayOfType2 = wildcardType.superBounds();
-/*  81 */           for (byte b2 = 0; b2 < arrayOfType2.length; b2++) {
-/*  82 */             content.addContent((b2 > 0) ? ", " : " super ");
-/*  83 */             setBoundsLinkInfo(paramLinkInfo, arrayOfType2[b2]);
-/*  84 */             content.addContent(getLink(paramLinkInfo));
-/*     */           } 
-/*  86 */         } else if (type.asTypeVariable() != null) {
-/*  87 */           content.addContent(getTypeAnnotationLinks(paramLinkInfo));
-/*  88 */           paramLinkInfo.isTypeBound = true;
-/*     */           
-/*  90 */           ProgramElementDoc programElementDoc = type.asTypeVariable().owner();
-/*  91 */           if (!paramLinkInfo.excludeTypeParameterLinks && programElementDoc instanceof ClassDoc) {
-/*     */             
-/*  93 */             paramLinkInfo.classDoc = (ClassDoc)programElementDoc;
-/*  94 */             Content content1 = newContent();
-/*  95 */             content1.addContent(type.typeName());
-/*  96 */             paramLinkInfo.label = content1;
-/*  97 */             content.addContent(getClassLink(paramLinkInfo));
-/*     */           } else {
-/*     */             
-/* 100 */             content.addContent(type.typeName());
-/*     */           } 
-/*     */           
-/* 103 */           Type[] arrayOfType = type.asTypeVariable().bounds();
-/* 104 */           if (!paramLinkInfo.excludeTypeBounds) {
-/* 105 */             paramLinkInfo.excludeTypeBounds = true;
-/* 106 */             for (byte b = 0; b < arrayOfType.length; b++) {
-/* 107 */               content.addContent((b > 0) ? " & " : " extends ");
-/* 108 */               setBoundsLinkInfo(paramLinkInfo, arrayOfType[b]);
-/* 109 */               content.addContent(getLink(paramLinkInfo));
-/*     */             } 
-/*     */           } 
-/* 112 */         } else if (type.asClassDoc() != null) {
-/*     */           
-/* 114 */           if (paramLinkInfo.isTypeBound && paramLinkInfo.excludeTypeBoundsLinks) {
-/*     */ 
-/*     */ 
-/*     */             
-/* 118 */             content.addContent(type.typeName());
-/* 119 */             content.addContent(getTypeParameterLinks(paramLinkInfo));
-/* 120 */             return content;
-/*     */           } 
-/* 122 */           paramLinkInfo.classDoc = type.asClassDoc();
-/* 123 */           content = newContent();
-/* 124 */           content.addContent(getClassLink(paramLinkInfo));
-/* 125 */           if (paramLinkInfo.includeTypeAsSepLink) {
-/* 126 */             content.addContent(getTypeParameterLinks(paramLinkInfo, false));
-/*     */           }
-/*     */         }  }
-/*     */ 
-/*     */       
-/* 131 */       if (paramLinkInfo.isVarArg) {
-/* 132 */         if (type.dimension().length() > 2)
-/*     */         {
-/*     */           
-/* 135 */           content.addContent(type.dimension().substring(2));
-/*     */         }
-/* 137 */         content.addContent("...");
-/*     */       } else {
-/* 139 */         while (type != null && type.dimension().length() > 0) {
-/* 140 */           if (type.asAnnotatedType() != null) {
-/* 141 */             paramLinkInfo.type = type;
-/* 142 */             content.addContent(" ");
-/* 143 */             content.addContent(getTypeAnnotationLinks(paramLinkInfo));
-/* 144 */             content.addContent("[]");
-/* 145 */             type = type.asAnnotatedType().underlyingType().getElementType(); continue;
-/*     */           } 
-/* 147 */           content.addContent("[]");
-/* 148 */           type = type.getElementType();
-/*     */         } 
-/*     */         
-/* 151 */         paramLinkInfo.type = type;
-/* 152 */         Content content1 = newContent();
-/* 153 */         content1.addContent(getTypeAnnotationLinks(paramLinkInfo));
-/* 154 */         content1.addContent(content);
-/* 155 */         content = content1;
-/*     */       } 
-/* 157 */       return content;
-/* 158 */     }  if (paramLinkInfo.classDoc != null) {
-/*     */       
-/* 160 */       Content content = newContent();
-/* 161 */       content.addContent(getClassLink(paramLinkInfo));
-/* 162 */       if (paramLinkInfo.includeTypeAsSepLink) {
-/* 163 */         content.addContent(getTypeParameterLinks(paramLinkInfo, false));
-/*     */       }
-/* 165 */       return content;
-/*     */     } 
-/* 167 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   private void setBoundsLinkInfo(LinkInfo paramLinkInfo, Type paramType) {
-/* 172 */     paramLinkInfo.classDoc = null;
-/* 173 */     paramLinkInfo.label = null;
-/* 174 */     paramLinkInfo.type = paramType;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected abstract Content getClassLink(LinkInfo paramLinkInfo);
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected abstract Content getTypeParameterLink(LinkInfo paramLinkInfo, Type paramType);
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected abstract Content getTypeAnnotationLink(LinkInfo paramLinkInfo, AnnotationDesc paramAnnotationDesc);
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getTypeParameterLinks(LinkInfo paramLinkInfo) {
-/* 205 */     return getTypeParameterLinks(paramLinkInfo, true);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getTypeParameterLinks(LinkInfo paramLinkInfo, boolean paramBoolean) {
-/*     */     TypeVariable[] arrayOfTypeVariable;
-/* 217 */     Content content = newContent();
-/*     */     
-/* 219 */     if (paramLinkInfo.executableMemberDoc != null) {
-/* 220 */       arrayOfTypeVariable = paramLinkInfo.executableMemberDoc.typeParameters();
-/* 221 */     } else if (paramLinkInfo.type != null && paramLinkInfo.type
-/* 222 */       .asParameterizedType() != null) {
-/* 223 */       Type[] arrayOfType = paramLinkInfo.type.asParameterizedType().typeArguments();
-/* 224 */     } else if (paramLinkInfo.classDoc != null) {
-/* 225 */       arrayOfTypeVariable = paramLinkInfo.classDoc.typeParameters();
-/*     */     } else {
-/*     */       
-/* 228 */       return content;
-/*     */     } 
-/* 230 */     if (((paramLinkInfo.includeTypeInClassLinkLabel && paramBoolean) || (paramLinkInfo.includeTypeAsSepLink && !paramBoolean)) && arrayOfTypeVariable.length > 0) {
-/*     */ 
-/*     */ 
-/*     */       
-/* 234 */       content.addContent("<");
-/* 235 */       for (byte b = 0; b < arrayOfTypeVariable.length; b++) {
-/* 236 */         if (b > 0) {
-/* 237 */           content.addContent(",");
-/*     */         }
-/* 239 */         content.addContent(getTypeParameterLink(paramLinkInfo, (Type)arrayOfTypeVariable[b]));
-/*     */       } 
-/* 241 */       content.addContent(">");
-/*     */     } 
-/* 243 */     return content;
-/*     */   }
-/*     */   
-/*     */   public Content getTypeAnnotationLinks(LinkInfo paramLinkInfo) {
-/* 247 */     Content content = newContent();
-/* 248 */     if (paramLinkInfo.type.asAnnotatedType() == null)
-/* 249 */       return content; 
-/* 250 */     AnnotationDesc[] arrayOfAnnotationDesc = paramLinkInfo.type.asAnnotatedType().annotations();
-/* 251 */     for (byte b = 0; b < arrayOfAnnotationDesc.length; b++) {
-/* 252 */       if (b > 0) {
-/* 253 */         content.addContent(" ");
-/*     */       }
-/* 255 */       content.addContent(getTypeAnnotationLink(paramLinkInfo, arrayOfAnnotationDesc[b]));
-/*     */     } 
-/*     */     
-/* 258 */     content.addContent(" ");
-/* 259 */     return content;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolki\\util\links\LinkFactory.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.util.links;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.internal.toolkit.Content;
+
+/**
+ * A factory that constructs links from given link information.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Jamie Ho
+ * @since 1.5
+ */
+public abstract class LinkFactory {
+
+    /**
+     * Return an empty instance of a content object.
+     *
+     * @return an empty instance of a content object.
+     */
+    protected abstract Content newContent();
+
+    /**
+     * Constructs a link from the given link information.
+     *
+     * @param linkInfo the information about the link.
+     * @return the output of the link.
+     */
+    public Content getLink(LinkInfo linkInfo) {
+        if (linkInfo.type != null) {
+            Type type = linkInfo.type;
+            Content link = newContent();
+            if (type.isPrimitive()) {
+                //Just a primitive.
+                link.addContent(type.typeName());
+            } else if (type.asAnnotatedType() != null && type.dimension().length() == 0) {
+                link.addContent(getTypeAnnotationLinks(linkInfo));
+                linkInfo.type = type.asAnnotatedType().underlyingType();
+                link.addContent(getLink(linkInfo));
+                return link;
+            } else if (type.asWildcardType() != null) {
+                //Wildcard type.
+                linkInfo.isTypeBound = true;
+                link.addContent("?");
+                WildcardType wildcardType = type.asWildcardType();
+                Type[] extendsBounds = wildcardType.extendsBounds();
+                for (int i = 0; i < extendsBounds.length; i++) {
+                    link.addContent(i > 0 ? ", " : " extends ");
+                    setBoundsLinkInfo(linkInfo, extendsBounds[i]);
+                    link.addContent(getLink(linkInfo));
+                }
+                Type[] superBounds = wildcardType.superBounds();
+                for (int i = 0; i < superBounds.length; i++) {
+                    link.addContent(i > 0 ? ", " : " super ");
+                    setBoundsLinkInfo(linkInfo, superBounds[i]);
+                    link.addContent(getLink(linkInfo));
+                }
+            } else if (type.asTypeVariable()!= null) {
+                link.addContent(getTypeAnnotationLinks(linkInfo));
+                linkInfo.isTypeBound = true;
+                //A type variable.
+                Doc owner = type.asTypeVariable().owner();
+                if ((! linkInfo.excludeTypeParameterLinks) &&
+                        owner instanceof ClassDoc) {
+                    linkInfo.classDoc = (ClassDoc) owner;
+                    Content label = newContent();
+                    label.addContent(type.typeName());
+                    linkInfo.label = label;
+                    link.addContent(getClassLink(linkInfo));
+                } else {
+                    //No need to link method type parameters.
+                    link.addContent(type.typeName());
+                }
+
+                Type[] bounds = type.asTypeVariable().bounds();
+                if (! linkInfo.excludeTypeBounds) {
+                    linkInfo.excludeTypeBounds = true;
+                    for (int i = 0; i < bounds.length; i++) {
+                        link.addContent(i > 0 ? " & " : " extends ");
+                        setBoundsLinkInfo(linkInfo, bounds[i]);
+                        link.addContent(getLink(linkInfo));
+                    }
+                }
+            } else if (type.asClassDoc() != null) {
+                //A class type.
+                if (linkInfo.isTypeBound &&
+                        linkInfo.excludeTypeBoundsLinks) {
+                    //Since we are excluding type parameter links, we should not
+                    //be linking to the type bound.
+                    link.addContent(type.typeName());
+                    link.addContent(getTypeParameterLinks(linkInfo));
+                    return link;
+                } else {
+                    linkInfo.classDoc = type.asClassDoc();
+                    link = newContent();
+                    link.addContent(getClassLink(linkInfo));
+                    if (linkInfo.includeTypeAsSepLink) {
+                        link.addContent(getTypeParameterLinks(linkInfo, false));
+                    }
+                }
+            }
+
+            if (linkInfo.isVarArg) {
+                if (type.dimension().length() > 2) {
+                    //Javadoc returns var args as array.
+                    //Strip out the first [] from the var arg.
+                    link.addContent(type.dimension().substring(2));
+                }
+                link.addContent("...");
+            } else {
+                while (type != null && type.dimension().length() > 0) {
+                    if (type.asAnnotatedType() != null) {
+                        linkInfo.type = type;
+                        link.addContent(" ");
+                        link.addContent(getTypeAnnotationLinks(linkInfo));
+                        link.addContent("[]");
+                        type = type.asAnnotatedType().underlyingType().getElementType();
+                    } else {
+                        link.addContent("[]");
+                        type = type.getElementType();
+                    }
+                }
+                linkInfo.type = type;
+                Content newLink = newContent();
+                newLink.addContent(getTypeAnnotationLinks(linkInfo));
+                newLink.addContent(link);
+                link = newLink;
+            }
+            return link;
+        } else if (linkInfo.classDoc != null) {
+            //Just a class link
+            Content link = newContent();
+            link.addContent(getClassLink(linkInfo));
+            if (linkInfo.includeTypeAsSepLink) {
+                link.addContent(getTypeParameterLinks(linkInfo, false));
+            }
+            return link;
+        } else {
+            return null;
+        }
+    }
+
+    private void setBoundsLinkInfo(LinkInfo linkInfo, Type bound) {
+        linkInfo.classDoc = null;
+        linkInfo.label = null;
+        linkInfo.type = bound;
+    }
+
+    /**
+     * Return the link to the given class.
+     *
+     * @param linkInfo the information about the link to construct.
+     *
+     * @return the link for the given class.
+     */
+    protected abstract Content getClassLink(LinkInfo linkInfo);
+
+    /**
+     * Return the link to the given type parameter.
+     *
+     * @param linkInfo     the information about the link to construct.
+     * @param typeParam the type parameter to link to.
+     */
+    protected abstract Content getTypeParameterLink(LinkInfo linkInfo,
+        Type typeParam);
+
+    protected abstract Content getTypeAnnotationLink(LinkInfo linkInfo,
+            AnnotationDesc annotation);
+
+    /**
+     * Return the links to the type parameters.
+     *
+     * @param linkInfo     the information about the link to construct.
+     * @return the links to the type parameters.
+     */
+    public Content getTypeParameterLinks(LinkInfo linkInfo) {
+        return getTypeParameterLinks(linkInfo, true);
+    }
+
+    /**
+     * Return the links to the type parameters.
+     *
+     * @param linkInfo     the information about the link to construct.
+     * @param isClassLabel true if this is a class label.  False if it is
+     *                     the type parameters portion of the link.
+     * @return the links to the type parameters.
+     */
+    public Content getTypeParameterLinks(LinkInfo linkInfo, boolean isClassLabel) {
+        Content links = newContent();
+        Type[] vars;
+        if (linkInfo.executableMemberDoc != null) {
+            vars = linkInfo.executableMemberDoc.typeParameters();
+        } else if (linkInfo.type != null &&
+                linkInfo.type.asParameterizedType() != null){
+            vars =  linkInfo.type.asParameterizedType().typeArguments();
+        } else if (linkInfo.classDoc != null){
+            vars = linkInfo.classDoc.typeParameters();
+        } else {
+            //Nothing to document.
+            return links;
+        }
+        if (((linkInfo.includeTypeInClassLinkLabel && isClassLabel) ||
+             (linkInfo.includeTypeAsSepLink && ! isClassLabel)
+              )
+            && vars.length > 0) {
+            links.addContent("<");
+            for (int i = 0; i < vars.length; i++) {
+                if (i > 0) {
+                    links.addContent(",");
+                }
+                links.addContent(getTypeParameterLink(linkInfo, vars[i]));
+            }
+            links.addContent(">");
+        }
+        return links;
+    }
+
+    public Content getTypeAnnotationLinks(LinkInfo linkInfo) {
+        Content links = newContent();
+        if (linkInfo.type.asAnnotatedType() == null)
+            return links;
+        AnnotationDesc[] annotations = linkInfo.type.asAnnotatedType().annotations();
+        for (int i = 0; i < annotations.length; i++) {
+            if (i > 0) {
+                links.addContent(" ");
+            }
+            links.addContent(getTypeAnnotationLink(linkInfo, annotations[i]));
+        }
+
+        links.addContent(" ");
+        return links;
+    }
+}

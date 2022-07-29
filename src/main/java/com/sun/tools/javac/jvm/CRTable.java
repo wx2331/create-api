@@ -1,626 +1,621 @@
-/*     */ package com.sun.tools.javac.jvm;
-/*     */
-/*     */ import com.sun.tools.javac.tree.EndPosTable;
-/*     */ import com.sun.tools.javac.tree.JCTree;
-/*     */ import com.sun.tools.javac.tree.TreeInfo;
-/*     */ import com.sun.tools.javac.util.Assert;
-/*     */ import com.sun.tools.javac.util.ByteBuffer;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import com.sun.tools.javac.util.ListBuffer;
-/*     */ import com.sun.tools.javac.util.Log;
-/*     */ import com.sun.tools.javac.util.Position;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.Map;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class CRTable
-/*     */   implements CRTFlags
-/*     */ {
-/*     */   private final boolean crtDebug = false;
-/*  52 */   private ListBuffer<CRTEntry> entries = new ListBuffer();
-/*     */
-/*     */
-/*     */
-/*  56 */   private Map<Object, SourceRange> positions = new HashMap<>();
-/*     */
-/*     */
-/*     */
-/*     */   private EndPosTable endPosTable;
-/*     */
-/*     */
-/*     */
-/*     */   JCTree.JCMethodDecl methodTree;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public CRTable(JCTree.JCMethodDecl paramJCMethodDecl, EndPosTable paramEndPosTable) {
-/*  70 */     this.methodTree = paramJCMethodDecl;
-/*  71 */     this.endPosTable = paramEndPosTable;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void put(Object paramObject, int paramInt1, int paramInt2, int paramInt3) {
-/*  82 */     this.entries.append(new CRTEntry(paramObject, paramInt1, paramInt2, paramInt3));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public int writeCRT(ByteBuffer paramByteBuffer, Position.LineMap paramLineMap, Log paramLog) {
-/*  90 */     byte b = 0;
-/*     */
-/*     */
-/*  93 */     (new SourceComputer()).csp((JCTree)this.methodTree);
-/*     */
-/*  95 */     for (List list = this.entries.toList(); list.nonEmpty(); list = list.tail) {
-/*     */
-/*  97 */       CRTEntry cRTEntry = (CRTEntry)list.head;
-/*     */
-/*     */
-/*     */
-/* 101 */       if (cRTEntry.startPc != cRTEntry.endPc) {
-/*     */
-/*     */
-/* 104 */         SourceRange sourceRange = this.positions.get(cRTEntry.tree);
-/* 105 */         Assert.checkNonNull(sourceRange, "CRT: tree source positions are undefined");
-/* 106 */         if (sourceRange.startPos != -1 && sourceRange.endPos != -1) {
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 115 */           int i = encodePosition(sourceRange.startPos, paramLineMap, paramLog);
-/* 116 */           if (i != -1)
-/*     */
-/*     */           {
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 124 */             int j = encodePosition(sourceRange.endPos, paramLineMap, paramLog);
-/* 125 */             if (j != -1)
-/*     */
-/*     */             {
-/*     */
-/* 129 */               paramByteBuffer.appendChar(cRTEntry.startPc);
-/*     */
-/* 131 */               paramByteBuffer.appendChar(cRTEntry.endPc - 1);
-/* 132 */               paramByteBuffer.appendInt(i);
-/* 133 */               paramByteBuffer.appendInt(j);
-/* 134 */               paramByteBuffer.appendChar(cRTEntry.flags);
-/*     */
-/* 136 */               b++; }  }
-/*     */         }
-/*     */       }
-/* 139 */     }  return b;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public int length() {
-/* 145 */     return this.entries.length();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   private String getTypes(int paramInt) {
-/* 151 */     String str = "";
-/* 152 */     if ((paramInt & 0x1) != 0) str = str + " CRT_STATEMENT";
-/* 153 */     if ((paramInt & 0x2) != 0) str = str + " CRT_BLOCK";
-/* 154 */     if ((paramInt & 0x4) != 0) str = str + " CRT_ASSIGNMENT";
-/* 155 */     if ((paramInt & 0x8) != 0) str = str + " CRT_FLOW_CONTROLLER";
-/* 156 */     if ((paramInt & 0x10) != 0) str = str + " CRT_FLOW_TARGET";
-/* 157 */     if ((paramInt & 0x20) != 0) str = str + " CRT_INVOKE";
-/* 158 */     if ((paramInt & 0x40) != 0) str = str + " CRT_CREATE";
-/* 159 */     if ((paramInt & 0x80) != 0) str = str + " CRT_BRANCH_TRUE";
-/* 160 */     if ((paramInt & 0x100) != 0) str = str + " CRT_BRANCH_FALSE";
-/* 161 */     return str;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private int encodePosition(int paramInt, Position.LineMap paramLineMap, Log paramLog) {
-/* 168 */     int i = paramLineMap.getLineNumber(paramInt);
-/* 169 */     int j = paramLineMap.getColumnNumber(paramInt);
-/* 170 */     int k = Position.encodePosition(i, j);
-/*     */
-/*     */
-/*     */
-/*     */
-/* 175 */     if (k == -1) {
-/* 176 */       paramLog.warning(paramInt, "position.overflow", new Object[] { Integer.valueOf(i) });
-/*     */     }
-/* 178 */     return k;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   class SourceComputer
-/*     */     extends JCTree.Visitor
-/*     */   {
-/*     */     SourceRange result;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public SourceRange csp(JCTree param1JCTree) {
-/* 198 */       if (param1JCTree == null) return null;
-/* 199 */       param1JCTree.accept(this);
-/* 200 */       if (this.result != null) {
-/* 201 */         CRTable.this.positions.put(param1JCTree, this.result);
-/*     */       }
-/* 203 */       return this.result;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */     public SourceRange csp(List<? extends JCTree> param1List) {
-/* 209 */       if (param1List == null || !param1List.nonEmpty()) return null;
-/* 210 */       SourceRange sourceRange = new SourceRange();
-/* 211 */       for (List<? extends JCTree> list = param1List; list.nonEmpty(); list = list.tail) {
-/* 212 */         sourceRange.mergeWith(csp((JCTree)list.head));
-/*     */       }
-/* 214 */       CRTable.this.positions.put(param1List, sourceRange);
-/* 215 */       return sourceRange;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public SourceRange cspCases(List<JCTree.JCCase> param1List) {
-/* 222 */       if (param1List == null || !param1List.nonEmpty()) return null;
-/* 223 */       SourceRange sourceRange = new SourceRange();
-/* 224 */       for (List<JCTree.JCCase> list = param1List; list.nonEmpty(); list = list.tail) {
-/* 225 */         sourceRange.mergeWith(csp((JCTree)list.head));
-/*     */       }
-/* 227 */       CRTable.this.positions.put(param1List, sourceRange);
-/* 228 */       return sourceRange;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public SourceRange cspCatchers(List<JCTree.JCCatch> param1List) {
-/* 235 */       if (param1List == null || !param1List.nonEmpty()) return null;
-/* 236 */       SourceRange sourceRange = new SourceRange();
-/* 237 */       for (List<JCTree.JCCatch> list = param1List; list.nonEmpty(); list = list.tail) {
-/* 238 */         sourceRange.mergeWith(csp((JCTree)list.head));
-/*     */       }
-/* 240 */       CRTable.this.positions.put(param1List, sourceRange);
-/* 241 */       return sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitMethodDef(JCTree.JCMethodDecl param1JCMethodDecl) {
-/* 245 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCMethodDecl), endPos((JCTree)param1JCMethodDecl));
-/* 246 */       sourceRange.mergeWith(csp((JCTree)param1JCMethodDecl.body));
-/* 247 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitVarDef(JCTree.JCVariableDecl param1JCVariableDecl) {
-/* 251 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCVariableDecl), endPos((JCTree)param1JCVariableDecl));
-/* 252 */       csp((JCTree)param1JCVariableDecl.vartype);
-/* 253 */       sourceRange.mergeWith(csp((JCTree)param1JCVariableDecl.init));
-/* 254 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */
-/*     */     public void visitSkip(JCTree.JCSkip param1JCSkip) {
-/* 259 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCSkip), startPos((JCTree)param1JCSkip));
-/* 260 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitBlock(JCTree.JCBlock param1JCBlock) {
-/* 264 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCBlock), endPos((JCTree)param1JCBlock));
-/* 265 */       csp(param1JCBlock.stats);
-/* 266 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitDoLoop(JCTree.JCDoWhileLoop param1JCDoWhileLoop) {
-/* 270 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCDoWhileLoop), endPos((JCTree)param1JCDoWhileLoop));
-/* 271 */       sourceRange.mergeWith(csp((JCTree)param1JCDoWhileLoop.body));
-/* 272 */       sourceRange.mergeWith(csp((JCTree)param1JCDoWhileLoop.cond));
-/* 273 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitWhileLoop(JCTree.JCWhileLoop param1JCWhileLoop) {
-/* 277 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCWhileLoop), endPos((JCTree)param1JCWhileLoop));
-/* 278 */       sourceRange.mergeWith(csp((JCTree)param1JCWhileLoop.cond));
-/* 279 */       sourceRange.mergeWith(csp((JCTree)param1JCWhileLoop.body));
-/* 280 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitForLoop(JCTree.JCForLoop param1JCForLoop) {
-/* 284 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCForLoop), endPos((JCTree)param1JCForLoop));
-/* 285 */       sourceRange.mergeWith(csp(param1JCForLoop.init));
-/* 286 */       sourceRange.mergeWith(csp((JCTree)param1JCForLoop.cond));
-/* 287 */       sourceRange.mergeWith(csp(param1JCForLoop.step));
-/* 288 */       sourceRange.mergeWith(csp((JCTree)param1JCForLoop.body));
-/* 289 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitForeachLoop(JCTree.JCEnhancedForLoop param1JCEnhancedForLoop) {
-/* 293 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCEnhancedForLoop), endPos((JCTree)param1JCEnhancedForLoop));
-/* 294 */       sourceRange.mergeWith(csp((JCTree)param1JCEnhancedForLoop.var));
-/* 295 */       sourceRange.mergeWith(csp((JCTree)param1JCEnhancedForLoop.expr));
-/* 296 */       sourceRange.mergeWith(csp((JCTree)param1JCEnhancedForLoop.body));
-/* 297 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitLabelled(JCTree.JCLabeledStatement param1JCLabeledStatement) {
-/* 301 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCLabeledStatement), endPos((JCTree)param1JCLabeledStatement));
-/* 302 */       sourceRange.mergeWith(csp((JCTree)param1JCLabeledStatement.body));
-/* 303 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitSwitch(JCTree.JCSwitch param1JCSwitch) {
-/* 307 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCSwitch), endPos((JCTree)param1JCSwitch));
-/* 308 */       sourceRange.mergeWith(csp((JCTree)param1JCSwitch.selector));
-/* 309 */       sourceRange.mergeWith(cspCases(param1JCSwitch.cases));
-/* 310 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitCase(JCTree.JCCase param1JCCase) {
-/* 314 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCCase), endPos((JCTree)param1JCCase));
-/* 315 */       sourceRange.mergeWith(csp((JCTree)param1JCCase.pat));
-/* 316 */       sourceRange.mergeWith(csp(param1JCCase.stats));
-/* 317 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitSynchronized(JCTree.JCSynchronized param1JCSynchronized) {
-/* 321 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCSynchronized), endPos((JCTree)param1JCSynchronized));
-/* 322 */       sourceRange.mergeWith(csp((JCTree)param1JCSynchronized.lock));
-/* 323 */       sourceRange.mergeWith(csp((JCTree)param1JCSynchronized.body));
-/* 324 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitTry(JCTree.JCTry param1JCTry) {
-/* 328 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCTry), endPos((JCTree)param1JCTry));
-/* 329 */       sourceRange.mergeWith(csp(param1JCTry.resources));
-/* 330 */       sourceRange.mergeWith(csp((JCTree)param1JCTry.body));
-/* 331 */       sourceRange.mergeWith(cspCatchers(param1JCTry.catchers));
-/* 332 */       sourceRange.mergeWith(csp((JCTree)param1JCTry.finalizer));
-/* 333 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitCatch(JCTree.JCCatch param1JCCatch) {
-/* 337 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCCatch), endPos((JCTree)param1JCCatch));
-/* 338 */       sourceRange.mergeWith(csp((JCTree)param1JCCatch.param));
-/* 339 */       sourceRange.mergeWith(csp((JCTree)param1JCCatch.body));
-/* 340 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitConditional(JCTree.JCConditional param1JCConditional) {
-/* 344 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCConditional), endPos((JCTree)param1JCConditional));
-/* 345 */       sourceRange.mergeWith(csp((JCTree)param1JCConditional.cond));
-/* 346 */       sourceRange.mergeWith(csp((JCTree)param1JCConditional.truepart));
-/* 347 */       sourceRange.mergeWith(csp((JCTree)param1JCConditional.falsepart));
-/* 348 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitIf(JCTree.JCIf param1JCIf) {
-/* 352 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCIf), endPos((JCTree)param1JCIf));
-/* 353 */       sourceRange.mergeWith(csp((JCTree)param1JCIf.cond));
-/* 354 */       sourceRange.mergeWith(csp((JCTree)param1JCIf.thenpart));
-/* 355 */       sourceRange.mergeWith(csp((JCTree)param1JCIf.elsepart));
-/* 356 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitExec(JCTree.JCExpressionStatement param1JCExpressionStatement) {
-/* 360 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCExpressionStatement), endPos((JCTree)param1JCExpressionStatement));
-/* 361 */       sourceRange.mergeWith(csp((JCTree)param1JCExpressionStatement.expr));
-/* 362 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitBreak(JCTree.JCBreak param1JCBreak) {
-/* 366 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCBreak), endPos((JCTree)param1JCBreak));
-/* 367 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitContinue(JCTree.JCContinue param1JCContinue) {
-/* 371 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCContinue), endPos((JCTree)param1JCContinue));
-/* 372 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitReturn(JCTree.JCReturn param1JCReturn) {
-/* 376 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCReturn), endPos((JCTree)param1JCReturn));
-/* 377 */       sourceRange.mergeWith(csp((JCTree)param1JCReturn.expr));
-/* 378 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitThrow(JCTree.JCThrow param1JCThrow) {
-/* 382 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCThrow), endPos((JCTree)param1JCThrow));
-/* 383 */       sourceRange.mergeWith(csp((JCTree)param1JCThrow.expr));
-/* 384 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitAssert(JCTree.JCAssert param1JCAssert) {
-/* 388 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCAssert), endPos((JCTree)param1JCAssert));
-/* 389 */       sourceRange.mergeWith(csp((JCTree)param1JCAssert.cond));
-/* 390 */       sourceRange.mergeWith(csp((JCTree)param1JCAssert.detail));
-/* 391 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitApply(JCTree.JCMethodInvocation param1JCMethodInvocation) {
-/* 395 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCMethodInvocation), endPos((JCTree)param1JCMethodInvocation));
-/* 396 */       sourceRange.mergeWith(csp((JCTree)param1JCMethodInvocation.meth));
-/* 397 */       sourceRange.mergeWith(csp(param1JCMethodInvocation.args));
-/* 398 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitNewClass(JCTree.JCNewClass param1JCNewClass) {
-/* 402 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCNewClass), endPos((JCTree)param1JCNewClass));
-/* 403 */       sourceRange.mergeWith(csp((JCTree)param1JCNewClass.encl));
-/* 404 */       sourceRange.mergeWith(csp((JCTree)param1JCNewClass.clazz));
-/* 405 */       sourceRange.mergeWith(csp(param1JCNewClass.args));
-/* 406 */       sourceRange.mergeWith(csp((JCTree)param1JCNewClass.def));
-/* 407 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitNewArray(JCTree.JCNewArray param1JCNewArray) {
-/* 411 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCNewArray), endPos((JCTree)param1JCNewArray));
-/* 412 */       sourceRange.mergeWith(csp((JCTree)param1JCNewArray.elemtype));
-/* 413 */       sourceRange.mergeWith(csp(param1JCNewArray.dims));
-/* 414 */       sourceRange.mergeWith(csp(param1JCNewArray.elems));
-/* 415 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitParens(JCTree.JCParens param1JCParens) {
-/* 419 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCParens), endPos((JCTree)param1JCParens));
-/* 420 */       sourceRange.mergeWith(csp((JCTree)param1JCParens.expr));
-/* 421 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitAssign(JCTree.JCAssign param1JCAssign) {
-/* 425 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCAssign), endPos((JCTree)param1JCAssign));
-/* 426 */       sourceRange.mergeWith(csp((JCTree)param1JCAssign.lhs));
-/* 427 */       sourceRange.mergeWith(csp((JCTree)param1JCAssign.rhs));
-/* 428 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitAssignop(JCTree.JCAssignOp param1JCAssignOp) {
-/* 432 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCAssignOp), endPos((JCTree)param1JCAssignOp));
-/* 433 */       sourceRange.mergeWith(csp((JCTree)param1JCAssignOp.lhs));
-/* 434 */       sourceRange.mergeWith(csp((JCTree)param1JCAssignOp.rhs));
-/* 435 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitUnary(JCTree.JCUnary param1JCUnary) {
-/* 439 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCUnary), endPos((JCTree)param1JCUnary));
-/* 440 */       sourceRange.mergeWith(csp((JCTree)param1JCUnary.arg));
-/* 441 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitBinary(JCTree.JCBinary param1JCBinary) {
-/* 445 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCBinary), endPos((JCTree)param1JCBinary));
-/* 446 */       sourceRange.mergeWith(csp((JCTree)param1JCBinary.lhs));
-/* 447 */       sourceRange.mergeWith(csp((JCTree)param1JCBinary.rhs));
-/* 448 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitTypeCast(JCTree.JCTypeCast param1JCTypeCast) {
-/* 452 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCTypeCast), endPos((JCTree)param1JCTypeCast));
-/* 453 */       sourceRange.mergeWith(csp(param1JCTypeCast.clazz));
-/* 454 */       sourceRange.mergeWith(csp((JCTree)param1JCTypeCast.expr));
-/* 455 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitTypeTest(JCTree.JCInstanceOf param1JCInstanceOf) {
-/* 459 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCInstanceOf), endPos((JCTree)param1JCInstanceOf));
-/* 460 */       sourceRange.mergeWith(csp((JCTree)param1JCInstanceOf.expr));
-/* 461 */       sourceRange.mergeWith(csp(param1JCInstanceOf.clazz));
-/* 462 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitIndexed(JCTree.JCArrayAccess param1JCArrayAccess) {
-/* 466 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCArrayAccess), endPos((JCTree)param1JCArrayAccess));
-/* 467 */       sourceRange.mergeWith(csp((JCTree)param1JCArrayAccess.indexed));
-/* 468 */       sourceRange.mergeWith(csp((JCTree)param1JCArrayAccess.index));
-/* 469 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitSelect(JCTree.JCFieldAccess param1JCFieldAccess) {
-/* 473 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCFieldAccess), endPos((JCTree)param1JCFieldAccess));
-/* 474 */       sourceRange.mergeWith(csp((JCTree)param1JCFieldAccess.selected));
-/* 475 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitIdent(JCTree.JCIdent param1JCIdent) {
-/* 479 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCIdent), endPos((JCTree)param1JCIdent));
-/* 480 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitLiteral(JCTree.JCLiteral param1JCLiteral) {
-/* 484 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCLiteral), endPos((JCTree)param1JCLiteral));
-/* 485 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitTypeIdent(JCTree.JCPrimitiveTypeTree param1JCPrimitiveTypeTree) {
-/* 489 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCPrimitiveTypeTree), endPos((JCTree)param1JCPrimitiveTypeTree));
-/* 490 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitTypeArray(JCTree.JCArrayTypeTree param1JCArrayTypeTree) {
-/* 494 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCArrayTypeTree), endPos((JCTree)param1JCArrayTypeTree));
-/* 495 */       sourceRange.mergeWith(csp((JCTree)param1JCArrayTypeTree.elemtype));
-/* 496 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitTypeApply(JCTree.JCTypeApply param1JCTypeApply) {
-/* 500 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCTypeApply), endPos((JCTree)param1JCTypeApply));
-/* 501 */       sourceRange.mergeWith(csp((JCTree)param1JCTypeApply.clazz));
-/* 502 */       sourceRange.mergeWith(csp(param1JCTypeApply.arguments));
-/* 503 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */
-/*     */     public void visitLetExpr(JCTree.LetExpr param1LetExpr) {
-/* 508 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1LetExpr), endPos((JCTree)param1LetExpr));
-/* 509 */       sourceRange.mergeWith(csp(param1LetExpr.defs));
-/* 510 */       sourceRange.mergeWith(csp(param1LetExpr.expr));
-/* 511 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitTypeParameter(JCTree.JCTypeParameter param1JCTypeParameter) {
-/* 515 */       SourceRange sourceRange = new SourceRange(startPos((JCTree)param1JCTypeParameter), endPos((JCTree)param1JCTypeParameter));
-/* 516 */       sourceRange.mergeWith(csp(param1JCTypeParameter.bounds));
-/* 517 */       this.result = sourceRange;
-/*     */     }
-/*     */
-/*     */     public void visitWildcard(JCTree.JCWildcard param1JCWildcard) {
-/* 521 */       this.result = null;
-/*     */     }
-/*     */
-/*     */     public void visitErroneous(JCTree.JCErroneous param1JCErroneous) {
-/* 525 */       this.result = null;
-/*     */     }
-/*     */
-/*     */     public void visitTree(JCTree param1JCTree) {
-/* 529 */       Assert.error();
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */     public int startPos(JCTree param1JCTree) {
-/* 535 */       if (param1JCTree == null) return -1;
-/* 536 */       return TreeInfo.getStartPos(param1JCTree);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public int endPos(JCTree param1JCTree) {
-/* 543 */       if (param1JCTree == null) return -1;
-/* 544 */       return TreeInfo.getEndPos(param1JCTree, CRTable.this.endPosTable);
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   static class CRTEntry
-/*     */   {
-/*     */     Object tree;
-/*     */
-/*     */
-/*     */
-/*     */     int flags;
-/*     */
-/*     */
-/*     */
-/*     */     int startPc;
-/*     */
-/*     */
-/*     */
-/*     */     int endPc;
-/*     */
-/*     */
-/*     */
-/*     */     CRTEntry(Object param1Object, int param1Int1, int param1Int2, int param1Int3) {
-/* 570 */       this.tree = param1Object;
-/* 571 */       this.flags = param1Int1;
-/* 572 */       this.startPc = param1Int2;
-/* 573 */       this.endPc = param1Int3;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   static class SourceRange
-/*     */   {
-/*     */     int startPos;
-/*     */
-/*     */
-/*     */
-/*     */     int endPos;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     SourceRange() {
-/* 593 */       this.startPos = -1;
-/* 594 */       this.endPos = -1;
-/*     */     }
-/*     */
-/*     */
-/*     */     SourceRange(int param1Int1, int param1Int2) {
-/* 599 */       this.startPos = param1Int1;
-/* 600 */       this.endPos = param1Int2;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     SourceRange mergeWith(SourceRange param1SourceRange) {
-/* 608 */       if (param1SourceRange == null) return this;
-/* 609 */       if (this.startPos == -1) {
-/* 610 */         this.startPos = param1SourceRange.startPos;
-/* 611 */       } else if (param1SourceRange.startPos != -1) {
-/* 612 */         this.startPos = (this.startPos < param1SourceRange.startPos) ? this.startPos : param1SourceRange.startPos;
-/* 613 */       }  if (this.endPos == -1) {
-/* 614 */         this.endPos = param1SourceRange.endPos;
-/* 615 */       } else if (param1SourceRange.endPos != -1) {
-/* 616 */         this.endPos = (this.endPos > param1SourceRange.endPos) ? this.endPos : param1SourceRange.endPos;
-/* 617 */       }  return this;
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\jvm\CRTable.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2001, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.jvm;
+
+import java.util.*;
+
+import com.sun.tools.javac.tree.*;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.tree.JCTree.*;
+import com.sun.tools.javac.tree.EndPosTable;
+
+/** This class contains the CharacterRangeTable for some method
+ *  and the hashtable for mapping trees or lists of trees to their
+ *  ending positions.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class CRTable
+implements CRTFlags {
+
+    private final boolean crtDebug = false;
+
+    /** The list of CRTable entries.
+     */
+    private ListBuffer<CRTEntry> entries = new ListBuffer<CRTEntry>();
+
+    /** The hashtable for source positions.
+     */
+    private Map<Object,SourceRange> positions = new HashMap<Object,SourceRange>();
+
+    /** The object for ending positions stored in the parser.
+     */
+    private EndPosTable endPosTable;
+
+    /** The tree of the method this table is intended for.
+     *  We should traverse this tree to get source ranges.
+     */
+    JCMethodDecl methodTree;
+
+    /** Constructor
+     */
+    public CRTable(JCMethodDecl tree, EndPosTable endPosTable) {
+        this.methodTree = tree;
+        this.endPosTable = endPosTable;
+    }
+
+    /** Create a new CRTEntry and add it to the entries.
+     *  @param tree     The tree or the list of trees for which
+     *                  we are storing the code pointers.
+     *  @param flags    The set of flags designating type of the entry.
+     *  @param startPc  The starting code position.
+     *  @param endPc    The ending code position.
+     */
+    public void put(Object tree, int flags, int startPc, int endPc) {
+        entries.append(new CRTEntry(tree, flags, startPc, endPc));
+    }
+
+    /** Compute source positions and write CRT to the databuf.
+     *  @param databuf  The buffer to write bytecodes to.
+     */
+    public int writeCRT(ByteBuffer databuf, Position.LineMap lineMap, Log log) {
+
+        int crtEntries = 0;
+
+        // compute source positions for the method
+        new SourceComputer().csp(methodTree);
+
+        for (List<CRTEntry> l = entries.toList(); l.nonEmpty(); l = l.tail) {
+
+            CRTEntry entry = l.head;
+
+            // eliminate entries that do not produce bytecodes:
+            // for example, empty blocks and statements
+            if (entry.startPc == entry.endPc)
+                continue;
+
+            SourceRange pos = positions.get(entry.tree);
+            Assert.checkNonNull(pos, "CRT: tree source positions are undefined");
+            if ((pos.startPos == Position.NOPOS) || (pos.endPos == Position.NOPOS))
+                continue;
+
+            if (crtDebug) {
+                System.out.println("Tree: " + entry.tree + ", type:" + getTypes(entry.flags));
+                System.out.print("Start: pos = " + pos.startPos + ", pc = " + entry.startPc);
+            }
+
+            // encode startPos into line/column representation
+            int startPos = encodePosition(pos.startPos, lineMap, log);
+            if (startPos == Position.NOPOS)
+                continue;
+
+            if (crtDebug) {
+                System.out.print("End:   pos = " + pos.endPos + ", pc = " + (entry.endPc - 1));
+            }
+
+            // encode endPos into line/column representation
+            int endPos = encodePosition(pos.endPos, lineMap, log);
+            if (endPos == Position.NOPOS)
+                continue;
+
+            // write attribute
+            databuf.appendChar(entry.startPc);
+            // 'endPc - 1' because endPc actually points to start of the next command
+            databuf.appendChar(entry.endPc - 1);
+            databuf.appendInt(startPos);
+            databuf.appendInt(endPos);
+            databuf.appendChar(entry.flags);
+
+            crtEntries++;
+        }
+
+        return crtEntries;
+    }
+
+    /** Return the number of the entries.
+     */
+    public int length() {
+        return entries.length();
+    }
+
+    /** Return string describing flags enabled.
+     */
+    private String getTypes(int flags) {
+        String types = "";
+        if ((flags & CRT_STATEMENT)       != 0) types += " CRT_STATEMENT";
+        if ((flags & CRT_BLOCK)           != 0) types += " CRT_BLOCK";
+        if ((flags & CRT_ASSIGNMENT)      != 0) types += " CRT_ASSIGNMENT";
+        if ((flags & CRT_FLOW_CONTROLLER) != 0) types += " CRT_FLOW_CONTROLLER";
+        if ((flags & CRT_FLOW_TARGET)     != 0) types += " CRT_FLOW_TARGET";
+        if ((flags & CRT_INVOKE)          != 0) types += " CRT_INVOKE";
+        if ((flags & CRT_CREATE)          != 0) types += " CRT_CREATE";
+        if ((flags & CRT_BRANCH_TRUE)     != 0) types += " CRT_BRANCH_TRUE";
+        if ((flags & CRT_BRANCH_FALSE)    != 0) types += " CRT_BRANCH_FALSE";
+        return types;
+    }
+
+    /** Source file positions in CRT are integers in the format:
+     *  {@literal line-number << LINESHIFT + column-number }
+     */
+     private int encodePosition(int pos, Position.LineMap lineMap, Log log) {
+         int line = lineMap.getLineNumber(pos);
+         int col = lineMap.getColumnNumber(pos);
+         int new_pos = Position.encodePosition(line, col);
+         if (crtDebug) {
+             System.out.println(", line = " + line + ", column = " + col +
+                                ", new_pos = " + new_pos);
+         }
+         if (new_pos == Position.NOPOS)
+             log.warning(pos, "position.overflow", line);
+
+        return new_pos;
+     }
+
+/* ************************************************************************
+ * Traversal methods
+ *************************************************************************/
+
+    /**
+     *  This class contains methods to compute source positions for trees.
+     *  Extends Tree.Visitor to traverse the abstract syntax tree.
+     */
+    class SourceComputer extends Visitor {
+
+        /** The result of the tree traversal methods.
+         */
+        SourceRange result;
+
+        /** Visitor method: compute source positions for a single node.
+         */
+        public SourceRange csp(JCTree tree) {
+            if (tree == null) return null;
+            tree.accept(this);
+            if (result != null) {
+                positions.put(tree, result);
+            }
+            return result;
+        }
+
+        /** Visitor method: compute source positions for a list of nodes.
+         */
+        public SourceRange csp(List<? extends JCTree> trees) {
+            if ((trees == null) || !(trees.nonEmpty())) return null;
+            SourceRange list_sr = new SourceRange();
+            for (List<? extends JCTree> l = trees; l.nonEmpty(); l = l.tail) {
+                list_sr.mergeWith(csp(l.head));
+            }
+            positions.put(trees, list_sr);
+            return list_sr;
+        }
+
+        /**  Visitor method: compute source positions for
+         *    a list of case blocks of switch statements.
+         */
+        public SourceRange cspCases(List<JCCase> trees) {
+            if ((trees == null) || !(trees.nonEmpty())) return null;
+            SourceRange list_sr = new SourceRange();
+            for (List<JCCase> l = trees; l.nonEmpty(); l = l.tail) {
+                list_sr.mergeWith(csp(l.head));
+            }
+            positions.put(trees, list_sr);
+            return list_sr;
+        }
+
+        /**  Visitor method: compute source positions for
+         *   a list of catch clauses in try statements.
+         */
+        public SourceRange cspCatchers(List<JCCatch> trees) {
+            if ((trees == null) || !(trees.nonEmpty())) return null;
+            SourceRange list_sr = new SourceRange();
+            for (List<JCCatch> l = trees; l.nonEmpty(); l = l.tail) {
+                list_sr.mergeWith(csp(l.head));
+            }
+            positions.put(trees, list_sr);
+            return list_sr;
+        }
+
+        public void visitMethodDef(JCMethodDecl tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.body));
+            result = sr;
+        }
+
+        public void visitVarDef(JCVariableDecl tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            csp(tree.vartype);
+            sr.mergeWith(csp(tree.init));
+            result = sr;
+        }
+
+        public void visitSkip(JCSkip tree) {
+            // endPos is the same as startPos for the empty statement
+            SourceRange sr = new SourceRange(startPos(tree), startPos(tree));
+            result = sr;
+        }
+
+        public void visitBlock(JCBlock tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            csp(tree.stats);    // doesn't compare because block's ending position is defined
+            result = sr;
+        }
+
+        public void visitDoLoop(JCDoWhileLoop tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.body));
+            sr.mergeWith(csp(tree.cond));
+            result = sr;
+        }
+
+        public void visitWhileLoop(JCWhileLoop tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.cond));
+            sr.mergeWith(csp(tree.body));
+            result = sr;
+        }
+
+        public void visitForLoop(JCForLoop tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.init));
+            sr.mergeWith(csp(tree.cond));
+            sr.mergeWith(csp(tree.step));
+            sr.mergeWith(csp(tree.body));
+            result = sr;
+        }
+
+        public void visitForeachLoop(JCEnhancedForLoop tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.var));
+            sr.mergeWith(csp(tree.expr));
+            sr.mergeWith(csp(tree.body));
+            result = sr;
+        }
+
+        public void visitLabelled(JCLabeledStatement tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.body));
+            result = sr;
+        }
+
+        public void visitSwitch(JCSwitch tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.selector));
+            sr.mergeWith(cspCases(tree.cases));
+            result = sr;
+        }
+
+        public void visitCase(JCCase tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.pat));
+            sr.mergeWith(csp(tree.stats));
+            result = sr;
+        }
+
+        public void visitSynchronized(JCSynchronized tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.lock));
+            sr.mergeWith(csp(tree.body));
+            result = sr;
+        }
+
+        public void visitTry(JCTry tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.resources));
+            sr.mergeWith(csp(tree.body));
+            sr.mergeWith(cspCatchers(tree.catchers));
+            sr.mergeWith(csp(tree.finalizer));
+            result = sr;
+        }
+
+        public void visitCatch(JCCatch tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.param));
+            sr.mergeWith(csp(tree.body));
+            result = sr;
+        }
+
+        public void visitConditional(JCConditional tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.cond));
+            sr.mergeWith(csp(tree.truepart));
+            sr.mergeWith(csp(tree.falsepart));
+            result = sr;
+        }
+
+        public void visitIf(JCIf tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.cond));
+            sr.mergeWith(csp(tree.thenpart));
+            sr.mergeWith(csp(tree.elsepart));
+            result = sr;
+        }
+
+        public void visitExec(JCExpressionStatement tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.expr));
+            result = sr;
+        }
+
+        public void visitBreak(JCBreak tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            result = sr;
+        }
+
+        public void visitContinue(JCContinue tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            result = sr;
+        }
+
+        public void visitReturn(JCReturn tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.expr));
+            result = sr;
+        }
+
+        public void visitThrow(JCThrow tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.expr));
+            result = sr;
+        }
+
+        public void visitAssert(JCAssert tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.cond));
+            sr.mergeWith(csp(tree.detail));
+            result = sr;
+        }
+
+        public void visitApply(JCMethodInvocation tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.meth));
+            sr.mergeWith(csp(tree.args));
+            result = sr;
+        }
+
+        public void visitNewClass(JCNewClass tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.encl));
+            sr.mergeWith(csp(tree.clazz));
+            sr.mergeWith(csp(tree.args));
+            sr.mergeWith(csp(tree.def));
+            result = sr;
+        }
+
+        public void visitNewArray(JCNewArray tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.elemtype));
+            sr.mergeWith(csp(tree.dims));
+            sr.mergeWith(csp(tree.elems));
+            result = sr;
+        }
+
+        public void visitParens(JCParens tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.expr));
+            result = sr;
+        }
+
+        public void visitAssign(JCAssign tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.lhs));
+            sr.mergeWith(csp(tree.rhs));
+            result = sr;
+        }
+
+        public void visitAssignop(JCAssignOp tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.lhs));
+            sr.mergeWith(csp(tree.rhs));
+            result = sr;
+        }
+
+        public void visitUnary(JCUnary tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.arg));
+            result = sr;
+        }
+
+        public void visitBinary(JCBinary tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.lhs));
+            sr.mergeWith(csp(tree.rhs));
+            result = sr;
+        }
+
+        public void visitTypeCast(JCTypeCast tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.clazz));
+            sr.mergeWith(csp(tree.expr));
+            result = sr;
+        }
+
+        public void visitTypeTest(JCInstanceOf tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.expr));
+            sr.mergeWith(csp(tree.clazz));
+            result = sr;
+        }
+
+        public void visitIndexed(JCArrayAccess tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.indexed));
+            sr.mergeWith(csp(tree.index));
+            result = sr;
+        }
+
+        public void visitSelect(JCFieldAccess tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.selected));
+            result = sr;
+        }
+
+        public void visitIdent(JCIdent tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            result = sr;
+        }
+
+        public void visitLiteral(JCLiteral tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            result = sr;
+        }
+
+        public void visitTypeIdent(JCPrimitiveTypeTree tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            result = sr;
+        }
+
+        public void visitTypeArray(JCArrayTypeTree tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.elemtype));
+            result = sr;
+        }
+
+        public void visitTypeApply(JCTypeApply tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.clazz));
+            sr.mergeWith(csp(tree.arguments));
+            result = sr;
+        }
+
+        @Override
+        public void visitLetExpr(LetExpr tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.defs));
+            sr.mergeWith(csp(tree.expr));
+            result = sr;
+        }
+
+        public void visitTypeParameter(JCTypeParameter tree) {
+            SourceRange sr = new SourceRange(startPos(tree), endPos(tree));
+            sr.mergeWith(csp(tree.bounds));
+            result = sr;
+        }
+
+        public void visitWildcard(JCWildcard tree) {
+            result = null;
+        }
+
+        public void visitErroneous(JCErroneous tree) {
+            result = null;
+        }
+
+        public void visitTree(JCTree tree) {
+            Assert.error();
+        }
+
+        /** The start position of given tree.
+         */
+        public int startPos(JCTree tree) {
+            if (tree == null) return Position.NOPOS;
+            return TreeInfo.getStartPos(tree);
+        }
+
+        /** The end position of given tree, if it has
+         *  defined endpos, NOPOS otherwise.
+         */
+        public int endPos(JCTree tree) {
+            if (tree == null) return Position.NOPOS;
+            return TreeInfo.getEndPos(tree, endPosTable);
+        }
+    }
+
+    /** This class contains a CharacterRangeTableEntry.
+     */
+    static class CRTEntry {
+
+        /** A tree or a list of trees to obtain source positions.
+         */
+        Object tree;
+
+        /** The flags described in the CharacterRangeTable spec.
+         */
+        int flags;
+
+        /** The starting code position of this entry.
+         */
+        int startPc;
+
+        /** The ending code position of this entry.
+         */
+        int endPc;
+
+        /** Constructor */
+        CRTEntry(Object tree, int flags, int startPc, int endPc) {
+            this.tree = tree;
+            this.flags = flags;
+            this.startPc = startPc;
+            this.endPc = endPc;
+        }
+    }
+
+
+    /** This class contains source positions
+     *  for some tree or list of trees.
+     */
+    static class SourceRange {
+
+        /** The starting source position.
+         */
+        int startPos;
+
+        /** The ending source position.
+         */
+        int endPos;
+
+        /** Constructor */
+        SourceRange() {
+            startPos = Position.NOPOS;
+            endPos = Position.NOPOS;
+        }
+
+        /** Constructor */
+        SourceRange(int startPos, int endPos) {
+            this.startPos = startPos;
+            this.endPos = endPos;
+        }
+
+        /** Compare the starting and the ending positions
+         *  of the source range and combines them assigning
+         *  the widest range to this.
+         */
+        SourceRange mergeWith(SourceRange sr) {
+            if (sr == null) return this;
+            if (startPos == Position.NOPOS)
+                startPos = sr.startPos;
+            else if (sr.startPos != Position.NOPOS)
+                startPos = (startPos < sr.startPos ? startPos : sr.startPos);
+            if (endPos == Position.NOPOS)
+                endPos = sr.endPos;
+            else if (sr.endPos != Position.NOPOS)
+                endPos = (endPos > sr.endPos ? endPos : sr.endPos);
+            return this;
+        }
+    }
+
+}

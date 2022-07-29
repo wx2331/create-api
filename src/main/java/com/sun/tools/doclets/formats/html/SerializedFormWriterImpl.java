@@ -1,245 +1,239 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlConstants;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.formats.html.markup.StringContent;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.SerializedFormWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPaths;
-/*     */ import java.io.IOException;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class SerializedFormWriterImpl
-/*     */   extends SubWriterHolderWriter
-/*     */   implements SerializedFormWriter
-/*     */ {
-/*     */   public SerializedFormWriterImpl(ConfigurationImpl paramConfigurationImpl) throws IOException {
-/*  55 */     super(paramConfigurationImpl, DocPaths.SERIALIZED_FORM);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Content getHeader(String paramString) {
-/*  65 */     HtmlTree htmlTree1 = getBody(true, getWindowTitle(paramString));
-/*  66 */     addTop((Content)htmlTree1);
-/*  67 */     addNavLinks(true, (Content)htmlTree1);
-/*  68 */     StringContent stringContent = new StringContent(paramString);
-/*  69 */     HtmlTree htmlTree2 = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, true, HtmlStyle.title, (Content)stringContent);
-/*     */
-/*  71 */     HtmlTree htmlTree3 = HtmlTree.DIV(HtmlStyle.header, (Content)htmlTree2);
-/*  72 */     htmlTree1.addContent((Content)htmlTree3);
-/*  73 */     return (Content)htmlTree1;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Content getSerializedSummariesHeader() {
-/*  82 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.UL);
-/*  83 */     htmlTree.addStyle(HtmlStyle.blockList);
-/*  84 */     return (Content)htmlTree;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Content getPackageSerializedHeader() {
-/*  93 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.LI);
-/*  94 */     htmlTree.addStyle(HtmlStyle.blockList);
-/*  95 */     return (Content)htmlTree;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Content getPackageHeader(String paramString) {
-/* 105 */     HtmlTree htmlTree = HtmlTree.HEADING(HtmlConstants.PACKAGE_HEADING, true, this.packageLabel);
-/*     */
-/* 107 */     htmlTree.addContent(getSpace());
-/* 108 */     htmlTree.addContent(paramString);
-/* 109 */     return (Content)htmlTree;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Content getClassSerializedHeader() {
-/* 118 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.UL);
-/* 119 */     htmlTree.addStyle(HtmlStyle.blockList);
-/* 120 */     return (Content)htmlTree;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Content getClassHeader(ClassDoc paramClassDoc) {
-/* 133 */     Object object = (paramClassDoc.isPublic() || paramClassDoc.isProtected()) ? getLink((new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.DEFAULT, paramClassDoc)).label(this.configuration.getClassName(paramClassDoc))) : new StringContent(paramClassDoc.qualifiedName());
-/* 134 */     HtmlTree htmlTree = HtmlTree.LI(HtmlStyle.blockList, getMarkerAnchor(paramClassDoc
-/* 135 */           .qualifiedName()));
-/*     */
-/*     */
-/* 138 */     Content content1 = (paramClassDoc.superclassType() != null) ? getLink(new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.SERIALIZED_FORM, paramClassDoc
-/*     */
-/* 140 */           .superclassType())) : null;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 147 */     Content content2 = (content1 == null) ? this.configuration.getResource("doclet.Class_0_implements_serializable", object) : this.configuration.getResource("doclet.Class_0_extends_implements_serializable", object, content1);
-/*     */
-/*     */
-/* 150 */     htmlTree.addContent((Content)HtmlTree.HEADING(HtmlConstants.SERIALIZED_MEMBER_HEADING, content2));
-/*     */
-/* 152 */     return (Content)htmlTree;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Content getSerialUIDInfoHeader() {
-/* 161 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.DL);
-/* 162 */     htmlTree.addStyle(HtmlStyle.nameValue);
-/* 163 */     return (Content)htmlTree;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void addSerialUIDInfo(String paramString1, String paramString2, Content paramContent) {
-/* 176 */     StringContent stringContent1 = new StringContent(paramString1);
-/* 177 */     paramContent.addContent((Content)HtmlTree.DT((Content)stringContent1));
-/* 178 */     StringContent stringContent2 = new StringContent(paramString2);
-/* 179 */     paramContent.addContent((Content)HtmlTree.DD((Content)stringContent2));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Content getClassContentHeader() {
-/* 188 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.UL);
-/* 189 */     htmlTree.addStyle(HtmlStyle.blockList);
-/* 190 */     return (Content)htmlTree;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Content getSerializedContent(Content paramContent) {
-/* 200 */     return (Content)HtmlTree.DIV(HtmlStyle.serializedFormContainer, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void addFooter(Content paramContent) {
-/* 211 */     addNavLinks(false, paramContent);
-/* 212 */     addBottom(paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void printDocument(Content paramContent) throws IOException {
-/* 219 */     printHtmlDocument((String[])null, true, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public SerialFieldWriter getSerialFieldWriter(ClassDoc paramClassDoc) {
-/* 228 */     return new HtmlSerialFieldWriter(this, paramClassDoc);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public SerialMethodWriter getSerialMethodWriter(ClassDoc paramClassDoc) {
-/* 237 */     return new HtmlSerialMethodWriter(this, paramClassDoc);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\SerializedFormWriterImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1998, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.DocPaths;
+import com.sun.tools.doclets.internal.toolkit.util.DocletAbortException;
+
+/**
+ * Generate the Serialized Form Information Page.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Atul M Dambalkar
+ */
+public class SerializedFormWriterImpl extends SubWriterHolderWriter
+    implements SerializedFormWriter {
+
+    /**
+     * @param configuration the configuration data for the doclet
+     * @throws IOException
+     * @throws DocletAbortException
+     */
+    public SerializedFormWriterImpl(ConfigurationImpl configuration)
+            throws IOException {
+        super(configuration, DocPaths.SERIALIZED_FORM);
+    }
+
+    /**
+     * Get the given header.
+     *
+     * @param header the header to write
+     * @return the body content tree
+     */
+    public Content getHeader(String header) {
+        Content bodyTree = getBody(true, getWindowTitle(header));
+        addTop(bodyTree);
+        addNavLinks(true, bodyTree);
+        Content h1Content = new StringContent(header);
+        Content heading = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, true,
+                HtmlStyle.title, h1Content);
+        Content div = HtmlTree.DIV(HtmlStyle.header, heading);
+        bodyTree.addContent(div);
+        return bodyTree;
+    }
+
+    /**
+     * Get the serialized form summaries header.
+     *
+     * @return the serialized form summary header tree
+     */
+    public Content getSerializedSummariesHeader() {
+        HtmlTree ul = new HtmlTree(HtmlTag.UL);
+        ul.addStyle(HtmlStyle.blockList);
+        return ul;
+    }
+
+    /**
+     * Get the package serialized form header.
+     *
+     * @return the package serialized form header tree
+     */
+    public Content getPackageSerializedHeader() {
+        HtmlTree li = new HtmlTree(HtmlTag.LI);
+        li.addStyle(HtmlStyle.blockList);
+        return li;
+    }
+
+    /**
+     * Get the given package header.
+     *
+     * @param packageName the package header to write
+     * @return a content tree for the package header
+     */
+    public Content getPackageHeader(String packageName) {
+        Content heading = HtmlTree.HEADING(HtmlConstants.PACKAGE_HEADING, true,
+                packageLabel);
+        heading.addContent(getSpace());
+        heading.addContent(packageName);
+        return heading;
+    }
+
+    /**
+     * Get the serialized class header.
+     *
+     * @return a content tree for the serialized class header
+     */
+    public Content getClassSerializedHeader() {
+        HtmlTree ul = new HtmlTree(HtmlTag.UL);
+        ul.addStyle(HtmlStyle.blockList);
+        return ul;
+    }
+
+    /**
+     * Get the serializable class heading.
+     *
+     * @param classDoc the class being processed
+     * @return a content tree for the class header
+     */
+    public Content getClassHeader(ClassDoc classDoc) {
+        Content classLink = (classDoc.isPublic() || classDoc.isProtected()) ?
+            getLink(new LinkInfoImpl(configuration, LinkInfoImpl.Kind.DEFAULT, classDoc)
+            .label(configuration.getClassName(classDoc))) :
+            new StringContent(classDoc.qualifiedName());
+        Content li = HtmlTree.LI(HtmlStyle.blockList, getMarkerAnchor(
+                classDoc.qualifiedName()));
+        Content superClassLink =
+            classDoc.superclassType() != null ?
+                getLink(new LinkInfoImpl(configuration,
+                        LinkInfoImpl.Kind.SERIALIZED_FORM,
+                        classDoc.superclassType())) :
+                null;
+
+        //Print the heading.
+        Content className = superClassLink == null ?
+            configuration.getResource(
+            "doclet.Class_0_implements_serializable", classLink) :
+            configuration.getResource(
+            "doclet.Class_0_extends_implements_serializable", classLink,
+            superClassLink);
+        li.addContent(HtmlTree.HEADING(HtmlConstants.SERIALIZED_MEMBER_HEADING,
+                className));
+        return li;
+    }
+
+    /**
+     * Get the serial UID info header.
+     *
+     * @return a content tree for the serial uid info header
+     */
+    public Content getSerialUIDInfoHeader() {
+        HtmlTree dl = new HtmlTree(HtmlTag.DL);
+        dl.addStyle(HtmlStyle.nameValue);
+        return dl;
+    }
+
+    /**
+     * Adds the serial UID info.
+     *
+     * @param header the header that will show up before the UID.
+     * @param serialUID the serial UID to print.
+     * @param serialUidTree the serial UID content tree to which the serial UID
+     *                      content will be added
+     */
+    public void addSerialUIDInfo(String header, String serialUID,
+            Content serialUidTree) {
+        Content headerContent = new StringContent(header);
+        serialUidTree.addContent(HtmlTree.DT(headerContent));
+        Content serialContent = new StringContent(serialUID);
+        serialUidTree.addContent(HtmlTree.DD(serialContent));
+    }
+
+    /**
+     * Get the class serialize content header.
+     *
+     * @return a content tree for the class serialize content header
+     */
+    public Content getClassContentHeader() {
+        HtmlTree ul = new HtmlTree(HtmlTag.UL);
+        ul.addStyle(HtmlStyle.blockList);
+        return ul;
+    }
+
+    /**
+     * Get the serialized content tree section.
+     *
+     * @param serializedTreeContent the serialized content tree to be added
+     * @return a div content tree
+     */
+    public Content getSerializedContent(Content serializedTreeContent) {
+        Content divContent = HtmlTree.DIV(HtmlStyle.serializedFormContainer,
+                serializedTreeContent);
+        return divContent;
+    }
+
+    /**
+     * Add the footer.
+     *
+     * @param serializedTree the serialized tree to be added
+     */
+    public void addFooter(Content serializedTree) {
+        addNavLinks(false, serializedTree);
+        addBottom(serializedTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void printDocument(Content serializedTree) throws IOException {
+        printHtmlDocument(null, true, serializedTree);
+    }
+
+    /**
+     * Return an instance of a SerialFieldWriter.
+     *
+     * @return an instance of a SerialFieldWriter.
+     */
+    public SerialFieldWriter getSerialFieldWriter(ClassDoc classDoc) {
+        return new HtmlSerialFieldWriter(this, classDoc);
+    }
+
+    /**
+     * Return an instance of a SerialMethodWriter.
+     *
+     * @return an instance of a SerialMethodWriter.
+     */
+    public SerialMethodWriter getSerialMethodWriter(ClassDoc classDoc) {
+        return new HtmlSerialMethodWriter(this, classDoc);
+    }
+}

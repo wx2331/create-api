@@ -1,92 +1,88 @@
-/*    */ package com.sun.tools.javac.util;
-/*    */ 
-/*    */ import java.lang.reflect.Array;
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ public class ArrayUtils
-/*    */ {
-/*    */   private static int calculateNewLength(int paramInt1, int paramInt2) {
-/* 38 */     while (paramInt1 < paramInt2 + 1)
-/* 39 */       paramInt1 *= 2; 
-/* 40 */     return paramInt1;
-/*    */   }
-/*    */   
-/*    */   public static <T> T[] ensureCapacity(T[] paramArrayOfT, int paramInt) {
-/* 44 */     if (paramInt < paramArrayOfT.length) {
-/* 45 */       return paramArrayOfT;
-/*    */     }
-/* 47 */     int i = calculateNewLength(paramArrayOfT.length, paramInt);
-/*    */     
-/* 49 */     Object[] arrayOfObject = (Object[])Array.newInstance(paramArrayOfT.getClass().getComponentType(), i);
-/* 50 */     System.arraycopy(paramArrayOfT, 0, arrayOfObject, 0, paramArrayOfT.length);
-/* 51 */     return (T[])arrayOfObject;
-/*    */   }
-/*    */ 
-/*    */   
-/*    */   public static byte[] ensureCapacity(byte[] paramArrayOfbyte, int paramInt) {
-/* 56 */     if (paramInt < paramArrayOfbyte.length) {
-/* 57 */       return paramArrayOfbyte;
-/*    */     }
-/* 59 */     int i = calculateNewLength(paramArrayOfbyte.length, paramInt);
-/* 60 */     byte[] arrayOfByte = new byte[i];
-/* 61 */     System.arraycopy(paramArrayOfbyte, 0, arrayOfByte, 0, paramArrayOfbyte.length);
-/* 62 */     return arrayOfByte;
-/*    */   }
-/*    */ 
-/*    */   
-/*    */   public static char[] ensureCapacity(char[] paramArrayOfchar, int paramInt) {
-/* 67 */     if (paramInt < paramArrayOfchar.length) {
-/* 68 */       return paramArrayOfchar;
-/*    */     }
-/* 70 */     int i = calculateNewLength(paramArrayOfchar.length, paramInt);
-/* 71 */     char[] arrayOfChar = new char[i];
-/* 72 */     System.arraycopy(paramArrayOfchar, 0, arrayOfChar, 0, paramArrayOfchar.length);
-/* 73 */     return arrayOfChar;
-/*    */   }
-/*    */ 
-/*    */   
-/*    */   public static int[] ensureCapacity(int[] paramArrayOfint, int paramInt) {
-/* 78 */     if (paramInt < paramArrayOfint.length) {
-/* 79 */       return paramArrayOfint;
-/*    */     }
-/* 81 */     int i = calculateNewLength(paramArrayOfint.length, paramInt);
-/* 82 */     int[] arrayOfInt = new int[i];
-/* 83 */     System.arraycopy(paramArrayOfint, 0, arrayOfInt, 0, paramArrayOfint.length);
-/* 84 */     return arrayOfInt;
-/*    */   }
-/*    */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\java\\util\ArrayUtils.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.util;
+
+import java.lang.reflect.Array;
+
+/** <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class ArrayUtils {
+
+    private static int calculateNewLength(int currentLength, int maxIndex) {
+        while (currentLength < maxIndex + 1)
+            currentLength = currentLength * 2;
+        return currentLength;
+    }
+
+    public static <T> T[] ensureCapacity(T[] array, int maxIndex) {
+        if (maxIndex < array.length) {
+            return array;
+        } else {
+            int newLength = calculateNewLength(array.length, maxIndex);
+            @SuppressWarnings("unchecked")
+            T[] result = (T[]) Array.newInstance(array.getClass().getComponentType(), newLength);
+            System.arraycopy(array, 0, result, 0, array.length);
+            return result;
+        }
+    }
+
+    public static byte[] ensureCapacity(byte[] array, int maxIndex) {
+        if (maxIndex < array.length) {
+            return array;
+        } else {
+            int newLength = calculateNewLength(array.length, maxIndex);
+            byte[] result = new byte[newLength];
+            System.arraycopy(array, 0, result, 0, array.length);
+            return result;
+        }
+    }
+
+    public static char[] ensureCapacity(char[] array, int maxIndex) {
+        if (maxIndex < array.length) {
+            return array;
+        } else {
+            int newLength = calculateNewLength(array.length, maxIndex);
+            char[] result = new char[newLength];
+            System.arraycopy(array, 0, result, 0, array.length);
+            return result;
+        }
+    }
+
+    public static int[] ensureCapacity(int[] array, int maxIndex) {
+        if (maxIndex < array.length) {
+            return array;
+        } else {
+            int newLength = calculateNewLength(array.length, maxIndex);
+            int[] result = new int[newLength];
+            System.arraycopy(array, 0, result, 0, array.length);
+            return result;
+        }
+    }
+
+}

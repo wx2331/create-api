@@ -1,238 +1,232 @@
-/*     */ package com.sun.tools.jdeps;
-/*     */ 
-/*     */ import com.sun.tools.classfile.Annotation;
-/*     */ import com.sun.tools.classfile.ClassFile;
-/*     */ import com.sun.tools.classfile.ConstantPool;
-/*     */ import com.sun.tools.classfile.ConstantPoolException;
-/*     */ import com.sun.tools.classfile.RuntimeAnnotations_attribute;
-/*     */ import java.io.FileReader;
-/*     */ import java.io.IOException;
-/*     */ import java.nio.file.Files;
-/*     */ import java.nio.file.Path;
-/*     */ import java.nio.file.Paths;
-/*     */ import java.util.Collections;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.Map;
-/*     */ import java.util.Properties;
-/*     */ import java.util.Set;
-/*     */ import java.util.TreeSet;
-/*     */ import java.util.jar.JarFile;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ enum Profile
-/*     */ {
-/*  46 */   COMPACT1("compact1", 1),
-/*  47 */   COMPACT2("compact2", 2),
-/*  48 */   COMPACT3("compact3", 3),
-/*  49 */   FULL_JRE("Full JRE", 4);
-/*     */   
-/*     */   final String name;
-/*     */   final int profile;
-/*     */   final Set<String> packages;
-/*     */   final Set<String> proprietaryPkgs;
-/*     */   
-/*     */   Profile(String paramString1, int paramInt1) {
-/*  57 */     this.name = paramString1;
-/*  58 */     this.profile = paramInt1;
-/*  59 */     this.packages = new HashSet<>();
-/*  60 */     this.proprietaryPkgs = new HashSet<>();
-/*     */   }
-/*     */   
-/*     */   public String profileName() {
-/*  64 */     return this.name;
-/*     */   }
-/*     */   
-/*     */   public static int getProfileCount() {
-/*  68 */     return PackageToProfile.map.values().size();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static Profile getProfile(String paramString) {
-/*  76 */     Profile profile = PackageToProfile.map.get(paramString);
-/*  77 */     return (profile != null && profile.packages.contains(paramString)) ? profile : null;
-/*     */   }
-/*     */   
-/*     */   static class PackageToProfile
-/*     */   {
-/*  82 */     static String[] JAVAX_CRYPTO_PKGS = new String[] { "javax.crypto", "javax.crypto.interfaces", "javax.crypto.spec" };
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */     
-/*  87 */     static Map<String, Profile> map = initProfiles();
-/*     */     private static Map<String, Profile> initProfiles() {
-/*     */       try {
-/*  90 */         String str = System.getProperty("jdeps.profiles");
-/*  91 */         if (str != null) {
-/*     */           
-/*  93 */           initProfilesFromProperties(str);
-/*     */         } else {
-/*  95 */           Path path1 = Paths.get(System.getProperty("java.home"), new String[0]);
-/*  96 */           if (path1.endsWith("jre")) {
-/*  97 */             path1 = path1.getParent();
-/*     */           }
-/*  99 */           Path path2 = path1.resolve("lib").resolve("ct.sym");
-/* 100 */           if (Files.exists(path2, new java.nio.file.LinkOption[0])) {
-/*     */             
-/* 102 */             try (JarFile null = new JarFile(path2.toFile())) {
-/* 103 */               ClassFileReader classFileReader = ClassFileReader.newInstance(path2, jarFile);
-/* 104 */               for (ClassFile classFile : classFileReader.getClassFiles()) {
-/* 105 */                 findProfile(classFile);
-/*     */               }
-/*     */             } 
-/*     */ 
-/*     */             
-/* 110 */             Collections.addAll(Profile.COMPACT1.packages, JAVAX_CRYPTO_PKGS);
-/*     */           } 
-/*     */         } 
-/* 113 */       } catch (IOException|ConstantPoolException iOException) {
-/* 114 */         throw new Error(iOException);
-/*     */       } 
-/* 116 */       HashMap<Object, Object> hashMap = new HashMap<>();
-/* 117 */       for (Profile profile : Profile.values()) {
-/* 118 */         for (String str : profile.packages) {
-/* 119 */           if (!hashMap.containsKey(str))
-/*     */           {
-/* 121 */             hashMap.put(str, profile);
-/*     */           }
-/*     */         } 
-/* 124 */         for (String str : profile.proprietaryPkgs) {
-/* 125 */           if (!hashMap.containsKey(str)) {
-/* 126 */             hashMap.put(str, profile);
-/*     */           }
-/*     */         } 
-/*     */       } 
-/* 130 */       return (Map)hashMap;
-/*     */     }
-/*     */     private static final String PROFILE_ANNOTATION = "Ljdk/Profile+Annotation;";
-/*     */     private static final String PROPRIETARY_ANNOTATION = "Lsun/Proprietary+Annotation;";
-/*     */     
-/*     */     private static Profile findProfile(ClassFile param1ClassFile) throws ConstantPoolException {
-/* 136 */       RuntimeAnnotations_attribute runtimeAnnotations_attribute = (RuntimeAnnotations_attribute)param1ClassFile.attributes.get("RuntimeInvisibleAnnotations");
-/* 137 */       int i = 0;
-/* 138 */       boolean bool = false;
-/* 139 */       if (runtimeAnnotations_attribute != null) {
-/* 140 */         for (byte b = 0; b < runtimeAnnotations_attribute.annotations.length; b++) {
-/* 141 */           Annotation annotation = runtimeAnnotations_attribute.annotations[b];
-/* 142 */           String str1 = param1ClassFile.constant_pool.getUTF8Value(annotation.type_index);
-/* 143 */           if ("Ljdk/Profile+Annotation;".equals(str1)) {
-/* 144 */             byte b1 = 0; if (b1 < annotation.num_element_value_pairs) {
-/* 145 */               Annotation.element_value_pair element_value_pair = annotation.element_value_pairs[b1];
-/* 146 */               Annotation.Primitive_element_value primitive_element_value = (Annotation.Primitive_element_value)element_value_pair.value;
-/*     */               
-/* 148 */               ConstantPool.CONSTANT_Integer_info cONSTANT_Integer_info = (ConstantPool.CONSTANT_Integer_info)param1ClassFile.constant_pool.get(primitive_element_value.const_value_index);
-/* 149 */               i = cONSTANT_Integer_info.value;
-/*     */             }
-/*     */           
-/* 152 */           } else if ("Lsun/Proprietary+Annotation;".equals(str1)) {
-/* 153 */             bool = true;
-/*     */           } 
-/*     */         } 
-/*     */       }
-/*     */       
-/* 158 */       Profile profile = null;
-/* 159 */       switch (i) {
-/*     */         case 1:
-/* 161 */           profile = Profile.COMPACT1; break;
-/*     */         case 2:
-/* 163 */           profile = Profile.COMPACT2; break;
-/*     */         case 3:
-/* 165 */           profile = Profile.COMPACT3; break;
-/*     */         case 4:
-/* 167 */           profile = Profile.FULL_JRE;
-/*     */           break;
-/*     */         
-/*     */         default:
-/* 171 */           return null;
-/*     */       } 
-/*     */       
-/* 174 */       String str = param1ClassFile.getName();
-/* 175 */       int j = str.lastIndexOf('/');
-/* 176 */       str = (j > 0) ? str.substring(0, j).replace('/', '.') : "";
-/* 177 */       if (bool) {
-/* 178 */         profile.proprietaryPkgs.add(str);
-/*     */       } else {
-/* 180 */         profile.packages.add(str);
-/*     */       } 
-/* 182 */       return profile;
-/*     */     }
-/*     */     
-/*     */     private static void initProfilesFromProperties(String param1String) throws IOException {
-/* 186 */       Properties properties = new Properties();
-/* 187 */       try (FileReader null = new FileReader(param1String)) {
-/* 188 */         properties.load(fileReader);
-/*     */       } 
-/* 190 */       for (Profile profile : Profile.values()) {
-/* 191 */         int i = profile.profile;
-/* 192 */         String str1 = properties.getProperty("profile." + i + ".name");
-/* 193 */         if (str1 == null) {
-/* 194 */           throw new RuntimeException(str1 + " missing in " + param1String);
-/*     */         }
-/* 196 */         String str2 = properties.getProperty("profile." + i + ".packages");
-/* 197 */         String[] arrayOfString = str2.split("\\s+");
-/* 198 */         for (String str : arrayOfString) {
-/* 199 */           if (!str.isEmpty()) {
-/* 200 */             profile.packages.add(str);
-/*     */           }
-/*     */         } 
-/*     */       } 
-/*     */     }
-/*     */   }
-/*     */   
-/*     */   public static void main(String[] paramArrayOfString) {
-/* 208 */     if (paramArrayOfString.length == 0) {
-/* 209 */       if (getProfileCount() == 0) {
-/* 210 */         System.err.println("No profile is present in this JDK");
-/*     */       }
-/* 212 */       for (Profile profile : values()) {
-/* 213 */         String str = profile.name;
-/* 214 */         TreeSet<String> treeSet = new TreeSet<>(profile.packages);
-/* 215 */         for (String str1 : treeSet) {
-/*     */ 
-/*     */           
-/* 218 */           if (PackageToProfile.map.get(str1) == profile) {
-/* 219 */             System.out.format("%2d: %-10s  %s%n", new Object[] { Integer.valueOf(profile.profile), str, str1 });
-/* 220 */             str = ""; continue;
-/*     */           } 
-/* 222 */           System.err.format("Split package: %s in %s and %s %n", new Object[] { str1, ((Profile)PackageToProfile.map
-/* 223 */                 .get(str1)).name, profile.name });
-/*     */         } 
-/*     */       } 
-/*     */     } 
-/*     */     
-/* 228 */     for (String str : paramArrayOfString) {
-/* 229 */       System.out.format("%s in %s%n", new Object[] { str, getProfile(str) });
-/*     */     } 
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\jdeps\Profile.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2013, 2014, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+package com.sun.tools.jdeps;
+
+import com.sun.tools.classfile.Annotation;
+import com.sun.tools.classfile.Annotation.*;
+import com.sun.tools.classfile.Attribute;
+import com.sun.tools.classfile.ClassFile;
+import com.sun.tools.classfile.ConstantPool.*;
+import com.sun.tools.classfile.ConstantPoolException;
+import com.sun.tools.classfile.RuntimeAnnotations_attribute;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.jar.JarFile;
+
+/**
+ * Build the profile information from ct.sym if exists.
+ */
+enum Profile {
+    COMPACT1("compact1", 1),
+    COMPACT2("compact2", 2),
+    COMPACT3("compact3", 3),
+    FULL_JRE("Full JRE", 4);
+
+    final String name;
+    final int profile;
+    final Set<String> packages;
+    final Set<String> proprietaryPkgs;
+
+    Profile(String name, int profile) {
+        this.name = name;
+        this.profile = profile;
+        this.packages = new HashSet<>();
+        this.proprietaryPkgs = new HashSet<>();
+    }
+
+    public String profileName() {
+        return name;
+    }
+
+    public static int getProfileCount() {
+        return PackageToProfile.map.values().size();
+    }
+
+    /**
+     * Returns the Profile for the given package name. It returns an empty
+     * string if the given package is not in any profile.
+     */
+    public static Profile getProfile(String pn) {
+        Profile profile = PackageToProfile.map.get(pn);
+        return (profile != null && profile.packages.contains(pn))
+                    ? profile : null;
+    }
+
+    static class PackageToProfile {
+        static String[] JAVAX_CRYPTO_PKGS = new String[] {
+            "javax.crypto",
+            "javax.crypto.interfaces",
+            "javax.crypto.spec"
+        };
+        static Map<String, Profile> map = initProfiles();
+        private static Map<String, Profile> initProfiles() {
+            try {
+                String profilesProps = System.getProperty("jdeps.profiles");
+                if (profilesProps != null) {
+                    // for testing for JDK development build where ct.sym doesn't exist
+                    initProfilesFromProperties(profilesProps);
+                } else {
+                    Path home = Paths.get(System.getProperty("java.home"));
+                    if (home.endsWith("jre")) {
+                        home = home.getParent();
+                    }
+                    Path ctsym = home.resolve("lib").resolve("ct.sym");
+                    if (Files.exists(ctsym)) {
+                        // parse ct.sym and load information about profiles
+                        try (JarFile jf = new JarFile(ctsym.toFile())) {
+                            ClassFileReader reader = ClassFileReader.newInstance(ctsym, jf);
+                            for (ClassFile cf : reader.getClassFiles()) {
+                                findProfile(cf);
+                            }
+                        }
+                        // special case for javax.crypto.* classes that are not
+                        // included in ct.sym since they are in jce.jar
+                        Collections.addAll(Profile.COMPACT1.packages, JAVAX_CRYPTO_PKGS);
+                    }
+                }
+            } catch (IOException | ConstantPoolException e) {
+                throw new Error(e);
+            }
+            HashMap<String,Profile> map = new HashMap<>();
+            for (Profile profile : Profile.values()) {
+                for (String pn : profile.packages) {
+                    if (!map.containsKey(pn)) {
+                        // split packages in the JRE: use the smaller compact
+                        map.put(pn, profile);
+                    }
+                }
+                for (String pn : profile.proprietaryPkgs) {
+                    if (!map.containsKey(pn)) {
+                        map.put(pn, profile);
+                    }
+                }
+            }
+            return map;
+        }
+        private static final String PROFILE_ANNOTATION = "Ljdk/Profile+Annotation;";
+        private static final String PROPRIETARY_ANNOTATION = "Lsun/Proprietary+Annotation;";
+        private static Profile findProfile(ClassFile cf) throws ConstantPoolException {
+            RuntimeAnnotations_attribute attr = (RuntimeAnnotations_attribute)
+                cf.attributes.get(Attribute.RuntimeInvisibleAnnotations);
+            int index = 0;
+            boolean proprietary = false;
+            if (attr != null) {
+                for (int i = 0; i < attr.annotations.length; i++) {
+                    Annotation ann = attr.annotations[i];
+                    String annType = cf.constant_pool.getUTF8Value(ann.type_index);
+                    if (PROFILE_ANNOTATION.equals(annType)) {
+                        for (int j = 0; j < ann.num_element_value_pairs; j++) {
+                            element_value_pair pair = ann.element_value_pairs[j];
+                            Primitive_element_value ev = (Primitive_element_value) pair.value;
+                            CONSTANT_Integer_info info = (CONSTANT_Integer_info)
+                                cf.constant_pool.get(ev.const_value_index);
+                            index = info.value;
+                            break;
+                        }
+                    } else if (PROPRIETARY_ANNOTATION.equals(annType)) {
+                        proprietary = true;
+                    }
+                }
+            }
+
+            Profile p = null;  // default
+            switch (index) {
+                case 1:
+                    p = Profile.COMPACT1; break;
+                case 2:
+                    p = Profile.COMPACT2; break;
+                case 3:
+                    p = Profile.COMPACT3; break;
+                case 4:
+                    p = Profile.FULL_JRE; break;
+                default:
+                    // skip classes with profile=0
+                    // Inner classes are not annotated with the profile annotation
+                    return null;
+            }
+
+            String name = cf.getName();
+            int i = name.lastIndexOf('/');
+            name = (i > 0) ? name.substring(0, i).replace('/', '.') : "";
+            if (proprietary) {
+                p.proprietaryPkgs.add(name);
+            } else {
+                p.packages.add(name);
+            }
+            return p;
+        }
+
+        private static void initProfilesFromProperties(String path) throws IOException {
+            Properties props = new Properties();
+            try (FileReader reader = new FileReader(path)) {
+                props.load(reader);
+            }
+            for (Profile prof : Profile.values()) {
+                int i = prof.profile;
+                String key = props.getProperty("profile." + i + ".name");
+                if (key == null) {
+                    throw new RuntimeException(key + " missing in " + path);
+                }
+                String n = props.getProperty("profile." + i + ".packages");
+                String[] pkgs = n.split("\\s+");
+                for (String p : pkgs) {
+                    if (p.isEmpty()) continue;
+                    prof.packages.add(p);
+                }
+            }
+        }
+    }
+
+    // for debugging
+    public static void main(String[] args) {
+        if (args.length == 0) {
+            if (Profile.getProfileCount() == 0) {
+                System.err.println("No profile is present in this JDK");
+            }
+            for (Profile p : Profile.values()) {
+                String profileName = p.name;
+                SortedSet<String> set = new TreeSet<>(p.packages);
+                for (String s : set) {
+                    // filter out the inner classes that are not annotated with
+                    // the profile annotation
+                    if (PackageToProfile.map.get(s) == p) {
+                        System.out.format("%2d: %-10s  %s%n", p.profile, profileName, s);
+                        profileName = "";
+                    } else {
+                        System.err.format("Split package: %s in %s and %s %n",
+                            s, PackageToProfile.map.get(s).name, p.name);
+                    }
+                }
+            }
+        }
+        for (String pn : args) {
+            System.out.format("%s in %s%n", pn, getProfile(pn));
+        }
+    }
+}

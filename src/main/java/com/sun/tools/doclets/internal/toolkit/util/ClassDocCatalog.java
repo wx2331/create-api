@@ -1,290 +1,284 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.util;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.Map;
-/*     */ import java.util.Set;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class ClassDocCatalog
-/*     */ {
-/*     */   private Set<String> packageSet;
-/*     */   private Map<String, Set<ClassDoc>> allClasses;
-/*     */   private Map<String, Set<ClassDoc>> ordinaryClasses;
-/*     */   private Map<String, Set<ClassDoc>> exceptions;
-/*     */   private Map<String, Set<ClassDoc>> enums;
-/*     */   private Map<String, Set<ClassDoc>> annotationTypes;
-/*     */   private Map<String, Set<ClassDoc>> errors;
-/*     */   private Map<String, Set<ClassDoc>> interfaces;
-/*     */   private Configuration configuration;
-/*     */   
-/*     */   public ClassDocCatalog(ClassDoc[] paramArrayOfClassDoc, Configuration paramConfiguration) {
-/* 101 */     init();
-/* 102 */     this.configuration = paramConfiguration;
-/* 103 */     for (byte b = 0; b < paramArrayOfClassDoc.length; b++) {
-/* 104 */       addClassDoc(paramArrayOfClassDoc[b]);
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassDocCatalog() {
-/* 113 */     init();
-/*     */   }
-/*     */   
-/*     */   private void init() {
-/* 117 */     this.allClasses = new HashMap<>();
-/* 118 */     this.ordinaryClasses = new HashMap<>();
-/* 119 */     this.exceptions = new HashMap<>();
-/* 120 */     this.enums = new HashMap<>();
-/* 121 */     this.annotationTypes = new HashMap<>();
-/* 122 */     this.errors = new HashMap<>();
-/* 123 */     this.interfaces = new HashMap<>();
-/* 124 */     this.packageSet = new HashSet<>();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addClassDoc(ClassDoc paramClassDoc) {
-/* 132 */     if (paramClassDoc == null) {
-/*     */       return;
-/*     */     }
-/* 135 */     addClass(paramClassDoc, this.allClasses);
-/* 136 */     if (paramClassDoc.isOrdinaryClass()) {
-/* 137 */       addClass(paramClassDoc, this.ordinaryClasses);
-/* 138 */     } else if (paramClassDoc.isException()) {
-/* 139 */       addClass(paramClassDoc, this.exceptions);
-/* 140 */     } else if (paramClassDoc.isEnum()) {
-/* 141 */       addClass(paramClassDoc, this.enums);
-/* 142 */     } else if (paramClassDoc.isAnnotationType()) {
-/* 143 */       addClass(paramClassDoc, this.annotationTypes);
-/* 144 */     } else if (paramClassDoc.isError()) {
-/* 145 */       addClass(paramClassDoc, this.errors);
-/* 146 */     } else if (paramClassDoc.isInterface()) {
-/* 147 */       addClass(paramClassDoc, this.interfaces);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void addClass(ClassDoc paramClassDoc, Map<String, Set<ClassDoc>> paramMap) {
-/* 158 */     PackageDoc packageDoc = paramClassDoc.containingPackage();
-/* 159 */     if (packageDoc.isIncluded() || (this.configuration.nodeprecated && Util.isDeprecated((Doc)packageDoc))) {
-/*     */       return;
-/*     */     }
-/*     */ 
-/*     */ 
-/*     */     
-/* 165 */     String str = Util.getPackageName(packageDoc);
-/* 166 */     Set<ClassDoc> set = paramMap.get(str);
-/* 167 */     if (set == null) {
-/* 168 */       this.packageSet.add(str);
-/* 169 */       set = new HashSet();
-/*     */     } 
-/* 171 */     set.add(paramClassDoc);
-/* 172 */     paramMap.put(str, set);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   private ClassDoc[] getArray(Map<String, Set<ClassDoc>> paramMap, String paramString) {
-/* 177 */     Set set = paramMap.get(paramString);
-/* 178 */     if (set == null) {
-/* 179 */       return new ClassDoc[0];
-/*     */     }
-/* 181 */     return (ClassDoc[])set.toArray((Object[])new ClassDoc[0]);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassDoc[] allClasses(PackageDoc paramPackageDoc) {
-/* 191 */     return paramPackageDoc.isIncluded() ? paramPackageDoc
-/* 192 */       .allClasses() : 
-/* 193 */       getArray(this.allClasses, Util.getPackageName(paramPackageDoc));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassDoc[] allClasses(String paramString) {
-/* 203 */     return getArray(this.allClasses, paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String[] packageNames() {
-/* 211 */     return this.packageSet.<String>toArray(new String[0]);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isKnownPackage(String paramString) {
-/* 221 */     return this.packageSet.contains(paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassDoc[] errors(String paramString) {
-/* 232 */     return getArray(this.errors, paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassDoc[] exceptions(String paramString) {
-/* 242 */     return getArray(this.exceptions, paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassDoc[] enums(String paramString) {
-/* 252 */     return getArray(this.enums, paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassDoc[] annotationTypes(String paramString) {
-/* 262 */     return getArray(this.annotationTypes, paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassDoc[] interfaces(String paramString) {
-/* 272 */     return getArray(this.interfaces, paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassDoc[] ordinaryClasses(String paramString) {
-/* 282 */     return getArray(this.ordinaryClasses, paramString);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolki\\util\ClassDocCatalog.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2001, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.util;
+
+import java.util.*;
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.internal.toolkit.Configuration;
+
+/**
+ * This class acts as an artificial PackageDoc for classes specified
+ * on the command line when running Javadoc.  For example, if you
+ * specify several classes from package java.lang, this class will catalog
+ * those classes so that we can retrieve all of the classes from a particular
+ * package later.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Jamie Ho
+ * @since 1.4
+ */
+
+ public class ClassDocCatalog {
+
+     /**
+      * Stores the set of packages that the classes specified on the command line
+      * belong to.  Note that the default package is "".
+      */
+     private Set<String> packageSet;
+
+
+     /**
+      * Stores all classes for each package
+      */
+     private Map<String,Set<ClassDoc>> allClasses;
+
+     /**
+      * Stores ordinary classes (excluding Exceptions and Errors) for each
+      * package
+      */
+     private Map<String,Set<ClassDoc>> ordinaryClasses;
+
+     /**
+      * Stores exceptions for each package
+      */
+     private Map<String,Set<ClassDoc>> exceptions;
+
+    /**
+     * Stores enums for each package.
+     */
+    private Map<String,Set<ClassDoc>> enums;
+
+    /**
+     * Stores annotation types for each package.
+     */
+    private Map<String,Set<ClassDoc>> annotationTypes;
+
+     /**
+      * Stores errors for each package
+      */
+     private Map<String,Set<ClassDoc>> errors;
+
+     /**
+      * Stores interfaces for each package
+      */
+     private Map<String,Set<ClassDoc>> interfaces;
+
+     private Configuration configuration;
+
+     /**
+      * Construct a new ClassDocCatalog.
+      *
+      * @param classdocs the array of ClassDocs to catalog
+      */
+     public ClassDocCatalog (ClassDoc[] classdocs, Configuration config) {
+         init();
+         this.configuration = config;
+         for (int i = 0; i < classdocs.length; i++) {
+             addClassDoc(classdocs[i]);
+         }
+     }
+
+     /**
+      * Construct a new ClassDocCatalog.
+      *
+      */
+     public ClassDocCatalog () {
+         init();
+     }
+
+     private void init() {
+         allClasses = new HashMap<String,Set<ClassDoc>>();
+         ordinaryClasses = new HashMap<String,Set<ClassDoc>>();
+         exceptions = new HashMap<String,Set<ClassDoc>>();
+         enums = new HashMap<String,Set<ClassDoc>>();
+         annotationTypes = new HashMap<String,Set<ClassDoc>>();
+         errors = new HashMap<String,Set<ClassDoc>>();
+         interfaces = new HashMap<String,Set<ClassDoc>>();
+         packageSet = new HashSet<String>();
+     }
+
+     /**
+      * Add the given class to the catalog.
+      * @param classdoc the ClassDoc to add to the catelog.
+      */
+      public void addClassDoc(ClassDoc classdoc) {
+        if (classdoc == null) {
+            return;
+        }
+        addClass(classdoc, allClasses);
+        if (classdoc.isOrdinaryClass()) {
+            addClass(classdoc, ordinaryClasses);
+        } else if (classdoc.isException()) {
+            addClass(classdoc, exceptions);
+        } else if (classdoc.isEnum()) {
+            addClass(classdoc, enums);
+        } else if (classdoc.isAnnotationType()) {
+            addClass(classdoc, annotationTypes);
+        } else if (classdoc.isError()) {
+            addClass(classdoc, errors);
+        } else if (classdoc.isInterface()) {
+            addClass(classdoc, interfaces);
+        }
+      }
+
+      /**
+       * Add the given class to the given map.
+       * @param classdoc the ClassDoc to add to the catelog.
+       * @param map the Map to add the ClassDoc to.
+       */
+      private void addClass(ClassDoc classdoc, Map<String,Set<ClassDoc>> map) {
+
+          PackageDoc pkg = classdoc.containingPackage();
+          if (pkg.isIncluded() || (configuration.nodeprecated && Util.isDeprecated(pkg))) {
+              //No need to catalog this class if it's package is
+              //included on the command line or if -nodeprecated option is set
+              // and the containing package is marked as deprecated.
+              return;
+          }
+          String key = Util.getPackageName(pkg);
+          Set<ClassDoc> s = map.get(key);
+          if (s == null) {
+              packageSet.add(key);
+              s = new HashSet<ClassDoc>();
+          }
+          s.add(classdoc);
+          map.put(key, s);
+
+      }
+
+      private ClassDoc[] getArray(Map<String,Set<ClassDoc>> m, String key) {
+          Set<ClassDoc> s = m.get(key);
+          if (s == null) {
+              return new ClassDoc[] {};
+          } else {
+              return s.toArray(new ClassDoc[] {});
+          }
+      }
+
+      /**
+       * Return all of the classes specified on the command-line that
+       * belong to the given package.
+       * @param pkgDoc the package to return the classes for.
+       */
+      public ClassDoc[] allClasses(PackageDoc pkgDoc) {
+          return pkgDoc.isIncluded() ?
+                pkgDoc.allClasses() :
+                getArray(allClasses, Util.getPackageName(pkgDoc));
+      }
+
+      /**
+       * Return all of the classes specified on the command-line that
+       * belong to the given package.
+       * @param packageName the name of the package specified on the
+       * command-line.
+       */
+      public ClassDoc[] allClasses(String packageName) {
+          return getArray(allClasses, packageName);
+      }
+
+     /**
+      * Return the array of package names that this catalog stores
+      * ClassDocs for.
+      */
+     public String[] packageNames() {
+         return packageSet.toArray(new String[] {});
+     }
+
+     /**
+      * Return true if the given package is known to this catalog.
+      * @param packageName the name to check.
+      * @return true if this catalog has any information about
+      * classes in the given package.
+      */
+     public boolean isKnownPackage(String packageName) {
+         return packageSet.contains(packageName);
+     }
+
+
+      /**
+       * Return all of the errors specified on the command-line
+       * that belong to the given package.
+       * @param packageName the name of the package specified on the
+       * command-line.
+       */
+      public ClassDoc[] errors(String packageName) {
+          return getArray(errors, packageName);
+      }
+
+      /**
+       * Return all of the exceptions specified on the command-line
+       * that belong to the given package.
+       * @param packageName the name of the package specified on the
+       * command-line.
+       */
+      public ClassDoc[] exceptions(String packageName) {
+          return getArray(exceptions, packageName);
+      }
+
+      /**
+       * Return all of the enums specified on the command-line
+       * that belong to the given package.
+       * @param packageName the name of the package specified on the
+       * command-line.
+       */
+      public ClassDoc[] enums(String packageName) {
+          return getArray(enums, packageName);
+      }
+
+      /**
+       * Return all of the annotation types specified on the command-line
+       * that belong to the given package.
+       * @param packageName the name of the package specified on the
+       * command-line.
+       */
+      public ClassDoc[] annotationTypes(String packageName) {
+          return getArray(annotationTypes, packageName);
+      }
+
+      /**
+       * Return all of the interfaces specified on the command-line
+       * that belong to the given package.
+       * @param packageName the name of the package specified on the
+       * command-line.
+       */
+      public ClassDoc[] interfaces(String packageName) {
+          return getArray(interfaces, packageName);
+      }
+
+      /**
+       * Return all of the ordinary classes specified on the command-line
+       * that belong to the given package.
+       * @param packageName the name of the package specified on the
+       * command-line.
+       */
+      public ClassDoc[] ordinaryClasses(String packageName) {
+          return getArray(ordinaryClasses, packageName);
+      }
+}

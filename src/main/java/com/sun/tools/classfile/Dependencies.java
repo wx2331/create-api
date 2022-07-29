@@ -1,808 +1,794 @@
-/*     */ package com.sun.tools.classfile;
-/*     */
-/*     */ import java.util.HashMap;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.LinkedList;
-/*     */ import java.util.List;
-/*     */ import java.util.Map;
-/*     */ import java.util.Set;
-/*     */ import java.util.regex.Pattern;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class Dependencies
-/*     */ {
-/*     */   private Dependency.Filter filter;
-/*     */   private Dependency.Finder finder;
-/*     */
-/*     */   public static class ClassFileNotFoundException
-/*     */     extends Exception
-/*     */   {
-/*     */     private static final long serialVersionUID = 3632265927794475048L;
-/*     */     public final String className;
-/*     */
-/*     */     public ClassFileNotFoundException(String param1String) {
-/*  70 */       super(param1String);
-/*  71 */       this.className = param1String;
-/*     */     }
-/*     */
-/*     */     public ClassFileNotFoundException(String param1String, Throwable param1Throwable) {
-/*  75 */       this(param1String);
-/*  76 */       initCause(param1Throwable);
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public static class ClassFileError
-/*     */     extends Error
-/*     */   {
-/*     */     private static final long serialVersionUID = 4111110813961313203L;
-/*     */
-/*     */
-/*     */     public ClassFileError(Throwable param1Throwable) {
-/*  89 */       initCause(param1Throwable);
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static Dependency.Finder getDefaultFinder() {
-/* 124 */     return new APIDependencyFinder(2);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static Dependency.Finder getAPIFinder(int paramInt) {
-/* 141 */     return new APIDependencyFinder(paramInt);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static Dependency.Finder getClassDependencyFinder() {
-/* 150 */     return new ClassDependencyFinder();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Dependency.Finder getFinder() {
-/* 158 */     if (this.finder == null)
-/* 159 */       this.finder = getDefaultFinder();
-/* 160 */     return this.finder;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void setFinder(Dependency.Finder paramFinder) {
-/* 168 */     paramFinder.getClass();
-/* 169 */     this.finder = paramFinder;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static Dependency.Filter getDefaultFilter() {
-/* 179 */     return DefaultFilter.instance();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static Dependency.Filter getRegexFilter(Pattern paramPattern) {
-/* 189 */     return new TargetRegexFilter(paramPattern);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static Dependency.Filter getPackageFilter(Set<String> paramSet, boolean paramBoolean) {
-/* 202 */     return new TargetPackageFilter(paramSet, paramBoolean);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Dependency.Filter getFilter() {
-/* 212 */     if (this.filter == null)
-/* 213 */       this.filter = getDefaultFilter();
-/* 214 */     return this.filter;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void setFilter(Dependency.Filter paramFilter) {
-/* 223 */     paramFilter.getClass();
-/* 224 */     this.filter = paramFilter;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Set<Dependency> findAllDependencies(ClassFileReader paramClassFileReader, Set<String> paramSet, boolean paramBoolean) throws ClassFileNotFoundException {
-/* 248 */     final HashSet<Dependency> results = new HashSet();
-/* 249 */     Recorder recorder = new Recorder() {
-/*     */         public void addDependency(Dependency param1Dependency) {
-/* 251 */           results.add(param1Dependency);
-/*     */         }
-/*     */       };
-/* 254 */     findAllDependencies(paramClassFileReader, paramSet, paramBoolean, recorder);
-/* 255 */     return hashSet;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void findAllDependencies(ClassFileReader paramClassFileReader, Set<String> paramSet, boolean paramBoolean, Recorder paramRecorder) throws ClassFileNotFoundException {
-/* 279 */     HashSet<String> hashSet = new HashSet();
-/*     */
-/* 281 */     getFinder();
-/* 282 */     getFilter();
-/*     */
-/*     */
-/*     */
-/*     */
-/* 287 */     LinkedList<String> linkedList = new LinkedList<>(paramSet);
-/*     */
-/*     */     String str;
-/* 290 */     while ((str = linkedList.poll()) != null) {
-/* 291 */       assert !hashSet.contains(str);
-/* 292 */       hashSet.add(str);
-/*     */
-/* 294 */       ClassFile classFile = paramClassFileReader.getClassFile(str);
-/*     */
-/*     */
-/*     */
-/* 298 */       for (Dependency dependency : this.finder.findDependencies(classFile)) {
-/* 299 */         paramRecorder.addDependency(dependency);
-/* 300 */         if (paramBoolean && this.filter.accepts(dependency)) {
-/* 301 */           String str1 = dependency.getTarget().getClassName();
-/* 302 */           if (!hashSet.contains(str1)) {
-/* 303 */             linkedList.add(str1);
-/*     */           }
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */   static class SimpleLocation
-/*     */     implements Dependency.Location
-/*     */   {
-/*     */     private String name;
-/*     */     private String className;
-/*     */
-/*     */     public SimpleLocation(String param1String) {
-/* 317 */       this.name = param1String;
-/* 318 */       this.className = param1String.replace('/', '.');
-/*     */     }
-/*     */
-/*     */     public String getName() {
-/* 322 */       return this.name;
-/*     */     }
-/*     */
-/*     */     public String getClassName() {
-/* 326 */       return this.className;
-/*     */     }
-/*     */
-/*     */     public String getPackageName() {
-/* 330 */       int i = this.name.lastIndexOf('/');
-/* 331 */       return (i > 0) ? this.name.substring(0, i).replace('/', '.') : "";
-/*     */     }
-/*     */
-/*     */
-/*     */     public boolean equals(Object param1Object) {
-/* 336 */       if (this == param1Object)
-/* 337 */         return true;
-/* 338 */       if (!(param1Object instanceof SimpleLocation))
-/* 339 */         return false;
-/* 340 */       return this.name.equals(((SimpleLocation)param1Object).name);
-/*     */     }
-/*     */
-/*     */
-/*     */     public int hashCode() {
-/* 345 */       return this.name.hashCode();
-/*     */     }
-/*     */
-/*     */
-/*     */     public String toString() {
-/* 350 */       return this.name;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */   static class SimpleDependency
-/*     */     implements Dependency
-/*     */   {
-/*     */     private Location origin;
-/*     */     private Location target;
-/*     */
-/*     */     public SimpleDependency(Location param1Location1, Location param1Location2) {
-/* 362 */       this.origin = param1Location1;
-/* 363 */       this.target = param1Location2;
-/*     */     }
-/*     */
-/*     */     public Location getOrigin() {
-/* 367 */       return this.origin;
-/*     */     }
-/*     */
-/*     */     public Location getTarget() {
-/* 371 */       return this.target;
-/*     */     }
-/*     */
-/*     */
-/*     */     public boolean equals(Object param1Object) {
-/* 376 */       if (this == param1Object)
-/* 377 */         return true;
-/* 378 */       if (!(param1Object instanceof SimpleDependency))
-/* 379 */         return false;
-/* 380 */       SimpleDependency simpleDependency = (SimpleDependency)param1Object;
-/* 381 */       return (this.origin.equals(simpleDependency.origin) && this.target.equals(simpleDependency.target));
-/*     */     }
-/*     */
-/*     */
-/*     */     public int hashCode() {
-/* 386 */       return this.origin.hashCode() * 31 + this.target.hashCode();
-/*     */     }
-/*     */
-/*     */
-/*     */     public String toString() {
-/* 391 */       return this.origin + ":" + this.target;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   static class DefaultFilter
-/*     */     implements Dependency.Filter
-/*     */   {
-/*     */     private static DefaultFilter instance;
-/*     */
-/*     */
-/*     */
-/*     */     static DefaultFilter instance() {
-/* 406 */       if (instance == null)
-/* 407 */         instance = new DefaultFilter();
-/* 408 */       return instance;
-/*     */     }
-/*     */
-/*     */     public boolean accepts(Dependency param1Dependency) {
-/* 412 */       return true;
-/*     */     }
-/*     */   }
-/*     */
-/*     */   static class TargetRegexFilter
-/*     */     implements Dependency.Filter
-/*     */   {
-/*     */     private final Pattern pattern;
-/*     */
-/*     */     TargetRegexFilter(Pattern param1Pattern) {
-/* 422 */       this.pattern = param1Pattern;
-/*     */     }
-/*     */
-/*     */     public boolean accepts(Dependency param1Dependency) {
-/* 426 */       return this.pattern.matcher(param1Dependency.getTarget().getClassName()).matches();
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */   static class TargetPackageFilter
-/*     */     implements Dependency.Filter
-/*     */   {
-/*     */     private final Set<String> packageNames;
-/*     */     private final boolean matchSubpackages;
-/*     */
-/*     */     TargetPackageFilter(Set<String> param1Set, boolean param1Boolean) {
-/* 438 */       for (String str : param1Set) {
-/* 439 */         if (str.length() == 0)
-/* 440 */           throw new IllegalArgumentException();
-/*     */       }
-/* 442 */       this.packageNames = param1Set;
-/* 443 */       this.matchSubpackages = param1Boolean;
-/*     */     }
-/*     */
-/*     */     public boolean accepts(Dependency param1Dependency) {
-/* 447 */       String str = param1Dependency.getTarget().getPackageName();
-/* 448 */       if (this.packageNames.contains(str)) {
-/* 449 */         return true;
-/*     */       }
-/* 451 */       if (this.matchSubpackages) {
-/* 452 */         for (String str1 : this.packageNames) {
-/* 453 */           if (str.startsWith(str1 + ".")) {
-/* 454 */             return true;
-/*     */           }
-/*     */         }
-/*     */       }
-/* 458 */       return false;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   static class ClassDependencyFinder
-/*     */     extends BasicDependencyFinder
-/*     */   {
-/*     */     public Iterable<? extends Dependency> findDependencies(ClassFile param1ClassFile) {
-/* 470 */       Visitor visitor = new Visitor(this, param1ClassFile);
-/* 471 */       for (ConstantPool.CPInfo cPInfo : param1ClassFile.constant_pool.entries()) {
-/* 472 */         visitor.scan(cPInfo);
-/*     */       }
-/*     */       try {
-/* 475 */         visitor.addClass(param1ClassFile.super_class);
-/* 476 */         visitor.addClasses(param1ClassFile.interfaces);
-/* 477 */         visitor.scan(param1ClassFile.attributes);
-/*     */
-/* 479 */         for (Field field : param1ClassFile.fields) {
-/* 480 */           visitor.scan(field.descriptor, field.attributes);
-/*     */         }
-/* 482 */         for (Method method : param1ClassFile.methods) {
-/* 483 */           visitor.scan(method.descriptor, method.attributes);
-/*     */
-/* 485 */           Exceptions_attribute exceptions_attribute = (Exceptions_attribute)method.attributes.get("Exceptions");
-/* 486 */           if (exceptions_attribute != null) {
-/* 487 */             visitor.addClasses(exceptions_attribute.exception_index_table);
-/*     */           }
-/*     */         }
-/* 490 */       } catch (ConstantPoolException constantPoolException) {
-/* 491 */         throw new ClassFileError(constantPoolException);
-/*     */       }
-/*     */
-/* 494 */       return visitor.deps;
-/*     */     }
-/*     */   }
-/*     */
-/*     */   static class APIDependencyFinder
-/*     */     extends BasicDependencyFinder
-/*     */   {
-/*     */     private int showAccess;
-/*     */
-/*     */     APIDependencyFinder(int param1Int) {
-/* 504 */       switch (param1Int) {
-/*     */         case 0:
-/*     */         case 1:
-/*     */         case 2:
-/*     */         case 4:
-/* 509 */           this.showAccess = param1Int;
-/*     */           return;
-/*     */       }
-/* 512 */       throw new IllegalArgumentException("invalid access 0x" +
-/* 513 */           Integer.toHexString(param1Int));
-/*     */     }
-/*     */
-/*     */
-/*     */     public Iterable<? extends Dependency> findDependencies(ClassFile param1ClassFile) {
-/*     */       try {
-/* 519 */         Visitor visitor = new Visitor(this, param1ClassFile);
-/* 520 */         visitor.addClass(param1ClassFile.super_class);
-/* 521 */         visitor.addClasses(param1ClassFile.interfaces);
-/*     */
-/* 523 */         for (Field field : param1ClassFile.fields) {
-/* 524 */           if (checkAccess(field.access_flags))
-/* 525 */             visitor.scan(field.descriptor, field.attributes);
-/*     */         }
-/* 527 */         for (Method method : param1ClassFile.methods) {
-/* 528 */           if (checkAccess(method.access_flags)) {
-/* 529 */             visitor.scan(method.descriptor, method.attributes);
-/*     */
-/* 531 */             Exceptions_attribute exceptions_attribute = (Exceptions_attribute)method.attributes.get("Exceptions");
-/* 532 */             if (exceptions_attribute != null)
-/* 533 */               visitor.addClasses(exceptions_attribute.exception_index_table);
-/*     */           }
-/*     */         }
-/* 536 */         return visitor.deps;
-/* 537 */       } catch (ConstantPoolException constantPoolException) {
-/* 538 */         throw new ClassFileError(constantPoolException);
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */     boolean checkAccess(AccessFlags param1AccessFlags) {
-/* 544 */       boolean bool1 = param1AccessFlags.is(1);
-/* 545 */       boolean bool2 = param1AccessFlags.is(4);
-/* 546 */       boolean bool3 = param1AccessFlags.is(2);
-/* 547 */       boolean bool = (!bool1 && !bool2 && !bool3) ? true : false;
-/*     */
-/* 549 */       if (this.showAccess == 1 && (bool2 || bool3 || bool))
-/* 550 */         return false;
-/* 551 */       if (this.showAccess == 4 && (bool3 || bool))
-/* 552 */         return false;
-/* 553 */       if (this.showAccess == 0 && bool3) {
-/* 554 */         return false;
-/*     */       }
-/* 556 */       return true;
-/*     */     }
-/*     */   }
-/*     */
-/*     */   static abstract class BasicDependencyFinder
-/*     */     implements Dependency.Finder
-/*     */   {
-/* 563 */     private Map<String, Dependency.Location> locations = new HashMap<>();
-/*     */
-/*     */     Dependency.Location getLocation(String param1String) {
-/* 566 */       Dependency.Location location = this.locations.get(param1String);
-/* 567 */       if (location == null)
-/* 568 */         this.locations.put(param1String, location = new SimpleLocation(param1String));
-/* 569 */       return location;
-/*     */     }
-/*     */
-/*     */     class Visitor implements ConstantPool.Visitor<Void, Void>, Type.Visitor<Void, Void> {
-/*     */       private ConstantPool constant_pool;
-/*     */       private Dependency.Location origin;
-/*     */       Set<Dependency> deps;
-/*     */
-/*     */       Visitor(ClassFile param2ClassFile) {
-/*     */         try {
-/* 579 */           this.constant_pool = param2ClassFile.constant_pool;
-/* 580 */           this.origin = BasicDependencyFinder.this.getLocation(param2ClassFile.getName());
-/* 581 */           this.deps = new HashSet<>();
-/* 582 */         } catch (ConstantPoolException constantPoolException) {
-/* 583 */           throw new ClassFileError(constantPoolException);
-/*     */         }
-/*     */       }
-/*     */
-/*     */       void scan(Descriptor param2Descriptor, Attributes param2Attributes) {
-/*     */         try {
-/* 589 */           scan((new Signature(param2Descriptor.index)).getType(this.constant_pool));
-/* 590 */           scan(param2Attributes);
-/* 591 */         } catch (ConstantPoolException constantPoolException) {
-/* 592 */           throw new ClassFileError(constantPoolException);
-/*     */         }
-/*     */       }
-/*     */
-/*     */       void scan(ConstantPool.CPInfo param2CPInfo) {
-/* 597 */         param2CPInfo.accept(this, null);
-/*     */       }
-/*     */
-/*     */       void scan(Type param2Type) {
-/* 601 */         param2Type.accept(this, null);
-/*     */       }
-/*     */
-/*     */       void scan(Attributes param2Attributes) {
-/*     */         try {
-/* 606 */           Signature_attribute signature_attribute = (Signature_attribute)param2Attributes.get("Signature");
-/* 607 */           if (signature_attribute != null) {
-/* 608 */             scan(signature_attribute.getParsedSignature().getType(this.constant_pool));
-/*     */           }
-/* 610 */           scan((RuntimeVisibleAnnotations_attribute)param2Attributes
-/* 611 */               .get("RuntimeVisibleAnnotations"));
-/* 612 */           scan((RuntimeVisibleParameterAnnotations_attribute)param2Attributes
-/* 613 */               .get("RuntimeVisibleParameterAnnotations"));
-/* 614 */         } catch (ConstantPoolException constantPoolException) {
-/* 615 */           throw new ClassFileError(constantPoolException);
-/*     */         }
-/*     */       }
-/*     */
-/*     */       private void scan(RuntimeAnnotations_attribute param2RuntimeAnnotations_attribute) throws ConstantPoolException {
-/* 620 */         if (param2RuntimeAnnotations_attribute == null) {
-/*     */           return;
-/*     */         }
-/* 623 */         for (byte b = 0; b < param2RuntimeAnnotations_attribute.annotations.length; b++) {
-/* 624 */           int i = (param2RuntimeAnnotations_attribute.annotations[b]).type_index;
-/* 625 */           scan((new Signature(i)).getType(this.constant_pool));
-/*     */         }
-/*     */       }
-/*     */
-/*     */       private void scan(RuntimeParameterAnnotations_attribute param2RuntimeParameterAnnotations_attribute) throws ConstantPoolException {
-/* 630 */         if (param2RuntimeParameterAnnotations_attribute == null) {
-/*     */           return;
-/*     */         }
-/* 633 */         for (byte b = 0; b < param2RuntimeParameterAnnotations_attribute.parameter_annotations.length; b++) {
-/* 634 */           for (byte b1 = 0; b1 < (param2RuntimeParameterAnnotations_attribute.parameter_annotations[b]).length; b1++) {
-/* 635 */             int i = (param2RuntimeParameterAnnotations_attribute.parameter_annotations[b][b1]).type_index;
-/* 636 */             scan((new Signature(i)).getType(this.constant_pool));
-/*     */           }
-/*     */         }
-/*     */       }
-/*     */
-/*     */       void addClass(int param2Int) throws ConstantPoolException {
-/* 642 */         if (param2Int != 0) {
-/* 643 */           String str = this.constant_pool.getClassInfo(param2Int).getBaseName();
-/* 644 */           if (str != null)
-/* 645 */             addDependency(str);
-/*     */         }
-/*     */       }
-/*     */
-/*     */       void addClasses(int[] param2ArrayOfint) throws ConstantPoolException {
-/* 650 */         for (int i : param2ArrayOfint)
-/* 651 */           addClass(i);
-/*     */       }
-/*     */
-/*     */       private void addDependency(String param2String) {
-/* 655 */         this.deps.add(new SimpleDependency(this.origin, BasicDependencyFinder.this.getLocation(param2String)));
-/*     */       }
-/*     */
-/*     */
-/*     */
-/*     */       public Void visitClass(ConstantPool.CONSTANT_Class_info param2CONSTANT_Class_info, Void param2Void) {
-/*     */         try {
-/* 662 */           if (param2CONSTANT_Class_info.getName().startsWith("[")) {
-/* 663 */             (new Signature(param2CONSTANT_Class_info.name_index)).getType(this.constant_pool).accept(this, null);
-/*     */           } else {
-/* 665 */             addDependency(param2CONSTANT_Class_info.getBaseName());
-/* 666 */           }  return null;
-/* 667 */         } catch (ConstantPoolException constantPoolException) {
-/* 668 */           throw new ClassFileError(constantPoolException);
-/*     */         }
-/*     */       }
-/*     */
-/*     */       public Void visitDouble(ConstantPool.CONSTANT_Double_info param2CONSTANT_Double_info, Void param2Void) {
-/* 673 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitFieldref(ConstantPool.CONSTANT_Fieldref_info param2CONSTANT_Fieldref_info, Void param2Void) {
-/* 677 */         return visitRef(param2CONSTANT_Fieldref_info, param2Void);
-/*     */       }
-/*     */
-/*     */       public Void visitFloat(ConstantPool.CONSTANT_Float_info param2CONSTANT_Float_info, Void param2Void) {
-/* 681 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitInteger(ConstantPool.CONSTANT_Integer_info param2CONSTANT_Integer_info, Void param2Void) {
-/* 685 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitInterfaceMethodref(ConstantPool.CONSTANT_InterfaceMethodref_info param2CONSTANT_InterfaceMethodref_info, Void param2Void) {
-/* 689 */         return visitRef(param2CONSTANT_InterfaceMethodref_info, param2Void);
-/*     */       }
-/*     */
-/*     */       public Void visitInvokeDynamic(ConstantPool.CONSTANT_InvokeDynamic_info param2CONSTANT_InvokeDynamic_info, Void param2Void) {
-/* 693 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitLong(ConstantPool.CONSTANT_Long_info param2CONSTANT_Long_info, Void param2Void) {
-/* 697 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitMethodHandle(ConstantPool.CONSTANT_MethodHandle_info param2CONSTANT_MethodHandle_info, Void param2Void) {
-/* 701 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitMethodType(ConstantPool.CONSTANT_MethodType_info param2CONSTANT_MethodType_info, Void param2Void) {
-/* 705 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitMethodref(ConstantPool.CONSTANT_Methodref_info param2CONSTANT_Methodref_info, Void param2Void) {
-/* 709 */         return visitRef(param2CONSTANT_Methodref_info, param2Void);
-/*     */       }
-/*     */
-/*     */       public Void visitNameAndType(ConstantPool.CONSTANT_NameAndType_info param2CONSTANT_NameAndType_info, Void param2Void) {
-/*     */         try {
-/* 714 */           (new Signature(param2CONSTANT_NameAndType_info.type_index)).getType(this.constant_pool).accept(this, null);
-/* 715 */           return null;
-/* 716 */         } catch (ConstantPoolException constantPoolException) {
-/* 717 */           throw new ClassFileError(constantPoolException);
-/*     */         }
-/*     */       }
-/*     */
-/*     */       public Void visitString(ConstantPool.CONSTANT_String_info param2CONSTANT_String_info, Void param2Void) {
-/* 722 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitUtf8(ConstantPool.CONSTANT_Utf8_info param2CONSTANT_Utf8_info, Void param2Void) {
-/* 726 */         return null;
-/*     */       }
-/*     */
-/*     */       private Void visitRef(ConstantPool.CPRefInfo param2CPRefInfo, Void param2Void) {
-/*     */         try {
-/* 731 */           visitClass(param2CPRefInfo.getClassInfo(), param2Void);
-/* 732 */           return null;
-/* 733 */         } catch (ConstantPoolException constantPoolException) {
-/* 734 */           throw new ClassFileError(constantPoolException);
-/*     */         }
-/*     */       }
-/*     */
-/*     */
-/*     */
-/*     */       private void findDependencies(Type param2Type) {
-/* 741 */         if (param2Type != null)
-/* 742 */           param2Type.accept(this, null);
-/*     */       }
-/*     */
-/*     */       private void findDependencies(List<? extends Type> param2List) {
-/* 746 */         if (param2List != null)
-/* 747 */           for (Type type : param2List) {
-/* 748 */             type.accept(this, null);
-/*     */           }
-/*     */       }
-/*     */
-/*     */       public Void visitSimpleType(Type.SimpleType param2SimpleType, Void param2Void) {
-/* 753 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitArrayType(Type.ArrayType param2ArrayType, Void param2Void) {
-/* 757 */         findDependencies(param2ArrayType.elemType);
-/* 758 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitMethodType(Type.MethodType param2MethodType, Void param2Void) {
-/* 762 */         findDependencies(param2MethodType.paramTypes);
-/* 763 */         findDependencies(param2MethodType.returnType);
-/* 764 */         findDependencies(param2MethodType.throwsTypes);
-/* 765 */         findDependencies((List)param2MethodType.typeParamTypes);
-/* 766 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitClassSigType(Type.ClassSigType param2ClassSigType, Void param2Void) {
-/* 770 */         findDependencies(param2ClassSigType.superclassType);
-/* 771 */         findDependencies(param2ClassSigType.superinterfaceTypes);
-/* 772 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitClassType(Type.ClassType param2ClassType, Void param2Void) {
-/* 776 */         findDependencies(param2ClassType.outerType);
-/* 777 */         addDependency(param2ClassType.getBinaryName());
-/* 778 */         findDependencies(param2ClassType.typeArgs);
-/* 779 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitTypeParamType(Type.TypeParamType param2TypeParamType, Void param2Void) {
-/* 783 */         findDependencies(param2TypeParamType.classBound);
-/* 784 */         findDependencies(param2TypeParamType.interfaceBounds);
-/* 785 */         return null;
-/*     */       }
-/*     */
-/*     */       public Void visitWildcardType(Type.WildcardType param2WildcardType, Void param2Void) {
-/* 789 */         findDependencies(param2WildcardType.boundType);
-/* 790 */         return null;
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static interface ClassFileReader {
-/*     */     ClassFile getClassFile(String param1String) throws ClassFileNotFoundException;
-/*     */   }
-/*     */
-/*     */   public static interface Recorder {
-/*     */     void addDependency(Dependency param1Dependency);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\classfile\Dependencies.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2009, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+package com.sun.tools.classfile;
+
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+import com.sun.tools.classfile.Dependency.Filter;
+import com.sun.tools.classfile.Dependency.Finder;
+import com.sun.tools.classfile.Dependency.Location;
+import com.sun.tools.classfile.Type.ArrayType;
+import com.sun.tools.classfile.Type.ClassSigType;
+import com.sun.tools.classfile.Type.ClassType;
+import com.sun.tools.classfile.Type.MethodType;
+import com.sun.tools.classfile.Type.SimpleType;
+import com.sun.tools.classfile.Type.TypeParamType;
+import com.sun.tools.classfile.Type.WildcardType;
+import static com.sun.tools.classfile.ConstantPool.*;
+
+/**
+ * A framework for determining {@link Dependency dependencies} between class files.
+ *
+ * A {@link Finder finder} is used to identify the dependencies of
+ * individual classes. Some finders may return subtypes of {@code Dependency} to
+ * further characterize the type of dependency, such as a dependency on a
+ * method within a class.
+ *
+ * A {@link Filter filter} may be used to restrict the set of
+ * dependencies found by a finder.
+ *
+ * Dependencies that are found may be passed to a {@link Recorder
+ * recorder} so that the dependencies can be stored in a custom data structure.
+ */
+public class Dependencies {
+    /**
+     * Thrown when a class file cannot be found.
+     */
+    public static class ClassFileNotFoundException extends Exception {
+        private static final long serialVersionUID = 3632265927794475048L;
+
+        public ClassFileNotFoundException(String className) {
+            super(className);
+            this.className = className;
+        }
+
+        public ClassFileNotFoundException(String className, Throwable cause) {
+            this(className);
+            initCause(cause);
+        }
+
+        public final String className;
+    }
+
+    /**
+     * Thrown when an exception is found processing a class file.
+     */
+    public static class ClassFileError extends Error {
+        private static final long serialVersionUID = 4111110813961313203L;
+
+        public ClassFileError(Throwable cause) {
+            initCause(cause);
+        }
+    }
+
+    /**
+     * Service provider interface to locate and read class files.
+     */
+    public interface ClassFileReader {
+        /**
+         * Get the ClassFile object for a specified class.
+         * @param className the name of the class to be returned.
+         * @return the ClassFile for the given class
+         * @throws ClassFileNotFoundException if the classfile cannot be
+         *   found
+         */
+        public ClassFile getClassFile(String className)
+                throws ClassFileNotFoundException;
+    }
+
+    /**
+     * Service provide interface to handle results.
+     */
+    public interface Recorder {
+        /**
+         * Record a dependency that has been found.
+         * @param d
+         */
+        public void addDependency(Dependency d);
+    }
+
+    /**
+     * Get the  default finder used to locate the dependencies for a class.
+     * @return the default finder
+     */
+    public static Finder getDefaultFinder() {
+        return new APIDependencyFinder(AccessFlags.ACC_PRIVATE);
+    }
+
+    /**
+     * Get a finder used to locate the API dependencies for a class.
+     * These include the superclass, superinterfaces, and classes referenced in
+     * the declarations of fields and methods.  The fields and methods that
+     * are checked can be limited according to a specified access.
+     * The access parameter must be one of {@link AccessFlags#ACC_PUBLIC ACC_PUBLIC},
+     * {@link AccessFlags#ACC_PRIVATE ACC_PRIVATE},
+     * {@link AccessFlags#ACC_PROTECTED ACC_PROTECTED}, or 0 for
+     * package private access. Members with greater than or equal accessibility
+     * to that specified will be searched for dependencies.
+     * @param access the access of members to be checked
+     * @return an API finder
+     */
+    public static Finder getAPIFinder(int access) {
+        return new APIDependencyFinder(access);
+    }
+
+    /**
+     * Get a finder to do class dependency analysis.
+     *
+     * @return a Class dependency finder
+     */
+    public static Finder getClassDependencyFinder() {
+        return new ClassDependencyFinder();
+    }
+
+    /**
+     * Get the finder used to locate the dependencies for a class.
+     * @return the finder
+     */
+    public Finder getFinder() {
+        if (finder == null)
+            finder = getDefaultFinder();
+        return finder;
+    }
+
+    /**
+     * Set the finder used to locate the dependencies for a class.
+     * @param f the finder
+     */
+    public void setFinder(Finder f) {
+        f.getClass(); // null check
+        finder = f;
+    }
+
+    /**
+     * Get the default filter used to determine included when searching
+     * the transitive closure of all the dependencies.
+     * Unless overridden, the default filter accepts all dependencies.
+     * @return the default filter.
+     */
+    public static Filter getDefaultFilter() {
+        return DefaultFilter.instance();
+    }
+
+    /**
+     * Get a filter which uses a regular expression on the target's class name
+     * to determine if a dependency is of interest.
+     * @param pattern the pattern used to match the target's class name
+     * @return a filter for matching the target class name with a regular expression
+     */
+    public static Filter getRegexFilter(Pattern pattern) {
+        return new TargetRegexFilter(pattern);
+    }
+
+    /**
+     * Get a filter which checks the package of a target's class name
+     * to determine if a dependency is of interest. The filter checks if the
+     * package of the target's class matches any of a set of given package
+     * names. The match may optionally match subpackages of the given names as well.
+     * @param packageNames the package names used to match the target's class name
+     * @param matchSubpackages whether or not to match subpackages as well
+     * @return a filter for checking the target package name against a list of package names
+     */
+    public static Filter getPackageFilter(Set<String> packageNames, boolean matchSubpackages) {
+        return new TargetPackageFilter(packageNames, matchSubpackages);
+    }
+
+    /**
+     * Get the filter used to determine the dependencies included when searching
+     * the transitive closure of all the dependencies.
+     * Unless overridden, the default filter accepts all dependencies.
+     * @return the filter
+     */
+    public Filter getFilter() {
+        if (filter == null)
+            filter = getDefaultFilter();
+        return filter;
+    }
+
+    /**
+     * Set the filter used to determine the dependencies included when searching
+     * the transitive closure of all the dependencies.
+     * @param f the filter
+     */
+    public void setFilter(Filter f) {
+        f.getClass(); // null check
+        filter = f;
+    }
+
+    /**
+     * Find the dependencies of a class, using the current
+     * {@link Dependencies#getFinder finder} and
+     * {@link Dependencies#getFilter filter}.
+     * The search may optionally include the transitive closure of all the
+     * filtered dependencies, by also searching in the classes named in those
+     * dependencies.
+     * @param classFinder a finder to locate class files
+     * @param rootClassNames the names of the root classes from which to begin
+     *      searching
+     * @param transitiveClosure whether or not to also search those classes
+     *      named in any filtered dependencies that are found.
+     * @return the set of dependencies that were found
+     * @throws ClassFileNotFoundException if a required class file cannot be found
+     * @throws ClassFileError if an error occurs while processing a class file,
+     *      such as an error in the internal class file structure.
+     */
+    public Set<Dependency> findAllDependencies(
+            ClassFileReader classFinder, Set<String> rootClassNames,
+            boolean transitiveClosure)
+            throws ClassFileNotFoundException {
+        final Set<Dependency> results = new HashSet<Dependency>();
+        Recorder r = new Recorder() {
+            public void addDependency(Dependency d) {
+                results.add(d);
+            }
+        };
+        findAllDependencies(classFinder, rootClassNames, transitiveClosure, r);
+        return results;
+    }
+
+    /**
+     * Find the dependencies of a class, using the current
+     * {@link Dependencies#getFinder finder} and
+     * {@link Dependencies#getFilter filter}.
+     * The search may optionally include the transitive closure of all the
+     * filtered dependencies, by also searching in the classes named in those
+     * dependencies.
+     * @param classFinder a finder to locate class files
+     * @param rootClassNames the names of the root classes from which to begin
+     *      searching
+     * @param transitiveClosure whether or not to also search those classes
+     *      named in any filtered dependencies that are found.
+     * @param recorder a recorder for handling the results
+     * @throws ClassFileNotFoundException if a required class file cannot be found
+     * @throws ClassFileError if an error occurs while processing a class file,
+     *      such as an error in the internal class file structure.
+     */
+    public void findAllDependencies(
+            ClassFileReader classFinder, Set<String> rootClassNames,
+            boolean transitiveClosure, Recorder recorder)
+            throws ClassFileNotFoundException {
+        Set<String> doneClasses = new HashSet<String>();
+
+        getFinder();  // ensure initialized
+        getFilter();  // ensure initialized
+
+        // Work queue of names of classfiles to be searched.
+        // Entries will be unique, and for classes that do not yet have
+        // dependencies in the results map.
+        Deque<String> deque = new LinkedList<String>(rootClassNames);
+
+        String className;
+        while ((className = deque.poll()) != null) {
+            assert (!doneClasses.contains(className));
+            doneClasses.add(className);
+
+            ClassFile cf = classFinder.getClassFile(className);
+
+            // The following code just applies the filter to the dependencies
+            // followed for the transitive closure.
+            for (Dependency d: finder.findDependencies(cf)) {
+                recorder.addDependency(d);
+                if (transitiveClosure && filter.accepts(d)) {
+                    String cn = d.getTarget().getClassName();
+                    if (!doneClasses.contains(cn))
+                        deque.add(cn);
+                }
+            }
+        }
+    }
+
+    private Filter filter;
+    private Finder finder;
+
+    /**
+     * A location identifying a class.
+     */
+    static class SimpleLocation implements Location {
+        public SimpleLocation(String name) {
+            this.name = name;
+            this.className = name.replace('/', '.');
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getClassName() {
+            return className;
+        }
+
+        public String getPackageName() {
+            int i = name.lastIndexOf('/');
+            return (i > 0) ? name.substring(0, i).replace('/', '.') : "";
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other)
+                return true;
+            if (!(other instanceof SimpleLocation))
+                return false;
+            return (name.equals(((SimpleLocation) other).name));
+        }
+
+        @Override
+        public int hashCode() {
+            return name.hashCode();
+        }
+
+        @Override
+        public String toString() {
+            return name;
+        }
+
+        private String name;
+        private String className;
+    }
+
+    /**
+     * A dependency of one class on another.
+     */
+    static class SimpleDependency implements Dependency {
+        public SimpleDependency(Location origin, Location target) {
+            this.origin = origin;
+            this.target = target;
+        }
+
+        public Location getOrigin() {
+            return origin;
+        }
+
+        public Location getTarget() {
+            return target;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other)
+                return true;
+            if (!(other instanceof SimpleDependency))
+                return false;
+            SimpleDependency o = (SimpleDependency) other;
+            return (origin.equals(o.origin) && target.equals(o.target));
+        }
+
+        @Override
+        public int hashCode() {
+            return origin.hashCode() * 31 + target.hashCode();
+        }
+
+        @Override
+        public String toString() {
+            return origin + ":" + target;
+        }
+
+        private Location origin;
+        private Location target;
+    }
+
+
+    /**
+     * This class accepts all dependencies.
+     */
+    static class DefaultFilter implements Filter {
+        private static DefaultFilter instance;
+
+        static DefaultFilter instance() {
+            if (instance == null)
+                instance = new DefaultFilter();
+            return instance;
+        }
+
+        public boolean accepts(Dependency dependency) {
+            return true;
+        }
+    }
+
+    /**
+     * This class accepts those dependencies whose target's class name matches a
+     * regular expression.
+     */
+    static class TargetRegexFilter implements Filter {
+        TargetRegexFilter(Pattern pattern) {
+            this.pattern = pattern;
+        }
+
+        public boolean accepts(Dependency dependency) {
+            return pattern.matcher(dependency.getTarget().getClassName()).matches();
+        }
+
+        private final Pattern pattern;
+    }
+
+    /**
+     * This class accepts those dependencies whose class name is in a given
+     * package.
+     */
+    static class TargetPackageFilter implements Filter {
+        TargetPackageFilter(Set<String> packageNames, boolean matchSubpackages) {
+            for (String pn: packageNames) {
+                if (pn.length() == 0) // implies null check as well
+                    throw new IllegalArgumentException();
+            }
+            this.packageNames = packageNames;
+            this.matchSubpackages = matchSubpackages;
+        }
+
+        public boolean accepts(Dependency dependency) {
+            String pn = dependency.getTarget().getPackageName();
+            if (packageNames.contains(pn))
+                return true;
+
+            if (matchSubpackages) {
+                for (String n: packageNames) {
+                    if (pn.startsWith(n + "."))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private final Set<String> packageNames;
+        private final boolean matchSubpackages;
+    }
+
+    /**
+     * This class identifies class names directly or indirectly in the constant pool.
+     */
+    static class ClassDependencyFinder extends BasicDependencyFinder {
+        public Iterable<? extends Dependency> findDependencies(ClassFile classfile) {
+            Visitor v = new Visitor(classfile);
+            for (CPInfo cpInfo: classfile.constant_pool.entries()) {
+                v.scan(cpInfo);
+            }
+            try {
+                v.addClass(classfile.super_class);
+                v.addClasses(classfile.interfaces);
+                v.scan(classfile.attributes);
+
+                for (Field f : classfile.fields) {
+                    v.scan(f.descriptor, f.attributes);
+                }
+                for (Method m : classfile.methods) {
+                    v.scan(m.descriptor, m.attributes);
+                    Exceptions_attribute e =
+                        (Exceptions_attribute)m.attributes.get(Attribute.Exceptions);
+                    if (e != null) {
+                        v.addClasses(e.exception_index_table);
+                    }
+                }
+            } catch (ConstantPoolException e) {
+                throw new ClassFileError(e);
+            }
+
+            return v.deps;
+        }
+    }
+
+    /**
+     * This class identifies class names in the signatures of classes, fields,
+     * and methods in a class.
+     */
+    static class APIDependencyFinder extends BasicDependencyFinder {
+        APIDependencyFinder(int access) {
+            switch (access) {
+                case AccessFlags.ACC_PUBLIC:
+                case AccessFlags.ACC_PROTECTED:
+                case AccessFlags.ACC_PRIVATE:
+                case 0:
+                    showAccess = access;
+                    break;
+                default:
+                    throw new IllegalArgumentException("invalid access 0x"
+                            + Integer.toHexString(access));
+            }
+        }
+
+        public Iterable<? extends Dependency> findDependencies(ClassFile classfile) {
+            try {
+                Visitor v = new Visitor(classfile);
+                v.addClass(classfile.super_class);
+                v.addClasses(classfile.interfaces);
+                // inner classes?
+                for (Field f : classfile.fields) {
+                    if (checkAccess(f.access_flags))
+                        v.scan(f.descriptor, f.attributes);
+                }
+                for (Method m : classfile.methods) {
+                    if (checkAccess(m.access_flags)) {
+                        v.scan(m.descriptor, m.attributes);
+                        Exceptions_attribute e =
+                                (Exceptions_attribute) m.attributes.get(Attribute.Exceptions);
+                        if (e != null)
+                            v.addClasses(e.exception_index_table);
+                    }
+                }
+                return v.deps;
+            } catch (ConstantPoolException e) {
+                throw new ClassFileError(e);
+            }
+        }
+
+        boolean checkAccess(AccessFlags flags) {
+            // code copied from javap.Options.checkAccess
+            boolean isPublic = flags.is(AccessFlags.ACC_PUBLIC);
+            boolean isProtected = flags.is(AccessFlags.ACC_PROTECTED);
+            boolean isPrivate = flags.is(AccessFlags.ACC_PRIVATE);
+            boolean isPackage = !(isPublic || isProtected || isPrivate);
+
+            if ((showAccess == AccessFlags.ACC_PUBLIC) && (isProtected || isPrivate || isPackage))
+                return false;
+            else if ((showAccess == AccessFlags.ACC_PROTECTED) && (isPrivate || isPackage))
+                return false;
+            else if ((showAccess == 0) && (isPrivate))
+                return false;
+            else
+                return true;
+        }
+
+        private int showAccess;
+    }
+
+    static abstract class BasicDependencyFinder implements Finder {
+        private Map<String,Location> locations = new HashMap<String,Location>();
+
+        Location getLocation(String className) {
+            Location l = locations.get(className);
+            if (l == null)
+                locations.put(className, l = new SimpleLocation(className));
+            return l;
+        }
+
+        class Visitor implements ConstantPool.Visitor<Void,Void>, Type.Visitor<Void, Void> {
+            private ConstantPool constant_pool;
+            private Location origin;
+            Set<Dependency> deps;
+
+            Visitor(ClassFile classFile) {
+                try {
+                    constant_pool = classFile.constant_pool;
+                    origin = getLocation(classFile.getName());
+                    deps = new HashSet<Dependency>();
+                } catch (ConstantPoolException e) {
+                    throw new ClassFileError(e);
+                }
+            }
+
+            void scan(Descriptor d, Attributes attrs) {
+                try {
+                    scan(new Signature(d.index).getType(constant_pool));
+                    scan(attrs);
+                } catch (ConstantPoolException e) {
+                    throw new ClassFileError(e);
+                }
+            }
+
+            void scan(CPInfo cpInfo) {
+                cpInfo.accept(this, null);
+            }
+
+            void scan(Type t) {
+                t.accept(this, null);
+            }
+
+            void scan(Attributes attrs) {
+                try {
+                    Signature_attribute sa = (Signature_attribute)attrs.get(Attribute.Signature);
+                    if (sa != null)
+                        scan(sa.getParsedSignature().getType(constant_pool));
+
+                    scan((RuntimeVisibleAnnotations_attribute)
+                            attrs.get(Attribute.RuntimeVisibleAnnotations));
+                    scan((RuntimeVisibleParameterAnnotations_attribute)
+                            attrs.get(Attribute.RuntimeVisibleParameterAnnotations));
+                } catch (ConstantPoolException e) {
+                    throw new ClassFileError(e);
+                }
+            }
+
+            private void scan(RuntimeAnnotations_attribute attr) throws ConstantPoolException {
+                if (attr == null) {
+                    return;
+                }
+                for (int i = 0; i < attr.annotations.length; i++) {
+                    int index = attr.annotations[i].type_index;
+                    scan(new Signature(index).getType(constant_pool));
+                }
+            }
+
+            private void scan(RuntimeParameterAnnotations_attribute attr) throws ConstantPoolException {
+                if (attr == null) {
+                    return;
+                }
+                for (int param = 0; param < attr.parameter_annotations.length; param++) {
+                    for (int i = 0; i < attr.parameter_annotations[param].length; i++) {
+                        int index = attr.parameter_annotations[param][i].type_index;
+                        scan(new Signature(index).getType(constant_pool));
+                    }
+                }
+            }
+
+            void addClass(int index) throws ConstantPoolException {
+                if (index != 0) {
+                    String name = constant_pool.getClassInfo(index).getBaseName();
+                    if (name != null)
+                        addDependency(name);
+                }
+            }
+
+            void addClasses(int[] indices) throws ConstantPoolException {
+                for (int i: indices)
+                    addClass(i);
+            }
+
+            private void addDependency(String name) {
+                deps.add(new SimpleDependency(origin, getLocation(name)));
+            }
+
+            // ConstantPool.Visitor methods
+
+            public Void visitClass(CONSTANT_Class_info info, Void p) {
+                try {
+                    if (info.getName().startsWith("["))
+                        new Signature(info.name_index).getType(constant_pool).accept(this, null);
+                    else
+                        addDependency(info.getBaseName());
+                    return null;
+                } catch (ConstantPoolException e) {
+                    throw new ClassFileError(e);
+                }
+            }
+
+            public Void visitDouble(CONSTANT_Double_info info, Void p) {
+                return null;
+            }
+
+            public Void visitFieldref(CONSTANT_Fieldref_info info, Void p) {
+                return visitRef(info, p);
+            }
+
+            public Void visitFloat(CONSTANT_Float_info info, Void p) {
+                return null;
+            }
+
+            public Void visitInteger(CONSTANT_Integer_info info, Void p) {
+                return null;
+            }
+
+            public Void visitInterfaceMethodref(CONSTANT_InterfaceMethodref_info info, Void p) {
+                return visitRef(info, p);
+            }
+
+            public Void visitInvokeDynamic(CONSTANT_InvokeDynamic_info info, Void p) {
+                return null;
+            }
+
+            public Void visitLong(CONSTANT_Long_info info, Void p) {
+                return null;
+            }
+
+            public Void visitMethodHandle(CONSTANT_MethodHandle_info info, Void p) {
+                return null;
+            }
+
+            public Void visitMethodType(CONSTANT_MethodType_info info, Void p) {
+                return null;
+            }
+
+            public Void visitMethodref(CONSTANT_Methodref_info info, Void p) {
+                return visitRef(info, p);
+            }
+
+            public Void visitNameAndType(CONSTANT_NameAndType_info info, Void p) {
+                try {
+                    new Signature(info.type_index).getType(constant_pool).accept(this, null);
+                    return null;
+                } catch (ConstantPoolException e) {
+                    throw new ClassFileError(e);
+                }
+            }
+
+            public Void visitString(CONSTANT_String_info info, Void p) {
+                return null;
+            }
+
+            public Void visitUtf8(CONSTANT_Utf8_info info, Void p) {
+                return null;
+            }
+
+            private Void visitRef(CPRefInfo info, Void p) {
+                try {
+                    visitClass(info.getClassInfo(), p);
+                    return null;
+                } catch (ConstantPoolException e) {
+                    throw new ClassFileError(e);
+                }
+            }
+
+            // Type.Visitor methods
+
+            private void findDependencies(Type t) {
+                if (t != null)
+                    t.accept(this, null);
+            }
+
+            private void findDependencies(List<? extends Type> ts) {
+                if (ts != null) {
+                    for (Type t: ts)
+                        t.accept(this, null);
+                }
+            }
+
+            public Void visitSimpleType(SimpleType type, Void p) {
+                return null;
+            }
+
+            public Void visitArrayType(ArrayType type, Void p) {
+                findDependencies(type.elemType);
+                return null;
+            }
+
+            public Void visitMethodType(MethodType type, Void p) {
+                findDependencies(type.paramTypes);
+                findDependencies(type.returnType);
+                findDependencies(type.throwsTypes);
+                findDependencies(type.typeParamTypes);
+                return null;
+            }
+
+            public Void visitClassSigType(ClassSigType type, Void p) {
+                findDependencies(type.superclassType);
+                findDependencies(type.superinterfaceTypes);
+                return null;
+            }
+
+            public Void visitClassType(ClassType type, Void p) {
+                findDependencies(type.outerType);
+                addDependency(type.getBinaryName());
+                findDependencies(type.typeArgs);
+                return null;
+            }
+
+            public Void visitTypeParamType(TypeParamType type, Void p) {
+                findDependencies(type.classBound);
+                findDependencies(type.interfaceBounds);
+                return null;
+            }
+
+            public Void visitWildcardType(WildcardType type, Void p) {
+                findDependencies(type.boundType);
+                return null;
+            }
+        }
+    }
+}

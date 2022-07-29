@@ -1,131 +1,125 @@
-/*     */ package com.sun.tools.javadoc;
-/*     */ 
-/*     */ import com.sun.javadoc.AnnotatedType;
-/*     */ import com.sun.javadoc.AnnotationDesc;
-/*     */ import com.sun.javadoc.AnnotationTypeDoc;
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.ParameterizedType;
-/*     */ import com.sun.javadoc.Type;
-/*     */ import com.sun.javadoc.TypeVariable;
-/*     */ import com.sun.javadoc.WildcardType;
-/*     */ import com.sun.tools.javac.code.Attribute;
-/*     */ import com.sun.tools.javac.code.Type;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class AnnotatedTypeImpl
-/*     */   extends AbstractTypeImpl
-/*     */   implements AnnotatedType
-/*     */ {
-/*     */   AnnotatedTypeImpl(DocEnv paramDocEnv, Type paramType) {
-/*  44 */     super(paramDocEnv, paramType);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AnnotationDesc[] annotations() {
-/*  53 */     List list = this.type.getAnnotationMirrors();
-/*  54 */     if (list == null || list
-/*  55 */       .isEmpty()) {
-/*  56 */       return new AnnotationDesc[0];
-/*     */     }
-/*  58 */     AnnotationDesc[] arrayOfAnnotationDesc = new AnnotationDesc[list.length()];
-/*  59 */     byte b = 0;
-/*  60 */     for (Attribute.Compound compound : list) {
-/*  61 */       arrayOfAnnotationDesc[b++] = new AnnotationDescImpl(this.env, compound);
-/*     */     }
-/*  63 */     return arrayOfAnnotationDesc;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public Type underlyingType() {
-/*  68 */     return TypeMaker.getType(this.env, this.type.unannotatedType(), true, false);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public AnnotatedType asAnnotatedType() {
-/*  73 */     return this;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public String toString() {
-/*  78 */     return typeName();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public String typeName() {
-/*  83 */     return underlyingType().typeName();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public String qualifiedTypeName() {
-/*  88 */     return underlyingType().qualifiedTypeName();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public String simpleTypeName() {
-/*  93 */     return underlyingType().simpleTypeName();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public String dimension() {
-/*  98 */     return underlyingType().dimension();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public boolean isPrimitive() {
-/* 103 */     return underlyingType().isPrimitive();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public ClassDoc asClassDoc() {
-/* 108 */     return underlyingType().asClassDoc();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public TypeVariable asTypeVariable() {
-/* 113 */     return underlyingType().asTypeVariable();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public WildcardType asWildcardType() {
-/* 118 */     return underlyingType().asWildcardType();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public ParameterizedType asParameterizedType() {
-/* 123 */     return underlyingType().asParameterizedType();
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javadoc\AnnotatedTypeImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javadoc;
+
+import com.sun.javadoc.*;
+import com.sun.tools.javac.code.Attribute;
+import com.sun.tools.javac.code.Attribute.TypeCompound;
+import com.sun.tools.javac.util.List;
+
+/**
+ * Implementation of <code>AnnotatedType</code>, which
+ * represents an annotated type.
+ *
+ * @author Mahmood Ali
+ * @since 1.8
+ */
+public class AnnotatedTypeImpl
+        extends AbstractTypeImpl implements AnnotatedType {
+
+    AnnotatedTypeImpl(DocEnv env, com.sun.tools.javac.code.Type type) {
+        super(env, type);
+    }
+
+    /**
+     * Get the annotations of this program element.
+     * Return an empty array if there are none.
+     */
+    @Override
+    public AnnotationDesc[] annotations() {
+        List<? extends TypeCompound> tas = type.getAnnotationMirrors();
+        if (tas == null ||
+                tas.isEmpty()) {
+            return new AnnotationDesc[0];
+        }
+        AnnotationDesc res[] = new AnnotationDesc[tas.length()];
+        int i = 0;
+        for (Attribute.Compound a : tas) {
+            res[i++] = new AnnotationDescImpl(env, a);
+        }
+        return res;
+    }
+
+    @Override
+    public Type underlyingType() {
+        return TypeMaker.getType(env, type.unannotatedType(), true, false);
+    }
+
+    @Override
+    public AnnotatedType asAnnotatedType() {
+        return this;
+    }
+
+    @Override
+    public String toString() {
+        return typeName();
+    }
+
+    @Override
+    public String typeName() {
+        return this.underlyingType().typeName();
+    }
+
+    @Override
+    public String qualifiedTypeName() {
+        return this.underlyingType().qualifiedTypeName();
+    }
+
+    @Override
+    public String simpleTypeName() {
+        return this.underlyingType().simpleTypeName();
+    }
+
+    @Override
+    public String dimension() {
+        return this.underlyingType().dimension();
+    }
+
+    @Override
+    public boolean isPrimitive() {
+        return this.underlyingType().isPrimitive();
+    }
+
+    @Override
+    public ClassDoc asClassDoc() {
+        return this.underlyingType().asClassDoc();
+    }
+
+    @Override
+    public TypeVariable asTypeVariable() {
+        return this.underlyingType().asTypeVariable();
+    }
+
+    @Override
+    public WildcardType asWildcardType() {
+        return this.underlyingType().asWildcardType();
+    }
+
+    @Override
+    public ParameterizedType asParameterizedType() {
+        return this.underlyingType().asParameterizedType();
+    }
+}

@@ -1,141 +1,138 @@
-/*     */ package com.sun.tools.javac.util;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class Assert
-/*     */ {
-/*     */   public static void check(boolean paramBoolean) {
-/*  44 */     if (!paramBoolean) {
-/*  45 */       error();
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void checkNull(Object paramObject) {
-/*  52 */     if (paramObject != null) {
-/*  53 */       error();
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static <T> T checkNonNull(T paramT) {
-/*  60 */     if (paramT == null)
-/*  61 */       error(); 
-/*  62 */     return paramT;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void check(boolean paramBoolean, int paramInt) {
-/*  69 */     if (!paramBoolean) {
-/*  70 */       error(String.valueOf(paramInt));
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void check(boolean paramBoolean, long paramLong) {
-/*  77 */     if (!paramBoolean) {
-/*  78 */       error(String.valueOf(paramLong));
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void check(boolean paramBoolean, Object paramObject) {
-/*  85 */     if (!paramBoolean) {
-/*  86 */       error(String.valueOf(paramObject));
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void check(boolean paramBoolean, String paramString) {
-/*  93 */     if (!paramBoolean) {
-/*  94 */       error(paramString);
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void checkNull(Object paramObject1, Object paramObject2) {
-/* 101 */     if (paramObject1 != null) {
-/* 102 */       error(String.valueOf(paramObject2));
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void checkNull(Object paramObject, String paramString) {
-/* 109 */     if (paramObject != null) {
-/* 110 */       error(paramString);
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static <T> T checkNonNull(T paramT, String paramString) {
-/* 117 */     if (paramT == null)
-/* 118 */       error(paramString); 
-/* 119 */     return paramT;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void error() {
-/* 126 */     throw new AssertionError();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void error(String paramString) {
-/* 133 */     throw new AssertionError(paramString);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\java\\util\Assert.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2011, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.util;
+
+
+/**
+ * Simple facility for unconditional assertions.
+ * The methods in this class are described in terms of equivalent assert
+ * statements, assuming that assertions have been enabled.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Assert {
+    /** Equivalent to
+     *   assert cond;
+     */
+    public static void check(boolean cond) {
+        if (!cond)
+            error();
+    }
+
+    /** Equivalent to
+     *   assert (o == null);
+     */
+    public static void checkNull(Object o) {
+        if (o != null)
+            error();
+    }
+
+    /** Equivalent to
+     *   assert (t != null); return t;
+     */
+    public static <T> T checkNonNull(T t) {
+        if (t == null)
+            error();
+        return t;
+    }
+
+    /** Equivalent to
+     *   assert cond : value;
+     */
+    public static void check(boolean cond, int value) {
+        if (!cond)
+            error(String.valueOf(value));
+    }
+
+    /** Equivalent to
+     *   assert cond : value;
+     */
+    public static void check(boolean cond, long value) {
+        if (!cond)
+            error(String.valueOf(value));
+    }
+
+    /** Equivalent to
+     *   assert cond : value;
+     */
+    public static void check(boolean cond, Object value) {
+        if (!cond)
+            error(String.valueOf(value));
+    }
+
+    /** Equivalent to
+     *   assert cond : value;
+     */
+    public static void check(boolean cond, String msg) {
+        if (!cond)
+            error(msg);
+    }
+
+    /** Equivalent to
+     *   assert (o == null) : value;
+     */
+    public static void checkNull(Object o, Object value) {
+        if (o != null)
+            error(String.valueOf(value));
+    }
+
+    /** Equivalent to
+     *   assert (o == null) : value;
+     */
+    public static void checkNull(Object o, String msg) {
+        if (o != null)
+            error(msg);
+    }
+
+    /** Equivalent to
+     *   assert (o != null) : value;
+     */
+    public static <T> T checkNonNull(T t, String msg) {
+        if (t == null)
+            error(msg);
+        return t;
+    }
+
+    /** Equivalent to
+     *   assert false;
+     */
+    public static void error() {
+        throw new AssertionError();
+    }
+
+    /** Equivalent to
+     *   assert false : msg;
+     */
+    public static void error(String msg) {
+        throw new AssertionError(msg);
+    }
+
+    /** Prevent instantiation. */
+    private Assert() { }
+}

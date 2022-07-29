@@ -1,268 +1,262 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.util;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.javadoc.RootDoc;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.Collections;
-/*     */ import java.util.Comparator;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.List;
-/*     */ import java.util.Map;
-/*     */ import java.util.Set;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class IndexBuilder
-/*     */ {
-/*  54 */   private Map<Character, List<Doc>> indexmap = new HashMap<>();
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private boolean noDeprecated;
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private boolean classesOnly;
-/*     */ 
-/*     */   
-/*     */   private boolean javafx;
-/*     */ 
-/*     */   
-/*     */   protected final Object[] elements;
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private class DocComparator
-/*     */     implements Comparator<Doc>
-/*     */   {
-/*     */     private DocComparator() {}
-/*     */ 
-/*     */ 
-/*     */     
-/*     */     public int compare(Doc param1Doc1, Doc param1Doc2) {
-/*  80 */       String str1 = param1Doc1.name();
-/*  81 */       String str2 = param1Doc2.name();
-/*     */       int i;
-/*  83 */       if ((i = str1.compareToIgnoreCase(str2)) != 0)
-/*  84 */         return i; 
-/*  85 */       if (param1Doc1 instanceof ProgramElementDoc && param1Doc2 instanceof ProgramElementDoc) {
-/*  86 */         str1 = ((ProgramElementDoc)param1Doc1).qualifiedName();
-/*  87 */         str2 = ((ProgramElementDoc)param1Doc2).qualifiedName();
-/*  88 */         return str1.compareToIgnoreCase(str2);
-/*     */       } 
-/*  90 */       return 0;
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public IndexBuilder(Configuration paramConfiguration, boolean paramBoolean) {
-/* 103 */     this(paramConfiguration, paramBoolean, false);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public IndexBuilder(Configuration paramConfiguration, boolean paramBoolean1, boolean paramBoolean2) {
-/* 116 */     if (paramBoolean2) {
-/* 117 */       paramConfiguration.message.notice("doclet.Building_Index_For_All_Classes", new Object[0]);
-/*     */     } else {
-/* 119 */       paramConfiguration.message.notice("doclet.Building_Index", new Object[0]);
-/*     */     } 
-/* 121 */     this.noDeprecated = paramBoolean1;
-/* 122 */     this.classesOnly = paramBoolean2;
-/* 123 */     this.javafx = paramConfiguration.javafx;
-/* 124 */     buildIndexMap(paramConfiguration.root);
-/* 125 */     Set<Character> set = this.indexmap.keySet();
-/* 126 */     this.elements = set.toArray();
-/* 127 */     Arrays.sort(this.elements);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void sortIndexMap() {
-/* 135 */     for (Iterator<List> iterator = this.indexmap.values().iterator(); iterator.hasNext();) {
-/* 136 */       Collections.sort(iterator.next(), new DocComparator());
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void buildIndexMap(RootDoc paramRootDoc) {
-/* 148 */     PackageDoc[] arrayOfPackageDoc = paramRootDoc.specifiedPackages();
-/* 149 */     ClassDoc[] arrayOfClassDoc = paramRootDoc.classes();
-/* 150 */     if (!this.classesOnly) {
-/* 151 */       if (arrayOfPackageDoc.length == 0) {
-/* 152 */         HashSet<PackageDoc> hashSet = new HashSet();
-/*     */         
-/* 154 */         for (byte b = 0; b < arrayOfClassDoc.length; b++) {
-/* 155 */           PackageDoc packageDoc = arrayOfClassDoc[b].containingPackage();
-/* 156 */           if (packageDoc != null && packageDoc.name().length() > 0) {
-/* 157 */             hashSet.add(packageDoc);
-/*     */           }
-/*     */         } 
-/* 160 */         adjustIndexMap((Doc[])hashSet.toArray((Object[])arrayOfPackageDoc));
-/*     */       } else {
-/* 162 */         adjustIndexMap((Doc[])arrayOfPackageDoc);
-/*     */       } 
-/*     */     }
-/* 165 */     adjustIndexMap((Doc[])arrayOfClassDoc);
-/* 166 */     if (!this.classesOnly) {
-/* 167 */       for (byte b = 0; b < arrayOfClassDoc.length; b++) {
-/* 168 */         if (shouldAddToIndexMap((Doc)arrayOfClassDoc[b])) {
-/* 169 */           putMembersInIndexMap(arrayOfClassDoc[b]);
-/*     */         }
-/*     */       } 
-/*     */     }
-/* 173 */     sortIndexMap();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void putMembersInIndexMap(ClassDoc paramClassDoc) {
-/* 183 */     adjustIndexMap((Doc[])paramClassDoc.fields());
-/* 184 */     adjustIndexMap((Doc[])paramClassDoc.methods());
-/* 185 */     adjustIndexMap((Doc[])paramClassDoc.constructors());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void adjustIndexMap(Doc[] paramArrayOfDoc) {
-/* 197 */     for (byte b = 0; b < paramArrayOfDoc.length; b++) {
-/* 198 */       if (shouldAddToIndexMap(paramArrayOfDoc[b])) {
-/* 199 */         String str = paramArrayOfDoc[b].name();
-/*     */ 
-/*     */         
-/* 202 */         boolean bool = (str.length() == 0) ? true : Character.toUpperCase(str.charAt(0));
-/* 203 */         Character character = new Character(bool);
-/* 204 */         List<Doc> list = this.indexmap.get(character);
-/* 205 */         if (list == null) {
-/* 206 */           list = new ArrayList();
-/* 207 */           this.indexmap.put(character, list);
-/*     */         } 
-/* 209 */         list.add(paramArrayOfDoc[b]);
-/*     */       } 
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected boolean shouldAddToIndexMap(Doc paramDoc) {
-/* 218 */     if (this.javafx && (
-/* 219 */       paramDoc.tags("treatAsPrivate")).length > 0) {
-/* 220 */       return false;
-/*     */     }
-/*     */ 
-/*     */     
-/* 224 */     if (paramDoc instanceof PackageDoc)
-/*     */     {
-/*     */       
-/* 227 */       return (!this.noDeprecated || !Util.isDeprecated(paramDoc));
-/*     */     }
-/*     */ 
-/*     */ 
-/*     */     
-/* 232 */     return (!this.noDeprecated || (
-/* 233 */       !Util.isDeprecated(paramDoc) && 
-/* 234 */       !Util.isDeprecated((Doc)((ProgramElementDoc)paramDoc).containingPackage())));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Map<Character, List<Doc>> getIndexMap() {
-/* 243 */     return this.indexmap;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public List<Doc> getMemberList(Character paramCharacter) {
-/* 253 */     return this.indexmap.get(paramCharacter);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Object[] elements() {
-/* 260 */     return this.elements;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolki\\util\IndexBuilder.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1998, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.util;
+
+import java.util.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+
+/**
+ * Build the mapping of each Unicode character with it's member lists
+ * containing members names starting with it. Also build a list for all the
+ * Unicode characters which start a member name. Member name is
+ * classkind or field or method or constructor name.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @since 1.2
+ * @see Character
+ * @author Atul M Dambalkar
+ */
+public class IndexBuilder {
+
+    /**
+     * Mapping of each Unicode Character with the member list containing
+     * members with names starting with it.
+     */
+    private Map<Character,List<Doc>> indexmap = new HashMap<Character,List<Doc>>();
+
+    /**
+     * Don't generate deprecated information if true.
+     */
+    private boolean noDeprecated;
+
+    /**
+     * Build this Index only for classes?
+     */
+    private boolean classesOnly;
+
+    /**
+     * Indicates javafx mode.
+     */
+    private boolean javafx;
+
+    // make ProgramElementDoc[] when new toArray is available
+    protected final Object[] elements;
+
+    /**
+     * A comparator used to sort classes and members.
+     * Note:  Maybe this compare code belongs in the tool?
+     */
+    private class DocComparator implements Comparator<Doc> {
+        public int compare(Doc d1, Doc d2) {
+            String doc1 = d1.name();
+            String doc2 = d2.name();
+            int compareResult;
+            if ((compareResult = doc1.compareToIgnoreCase(doc2)) != 0) {
+                return compareResult;
+            } else if (d1 instanceof ProgramElementDoc && d2 instanceof ProgramElementDoc) {
+                 doc1 = (((ProgramElementDoc) d1).qualifiedName());
+                 doc2 = (((ProgramElementDoc) d2).qualifiedName());
+                 return doc1.compareToIgnoreCase(doc2);
+            } else {
+                return 0;
+            }
+        }
+    }
+
+    /**
+     * Constructor. Build the index map.
+     *
+     * @param configuration the current configuration of the doclet.
+     * @param noDeprecated  true if -nodeprecated option is used,
+     *                      false otherwise.
+     */
+    public IndexBuilder(Configuration configuration, boolean noDeprecated) {
+        this(configuration, noDeprecated, false);
+    }
+
+    /**
+     * Constructor. Build the index map.
+     *
+     * @param configuration the current configuration of the doclet.
+     * @param noDeprecated  true if -nodeprecated option is used,
+     *                      false otherwise.
+     * @param classesOnly   Include only classes in index.
+     */
+    public IndexBuilder(Configuration configuration, boolean noDeprecated,
+                        boolean classesOnly) {
+        if (classesOnly) {
+            configuration.message.notice("doclet.Building_Index_For_All_Classes");
+        } else {
+            configuration.message.notice("doclet.Building_Index");
+        }
+        this.noDeprecated = noDeprecated;
+        this.classesOnly = classesOnly;
+        this.javafx = configuration.javafx;
+        buildIndexMap(configuration.root);
+        Set<Character> set = indexmap.keySet();
+        elements =  set.toArray();
+        Arrays.sort(elements);
+    }
+
+    /**
+     * Sort the index map. Traverse the index map for all it's elements and
+     * sort each element which is a list.
+     */
+    protected void sortIndexMap() {
+        for (Iterator<List<Doc>> it = indexmap.values().iterator(); it.hasNext(); ) {
+            Collections.sort(it.next(), new DocComparator());
+        }
+    }
+
+    /**
+     * Get all the members in all the Packages and all the Classes
+     * given on the command line. Form separate list of those members depending
+     * upon their names.
+     *
+     * @param root Root of the documemt.
+     */
+    protected void buildIndexMap(RootDoc root)  {
+        PackageDoc[] packages = root.specifiedPackages();
+        ClassDoc[] classes = root.classes();
+        if (!classesOnly) {
+            if (packages.length == 0) {
+                Set<PackageDoc> set = new HashSet<PackageDoc>();
+                PackageDoc pd;
+                for (int i = 0; i < classes.length; i++) {
+                    pd = classes[i].containingPackage();
+                    if (pd != null && pd.name().length() > 0) {
+                        set.add(pd);
+                    }
+                }
+                adjustIndexMap(set.toArray(packages));
+            } else {
+                adjustIndexMap(packages);
+            }
+        }
+        adjustIndexMap(classes);
+        if (!classesOnly) {
+            for (int i = 0; i < classes.length; i++) {
+                if (shouldAddToIndexMap(classes[i])) {
+                    putMembersInIndexMap(classes[i]);
+                }
+            }
+        }
+        sortIndexMap();
+    }
+
+    /**
+     * Put all the members(fields, methods and constructors) in the classdoc
+     * to the indexmap.
+     *
+     * @param classdoc ClassDoc whose members will be added to the indexmap.
+     */
+    protected void putMembersInIndexMap(ClassDoc classdoc) {
+        adjustIndexMap(classdoc.fields());
+        adjustIndexMap(classdoc.methods());
+        adjustIndexMap(classdoc.constructors());
+    }
+
+
+    /**
+     * Adjust list of members according to their names. Check the first
+     * character in a member name, and then add the member to a list of members
+     * for that particular unicode character.
+     *
+     * @param elements Array of members.
+     */
+    protected void adjustIndexMap(Doc[] elements) {
+        for (int i = 0; i < elements.length; i++) {
+            if (shouldAddToIndexMap(elements[i])) {
+                String name = elements[i].name();
+                char ch = (name.length()==0)?
+                    '*' :
+                    Character.toUpperCase(name.charAt(0));
+                Character unicode = new Character(ch);
+                List<Doc> list = indexmap.get(unicode);
+                if (list == null) {
+                    list = new ArrayList<Doc>();
+                    indexmap.put(unicode, list);
+                }
+                list.add(elements[i]);
+            }
+        }
+    }
+
+    /**
+     * Should this doc element be added to the index map?
+     */
+    protected boolean shouldAddToIndexMap(Doc element) {
+        if (javafx) {
+            if (element.tags("treatAsPrivate").length > 0) {
+                return false;
+            }
+        }
+
+        if (element instanceof PackageDoc)
+            // Do not add to index map if -nodeprecated option is set and the
+            // package is marked as deprecated.
+            return !(noDeprecated && Util.isDeprecated(element));
+        else
+            // Do not add to index map if -nodeprecated option is set and if the
+            // Doc is marked as deprecated or the containing package is marked as
+            // deprecated.
+            return !(noDeprecated &&
+                    (Util.isDeprecated(element) ||
+                    Util.isDeprecated(((ProgramElementDoc)element).containingPackage())));
+    }
+
+    /**
+     * Return a map of all the individual member lists with Unicode character.
+     *
+     * @return Map index map.
+     */
+    public Map<Character,List<Doc>> getIndexMap() {
+        return indexmap;
+    }
+
+    /**
+     * Return the sorted list of members, for passed Unicode Character.
+     *
+     * @param index index Unicode character.
+     * @return List member list for specific Unicode character.
+     */
+    public List<Doc> getMemberList(Character index) {
+        return indexmap.get(index);
+    }
+
+    /**
+     * Array of IndexMap keys, Unicode characters.
+     */
+    public Object[] elements() {
+        return elements;
+    }
+}

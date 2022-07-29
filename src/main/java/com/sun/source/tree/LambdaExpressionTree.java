@@ -1,60 +1,58 @@
-/*    */ package com.sun.source.tree;
-/*    */ 
-/*    */ import java.util.List;
-/*    */ import jdk.Exported;
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ @Exported
-/*    */ public interface LambdaExpressionTree
-/*    */   extends ExpressionTree
-/*    */ {
-/*    */   List<? extends VariableTree> getParameters();
-/*    */   
-/*    */   Tree getBody();
-/*    */   
-/*    */   BodyKind getBodyKind();
-/*    */   
-/*    */   @Exported
-/*    */   public enum BodyKind
-/*    */   {
-/* 50 */     EXPRESSION,
-/*    */     
-/* 52 */     STATEMENT;
-/*    */   }
-/*    */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\source\tree\LambdaExpressionTree.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2011, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.source.tree;
+
+import java.util.List;
+
+/**
+ * A tree node for a lambda expression.
+ *
+ * For example:
+ * <pre>{@code
+ *   ()->{}
+ *   (List<String> ls)->ls.size()
+ *   (x,y)-> { return x + y; }
+ * }</pre>
+ */
+@jdk.Exported
+public interface LambdaExpressionTree extends ExpressionTree {
+
+    /**
+     * Lambda expressions come in two forms: (i) expression lambdas, whose body
+     * is an expression, and (ii) statement lambdas, whose body is a block
+     */
+    @jdk.Exported
+    public enum BodyKind {
+        /** enum constant for expression lambdas */
+        EXPRESSION,
+        /** enum constant for statement lambdas */
+        STATEMENT;
+    }
+
+    List<? extends VariableTree> getParameters();
+    Tree getBody();
+    BodyKind getBodyKind();
+}

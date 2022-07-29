@@ -1,1811 +1,1805 @@
-/*      */ package com.sun.tools.javac.jvm;
-/*      */
-/*      */ import com.sun.tools.javac.code.Attribute;
-/*      */ import com.sun.tools.javac.code.Scope;
-/*      */ import com.sun.tools.javac.code.Source;
-/*      */ import com.sun.tools.javac.code.Symbol;
-/*      */ import com.sun.tools.javac.code.TargetType;
-/*      */ import com.sun.tools.javac.code.Type;
-/*      */ import com.sun.tools.javac.code.TypeAnnotationPosition;
-/*      */ import com.sun.tools.javac.code.TypeTag;
-/*      */ import com.sun.tools.javac.code.Types;
-/*      */ import com.sun.tools.javac.file.BaseFileObject;
-/*      */ import com.sun.tools.javac.main.Option;
-/*      */ import com.sun.tools.javac.util.Assert;
-/*      */ import com.sun.tools.javac.util.ByteBuffer;
-/*      */ import com.sun.tools.javac.util.Context;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.Name;
-/*      */ import com.sun.tools.javac.util.Names;
-/*      */ import com.sun.tools.javac.util.Options;
-/*      */ import com.sun.tools.javac.util.Pair;
-/*      */ import java.io.IOException;
-/*      */ import java.io.OutputStream;
-/*      */ import java.io.PrintWriter;
-/*      */ import java.util.HashSet;
-/*      */ import java.util.Iterator;
-/*      */ import java.util.LinkedHashMap;
-/*      */ import java.util.List;
-/*      */ import java.util.Map;
-/*      */ import java.util.Set;
-/*      */ import javax.tools.FileObject;
-/*      */ import javax.tools.JavaFileManager;
-/*      */ import javax.tools.JavaFileObject;
-/*      */ import javax.tools.StandardLocation;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class ClassWriter
-/*      */   extends ClassFile
-/*      */ {
-/*   66 */   protected static final Context.Key<ClassWriter> classWriterKey = new Context.Key();
-/*      */
-/*      */
-/*      */
-/*      */   private final Options options;
-/*      */
-/*      */
-/*      */
-/*      */   private boolean verbose;
-/*      */
-/*      */
-/*      */
-/*      */   private boolean scramble;
-/*      */
-/*      */
-/*      */
-/*      */   private boolean scrambleAll;
-/*      */
-/*      */
-/*      */
-/*      */   private boolean retrofit;
-/*      */
-/*      */
-/*      */
-/*      */   private boolean emitSourceFile;
-/*      */
-/*      */
-/*      */
-/*      */   private boolean genCrt;
-/*      */
-/*      */
-/*      */
-/*      */   boolean debugstackmap;
-/*      */
-/*      */
-/*      */
-/*      */   private Target target;
-/*      */
-/*      */
-/*      */
-/*      */   private Source source;
-/*      */
-/*      */
-/*      */
-/*      */   private Types types;
-/*      */
-/*      */
-/*      */
-/*      */   static final int DATA_BUF_SIZE = 65520;
-/*      */
-/*      */
-/*      */   static final int POOL_BUF_SIZE = 131056;
-/*      */
-/*      */
-/*  120 */   ByteBuffer databuf = new ByteBuffer(65520);
-/*      */
-/*      */
-/*      */
-/*  124 */   ByteBuffer poolbuf = new ByteBuffer(131056);
-/*      */
-/*      */
-/*      */   Pool pool;
-/*      */
-/*      */
-/*      */   Set<Symbol.ClassSymbol> innerClasses;
-/*      */
-/*      */
-/*      */   ListBuffer<Symbol.ClassSymbol> innerClassesQueue;
-/*      */
-/*      */
-/*      */   Map<Pool.DynamicMethod, Pool.MethodHandle> bootstrapMethods;
-/*      */
-/*      */   private final Log log;
-/*      */
-/*      */   private final Names names;
-/*      */
-/*      */   private final JavaFileManager fileManager;
-/*      */
-/*      */   private final CWSignatureGenerator signatureGen;
-/*      */
-/*      */   static final int SAME_FRAME_SIZE = 64;
-/*      */
-/*      */   static final int SAME_LOCALS_1_STACK_ITEM_EXTENDED = 247;
-/*      */
-/*      */   static final int SAME_FRAME_EXTENDED = 251;
-/*      */
-/*      */   static final int FULL_FRAME = 255;
-/*      */
-/*      */   static final int MAX_LOCAL_LENGTH_DIFF = 4;
-/*      */
-/*      */   private final boolean dumpClassModifiers;
-/*      */
-/*      */   private final boolean dumpFieldModifiers;
-/*      */
-/*      */   private final boolean dumpInnerClassModifiers;
-/*      */
-/*      */   private final boolean dumpMethodModifiers;
-/*      */
-/*      */
-/*      */   public static ClassWriter instance(Context paramContext) {
-/*  166 */     ClassWriter classWriter = (ClassWriter)paramContext.get(classWriterKey);
-/*  167 */     if (classWriter == null)
-/*  168 */       classWriter = new ClassWriter(paramContext);
-/*  169 */     return classWriter;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static String flagNames(long paramLong) {
-/*  229 */     StringBuilder stringBuilder = new StringBuilder();
-/*  230 */     byte b = 0;
-/*  231 */     long l = paramLong & 0xFFFL;
-/*  232 */     while (l != 0L) {
-/*  233 */       if ((l & 0x1L) != 0L) {
-/*  234 */         stringBuilder.append(" ");
-/*  235 */         stringBuilder.append(flagName[b]);
-/*      */       }
-/*  237 */       l >>= 1L;
-/*  238 */       b++;
-/*      */     }
-/*  240 */     return stringBuilder.toString();
-/*      */   }
-/*      */
-/*  243 */   private static final String[] flagName = new String[] { "PUBLIC", "PRIVATE", "PROTECTED", "STATIC", "FINAL", "SUPER", "VOLATILE", "TRANSIENT", "NATIVE", "INTERFACE", "ABSTRACT", "STRICTFP" };
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   AttributeWriter awriter;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void putChar(ByteBuffer paramByteBuffer, int paramInt1, int paramInt2) {
-/*  256 */     paramByteBuffer.elems[paramInt1] = (byte)(paramInt2 >> 8 & 0xFF);
-/*  257 */     paramByteBuffer.elems[paramInt1 + 1] = (byte)(paramInt2 & 0xFF);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void putInt(ByteBuffer paramByteBuffer, int paramInt1, int paramInt2) {
-/*  264 */     paramByteBuffer.elems[paramInt1] = (byte)(paramInt2 >> 24 & 0xFF);
-/*  265 */     paramByteBuffer.elems[paramInt1 + 1] = (byte)(paramInt2 >> 16 & 0xFF);
-/*  266 */     paramByteBuffer.elems[paramInt1 + 2] = (byte)(paramInt2 >> 8 & 0xFF);
-/*  267 */     paramByteBuffer.elems[paramInt1 + 3] = (byte)(paramInt2 & 0xFF);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private class CWSignatureGenerator
-/*      */     extends Types.SignatureGenerator
-/*      */   {
-/*  278 */     ByteBuffer sigbuf = new ByteBuffer();
-/*      */
-/*      */     CWSignatureGenerator(Types param1Types) {
-/*  281 */       super(param1Types);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void assembleSig(Type param1Type) {
-/*  290 */       param1Type = param1Type.unannotatedType();
-/*  291 */       switch (param1Type.getTag()) {
-/*      */
-/*      */
-/*      */         case CLDC:
-/*      */         case JSR202:
-/*  296 */           assembleSig(ClassWriter.this.types.erasure(((UninitializedType)param1Type).qtype));
-/*      */           return;
-/*      */       }
-/*  299 */       super.assembleSig(param1Type);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     protected void append(char param1Char) {
-/*  305 */       this.sigbuf.appendByte(param1Char);
-/*      */     }
-/*      */
-/*      */
-/*      */     protected void append(byte[] param1ArrayOfbyte) {
-/*  310 */       this.sigbuf.appendBytes(param1ArrayOfbyte);
-/*      */     }
-/*      */
-/*      */
-/*      */     protected void append(Name param1Name) {
-/*  315 */       this.sigbuf.appendName(param1Name);
-/*      */     }
-/*      */
-/*      */
-/*      */     protected void classReference(Symbol.ClassSymbol param1ClassSymbol) {
-/*  320 */       ClassWriter.this.enterInner(param1ClassSymbol);
-/*      */     }
-/*      */
-/*      */     private void reset() {
-/*  324 */       this.sigbuf.reset();
-/*      */     }
-/*      */
-/*      */     private Name toName() {
-/*  328 */       return this.sigbuf.toName(ClassWriter.this.names);
-/*      */     }
-/*      */
-/*      */     private boolean isEmpty() {
-/*  332 */       return (this.sigbuf.length == 0);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Name typeSig(Type paramType) {
-/*  340 */     Assert.check(this.signatureGen.isEmpty());
-/*      */
-/*  342 */     this.signatureGen.assembleSig(paramType);
-/*  343 */     Name name = this.signatureGen.toName();
-/*  344 */     this.signatureGen.reset();
-/*      */
-/*  346 */     return name;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public Name xClassName(Type paramType) {
-/*  353 */     if (paramType.hasTag(TypeTag.CLASS))
-/*  354 */       return this.names.fromUtf(externalize(paramType.tsym.flatName()));
-/*  355 */     if (paramType.hasTag(TypeTag.ARRAY)) {
-/*  356 */       return typeSig(this.types.erasure(paramType));
-/*      */     }
-/*  358 */     throw new AssertionError("xClassName");
-/*      */   }
-/*      */
-/*      */
-/*      */   public static class PoolOverflow
-/*      */     extends Exception
-/*      */   {
-/*      */     private static final long serialVersionUID = 0L;
-/*      */   }
-/*      */
-/*      */
-/*      */   public static class StringOverflow
-/*      */     extends Exception
-/*      */   {
-/*      */     private static final long serialVersionUID = 0L;
-/*      */     public final String value;
-/*      */
-/*      */     public StringOverflow(String param1String) {
-/*  376 */       this.value = param1String;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void writePool(Pool paramPool) throws PoolOverflow, StringOverflow {
-/*  385 */     int i = this.poolbuf.length;
-/*  386 */     this.poolbuf.appendChar(0);
-/*  387 */     byte b = 1;
-/*  388 */     while (b < paramPool.pp) {
-/*  389 */       Object object = paramPool.pool[b];
-/*  390 */       Assert.checkNonNull(object);
-/*  391 */       if (object instanceof Pool.Method || object instanceof Pool.Variable) {
-/*  392 */         object = ((Symbol.DelegatedSymbol)object).getUnderlyingSymbol();
-/*      */       }
-/*  394 */       if (object instanceof Symbol.MethodSymbol) {
-/*  395 */         Symbol.MethodSymbol methodSymbol = (Symbol.MethodSymbol)object;
-/*  396 */         if (!methodSymbol.isDynamic()) {
-/*  397 */           this.poolbuf.appendByte(((methodSymbol.owner.flags() & 0x200L) != 0L) ? 11 : 10);
-/*      */
-/*      */
-/*  400 */           this.poolbuf.appendChar(paramPool.put(methodSymbol.owner));
-/*  401 */           this.poolbuf.appendChar(paramPool.put(nameType((Symbol)methodSymbol)));
-/*      */         } else {
-/*      */
-/*  404 */           Symbol.DynamicMethodSymbol dynamicMethodSymbol = (Symbol.DynamicMethodSymbol)methodSymbol;
-/*  405 */           Pool.MethodHandle methodHandle = new Pool.MethodHandle(dynamicMethodSymbol.bsmKind, dynamicMethodSymbol.bsm, this.types);
-/*  406 */           Pool.DynamicMethod dynamicMethod = new Pool.DynamicMethod(dynamicMethodSymbol, this.types);
-/*  407 */           this.bootstrapMethods.put(dynamicMethod, methodHandle);
-/*      */
-/*  409 */           paramPool.put(this.names.BootstrapMethods);
-/*  410 */           paramPool.put(methodHandle);
-/*  411 */           for (Object object1 : dynamicMethodSymbol.staticArgs) {
-/*  412 */             paramPool.put(object1);
-/*      */           }
-/*  414 */           this.poolbuf.appendByte(18);
-/*  415 */           this.poolbuf.appendChar(this.bootstrapMethods.size() - 1);
-/*  416 */           this.poolbuf.appendChar(paramPool.put(nameType((Symbol)dynamicMethodSymbol)));
-/*      */         }
-/*  418 */       } else if (object instanceof Symbol.VarSymbol) {
-/*  419 */         Symbol.VarSymbol varSymbol = (Symbol.VarSymbol)object;
-/*  420 */         this.poolbuf.appendByte(9);
-/*  421 */         this.poolbuf.appendChar(paramPool.put(varSymbol.owner));
-/*  422 */         this.poolbuf.appendChar(paramPool.put(nameType((Symbol)varSymbol)));
-/*  423 */       } else if (object instanceof Name) {
-/*  424 */         this.poolbuf.appendByte(1);
-/*  425 */         byte[] arrayOfByte = ((Name)object).toUtf();
-/*  426 */         this.poolbuf.appendChar(arrayOfByte.length);
-/*  427 */         this.poolbuf.appendBytes(arrayOfByte, 0, arrayOfByte.length);
-/*  428 */         if (arrayOfByte.length > 65535)
-/*  429 */           throw new StringOverflow(object.toString());
-/*  430 */       } else if (object instanceof Symbol.ClassSymbol) {
-/*  431 */         Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)object;
-/*  432 */         if (classSymbol.owner.kind == 2) paramPool.put(classSymbol.owner);
-/*  433 */         this.poolbuf.appendByte(7);
-/*  434 */         if (classSymbol.type.hasTag(TypeTag.ARRAY)) {
-/*  435 */           this.poolbuf.appendChar(paramPool.put(typeSig(classSymbol.type)));
-/*      */         } else {
-/*  437 */           this.poolbuf.appendChar(paramPool.put(this.names.fromUtf(externalize(classSymbol.flatname))));
-/*  438 */           enterInner(classSymbol);
-/*      */         }
-/*  440 */       } else if (object instanceof NameAndType) {
-/*  441 */         NameAndType nameAndType = (NameAndType)object;
-/*  442 */         this.poolbuf.appendByte(12);
-/*  443 */         this.poolbuf.appendChar(paramPool.put(nameAndType.name));
-/*  444 */         this.poolbuf.appendChar(paramPool.put(typeSig(nameAndType.uniqueType.type)));
-/*  445 */       } else if (object instanceof Integer) {
-/*  446 */         this.poolbuf.appendByte(3);
-/*  447 */         this.poolbuf.appendInt(((Integer)object).intValue());
-/*  448 */       } else if (object instanceof Long) {
-/*  449 */         this.poolbuf.appendByte(5);
-/*  450 */         this.poolbuf.appendLong(((Long)object).longValue());
-/*  451 */         b++;
-/*  452 */       } else if (object instanceof Float) {
-/*  453 */         this.poolbuf.appendByte(4);
-/*  454 */         this.poolbuf.appendFloat(((Float)object).floatValue());
-/*  455 */       } else if (object instanceof Double) {
-/*  456 */         this.poolbuf.appendByte(6);
-/*  457 */         this.poolbuf.appendDouble(((Double)object).doubleValue());
-/*  458 */         b++;
-/*  459 */       } else if (object instanceof String) {
-/*  460 */         this.poolbuf.appendByte(8);
-/*  461 */         this.poolbuf.appendChar(paramPool.put(this.names.fromString((String)object)));
-/*  462 */       } else if (object instanceof Types.UniqueType) {
-/*  463 */         Type type = ((Types.UniqueType)object).type;
-/*  464 */         if (type instanceof Type.MethodType) {
-/*  465 */           this.poolbuf.appendByte(16);
-/*  466 */           this.poolbuf.appendChar(paramPool.put(typeSig(type)));
-/*      */         } else {
-/*  468 */           if (type.hasTag(TypeTag.CLASS)) enterInner((Symbol.ClassSymbol)type.tsym);
-/*  469 */           this.poolbuf.appendByte(7);
-/*  470 */           this.poolbuf.appendChar(paramPool.put(xClassName(type)));
-/*      */         }
-/*  472 */       } else if (object instanceof Pool.MethodHandle) {
-/*  473 */         Pool.MethodHandle methodHandle = (Pool.MethodHandle)object;
-/*  474 */         this.poolbuf.appendByte(15);
-/*  475 */         this.poolbuf.appendByte(methodHandle.refKind);
-/*  476 */         this.poolbuf.appendChar(paramPool.put(methodHandle.refSym));
-/*      */       } else {
-/*  478 */         Assert.error("writePool " + object);
-/*      */       }
-/*  480 */       b++;
-/*      */     }
-/*  482 */     if (paramPool.pp > 65535)
-/*  483 */       throw new PoolOverflow();
-/*  484 */     putChar(this.poolbuf, i, paramPool.pp);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   Name fieldName(Symbol paramSymbol) {
-/*  490 */     if ((this.scramble && (paramSymbol.flags() & 0x2L) != 0L) || (this.scrambleAll && (paramSymbol
-/*  491 */       .flags() & 0x5L) == 0L)) {
-/*  492 */       return this.names.fromString("_$" + paramSymbol.name.getIndex());
-/*      */     }
-/*  494 */     return paramSymbol.name;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   NameAndType nameType(Symbol paramSymbol) {
-/*  500 */     return new NameAndType(fieldName(paramSymbol), this.retrofit ? paramSymbol
-/*      */
-/*  502 */         .erasure(this.types) : paramSymbol
-/*  503 */         .externalType(this.types), this.types);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int writeAttr(Name paramName) {
-/*  518 */     this.databuf.appendChar(this.pool.put(paramName));
-/*  519 */     this.databuf.appendInt(0);
-/*  520 */     return this.databuf.length;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void endAttr(int paramInt) {
-/*  526 */     putInt(this.databuf, paramInt - 4, this.databuf.length - paramInt);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int beginAttrs() {
-/*  533 */     this.databuf.appendChar(0);
-/*  534 */     return this.databuf.length;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void endAttrs(int paramInt1, int paramInt2) {
-/*  540 */     putChar(this.databuf, paramInt1 - 2, paramInt2);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int writeEnclosingMethodAttribute(Symbol.ClassSymbol paramClassSymbol) {
-/*  547 */     if (!this.target.hasEnclosingMethodAttribute())
-/*  548 */       return 0;
-/*  549 */     return writeEnclosingMethodAttribute(this.names.EnclosingMethod, paramClassSymbol);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected int writeEnclosingMethodAttribute(Name paramName, Symbol.ClassSymbol paramClassSymbol) {
-/*  556 */     if (paramClassSymbol.owner.kind != 16 && paramClassSymbol.name != this.names.empty)
-/*      */     {
-/*  558 */       return 0;
-/*      */     }
-/*  560 */     int i = writeAttr(paramName);
-/*  561 */     Symbol.ClassSymbol classSymbol = paramClassSymbol.owner.enclClass();
-/*  562 */     Symbol.MethodSymbol methodSymbol = (paramClassSymbol.owner.type == null || paramClassSymbol.owner.kind != 16) ? null : (Symbol.MethodSymbol)paramClassSymbol.owner;
-/*      */
-/*      */
-/*      */
-/*      */
-/*  567 */     this.databuf.appendChar(this.pool.put(classSymbol));
-/*  568 */     this.databuf.appendChar((methodSymbol == null) ? 0 : this.pool.put(nameType(paramClassSymbol.owner)));
-/*  569 */     endAttr(i);
-/*  570 */     return 1;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   int writeFlagAttrs(long paramLong) {
-/*  576 */     byte b = 0;
-/*  577 */     if ((paramLong & 0x20000L) != 0L) {
-/*  578 */       int i = writeAttr(this.names.Deprecated);
-/*  579 */       endAttr(i);
-/*  580 */       b++;
-/*      */     }
-/*  582 */     if ((paramLong & 0x4000L) != 0L && !this.target.useEnumFlag()) {
-/*  583 */       int i = writeAttr(this.names.Enum);
-/*  584 */       endAttr(i);
-/*  585 */       b++;
-/*      */     }
-/*  587 */     if ((paramLong & 0x1000L) != 0L && !this.target.useSyntheticFlag()) {
-/*  588 */       int i = writeAttr(this.names.Synthetic);
-/*  589 */       endAttr(i);
-/*  590 */       b++;
-/*      */     }
-/*  592 */     if ((paramLong & 0x80000000L) != 0L && !this.target.useBridgeFlag()) {
-/*  593 */       int i = writeAttr(this.names.Bridge);
-/*  594 */       endAttr(i);
-/*  595 */       b++;
-/*      */     }
-/*  597 */     if ((paramLong & 0x400000000L) != 0L && !this.target.useVarargsFlag()) {
-/*  598 */       int i = writeAttr(this.names.Varargs);
-/*  599 */       endAttr(i);
-/*  600 */       b++;
-/*      */     }
-/*  602 */     if ((paramLong & 0x2000L) != 0L && !this.target.useAnnotationFlag()) {
-/*  603 */       int i = writeAttr(this.names.Annotation);
-/*  604 */       endAttr(i);
-/*  605 */       b++;
-/*      */     }
-/*  607 */     return b;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int writeMemberAttrs(Symbol paramSymbol) {
-/*  614 */     int i = writeFlagAttrs(paramSymbol.flags());
-/*  615 */     long l = paramSymbol.flags();
-/*  616 */     if (this.source.allowGenerics() && (l & 0x80001000L) != 4096L && (l & 0x20000000L) == 0L && (
-/*      */
-/*      */
-/*  619 */       !this.types.isSameType(paramSymbol.type, paramSymbol.erasure(this.types)) || this.signatureGen
-/*  620 */       .hasTypeVar(paramSymbol.type.getThrownTypes()))) {
-/*      */
-/*      */
-/*  623 */       int j = writeAttr(this.names.Signature);
-/*  624 */       this.databuf.appendChar(this.pool.put(typeSig(paramSymbol.type)));
-/*  625 */       endAttr(j);
-/*  626 */       i++;
-/*      */     }
-/*  628 */     i += writeJavaAnnotations(paramSymbol.getRawAttributes());
-/*  629 */     i += writeTypeAnnotations(paramSymbol.getRawTypeAttributes(), false);
-/*  630 */     return i;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int writeMethodParametersAttr(Symbol.MethodSymbol paramMethodSymbol) {
-/*  637 */     Type.MethodType methodType = paramMethodSymbol.externalType(this.types).asMethodType();
-/*  638 */     int i = methodType.argtypes.size();
-/*  639 */     if (paramMethodSymbol.params != null && i != 0) {
-/*  640 */       int j = writeAttr(this.names.MethodParameters);
-/*  641 */       this.databuf.appendByte(i);
-/*      */
-/*  643 */       for (Symbol.VarSymbol varSymbol : paramMethodSymbol.extraParams) {
-/*      */
-/*      */
-/*  646 */         int k = (int)varSymbol.flags() & 0x9010 | (int)paramMethodSymbol.flags() & 0x1000;
-/*  647 */         this.databuf.appendChar(this.pool.put(varSymbol.name));
-/*  648 */         this.databuf.appendChar(k);
-/*      */       }
-/*      */
-/*  651 */       for (Symbol.VarSymbol varSymbol : paramMethodSymbol.params) {
-/*      */
-/*      */
-/*  654 */         int k = (int)varSymbol.flags() & 0x9010 | (int)paramMethodSymbol.flags() & 0x1000;
-/*  655 */         this.databuf.appendChar(this.pool.put(varSymbol.name));
-/*  656 */         this.databuf.appendChar(k);
-/*      */       }
-/*      */
-/*  659 */       for (Symbol.VarSymbol varSymbol : paramMethodSymbol.capturedLocals) {
-/*      */
-/*      */
-/*  662 */         int k = (int)varSymbol.flags() & 0x9010 | (int)paramMethodSymbol.flags() & 0x1000;
-/*  663 */         this.databuf.appendChar(this.pool.put(varSymbol.name));
-/*  664 */         this.databuf.appendChar(k);
-/*      */       }
-/*  666 */       endAttr(j);
-/*  667 */       return 1;
-/*      */     }
-/*  669 */     return 0;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int writeParameterAttrs(Symbol.MethodSymbol paramMethodSymbol) {
-/*  677 */     boolean bool1 = false;
-/*  678 */     boolean bool2 = false;
-/*  679 */     if (paramMethodSymbol.params != null) {
-/*  680 */       for (Symbol.VarSymbol varSymbol : paramMethodSymbol.params) {
-/*  681 */         for (Attribute.Compound compound : varSymbol.getRawAttributes()) {
-/*  682 */           switch (this.types.getRetention(compound)) {
-/*      */             case JSR202:
-/*  684 */               bool2 = true;
-/*  685 */             case null: bool1 = true;
-/*      */           }
-/*      */
-/*      */
-/*      */         }
-/*      */       }
-/*      */     }
-/*  692 */     byte b = 0;
-/*  693 */     if (bool1) {
-/*  694 */       int i = writeAttr(this.names.RuntimeVisibleParameterAnnotations);
-/*  695 */       this.databuf.appendByte(paramMethodSymbol.params.length());
-/*  696 */       for (Symbol.VarSymbol varSymbol : paramMethodSymbol.params) {
-/*  697 */         ListBuffer listBuffer = new ListBuffer();
-/*  698 */         for (Attribute.Compound compound : varSymbol.getRawAttributes()) {
-/*  699 */           if (this.types.getRetention(compound) == Attribute.RetentionPolicy.RUNTIME)
-/*  700 */             listBuffer.append(compound);
-/*  701 */         }  this.databuf.appendChar(listBuffer.length());
-/*  702 */         for (Attribute.Compound compound : listBuffer)
-/*  703 */           writeCompoundAttribute(compound);
-/*      */       }
-/*  705 */       endAttr(i);
-/*  706 */       b++;
-/*      */     }
-/*  708 */     if (bool2) {
-/*  709 */       int i = writeAttr(this.names.RuntimeInvisibleParameterAnnotations);
-/*  710 */       this.databuf.appendByte(paramMethodSymbol.params.length());
-/*  711 */       for (Symbol.VarSymbol varSymbol : paramMethodSymbol.params) {
-/*  712 */         ListBuffer listBuffer = new ListBuffer();
-/*  713 */         for (Attribute.Compound compound : varSymbol.getRawAttributes()) {
-/*  714 */           if (this.types.getRetention(compound) == Attribute.RetentionPolicy.CLASS)
-/*  715 */             listBuffer.append(compound);
-/*  716 */         }  this.databuf.appendChar(listBuffer.length());
-/*  717 */         for (Attribute.Compound compound : listBuffer)
-/*  718 */           writeCompoundAttribute(compound);
-/*      */       }
-/*  720 */       endAttr(i);
-/*  721 */       b++;
-/*      */     }
-/*  723 */     return b;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int writeJavaAnnotations(List<Attribute.Compound> paramList) {
-/*  734 */     if (paramList.isEmpty()) return 0;
-/*  735 */     ListBuffer listBuffer1 = new ListBuffer();
-/*  736 */     ListBuffer listBuffer2 = new ListBuffer();
-/*  737 */     for (Attribute.Compound compound : paramList) {
-/*  738 */       switch (this.types.getRetention(compound)) {
-/*      */         case JSR202:
-/*  740 */           listBuffer2.append(compound);
-/*  741 */         case null: listBuffer1.append(compound);
-/*      */       }
-/*      */
-/*      */
-/*      */     }
-/*  746 */     byte b = 0;
-/*  747 */     if (listBuffer1.length() != 0) {
-/*  748 */       int i = writeAttr(this.names.RuntimeVisibleAnnotations);
-/*  749 */       this.databuf.appendChar(listBuffer1.length());
-/*  750 */       for (Attribute.Compound compound : listBuffer1)
-/*  751 */         writeCompoundAttribute(compound);
-/*  752 */       endAttr(i);
-/*  753 */       b++;
-/*      */     }
-/*  755 */     if (listBuffer2.length() != 0) {
-/*  756 */       int i = writeAttr(this.names.RuntimeInvisibleAnnotations);
-/*  757 */       this.databuf.appendChar(listBuffer2.length());
-/*  758 */       for (Attribute.Compound compound : listBuffer2)
-/*  759 */         writeCompoundAttribute(compound);
-/*  760 */       endAttr(i);
-/*  761 */       b++;
-/*      */     }
-/*  763 */     return b;
-/*      */   }
-/*      */
-/*      */   int writeTypeAnnotations(List<Attribute.TypeCompound> paramList, boolean paramBoolean) {
-/*  767 */     if (paramList.isEmpty()) return 0;
-/*      */
-/*  769 */     ListBuffer listBuffer1 = new ListBuffer();
-/*  770 */     ListBuffer listBuffer2 = new ListBuffer();
-/*      */
-/*  772 */     for (Attribute.TypeCompound typeCompound : paramList) {
-/*  773 */       if (typeCompound.hasUnknownPosition()) {
-/*  774 */         boolean bool = typeCompound.tryFixPosition();
-/*      */
-/*      */
-/*  777 */         if (!bool) {
-/*      */
-/*      */
-/*      */
-/*      */
-/*  782 */           PrintWriter printWriter = this.log.getWriter(Log.WriterKind.ERROR);
-/*  783 */           printWriter.println("ClassWriter: Position UNKNOWN in type annotation: " + typeCompound);
-/*      */
-/*      */           continue;
-/*      */         }
-/*      */       }
-/*  788 */       if (typeCompound.position.type.isLocal() != paramBoolean)
-/*      */         continue;
-/*  790 */       if (!typeCompound.position.emitToClassfile())
-/*      */         continue;
-/*  792 */       switch (this.types.getRetention((Attribute.Compound)typeCompound)) {
-/*      */         case JSR202:
-/*  794 */           listBuffer2.append(typeCompound);
-/*  795 */         case null: listBuffer1.append(typeCompound);
-/*      */       }
-/*      */
-/*      */
-/*      */     }
-/*  800 */     byte b = 0;
-/*  801 */     if (listBuffer1.length() != 0) {
-/*  802 */       int i = writeAttr(this.names.RuntimeVisibleTypeAnnotations);
-/*  803 */       this.databuf.appendChar(listBuffer1.length());
-/*  804 */       for (Attribute.TypeCompound typeCompound : listBuffer1)
-/*  805 */         writeTypeAnnotation(typeCompound);
-/*  806 */       endAttr(i);
-/*  807 */       b++;
-/*      */     }
-/*      */
-/*  810 */     if (listBuffer2.length() != 0) {
-/*  811 */       int i = writeAttr(this.names.RuntimeInvisibleTypeAnnotations);
-/*  812 */       this.databuf.appendChar(listBuffer2.length());
-/*  813 */       for (Attribute.TypeCompound typeCompound : listBuffer2)
-/*  814 */         writeTypeAnnotation(typeCompound);
-/*  815 */       endAttr(i);
-/*  816 */       b++;
-/*      */     }
-/*      */
-/*  819 */     return b;
-/*      */   }
-/*      */
-/*      */
-/*      */   class AttributeWriter
-/*      */     implements Attribute.Visitor
-/*      */   {
-/*      */     public void visitConstant(Attribute.Constant param1Constant) {
-/*  827 */       Object object = param1Constant.value;
-/*  828 */       switch (param1Constant.type.getTag()) {
-/*      */         case null:
-/*  830 */           ClassWriter.this.databuf.appendByte(66);
-/*      */           break;
-/*      */         case null:
-/*  833 */           ClassWriter.this.databuf.appendByte(67);
-/*      */           break;
-/*      */         case null:
-/*  836 */           ClassWriter.this.databuf.appendByte(83);
-/*      */           break;
-/*      */         case null:
-/*  839 */           ClassWriter.this.databuf.appendByte(73);
-/*      */           break;
-/*      */         case null:
-/*  842 */           ClassWriter.this.databuf.appendByte(74);
-/*      */           break;
-/*      */         case null:
-/*  845 */           ClassWriter.this.databuf.appendByte(70);
-/*      */           break;
-/*      */         case null:
-/*  848 */           ClassWriter.this.databuf.appendByte(68);
-/*      */           break;
-/*      */         case null:
-/*  851 */           ClassWriter.this.databuf.appendByte(90);
-/*      */           break;
-/*      */         case null:
-/*  854 */           Assert.check(object instanceof String);
-/*  855 */           ClassWriter.this.databuf.appendByte(115);
-/*  856 */           object = ClassWriter.this.names.fromString(object.toString());
-/*      */           break;
-/*      */         default:
-/*  859 */           throw new AssertionError(param1Constant.type);
-/*      */       }
-/*  861 */       ClassWriter.this.databuf.appendChar(ClassWriter.this.pool.put(object));
-/*      */     }
-/*      */     public void visitEnum(Attribute.Enum param1Enum) {
-/*  864 */       ClassWriter.this.databuf.appendByte(101);
-/*  865 */       ClassWriter.this.databuf.appendChar(ClassWriter.this.pool.put(ClassWriter.this.typeSig(param1Enum.value.type)));
-/*  866 */       ClassWriter.this.databuf.appendChar(ClassWriter.this.pool.put(param1Enum.value.name));
-/*      */     }
-/*      */     public void visitClass(Attribute.Class param1Class) {
-/*  869 */       ClassWriter.this.databuf.appendByte(99);
-/*  870 */       ClassWriter.this.databuf.appendChar(ClassWriter.this.pool.put(ClassWriter.this.typeSig(param1Class.classType)));
-/*      */     }
-/*      */     public void visitCompound(Attribute.Compound param1Compound) {
-/*  873 */       ClassWriter.this.databuf.appendByte(64);
-/*  874 */       ClassWriter.this.writeCompoundAttribute(param1Compound);
-/*      */     }
-/*      */     public void visitError(Attribute.Error param1Error) {
-/*  877 */       throw new AssertionError(param1Error);
-/*      */     }
-/*      */     public void visitArray(Attribute.Array param1Array) {
-/*  880 */       ClassWriter.this.databuf.appendByte(91);
-/*  881 */       ClassWriter.this.databuf.appendChar(param1Array.values.length);
-/*  882 */       for (Attribute attribute : param1Array.values)
-/*  883 */         attribute.accept(this);
-/*      */     }
-/*      */   }
-/*      */
-/*  887 */   protected ClassWriter(Context paramContext) { this.awriter = new AttributeWriter(); paramContext.put(classWriterKey, this); this.log = Log.instance(paramContext); this.names = Names.instance(paramContext); this.options = Options.instance(paramContext); this.target = Target.instance(paramContext); this.source = Source.instance(paramContext); this.types = Types.instance(paramContext); this.fileManager = (JavaFileManager)paramContext.get(JavaFileManager.class); this.signatureGen = new CWSignatureGenerator(this.types); this.verbose = this.options.isSet(Option.VERBOSE); this.scramble = this.options.isSet("-scramble"); this.scrambleAll = this.options.isSet("-scrambleAll"); this.retrofit = this.options.isSet("-retrofit"); this.genCrt = this.options.isSet(Option.XJCOV); this.debugstackmap = this.options.isSet("debugstackmap"); this.emitSourceFile = (this.options.isUnset(Option.G_CUSTOM) || this.options.isSet(Option.G_CUSTOM, "source")); String str = this.options.get("dumpmodifiers");
-/*      */     this.dumpClassModifiers = (str != null && str.indexOf('c') != -1);
-/*      */     this.dumpFieldModifiers = (str != null && str.indexOf('f') != -1);
-/*      */     this.dumpInnerClassModifiers = (str != null && str.indexOf('i') != -1);
-/*  891 */     this.dumpMethodModifiers = (str != null && str.indexOf('m') != -1); } void writeCompoundAttribute(Attribute.Compound paramCompound) { this.databuf.appendChar(this.pool.put(typeSig(paramCompound.type)));
-/*  892 */     this.databuf.appendChar(paramCompound.values.length());
-/*  893 */     for (Pair pair : paramCompound.values) {
-/*  894 */       this.databuf.appendChar(this.pool.put(((Symbol.MethodSymbol)pair.fst).name));
-/*  895 */       ((Attribute)pair.snd).accept(this.awriter);
-/*      */     }  }
-/*      */
-/*      */
-/*      */   void writeTypeAnnotation(Attribute.TypeCompound paramTypeCompound) {
-/*  900 */     writePosition(paramTypeCompound.position);
-/*  901 */     writeCompoundAttribute((Attribute.Compound)paramTypeCompound);
-/*      */   }
-/*      */   void writePosition(TypeAnnotationPosition paramTypeAnnotationPosition) {
-/*      */     byte b;
-/*  905 */     this.databuf.appendByte(paramTypeAnnotationPosition.type.targetTypeValue());
-/*  906 */     switch (paramTypeAnnotationPosition.type) {
-/*      */
-/*      */
-/*      */
-/*      */       case CLDC:
-/*      */       case JSR202:
-/*      */       case null:
-/*      */       case null:
-/*  914 */         this.databuf.appendChar(paramTypeAnnotationPosition.offset);
-/*      */         break;
-/*      */
-/*      */
-/*      */       case null:
-/*      */       case null:
-/*  920 */         this.databuf.appendChar(paramTypeAnnotationPosition.lvarOffset.length);
-/*  921 */         for (b = 0; b < paramTypeAnnotationPosition.lvarOffset.length; b++) {
-/*  922 */           this.databuf.appendChar(paramTypeAnnotationPosition.lvarOffset[b]);
-/*  923 */           this.databuf.appendChar(paramTypeAnnotationPosition.lvarLength[b]);
-/*  924 */           this.databuf.appendChar(paramTypeAnnotationPosition.lvarIndex[b]);
-/*      */         }
-/*      */         break;
-/*      */
-/*      */       case null:
-/*  929 */         this.databuf.appendChar(paramTypeAnnotationPosition.exception_index);
-/*      */         break;
-/*      */
-/*      */
-/*      */       case null:
-/*      */         break;
-/*      */
-/*      */       case null:
-/*      */       case null:
-/*  938 */         this.databuf.appendByte(paramTypeAnnotationPosition.parameter_index);
-/*      */         break;
-/*      */
-/*      */       case null:
-/*      */       case null:
-/*  943 */         this.databuf.appendByte(paramTypeAnnotationPosition.parameter_index);
-/*  944 */         this.databuf.appendByte(paramTypeAnnotationPosition.bound_index);
-/*      */         break;
-/*      */
-/*      */       case null:
-/*  948 */         this.databuf.appendChar(paramTypeAnnotationPosition.type_index);
-/*      */         break;
-/*      */
-/*      */       case null:
-/*  952 */         this.databuf.appendChar(paramTypeAnnotationPosition.type_index);
-/*      */         break;
-/*      */
-/*      */       case null:
-/*  956 */         this.databuf.appendByte(paramTypeAnnotationPosition.parameter_index);
-/*      */         break;
-/*      */
-/*      */
-/*      */       case null:
-/*      */       case null:
-/*      */       case null:
-/*      */       case null:
-/*      */       case null:
-/*  965 */         this.databuf.appendChar(paramTypeAnnotationPosition.offset);
-/*  966 */         this.databuf.appendByte(paramTypeAnnotationPosition.type_index);
-/*      */         break;
-/*      */
-/*      */       case null:
-/*      */       case null:
-/*      */         break;
-/*      */       case null:
-/*  973 */         throw new AssertionError("jvm.ClassWriter: UNKNOWN target type should never occur!");
-/*      */       default:
-/*  975 */         throw new AssertionError("jvm.ClassWriter: Unknown target type for position: " + paramTypeAnnotationPosition);
-/*      */     }
-/*      */
-/*      */
-/*  979 */     this.databuf.appendByte(paramTypeAnnotationPosition.location.size());
-/*  980 */     List list = TypeAnnotationPosition.getBinaryFromTypePath((List)paramTypeAnnotationPosition.location);
-/*  981 */     for (Iterator<Integer> iterator = list.iterator(); iterator.hasNext(); ) { int i = ((Integer)iterator.next()).intValue();
-/*  982 */       this.databuf.appendByte((byte)i); }
-/*      */
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void enterInner(Symbol.ClassSymbol paramClassSymbol) {
-/*  993 */     if (paramClassSymbol.type.isCompound()) {
-/*  994 */       throw new AssertionError("Unexpected intersection type: " + paramClassSymbol.type);
-/*      */     }
-/*      */     try {
-/*  997 */       paramClassSymbol.complete();
-/*  998 */     } catch (Symbol.CompletionFailure completionFailure) {
-/*  999 */       System.err.println("error: " + paramClassSymbol + ": " + completionFailure.getMessage());
-/* 1000 */       throw completionFailure;
-/*      */     }
-/* 1002 */     if (!paramClassSymbol.type.hasTag(TypeTag.CLASS))
-/* 1003 */       return;  if (this.pool != null && paramClassSymbol.owner
-/* 1004 */       .enclClass() != null && (this.innerClasses == null ||
-/* 1005 */       !this.innerClasses.contains(paramClassSymbol))) {
-/*      */
-/* 1007 */       enterInner(paramClassSymbol.owner.enclClass());
-/* 1008 */       this.pool.put(paramClassSymbol);
-/* 1009 */       if (paramClassSymbol.name != this.names.empty)
-/* 1010 */         this.pool.put(paramClassSymbol.name);
-/* 1011 */       if (this.innerClasses == null) {
-/* 1012 */         this.innerClasses = new HashSet<>();
-/* 1013 */         this.innerClassesQueue = new ListBuffer();
-/* 1014 */         this.pool.put(this.names.InnerClasses);
-/*      */       }
-/* 1016 */       this.innerClasses.add(paramClassSymbol);
-/* 1017 */       this.innerClassesQueue.append(paramClassSymbol);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void writeInnerClasses() {
-/* 1024 */     int i = writeAttr(this.names.InnerClasses);
-/* 1025 */     this.databuf.appendChar(this.innerClassesQueue.length());
-/* 1026 */     List list = this.innerClassesQueue.toList();
-/* 1027 */     for (; list.nonEmpty();
-/* 1028 */       list = list.tail) {
-/* 1029 */       Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)list.head;
-/* 1030 */       classSymbol.markAbstractIfNeeded(this.types);
-/* 1031 */       char c = (char)adjustFlags(classSymbol.flags_field);
-/* 1032 */       if ((c & 0x200) != 0) c = (char)(c | 0x400);
-/* 1033 */       if (classSymbol.name.isEmpty()) c = (char)(c & 0xFFFFFFEF);
-/* 1034 */       c = (char)(c & 0xFFFFF7FF);
-/* 1035 */       if (this.dumpInnerClassModifiers) {
-/* 1036 */         PrintWriter printWriter = this.log.getWriter(Log.WriterKind.ERROR);
-/* 1037 */         printWriter.println("INNERCLASS  " + classSymbol.name);
-/* 1038 */         printWriter.println("---" + flagNames(c));
-/*      */       }
-/* 1040 */       this.databuf.appendChar(this.pool.get(classSymbol));
-/* 1041 */       this.databuf.appendChar((classSymbol.owner.kind == 2 &&
-/* 1042 */           !classSymbol.name.isEmpty()) ? this.pool.get(classSymbol.owner) : 0);
-/* 1043 */       this.databuf.appendChar(
-/* 1044 */           !classSymbol.name.isEmpty() ? this.pool.get(classSymbol.name) : 0);
-/* 1045 */       this.databuf.appendChar(c);
-/*      */     }
-/* 1047 */     endAttr(i);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void writeBootstrapMethods() {
-/* 1053 */     int i = writeAttr(this.names.BootstrapMethods);
-/* 1054 */     this.databuf.appendChar(this.bootstrapMethods.size());
-/* 1055 */     for (Map.Entry<Pool.DynamicMethod, Pool.MethodHandle> entry : this.bootstrapMethods.entrySet()) {
-/* 1056 */       Pool.DynamicMethod dynamicMethod = (Pool.DynamicMethod)entry.getKey();
-/* 1057 */       Symbol.DynamicMethodSymbol dynamicMethodSymbol = (Symbol.DynamicMethodSymbol)dynamicMethod.baseSymbol();
-/*      */
-/* 1059 */       this.databuf.appendChar(this.pool.get(entry.getValue()));
-/*      */
-/* 1061 */       this.databuf.appendChar(dynamicMethodSymbol.staticArgs.length);
-/*      */
-/* 1063 */       Object[] arrayOfObject = dynamicMethod.uniqueStaticArgs;
-/* 1064 */       for (Object object : arrayOfObject) {
-/* 1065 */         this.databuf.appendChar(this.pool.get(object));
-/*      */       }
-/*      */     }
-/* 1068 */     endAttr(i);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void writeField(Symbol.VarSymbol paramVarSymbol) {
-/* 1074 */     int i = adjustFlags(paramVarSymbol.flags());
-/* 1075 */     this.databuf.appendChar(i);
-/* 1076 */     if (this.dumpFieldModifiers) {
-/* 1077 */       PrintWriter printWriter = this.log.getWriter(Log.WriterKind.ERROR);
-/* 1078 */       printWriter.println("FIELD  " + fieldName((Symbol)paramVarSymbol));
-/* 1079 */       printWriter.println("---" + flagNames(paramVarSymbol.flags()));
-/*      */     }
-/* 1081 */     this.databuf.appendChar(this.pool.put(fieldName((Symbol)paramVarSymbol)));
-/* 1082 */     this.databuf.appendChar(this.pool.put(typeSig(paramVarSymbol.erasure(this.types))));
-/* 1083 */     int j = beginAttrs();
-/* 1084 */     int k = 0;
-/* 1085 */     if (paramVarSymbol.getConstValue() != null) {
-/* 1086 */       int m = writeAttr(this.names.ConstantValue);
-/* 1087 */       this.databuf.appendChar(this.pool.put(paramVarSymbol.getConstValue()));
-/* 1088 */       endAttr(m);
-/* 1089 */       k++;
-/*      */     }
-/* 1091 */     k += writeMemberAttrs((Symbol)paramVarSymbol);
-/* 1092 */     endAttrs(j, k);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void writeMethod(Symbol.MethodSymbol paramMethodSymbol) {
-/* 1098 */     int i = adjustFlags(paramMethodSymbol.flags());
-/* 1099 */     this.databuf.appendChar(i);
-/* 1100 */     if (this.dumpMethodModifiers) {
-/* 1101 */       PrintWriter printWriter = this.log.getWriter(Log.WriterKind.ERROR);
-/* 1102 */       printWriter.println("METHOD  " + fieldName((Symbol)paramMethodSymbol));
-/* 1103 */       printWriter.println("---" + flagNames(paramMethodSymbol.flags()));
-/*      */     }
-/* 1105 */     this.databuf.appendChar(this.pool.put(fieldName((Symbol)paramMethodSymbol)));
-/* 1106 */     this.databuf.appendChar(this.pool.put(typeSig(paramMethodSymbol.externalType(this.types))));
-/* 1107 */     int j = beginAttrs();
-/* 1108 */     int k = 0;
-/* 1109 */     if (paramMethodSymbol.code != null) {
-/* 1110 */       int m = writeAttr(this.names.Code);
-/* 1111 */       writeCode(paramMethodSymbol.code);
-/* 1112 */       paramMethodSymbol.code = null;
-/* 1113 */       endAttr(m);
-/* 1114 */       k++;
-/*      */     }
-/* 1116 */     List list = paramMethodSymbol.erasure(this.types).getThrownTypes();
-/* 1117 */     if (list.nonEmpty()) {
-/* 1118 */       int m = writeAttr(this.names.Exceptions);
-/* 1119 */       this.databuf.appendChar(list.length());
-/* 1120 */       for (List list1 = list; list1.nonEmpty(); list1 = list1.tail)
-/* 1121 */         this.databuf.appendChar(this.pool.put(((Type)list1.head).tsym));
-/* 1122 */       endAttr(m);
-/* 1123 */       k++;
-/*      */     }
-/* 1125 */     if (paramMethodSymbol.defaultValue != null) {
-/* 1126 */       int m = writeAttr(this.names.AnnotationDefault);
-/* 1127 */       paramMethodSymbol.defaultValue.accept(this.awriter);
-/* 1128 */       endAttr(m);
-/* 1129 */       k++;
-/*      */     }
-/* 1131 */     if (this.options.isSet(Option.PARAMETERS))
-/* 1132 */       k += writeMethodParametersAttr(paramMethodSymbol);
-/* 1133 */     k += writeMemberAttrs((Symbol)paramMethodSymbol);
-/* 1134 */     k += writeParameterAttrs(paramMethodSymbol);
-/* 1135 */     endAttrs(j, k);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void writeCode(Code paramCode) {
-/* 1141 */     this.databuf.appendChar(paramCode.max_stack);
-/* 1142 */     this.databuf.appendChar(paramCode.max_locals);
-/* 1143 */     this.databuf.appendInt(paramCode.cp);
-/* 1144 */     this.databuf.appendBytes(paramCode.code, 0, paramCode.cp);
-/* 1145 */     this.databuf.appendChar(paramCode.catchInfo.length());
-/* 1146 */     List list = paramCode.catchInfo.toList();
-/* 1147 */     for (; list.nonEmpty();
-/* 1148 */       list = list.tail) {
-/* 1149 */       for (byte b = 0; b < ((char[])list.head).length; b++)
-/* 1150 */         this.databuf.appendChar(((char[])list.head)[b]);
-/*      */     }
-/* 1152 */     int i = beginAttrs();
-/* 1153 */     int j = 0;
-/*      */
-/* 1155 */     if (paramCode.lineInfo.nonEmpty()) {
-/* 1156 */       int k = writeAttr(this.names.LineNumberTable);
-/* 1157 */       this.databuf.appendChar(paramCode.lineInfo.length());
-/* 1158 */       List list1 = paramCode.lineInfo.reverse();
-/* 1159 */       for (; list1.nonEmpty();
-/* 1160 */         list1 = list1.tail) {
-/* 1161 */         for (byte b = 0; b < ((char[])list1.head).length; b++)
-/* 1162 */           this.databuf.appendChar(((char[])list1.head)[b]);
-/* 1163 */       }  endAttr(k);
-/* 1164 */       j++;
-/*      */     }
-/*      */
-/* 1167 */     if (this.genCrt && paramCode.crt != null) {
-/* 1168 */       CRTable cRTable = paramCode.crt;
-/* 1169 */       int k = writeAttr(this.names.CharacterRangeTable);
-/* 1170 */       int m = beginAttrs();
-/* 1171 */       int n = cRTable.writeCRT(this.databuf, paramCode.lineMap, this.log);
-/* 1172 */       endAttrs(m, n);
-/* 1173 */       endAttr(k);
-/* 1174 */       j++;
-/*      */     }
-/*      */
-/*      */
-/* 1178 */     if (paramCode.varDebugInfo && paramCode.varBufferSize > 0) {
-/* 1179 */       byte b1 = 0;
-/* 1180 */       int k = writeAttr(this.names.LocalVariableTable);
-/* 1181 */       this.databuf.appendChar(paramCode.getLVTSize()); byte b2;
-/* 1182 */       for (b2 = 0; b2 < paramCode.varBufferSize; b2++) {
-/* 1183 */         Code.LocalVar localVar = paramCode.varBuffer[b2];
-/*      */
-/* 1185 */         for (Code.LocalVar.Range range : localVar.aliveRanges) {
-/*      */
-/* 1187 */           Assert.check((range.start_pc >= '\000' && range.start_pc <= paramCode.cp));
-/*      */
-/* 1189 */           this.databuf.appendChar(range.start_pc);
-/* 1190 */           Assert.check((range.length > '\000' && range.start_pc + range.length <= paramCode.cp));
-/*      */
-/* 1192 */           this.databuf.appendChar(range.length);
-/* 1193 */           Symbol.VarSymbol varSymbol = localVar.sym;
-/* 1194 */           this.databuf.appendChar(this.pool.put(varSymbol.name));
-/* 1195 */           Type type = varSymbol.erasure(this.types);
-/* 1196 */           this.databuf.appendChar(this.pool.put(typeSig(type)));
-/* 1197 */           this.databuf.appendChar(localVar.reg);
-/* 1198 */           if (needsLocalVariableTypeEntry(localVar.sym.type)) {
-/* 1199 */             b1++;
-/*      */           }
-/*      */         }
-/*      */       }
-/* 1203 */       endAttr(k);
-/* 1204 */       j++;
-/*      */
-/* 1206 */       if (b1 > 0) {
-/* 1207 */         k = writeAttr(this.names.LocalVariableTypeTable);
-/* 1208 */         this.databuf.appendChar(b1);
-/* 1209 */         b2 = 0;
-/*      */
-/* 1211 */         for (byte b = 0; b < paramCode.varBufferSize; b++) {
-/* 1212 */           Code.LocalVar localVar = paramCode.varBuffer[b];
-/* 1213 */           Symbol.VarSymbol varSymbol = localVar.sym;
-/* 1214 */           if (needsLocalVariableTypeEntry(varSymbol.type))
-/*      */           {
-/* 1216 */             for (Code.LocalVar.Range range : localVar.aliveRanges) {
-/*      */
-/* 1218 */               this.databuf.appendChar(range.start_pc);
-/* 1219 */               this.databuf.appendChar(range.length);
-/* 1220 */               this.databuf.appendChar(this.pool.put(varSymbol.name));
-/* 1221 */               this.databuf.appendChar(this.pool.put(typeSig(varSymbol.type)));
-/* 1222 */               this.databuf.appendChar(localVar.reg);
-/* 1223 */               b2++;
-/*      */             }  }
-/*      */         }
-/* 1226 */         Assert.check((b2 == b1));
-/* 1227 */         endAttr(k);
-/* 1228 */         j++;
-/*      */       }
-/*      */     }
-/*      */
-/* 1232 */     if (paramCode.stackMapBufferSize > 0) {
-/* 1233 */       if (this.debugstackmap) System.out.println("Stack map for " + paramCode.meth);
-/* 1234 */       int k = writeAttr(paramCode.stackMap.getAttributeName(this.names));
-/* 1235 */       writeStackMap(paramCode);
-/* 1236 */       endAttr(k);
-/* 1237 */       j++;
-/*      */     }
-/*      */
-/* 1240 */     j += writeTypeAnnotations(paramCode.meth.getRawTypeAttributes(), true);
-/*      */
-/* 1242 */     endAttrs(i, j);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private boolean needsLocalVariableTypeEntry(Type paramType) {
-/* 1249 */     return (!this.types.isSameType(paramType, this.types.erasure(paramType)) &&
-/* 1250 */       !paramType.isCompound());
-/*      */   }
-/*      */   void writeStackMap(Code paramCode) {
-/*      */     byte b;
-/* 1254 */     int i = paramCode.stackMapBufferSize;
-/* 1255 */     if (this.debugstackmap) System.out.println(" nframes = " + i);
-/* 1256 */     this.databuf.appendChar(i);
-/*      */
-/* 1258 */     switch (paramCode.stackMap) {
-/*      */       case CLDC:
-/* 1260 */         for (b = 0; b < i; b++) {
-/* 1261 */           if (this.debugstackmap) System.out.print("  " + b + ":");
-/* 1262 */           Code.StackMapFrame stackMapFrame = paramCode.stackMapBuffer[b];
-/*      */
-/*      */
-/* 1265 */           if (this.debugstackmap) System.out.print(" pc=" + stackMapFrame.pc);
-/* 1266 */           this.databuf.appendChar(stackMapFrame.pc);
-/*      */
-/*      */
-/* 1269 */           byte b1 = 0; int j;
-/* 1270 */           for (j = 0; j < stackMapFrame.locals.length;
-/* 1271 */             j += this.target.generateEmptyAfterBig() ? 1 : Code.width(stackMapFrame.locals[j])) {
-/* 1272 */             b1++;
-/*      */           }
-/* 1274 */           if (this.debugstackmap) System.out.print(" nlocals=" + b1);
-/*      */
-/* 1276 */           this.databuf.appendChar(b1);
-/* 1277 */           for (j = 0; j < stackMapFrame.locals.length;
-/* 1278 */             j += this.target.generateEmptyAfterBig() ? 1 : Code.width(stackMapFrame.locals[j])) {
-/* 1279 */             if (this.debugstackmap) System.out.print(" local[" + j + "]=");
-/* 1280 */             writeStackMapType(stackMapFrame.locals[j]);
-/*      */           }
-/*      */
-/*      */
-/* 1284 */           j = 0; int k;
-/* 1285 */           for (k = 0; k < stackMapFrame.stack.length;
-/* 1286 */             k += this.target.generateEmptyAfterBig() ? 1 : Code.width(stackMapFrame.stack[k])) {
-/* 1287 */             j++;
-/*      */           }
-/* 1289 */           if (this.debugstackmap) System.out.print(" nstack=" + j);
-/*      */
-/* 1291 */           this.databuf.appendChar(j);
-/* 1292 */           for (k = 0; k < stackMapFrame.stack.length;
-/* 1293 */             k += this.target.generateEmptyAfterBig() ? 1 : Code.width(stackMapFrame.stack[k])) {
-/* 1294 */             if (this.debugstackmap) System.out.print(" stack[" + k + "]=");
-/* 1295 */             writeStackMapType(stackMapFrame.stack[k]);
-/*      */           }
-/* 1297 */           if (this.debugstackmap) System.out.println();
-/*      */         }
-/*      */         return;
-/*      */       case JSR202:
-/* 1301 */         Assert.checkNull(paramCode.stackMapBuffer);
-/* 1302 */         for (b = 0; b < i; b++) {
-/* 1303 */           if (this.debugstackmap) System.out.print("  " + b + ":");
-/* 1304 */           StackMapTableFrame stackMapTableFrame = paramCode.stackMapTableBuffer[b];
-/* 1305 */           stackMapTableFrame.write(this);
-/* 1306 */           if (this.debugstackmap) System.out.println();
-/*      */
-/*      */         }
-/*      */         return;
-/*      */     }
-/* 1311 */     throw new AssertionError("Unexpected stackmap format value");
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void writeStackMapType(Type paramType) {
-/* 1317 */     if (paramType == null) {
-/* 1318 */       if (this.debugstackmap) System.out.print("empty");
-/* 1319 */       this.databuf.appendByte(0);
-/*      */     } else {
-/* 1321 */       UninitializedType uninitializedType; switch (paramType.getTag()) {
-/*      */         case null:
-/*      */         case null:
-/*      */         case null:
-/*      */         case null:
-/*      */         case null:
-/* 1327 */           if (this.debugstackmap) System.out.print("int");
-/* 1328 */           this.databuf.appendByte(1);
-/*      */           return;
-/*      */         case null:
-/* 1331 */           if (this.debugstackmap) System.out.print("float");
-/* 1332 */           this.databuf.appendByte(2);
-/*      */           return;
-/*      */         case null:
-/* 1335 */           if (this.debugstackmap) System.out.print("double");
-/* 1336 */           this.databuf.appendByte(3);
-/*      */           return;
-/*      */         case null:
-/* 1339 */           if (this.debugstackmap) System.out.print("long");
-/* 1340 */           this.databuf.appendByte(4);
-/*      */           return;
-/*      */         case null:
-/* 1343 */           if (this.debugstackmap) System.out.print("null");
-/* 1344 */           this.databuf.appendByte(5);
-/*      */           return;
-/*      */         case null:
-/*      */         case null:
-/* 1348 */           if (this.debugstackmap) System.out.print("object(" + paramType + ")");
-/* 1349 */           this.databuf.appendByte(7);
-/* 1350 */           this.databuf.appendChar(this.pool.put(paramType));
-/*      */           return;
-/*      */         case null:
-/* 1353 */           if (this.debugstackmap) System.out.print("object(" + (this.types.erasure(paramType)).tsym + ")");
-/* 1354 */           this.databuf.appendByte(7);
-/* 1355 */           this.databuf.appendChar(this.pool.put((this.types.erasure(paramType)).tsym));
-/*      */           return;
-/*      */         case CLDC:
-/* 1358 */           if (this.debugstackmap) System.out.print("uninit_this");
-/* 1359 */           this.databuf.appendByte(6);
-/*      */           return;
-/*      */         case JSR202:
-/* 1362 */           uninitializedType = (UninitializedType)paramType;
-/* 1363 */           this.databuf.appendByte(8);
-/* 1364 */           if (this.debugstackmap) System.out.print("uninit_object@" + uninitializedType.offset);
-/* 1365 */           this.databuf.appendChar(uninitializedType.offset);
-/*      */           return;
-/*      */       }
-/*      */
-/* 1369 */       throw new AssertionError();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   static abstract class StackMapTableFrame
-/*      */   {
-/*      */     abstract int getFrameType();
-/*      */
-/*      */     void write(ClassWriter param1ClassWriter) {
-/* 1378 */       int i = getFrameType();
-/* 1379 */       param1ClassWriter.databuf.appendByte(i);
-/* 1380 */       if (param1ClassWriter.debugstackmap) System.out.print(" frame_type=" + i);
-/*      */     }
-/*      */
-/*      */     static class SameFrame extends StackMapTableFrame { final int offsetDelta;
-/*      */
-/*      */       SameFrame(int param2Int) {
-/* 1386 */         this.offsetDelta = param2Int;
-/*      */       }
-/*      */       int getFrameType() {
-/* 1389 */         return (this.offsetDelta < 64) ? this.offsetDelta : 251;
-/*      */       }
-/*      */
-/*      */       void write(ClassWriter param2ClassWriter) {
-/* 1393 */         super.write(param2ClassWriter);
-/* 1394 */         if (getFrameType() == 251) {
-/* 1395 */           param2ClassWriter.databuf.appendChar(this.offsetDelta);
-/* 1396 */           if (param2ClassWriter.debugstackmap)
-/* 1397 */             System.out.print(" offset_delta=" + this.offsetDelta);
-/*      */         }
-/*      */       } }
-/*      */
-/*      */
-/*      */     static class SameLocals1StackItemFrame extends StackMapTableFrame {
-/*      */       final int offsetDelta;
-/*      */       final Type stack;
-/*      */
-/*      */       SameLocals1StackItemFrame(int param2Int, Type param2Type) {
-/* 1407 */         this.offsetDelta = param2Int;
-/* 1408 */         this.stack = param2Type;
-/*      */       }
-/*      */       int getFrameType() {
-/* 1411 */         return (this.offsetDelta < 64) ? (64 + this.offsetDelta) : 247;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */       void write(ClassWriter param2ClassWriter) {
-/* 1417 */         super.write(param2ClassWriter);
-/* 1418 */         if (getFrameType() == 247) {
-/* 1419 */           param2ClassWriter.databuf.appendChar(this.offsetDelta);
-/* 1420 */           if (param2ClassWriter.debugstackmap) {
-/* 1421 */             System.out.print(" offset_delta=" + this.offsetDelta);
-/*      */           }
-/*      */         }
-/* 1424 */         if (param2ClassWriter.debugstackmap) {
-/* 1425 */           System.out.print(" stack[0]=");
-/*      */         }
-/* 1427 */         param2ClassWriter.writeStackMapType(this.stack);
-/*      */       } }
-/*      */
-/*      */     static class ChopFrame extends StackMapTableFrame {
-/*      */       final int frameType;
-/*      */       final int offsetDelta;
-/*      */
-/*      */       ChopFrame(int param2Int1, int param2Int2) {
-/* 1435 */         this.frameType = param2Int1;
-/* 1436 */         this.offsetDelta = param2Int2;
-/*      */       } int getFrameType() {
-/* 1438 */         return this.frameType;
-/*      */       }
-/*      */       void write(ClassWriter param2ClassWriter) {
-/* 1441 */         super.write(param2ClassWriter);
-/* 1442 */         param2ClassWriter.databuf.appendChar(this.offsetDelta);
-/* 1443 */         if (param2ClassWriter.debugstackmap)
-/* 1444 */           System.out.print(" offset_delta=" + this.offsetDelta);
-/*      */       }
-/*      */     }
-/*      */
-/*      */     static class AppendFrame extends StackMapTableFrame {
-/*      */       final int frameType;
-/*      */       final int offsetDelta;
-/*      */       final Type[] locals;
-/*      */
-/*      */       AppendFrame(int param2Int1, int param2Int2, Type[] param2ArrayOfType) {
-/* 1454 */         this.frameType = param2Int1;
-/* 1455 */         this.offsetDelta = param2Int2;
-/* 1456 */         this.locals = param2ArrayOfType;
-/*      */       } int getFrameType() {
-/* 1458 */         return this.frameType;
-/*      */       }
-/*      */       void write(ClassWriter param2ClassWriter) {
-/* 1461 */         super.write(param2ClassWriter);
-/* 1462 */         param2ClassWriter.databuf.appendChar(this.offsetDelta);
-/* 1463 */         if (param2ClassWriter.debugstackmap) {
-/* 1464 */           System.out.print(" offset_delta=" + this.offsetDelta);
-/*      */         }
-/* 1466 */         for (byte b = 0; b < this.locals.length; b++) {
-/* 1467 */           if (param2ClassWriter.debugstackmap) System.out.print(" locals[" + b + "]=");
-/* 1468 */           param2ClassWriter.writeStackMapType(this.locals[b]);
-/*      */         }
-/*      */       } }
-/*      */
-/*      */     static class FullFrame extends StackMapTableFrame {
-/*      */       final int offsetDelta;
-/*      */       final Type[] locals;
-/*      */       final Type[] stack;
-/*      */
-/*      */       FullFrame(int param2Int, Type[] param2ArrayOfType1, Type[] param2ArrayOfType2) {
-/* 1478 */         this.offsetDelta = param2Int;
-/* 1479 */         this.locals = param2ArrayOfType1;
-/* 1480 */         this.stack = param2ArrayOfType2;
-/*      */       } int getFrameType() {
-/* 1482 */         return 255;
-/*      */       }
-/*      */       void write(ClassWriter param2ClassWriter) {
-/* 1485 */         super.write(param2ClassWriter);
-/* 1486 */         param2ClassWriter.databuf.appendChar(this.offsetDelta);
-/* 1487 */         param2ClassWriter.databuf.appendChar(this.locals.length);
-/* 1488 */         if (param2ClassWriter.debugstackmap) {
-/* 1489 */           System.out.print(" offset_delta=" + this.offsetDelta);
-/* 1490 */           System.out.print(" nlocals=" + this.locals.length);
-/*      */         }  byte b;
-/* 1492 */         for (b = 0; b < this.locals.length; b++) {
-/* 1493 */           if (param2ClassWriter.debugstackmap) System.out.print(" locals[" + b + "]=");
-/* 1494 */           param2ClassWriter.writeStackMapType(this.locals[b]);
-/*      */         }
-/*      */
-/* 1497 */         param2ClassWriter.databuf.appendChar(this.stack.length);
-/* 1498 */         if (param2ClassWriter.debugstackmap) System.out.print(" nstack=" + this.stack.length);
-/* 1499 */         for (b = 0; b < this.stack.length; b++) {
-/* 1500 */           if (param2ClassWriter.debugstackmap) System.out.print(" stack[" + b + "]=");
-/* 1501 */           param2ClassWriter.writeStackMapType(this.stack[b]);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     static StackMapTableFrame getInstance(Code.StackMapFrame param1StackMapFrame, int param1Int, Type[] param1ArrayOfType, Types param1Types) {
-/* 1512 */       Type[] arrayOfType1 = param1StackMapFrame.locals;
-/* 1513 */       Type[] arrayOfType2 = param1StackMapFrame.stack;
-/* 1514 */       int i = param1StackMapFrame.pc - param1Int - 1;
-/* 1515 */       if (arrayOfType2.length == 1) {
-/* 1516 */         if (arrayOfType1.length == param1ArrayOfType.length &&
-/* 1517 */           compare(param1ArrayOfType, arrayOfType1, param1Types) == 0) {
-/* 1518 */           return new SameLocals1StackItemFrame(i, arrayOfType2[0]);
-/*      */         }
-/* 1520 */       } else if (arrayOfType2.length == 0) {
-/* 1521 */         int j = compare(param1ArrayOfType, arrayOfType1, param1Types);
-/* 1522 */         if (j == 0)
-/* 1523 */           return new SameFrame(i);
-/* 1524 */         if (-4 < j && j < 0) {
-/*      */
-/* 1526 */           Type[] arrayOfType = new Type[-j]; int k; byte b;
-/* 1527 */           for (k = param1ArrayOfType.length, b = 0; k < arrayOfType1.length; k++, b++) {
-/* 1528 */             arrayOfType[b] = arrayOfType1[k];
-/*      */           }
-/* 1530 */           return new AppendFrame(251 - j, i, arrayOfType);
-/*      */         }
-/*      */
-/* 1533 */         if (0 < j && j < 4)
-/*      */         {
-/* 1535 */           return new ChopFrame(251 - j, i);
-/*      */         }
-/*      */       }
-/*      */
-/*      */
-/* 1540 */       return new FullFrame(i, arrayOfType1, arrayOfType2);
-/*      */     }
-/*      */
-/*      */     static boolean isInt(Type param1Type) {
-/* 1544 */       return (param1Type.getTag().isStrictSubRangeOf(TypeTag.INT) || param1Type.hasTag(TypeTag.BOOLEAN));
-/*      */     }
-/*      */
-/*      */     static boolean isSameType(Type param1Type1, Type param1Type2, Types param1Types) {
-/* 1548 */       if (param1Type1 == null) return (param1Type2 == null);
-/* 1549 */       if (param1Type2 == null) return false;
-/*      */
-/* 1551 */       if (isInt(param1Type1) && isInt(param1Type2)) return true;
-/*      */
-/* 1553 */       if (param1Type1.hasTag(TypeTag.UNINITIALIZED_THIS))
-/* 1554 */         return param1Type2.hasTag(TypeTag.UNINITIALIZED_THIS);
-/* 1555 */       if (param1Type1.hasTag(TypeTag.UNINITIALIZED_OBJECT)) {
-/* 1556 */         if (param1Type2.hasTag(TypeTag.UNINITIALIZED_OBJECT)) {
-/* 1557 */           return (((UninitializedType)param1Type1).offset == ((UninitializedType)param1Type2).offset);
-/*      */         }
-/* 1559 */         return false;
-/*      */       }
-/* 1561 */       if (param1Type2.hasTag(TypeTag.UNINITIALIZED_THIS) || param1Type2.hasTag(TypeTag.UNINITIALIZED_OBJECT)) {
-/* 1562 */         return false;
-/*      */       }
-/*      */
-/* 1565 */       return param1Types.isSameType(param1Type1, param1Type2);
-/*      */     }
-/*      */
-/*      */     static int compare(Type[] param1ArrayOfType1, Type[] param1ArrayOfType2, Types param1Types) {
-/* 1569 */       int i = param1ArrayOfType1.length - param1ArrayOfType2.length;
-/* 1570 */       if (i > 4 || i < -4) {
-/* 1571 */         return Integer.MAX_VALUE;
-/*      */       }
-/* 1573 */       int j = (i > 0) ? param1ArrayOfType2.length : param1ArrayOfType1.length;
-/* 1574 */       for (byte b = 0; b < j; b++) {
-/* 1575 */         if (!isSameType(param1ArrayOfType1[b], param1ArrayOfType2[b], param1Types)) {
-/* 1576 */           return Integer.MAX_VALUE;
-/*      */         }
-/*      */       }
-/* 1579 */       return i;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void writeFields(Scope.Entry paramEntry) {
-/* 1586 */     List list = List.nil();
-/* 1587 */     for (Scope.Entry entry = paramEntry; entry != null; entry = entry.sibling) {
-/* 1588 */       if (entry.sym.kind == 4) list = list.prepend(entry.sym);
-/*      */     }
-/* 1590 */     while (list.nonEmpty()) {
-/* 1591 */       writeField((Symbol.VarSymbol)list.head);
-/* 1592 */       list = list.tail;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   void writeMethods(Scope.Entry paramEntry) {
-/* 1597 */     List list = List.nil();
-/* 1598 */     for (Scope.Entry entry = paramEntry; entry != null; entry = entry.sibling) {
-/* 1599 */       if (entry.sym.kind == 16 && (entry.sym.flags() & 0x2000000000L) == 0L)
-/* 1600 */         list = list.prepend(entry.sym);
-/*      */     }
-/* 1602 */     while (list.nonEmpty()) {
-/* 1603 */       writeMethod((Symbol.MethodSymbol)list.head);
-/* 1604 */       list = list.tail;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public JavaFileObject writeClass(Symbol.ClassSymbol paramClassSymbol) throws IOException, PoolOverflow, StringOverflow {
-/* 1615 */     JavaFileObject javaFileObject = this.fileManager.getJavaFileForOutput(StandardLocation.CLASS_OUTPUT, paramClassSymbol.flatname
-/* 1616 */         .toString(), JavaFileObject.Kind.CLASS, paramClassSymbol.sourcefile);
-/*      */
-/*      */
-/* 1619 */     OutputStream outputStream = javaFileObject.openOutputStream();
-/*      */     try {
-/* 1621 */       writeClassFile(outputStream, paramClassSymbol);
-/* 1622 */       if (this.verbose)
-/* 1623 */         this.log.printVerbose("wrote.file", new Object[] { javaFileObject });
-/* 1624 */       outputStream.close();
-/* 1625 */       outputStream = null;
-/*      */     } finally {
-/* 1627 */       if (outputStream != null) {
-/*      */
-/* 1629 */         outputStream.close();
-/* 1630 */         javaFileObject.delete();
-/* 1631 */         javaFileObject = null;
-/*      */       }
-/*      */     }
-/* 1634 */     return javaFileObject;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void writeClassFile(OutputStream paramOutputStream, Symbol.ClassSymbol paramClassSymbol) throws IOException, PoolOverflow, StringOverflow {
-/* 1641 */     Assert.check(((paramClassSymbol.flags() & 0x1000000L) == 0L));
-/* 1642 */     this.databuf.reset();
-/* 1643 */     this.poolbuf.reset();
-/* 1644 */     this.signatureGen.reset();
-/* 1645 */     this.pool = paramClassSymbol.pool;
-/* 1646 */     this.innerClasses = null;
-/* 1647 */     this.innerClassesQueue = null;
-/* 1648 */     this.bootstrapMethods = new LinkedHashMap<>();
-/*      */
-/* 1650 */     Type type = this.types.supertype(paramClassSymbol.type);
-/* 1651 */     List list1 = this.types.interfaces(paramClassSymbol.type);
-/* 1652 */     List list2 = paramClassSymbol.type.getTypeArguments();
-/*      */
-/* 1654 */     int i = adjustFlags(paramClassSymbol.flags() & 0xFFFFF7FFFFFFFFFFL);
-/* 1655 */     if ((i & 0x4) != 0) i |= 0x1;
-/* 1656 */     i = i & 0x7E11 & 0xFFFFF7FF;
-/* 1657 */     if ((i & 0x200) == 0) i |= 0x20;
-/* 1658 */     if (paramClassSymbol.isInner() && paramClassSymbol.name.isEmpty()) i &= 0xFFFFFFEF;
-/* 1659 */     if (this.dumpClassModifiers) {
-/* 1660 */       PrintWriter printWriter = this.log.getWriter(Log.WriterKind.ERROR);
-/* 1661 */       printWriter.println();
-/* 1662 */       printWriter.println("CLASSFILE  " + paramClassSymbol.getQualifiedName());
-/* 1663 */       printWriter.println("---" + flagNames(i));
-/*      */     }
-/* 1665 */     this.databuf.appendChar(i);
-/*      */
-/* 1667 */     this.databuf.appendChar(this.pool.put(paramClassSymbol));
-/* 1668 */     this.databuf.appendChar(type.hasTag(TypeTag.CLASS) ? this.pool.put(type.tsym) : 0);
-/* 1669 */     this.databuf.appendChar(list1.length());
-/* 1670 */     for (List list3 = list1; list3.nonEmpty(); list3 = list3.tail)
-/* 1671 */       this.databuf.appendChar(this.pool.put(((Type)list3.head).tsym));
-/* 1672 */     byte b1 = 0;
-/* 1673 */     byte b2 = 0;
-/* 1674 */     for (Scope.Entry entry = (paramClassSymbol.members()).elems; entry != null; entry = entry.sibling) {
-/* 1675 */       switch (entry.sym.kind) { case 4:
-/* 1676 */           b1++; break;
-/* 1677 */         case 16: if ((entry.sym.flags() & 0x2000000000L) == 0L) b2++;  break;
-/*      */         case 2:
-/* 1679 */           enterInner((Symbol.ClassSymbol)entry.sym); break;
-/* 1680 */         default: Assert.error();
-/*      */           break; }
-/*      */
-/*      */     }
-/* 1684 */     if (paramClassSymbol.trans_local != null) {
-/* 1685 */       for (Symbol.ClassSymbol classSymbol : paramClassSymbol.trans_local) {
-/* 1686 */         enterInner(classSymbol);
-/*      */       }
-/*      */     }
-/*      */
-/* 1690 */     this.databuf.appendChar(b1);
-/* 1691 */     writeFields((paramClassSymbol.members()).elems);
-/* 1692 */     this.databuf.appendChar(b2);
-/* 1693 */     writeMethods((paramClassSymbol.members()).elems);
-/*      */
-/* 1695 */     int j = beginAttrs();
-/* 1696 */     int k = 0;
-/*      */
-/*      */
-/* 1699 */     boolean bool = (list2.length() != 0 || type.allparams().length() != 0) ? true : false;
-/* 1700 */     for (List list4 = list1; !bool && list4.nonEmpty(); list4 = list4.tail)
-/* 1701 */       bool = (((Type)list4.head).allparams().length() != 0) ? true : false;
-/* 1702 */     if (bool) {
-/* 1703 */       Assert.check(this.source.allowGenerics());
-/* 1704 */       int m = writeAttr(this.names.Signature);
-/* 1705 */       if (list2.length() != 0) this.signatureGen.assembleParamsSig(list2);
-/* 1706 */       this.signatureGen.assembleSig(type);
-/* 1707 */       for (List list = list1; list.nonEmpty(); list = list.tail)
-/* 1708 */         this.signatureGen.assembleSig((Type)list.head);
-/* 1709 */       this.databuf.appendChar(this.pool.put(this.signatureGen.toName()));
-/* 1710 */       this.signatureGen.reset();
-/* 1711 */       endAttr(m);
-/* 1712 */       k++;
-/*      */     }
-/*      */
-/* 1715 */     if (paramClassSymbol.sourcefile != null && this.emitSourceFile) {
-/* 1716 */       int m = writeAttr(this.names.SourceFile);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1721 */       String str = BaseFileObject.getSimpleName(paramClassSymbol.sourcefile);
-/* 1722 */       this.databuf.appendChar(paramClassSymbol.pool.put(this.names.fromString(str)));
-/* 1723 */       endAttr(m);
-/* 1724 */       k++;
-/*      */     }
-/*      */
-/* 1727 */     if (this.genCrt) {
-/*      */
-/* 1729 */       int m = writeAttr(this.names.SourceID);
-/* 1730 */       this.databuf.appendChar(paramClassSymbol.pool.put(this.names.fromString(Long.toString(getLastModified(paramClassSymbol.sourcefile)))));
-/* 1731 */       endAttr(m);
-/* 1732 */       k++;
-/*      */
-/* 1734 */       m = writeAttr(this.names.CompilationID);
-/* 1735 */       this.databuf.appendChar(paramClassSymbol.pool.put(this.names.fromString(Long.toString(System.currentTimeMillis()))));
-/* 1736 */       endAttr(m);
-/* 1737 */       k++;
-/*      */     }
-/*      */
-/* 1740 */     k += writeFlagAttrs(paramClassSymbol.flags());
-/* 1741 */     k += writeJavaAnnotations(paramClassSymbol.getRawAttributes());
-/* 1742 */     k += writeTypeAnnotations(paramClassSymbol.getRawTypeAttributes(), false);
-/* 1743 */     k += writeEnclosingMethodAttribute(paramClassSymbol);
-/* 1744 */     k += writeExtraClassAttributes(paramClassSymbol);
-/*      */
-/* 1746 */     this.poolbuf.appendInt(-889275714);
-/* 1747 */     this.poolbuf.appendChar(this.target.minorVersion);
-/* 1748 */     this.poolbuf.appendChar(this.target.majorVersion);
-/*      */
-/* 1750 */     writePool(paramClassSymbol.pool);
-/*      */
-/* 1752 */     if (this.innerClasses != null) {
-/* 1753 */       writeInnerClasses();
-/* 1754 */       k++;
-/*      */     }
-/*      */
-/* 1757 */     if (!this.bootstrapMethods.isEmpty()) {
-/* 1758 */       writeBootstrapMethods();
-/* 1759 */       k++;
-/*      */     }
-/*      */
-/* 1762 */     endAttrs(j, k);
-/*      */
-/* 1764 */     this.poolbuf.appendBytes(this.databuf.elems, 0, this.databuf.length);
-/* 1765 */     paramOutputStream.write(this.poolbuf.elems, 0, this.poolbuf.length);
-/*      */
-/* 1767 */     this.pool = paramClassSymbol.pool = null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected int writeExtraClassAttributes(Symbol.ClassSymbol paramClassSymbol) {
-/* 1775 */     return 0;
-/*      */   }
-/*      */
-/*      */   int adjustFlags(long paramLong) {
-/* 1779 */     int i = (int)paramLong;
-/* 1780 */     if ((paramLong & 0x1000L) != 0L && !this.target.useSyntheticFlag())
-/* 1781 */       i &= 0xFFFFEFFF;
-/* 1782 */     if ((paramLong & 0x4000L) != 0L && !this.target.useEnumFlag())
-/* 1783 */       i &= 0xFFFFBFFF;
-/* 1784 */     if ((paramLong & 0x2000L) != 0L && !this.target.useAnnotationFlag()) {
-/* 1785 */       i &= 0xFFFFDFFF;
-/*      */     }
-/* 1787 */     if ((paramLong & 0x80000000L) != 0L && this.target.useBridgeFlag())
-/* 1788 */       i |= 0x40;
-/* 1789 */     if ((paramLong & 0x400000000L) != 0L && this.target.useVarargsFlag())
-/* 1790 */       i |= 0x80;
-/* 1791 */     if ((paramLong & 0x80000000000L) != 0L)
-/* 1792 */       i &= 0xFFFFFBFF;
-/* 1793 */     return i;
-/*      */   }
-/*      */
-/*      */   long getLastModified(FileObject paramFileObject) {
-/* 1797 */     long l = 0L;
-/*      */     try {
-/* 1799 */       l = paramFileObject.getLastModified();
-/* 1800 */     } catch (SecurityException securityException) {
-/* 1801 */       throw new AssertionError("CRT: couldn't get source file modification date: " + securityException.getMessage());
-/*      */     }
-/* 1803 */     return l;
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\jvm\ClassWriter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2015, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.jvm;
+
+import java.io.*;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+
+import javax.tools.JavaFileManager;
+import javax.tools.FileObject;
+import javax.tools.JavaFileObject;
+
+import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.code.Attribute.RetentionPolicy;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.code.Type.*;
+import com.sun.tools.javac.code.Types.UniqueType;
+import com.sun.tools.javac.file.BaseFileObject;
+import com.sun.tools.javac.jvm.Pool.DynamicMethod;
+import com.sun.tools.javac.jvm.Pool.Method;
+import com.sun.tools.javac.jvm.Pool.MethodHandle;
+import com.sun.tools.javac.jvm.Pool.Variable;
+import com.sun.tools.javac.util.*;
+
+import static com.sun.tools.javac.code.Flags.*;
+import static com.sun.tools.javac.code.Kinds.*;
+import static com.sun.tools.javac.code.TypeTag.*;
+import static com.sun.tools.javac.jvm.UninitializedType.*;
+import static com.sun.tools.javac.main.Option.*;
+import static javax.tools.StandardLocation.CLASS_OUTPUT;
+
+/** This class provides operations to map an internal symbol table graph
+ *  rooted in a ClassSymbol into a classfile.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class ClassWriter extends ClassFile {
+    protected static final Context.Key<ClassWriter> classWriterKey =
+        new Context.Key<ClassWriter>();
+
+    private final Options options;
+
+    /** Switch: verbose output.
+     */
+    private boolean verbose;
+
+    /** Switch: scramble private field names.
+     */
+    private boolean scramble;
+
+    /** Switch: scramble all field names.
+     */
+    private boolean scrambleAll;
+
+    /** Switch: retrofit mode.
+     */
+    private boolean retrofit;
+
+    /** Switch: emit source file attribute.
+     */
+    private boolean emitSourceFile;
+
+    /** Switch: generate CharacterRangeTable attribute.
+     */
+    private boolean genCrt;
+
+    /** Switch: describe the generated stackmap.
+     */
+    boolean debugstackmap;
+
+    /**
+     * Target class version.
+     */
+    private Target target;
+
+    /**
+     * Source language version.
+     */
+    private Source source;
+
+    /** Type utilities. */
+    private Types types;
+
+    /** The initial sizes of the data and constant pool buffers.
+     *  Sizes are increased when buffers get full.
+     */
+    static final int DATA_BUF_SIZE = 0x0fff0;
+    static final int POOL_BUF_SIZE = 0x1fff0;
+
+    /** An output buffer for member info.
+     */
+    ByteBuffer databuf = new ByteBuffer(DATA_BUF_SIZE);
+
+    /** An output buffer for the constant pool.
+     */
+    ByteBuffer poolbuf = new ByteBuffer(POOL_BUF_SIZE);
+
+    /** The constant pool.
+     */
+    Pool pool;
+
+    /** The inner classes to be written, as a set.
+     */
+    Set<ClassSymbol> innerClasses;
+
+    /** The inner classes to be written, as a queue where
+     *  enclosing classes come first.
+     */
+    ListBuffer<ClassSymbol> innerClassesQueue;
+
+    /** The bootstrap methods to be written in the corresponding class attribute
+     *  (one for each invokedynamic)
+     */
+    Map<DynamicMethod, MethodHandle> bootstrapMethods;
+
+    /** The log to use for verbose output.
+     */
+    private final Log log;
+
+    /** The name table. */
+    private final Names names;
+
+    /** Access to files. */
+    private final JavaFileManager fileManager;
+
+    /** Sole signature generator */
+    private final CWSignatureGenerator signatureGen;
+
+    /** The tags and constants used in compressed stackmap. */
+    static final int SAME_FRAME_SIZE = 64;
+    static final int SAME_LOCALS_1_STACK_ITEM_EXTENDED = 247;
+    static final int SAME_FRAME_EXTENDED = 251;
+    static final int FULL_FRAME = 255;
+    static final int MAX_LOCAL_LENGTH_DIFF = 4;
+
+    /** Get the ClassWriter instance for this context. */
+    public static ClassWriter instance(Context context) {
+        ClassWriter instance = context.get(classWriterKey);
+        if (instance == null)
+            instance = new ClassWriter(context);
+        return instance;
+    }
+
+    /** Construct a class writer, given an options table.
+     */
+    protected ClassWriter(Context context) {
+        context.put(classWriterKey, this);
+
+        log = Log.instance(context);
+        names = Names.instance(context);
+        options = Options.instance(context);
+        target = Target.instance(context);
+        source = Source.instance(context);
+        types = Types.instance(context);
+        fileManager = context.get(JavaFileManager.class);
+        signatureGen = new CWSignatureGenerator(types);
+
+        verbose        = options.isSet(VERBOSE);
+        scramble       = options.isSet("-scramble");
+        scrambleAll    = options.isSet("-scrambleAll");
+        retrofit       = options.isSet("-retrofit");
+        genCrt         = options.isSet(XJCOV);
+        debugstackmap  = options.isSet("debugstackmap");
+
+        emitSourceFile = options.isUnset(G_CUSTOM) ||
+                            options.isSet(G_CUSTOM, "source");
+
+        String dumpModFlags = options.get("dumpmodifiers");
+        dumpClassModifiers =
+            (dumpModFlags != null && dumpModFlags.indexOf('c') != -1);
+        dumpFieldModifiers =
+            (dumpModFlags != null && dumpModFlags.indexOf('f') != -1);
+        dumpInnerClassModifiers =
+            (dumpModFlags != null && dumpModFlags.indexOf('i') != -1);
+        dumpMethodModifiers =
+            (dumpModFlags != null && dumpModFlags.indexOf('m') != -1);
+    }
+
+/******************************************************************
+ * Diagnostics: dump generated class names and modifiers
+ ******************************************************************/
+
+    /** Value of option 'dumpmodifiers' is a string
+     *  indicating which modifiers should be dumped for debugging:
+     *    'c' -- classes
+     *    'f' -- fields
+     *    'i' -- innerclass attributes
+     *    'm' -- methods
+     *  For example, to dump everything:
+     *    javac -XDdumpmodifiers=cifm MyProg.java
+     */
+    private final boolean dumpClassModifiers; // -XDdumpmodifiers=c
+    private final boolean dumpFieldModifiers; // -XDdumpmodifiers=f
+    private final boolean dumpInnerClassModifiers; // -XDdumpmodifiers=i
+    private final boolean dumpMethodModifiers; // -XDdumpmodifiers=m
+
+
+    /** Return flags as a string, separated by " ".
+     */
+    public static String flagNames(long flags) {
+        StringBuilder sbuf = new StringBuilder();
+        int i = 0;
+        long f = flags & StandardFlags;
+        while (f != 0) {
+            if ((f & 1) != 0) {
+                sbuf.append(" ");
+                sbuf.append(flagName[i]);
+            }
+            f = f >> 1;
+            i++;
+        }
+        return sbuf.toString();
+    }
+    //where
+        private final static String[] flagName = {
+            "PUBLIC", "PRIVATE", "PROTECTED", "STATIC", "FINAL",
+            "SUPER", "VOLATILE", "TRANSIENT", "NATIVE", "INTERFACE",
+            "ABSTRACT", "STRICTFP"};
+
+/******************************************************************
+ * Output routines
+ ******************************************************************/
+
+    /** Write a character into given byte buffer;
+     *  byte buffer will not be grown.
+     */
+    void putChar(ByteBuffer buf, int op, int x) {
+        buf.elems[op  ] = (byte)((x >>  8) & 0xFF);
+        buf.elems[op+1] = (byte)((x      ) & 0xFF);
+    }
+
+    /** Write an integer into given byte buffer;
+     *  byte buffer will not be grown.
+     */
+    void putInt(ByteBuffer buf, int adr, int x) {
+        buf.elems[adr  ] = (byte)((x >> 24) & 0xFF);
+        buf.elems[adr+1] = (byte)((x >> 16) & 0xFF);
+        buf.elems[adr+2] = (byte)((x >>  8) & 0xFF);
+        buf.elems[adr+3] = (byte)((x      ) & 0xFF);
+    }
+
+    /**
+     * Signature Generation
+     */
+    private class CWSignatureGenerator extends Types.SignatureGenerator {
+
+        /**
+         * An output buffer for type signatures.
+         */
+        ByteBuffer sigbuf = new ByteBuffer();
+
+        CWSignatureGenerator(Types types) {
+            super(types);
+        }
+
+        /**
+         * Assemble signature of given type in string buffer.
+         * Check for uninitialized types before calling the general case.
+         */
+        @Override
+        public void assembleSig(Type type) {
+            type = type.unannotatedType();
+            switch (type.getTag()) {
+                case UNINITIALIZED_THIS:
+                case UNINITIALIZED_OBJECT:
+                    // we don't yet have a spec for uninitialized types in the
+                    // local variable table
+                    assembleSig(types.erasure(((UninitializedType)type).qtype));
+                    break;
+                default:
+                    super.assembleSig(type);
+            }
+        }
+
+        @Override
+        protected void append(char ch) {
+            sigbuf.appendByte(ch);
+        }
+
+        @Override
+        protected void append(byte[] ba) {
+            sigbuf.appendBytes(ba);
+        }
+
+        @Override
+        protected void append(Name name) {
+            sigbuf.appendName(name);
+        }
+
+        @Override
+        protected void classReference(ClassSymbol c) {
+            enterInner(c);
+        }
+
+        private void reset() {
+            sigbuf.reset();
+        }
+
+        private Name toName() {
+            return sigbuf.toName(names);
+        }
+
+        private boolean isEmpty() {
+            return sigbuf.length == 0;
+        }
+    }
+
+    /**
+     * Return signature of given type
+     */
+    Name typeSig(Type type) {
+        Assert.check(signatureGen.isEmpty());
+        //- System.out.println(" ? " + type);
+        signatureGen.assembleSig(type);
+        Name n = signatureGen.toName();
+        signatureGen.reset();
+        //- System.out.println("   " + n);
+        return n;
+    }
+
+    /** Given a type t, return the extended class name of its erasure in
+     *  external representation.
+     */
+    public Name xClassName(Type t) {
+        if (t.hasTag(CLASS)) {
+            return names.fromUtf(externalize(t.tsym.flatName()));
+        } else if (t.hasTag(ARRAY)) {
+            return typeSig(types.erasure(t));
+        } else {
+            throw new AssertionError("xClassName");
+        }
+    }
+
+/******************************************************************
+ * Writing the Constant Pool
+ ******************************************************************/
+
+    /** Thrown when the constant pool is over full.
+     */
+    public static class PoolOverflow extends Exception {
+        private static final long serialVersionUID = 0;
+        public PoolOverflow() {}
+    }
+    public static class StringOverflow extends Exception {
+        private static final long serialVersionUID = 0;
+        public final String value;
+        public StringOverflow(String s) {
+            value = s;
+        }
+    }
+
+    /** Write constant pool to pool buffer.
+     *  Note: during writing, constant pool
+     *  might grow since some parts of constants still need to be entered.
+     */
+    void writePool(Pool pool) throws PoolOverflow, StringOverflow {
+        int poolCountIdx = poolbuf.length;
+        poolbuf.appendChar(0);
+        int i = 1;
+        while (i < pool.pp) {
+            Object value = pool.pool[i];
+            Assert.checkNonNull(value);
+            if (value instanceof Method || value instanceof Variable)
+                value = ((DelegatedSymbol)value).getUnderlyingSymbol();
+
+            if (value instanceof MethodSymbol) {
+                MethodSymbol m = (MethodSymbol)value;
+                if (!m.isDynamic()) {
+                    poolbuf.appendByte((m.owner.flags() & INTERFACE) != 0
+                              ? CONSTANT_InterfaceMethodref
+                              : CONSTANT_Methodref);
+                    poolbuf.appendChar(pool.put(m.owner));
+                    poolbuf.appendChar(pool.put(nameType(m)));
+                } else {
+                    //invokedynamic
+                    DynamicMethodSymbol dynSym = (DynamicMethodSymbol)m;
+                    MethodHandle handle = new MethodHandle(dynSym.bsmKind, dynSym.bsm, types);
+                    DynamicMethod dynMeth = new DynamicMethod(dynSym, types);
+                    bootstrapMethods.put(dynMeth, handle);
+                    //init cp entries
+                    pool.put(names.BootstrapMethods);
+                    pool.put(handle);
+                    for (Object staticArg : dynSym.staticArgs) {
+                        pool.put(staticArg);
+                    }
+                    poolbuf.appendByte(CONSTANT_InvokeDynamic);
+                    poolbuf.appendChar(bootstrapMethods.size() - 1);
+                    poolbuf.appendChar(pool.put(nameType(dynSym)));
+                }
+            } else if (value instanceof VarSymbol) {
+                VarSymbol v = (VarSymbol)value;
+                poolbuf.appendByte(CONSTANT_Fieldref);
+                poolbuf.appendChar(pool.put(v.owner));
+                poolbuf.appendChar(pool.put(nameType(v)));
+            } else if (value instanceof Name) {
+                poolbuf.appendByte(CONSTANT_Utf8);
+                byte[] bs = ((Name)value).toUtf();
+                poolbuf.appendChar(bs.length);
+                poolbuf.appendBytes(bs, 0, bs.length);
+                if (bs.length > Pool.MAX_STRING_LENGTH)
+                    throw new StringOverflow(value.toString());
+            } else if (value instanceof ClassSymbol) {
+                ClassSymbol c = (ClassSymbol)value;
+                if (c.owner.kind == TYP) pool.put(c.owner);
+                poolbuf.appendByte(CONSTANT_Class);
+                if (c.type.hasTag(ARRAY)) {
+                    poolbuf.appendChar(pool.put(typeSig(c.type)));
+                } else {
+                    poolbuf.appendChar(pool.put(names.fromUtf(externalize(c.flatname))));
+                    enterInner(c);
+                }
+            } else if (value instanceof NameAndType) {
+                NameAndType nt = (NameAndType)value;
+                poolbuf.appendByte(CONSTANT_NameandType);
+                poolbuf.appendChar(pool.put(nt.name));
+                poolbuf.appendChar(pool.put(typeSig(nt.uniqueType.type)));
+            } else if (value instanceof Integer) {
+                poolbuf.appendByte(CONSTANT_Integer);
+                poolbuf.appendInt(((Integer)value).intValue());
+            } else if (value instanceof Long) {
+                poolbuf.appendByte(CONSTANT_Long);
+                poolbuf.appendLong(((Long)value).longValue());
+                i++;
+            } else if (value instanceof Float) {
+                poolbuf.appendByte(CONSTANT_Float);
+                poolbuf.appendFloat(((Float)value).floatValue());
+            } else if (value instanceof Double) {
+                poolbuf.appendByte(CONSTANT_Double);
+                poolbuf.appendDouble(((Double)value).doubleValue());
+                i++;
+            } else if (value instanceof String) {
+                poolbuf.appendByte(CONSTANT_String);
+                poolbuf.appendChar(pool.put(names.fromString((String)value)));
+            } else if (value instanceof UniqueType) {
+                Type type = ((UniqueType)value).type;
+                if (type instanceof MethodType) {
+                    poolbuf.appendByte(CONSTANT_MethodType);
+                    poolbuf.appendChar(pool.put(typeSig((MethodType)type)));
+                } else {
+                    if (type.hasTag(CLASS)) enterInner((ClassSymbol)type.tsym);
+                    poolbuf.appendByte(CONSTANT_Class);
+                    poolbuf.appendChar(pool.put(xClassName(type)));
+                }
+            } else if (value instanceof MethodHandle) {
+                MethodHandle ref = (MethodHandle)value;
+                poolbuf.appendByte(CONSTANT_MethodHandle);
+                poolbuf.appendByte(ref.refKind);
+                poolbuf.appendChar(pool.put(ref.refSym));
+            } else {
+                Assert.error("writePool " + value);
+            }
+            i++;
+        }
+        if (pool.pp > Pool.MAX_ENTRIES)
+            throw new PoolOverflow();
+        putChar(poolbuf, poolCountIdx, pool.pp);
+    }
+
+    /** Given a field, return its name.
+     */
+    Name fieldName(Symbol sym) {
+        if (scramble && (sym.flags() & PRIVATE) != 0 ||
+            scrambleAll && (sym.flags() & (PROTECTED | PUBLIC)) == 0)
+            return names.fromString("_$" + sym.name.getIndex());
+        else
+            return sym.name;
+    }
+
+    /** Given a symbol, return its name-and-type.
+     */
+    NameAndType nameType(Symbol sym) {
+        return new NameAndType(fieldName(sym),
+                               retrofit
+                               ? sym.erasure(types)
+                               : sym.externalType(types), types);
+        // if we retrofit, then the NameAndType has been read in as is
+        // and no change is necessary. If we compile normally, the
+        // NameAndType is generated from a symbol reference, and the
+        // adjustment of adding an additional this$n parameter needs to be made.
+    }
+
+/******************************************************************
+ * Writing Attributes
+ ******************************************************************/
+
+    /** Write header for an attribute to data buffer and return
+     *  position past attribute length index.
+     */
+    int writeAttr(Name attrName) {
+        databuf.appendChar(pool.put(attrName));
+        databuf.appendInt(0);
+        return databuf.length;
+    }
+
+    /** Fill in attribute length.
+     */
+    void endAttr(int index) {
+        putInt(databuf, index - 4, databuf.length - index);
+    }
+
+    /** Leave space for attribute count and return index for
+     *  number of attributes field.
+     */
+    int beginAttrs() {
+        databuf.appendChar(0);
+        return databuf.length;
+    }
+
+    /** Fill in number of attributes.
+     */
+    void endAttrs(int index, int count) {
+        putChar(databuf, index - 2, count);
+    }
+
+    /** Write the EnclosingMethod attribute if needed.
+     *  Returns the number of attributes written (0 or 1).
+     */
+    int writeEnclosingMethodAttribute(ClassSymbol c) {
+        if (!target.hasEnclosingMethodAttribute())
+            return 0;
+        return writeEnclosingMethodAttribute(names.EnclosingMethod, c);
+    }
+
+    /** Write the EnclosingMethod attribute with a specified name.
+     *  Returns the number of attributes written (0 or 1).
+     */
+    protected int writeEnclosingMethodAttribute(Name attributeName, ClassSymbol c) {
+        if (c.owner.kind != MTH && // neither a local class
+            c.name != names.empty) // nor anonymous
+            return 0;
+
+        int alenIdx = writeAttr(attributeName);
+        ClassSymbol enclClass = c.owner.enclClass();
+        MethodSymbol enclMethod =
+            (c.owner.type == null // local to init block
+             || c.owner.kind != MTH) // or member init
+            ? null
+            : (MethodSymbol)c.owner;
+        databuf.appendChar(pool.put(enclClass));
+        databuf.appendChar(enclMethod == null ? 0 : pool.put(nameType(c.owner)));
+        endAttr(alenIdx);
+        return 1;
+    }
+
+    /** Write flag attributes; return number of attributes written.
+     */
+    int writeFlagAttrs(long flags) {
+        int acount = 0;
+        if ((flags & DEPRECATED) != 0) {
+            int alenIdx = writeAttr(names.Deprecated);
+            endAttr(alenIdx);
+            acount++;
+        }
+        if ((flags & ENUM) != 0 && !target.useEnumFlag()) {
+            int alenIdx = writeAttr(names.Enum);
+            endAttr(alenIdx);
+            acount++;
+        }
+        if ((flags & SYNTHETIC) != 0 && !target.useSyntheticFlag()) {
+            int alenIdx = writeAttr(names.Synthetic);
+            endAttr(alenIdx);
+            acount++;
+        }
+        if ((flags & BRIDGE) != 0 && !target.useBridgeFlag()) {
+            int alenIdx = writeAttr(names.Bridge);
+            endAttr(alenIdx);
+            acount++;
+        }
+        if ((flags & VARARGS) != 0 && !target.useVarargsFlag()) {
+            int alenIdx = writeAttr(names.Varargs);
+            endAttr(alenIdx);
+            acount++;
+        }
+        if ((flags & ANNOTATION) != 0 && !target.useAnnotationFlag()) {
+            int alenIdx = writeAttr(names.Annotation);
+            endAttr(alenIdx);
+            acount++;
+        }
+        return acount;
+    }
+
+    /** Write member (field or method) attributes;
+     *  return number of attributes written.
+     */
+    int writeMemberAttrs(Symbol sym) {
+        int acount = writeFlagAttrs(sym.flags());
+        long flags = sym.flags();
+        if (source.allowGenerics() &&
+            (flags & (SYNTHETIC|BRIDGE)) != SYNTHETIC &&
+            (flags & ANONCONSTR) == 0 &&
+            (!types.isSameType(sym.type, sym.erasure(types)) ||
+            signatureGen.hasTypeVar(sym.type.getThrownTypes()))) {
+            // note that a local class with captured variables
+            // will get a signature attribute
+            int alenIdx = writeAttr(names.Signature);
+            databuf.appendChar(pool.put(typeSig(sym.type)));
+            endAttr(alenIdx);
+            acount++;
+        }
+        acount += writeJavaAnnotations(sym.getRawAttributes());
+        acount += writeTypeAnnotations(sym.getRawTypeAttributes(), false);
+        return acount;
+    }
+
+    /**
+     * Write method parameter names attribute.
+     */
+    int writeMethodParametersAttr(MethodSymbol m) {
+        MethodType ty = m.externalType(types).asMethodType();
+        final int allparams = ty.argtypes.size();
+        if (m.params != null && allparams != 0) {
+            final int attrIndex = writeAttr(names.MethodParameters);
+            databuf.appendByte(allparams);
+            // Write extra parameters first
+            for (VarSymbol s : m.extraParams) {
+                final int flags =
+                    ((int) s.flags() & (FINAL | SYNTHETIC | MANDATED)) |
+                    ((int) m.flags() & SYNTHETIC);
+                databuf.appendChar(pool.put(s.name));
+                databuf.appendChar(flags);
+            }
+            // Now write the real parameters
+            for (VarSymbol s : m.params) {
+                final int flags =
+                    ((int) s.flags() & (FINAL | SYNTHETIC | MANDATED)) |
+                    ((int) m.flags() & SYNTHETIC);
+                databuf.appendChar(pool.put(s.name));
+                databuf.appendChar(flags);
+            }
+            // Now write the captured locals
+            for (VarSymbol s : m.capturedLocals) {
+                final int flags =
+                    ((int) s.flags() & (FINAL | SYNTHETIC | MANDATED)) |
+                    ((int) m.flags() & SYNTHETIC);
+                databuf.appendChar(pool.put(s.name));
+                databuf.appendChar(flags);
+            }
+            endAttr(attrIndex);
+            return 1;
+        } else
+            return 0;
+    }
+
+
+    /** Write method parameter annotations;
+     *  return number of attributes written.
+     */
+    int writeParameterAttrs(MethodSymbol m) {
+        boolean hasVisible = false;
+        boolean hasInvisible = false;
+        if (m.params != null) {
+            for (VarSymbol s : m.params) {
+                for (Attribute.Compound a : s.getRawAttributes()) {
+                    switch (types.getRetention(a)) {
+                    case SOURCE: break;
+                    case CLASS: hasInvisible = true; break;
+                    case RUNTIME: hasVisible = true; break;
+                    default: ;// /* fail soft */ throw new AssertionError(vis);
+                    }
+                }
+            }
+        }
+
+        int attrCount = 0;
+        if (hasVisible) {
+            int attrIndex = writeAttr(names.RuntimeVisibleParameterAnnotations);
+            databuf.appendByte(m.params.length());
+            for (VarSymbol s : m.params) {
+                ListBuffer<Attribute.Compound> buf = new ListBuffer<Attribute.Compound>();
+                for (Attribute.Compound a : s.getRawAttributes())
+                    if (types.getRetention(a) == RetentionPolicy.RUNTIME)
+                        buf.append(a);
+                databuf.appendChar(buf.length());
+                for (Attribute.Compound a : buf)
+                    writeCompoundAttribute(a);
+            }
+            endAttr(attrIndex);
+            attrCount++;
+        }
+        if (hasInvisible) {
+            int attrIndex = writeAttr(names.RuntimeInvisibleParameterAnnotations);
+            databuf.appendByte(m.params.length());
+            for (VarSymbol s : m.params) {
+                ListBuffer<Attribute.Compound> buf = new ListBuffer<Attribute.Compound>();
+                for (Attribute.Compound a : s.getRawAttributes())
+                    if (types.getRetention(a) == RetentionPolicy.CLASS)
+                        buf.append(a);
+                databuf.appendChar(buf.length());
+                for (Attribute.Compound a : buf)
+                    writeCompoundAttribute(a);
+            }
+            endAttr(attrIndex);
+            attrCount++;
+        }
+        return attrCount;
+    }
+
+/**********************************************************************
+ * Writing Java-language annotations (aka metadata, attributes)
+ **********************************************************************/
+
+    /** Write Java-language annotations; return number of JVM
+     *  attributes written (zero or one).
+     */
+    int writeJavaAnnotations(List<Attribute.Compound> attrs) {
+        if (attrs.isEmpty()) return 0;
+        ListBuffer<Attribute.Compound> visibles = new ListBuffer<Attribute.Compound>();
+        ListBuffer<Attribute.Compound> invisibles = new ListBuffer<Attribute.Compound>();
+        for (Attribute.Compound a : attrs) {
+            switch (types.getRetention(a)) {
+            case SOURCE: break;
+            case CLASS: invisibles.append(a); break;
+            case RUNTIME: visibles.append(a); break;
+            default: ;// /* fail soft */ throw new AssertionError(vis);
+            }
+        }
+
+        int attrCount = 0;
+        if (visibles.length() != 0) {
+            int attrIndex = writeAttr(names.RuntimeVisibleAnnotations);
+            databuf.appendChar(visibles.length());
+            for (Attribute.Compound a : visibles)
+                writeCompoundAttribute(a);
+            endAttr(attrIndex);
+            attrCount++;
+        }
+        if (invisibles.length() != 0) {
+            int attrIndex = writeAttr(names.RuntimeInvisibleAnnotations);
+            databuf.appendChar(invisibles.length());
+            for (Attribute.Compound a : invisibles)
+                writeCompoundAttribute(a);
+            endAttr(attrIndex);
+            attrCount++;
+        }
+        return attrCount;
+    }
+
+    int writeTypeAnnotations(List<Attribute.TypeCompound> typeAnnos, boolean inCode) {
+        if (typeAnnos.isEmpty()) return 0;
+
+        ListBuffer<Attribute.TypeCompound> visibles = new ListBuffer<>();
+        ListBuffer<Attribute.TypeCompound> invisibles = new ListBuffer<>();
+
+        for (Attribute.TypeCompound tc : typeAnnos) {
+            if (tc.hasUnknownPosition()) {
+                boolean fixed = tc.tryFixPosition();
+
+                // Could we fix it?
+                if (!fixed) {
+                    // This happens for nested types like @A Outer. @B Inner.
+                    // For method parameters we get the annotation twice! Once with
+                    // a valid position, once unknown.
+                    // TODO: find a cleaner solution.
+                    PrintWriter pw = log.getWriter(Log.WriterKind.ERROR);
+                    pw.println("ClassWriter: Position UNKNOWN in type annotation: " + tc);
+                    continue;
+                }
+            }
+
+            if (tc.position.type.isLocal() != inCode)
+                continue;
+            if (!tc.position.emitToClassfile())
+                continue;
+            switch (types.getRetention(tc)) {
+            case SOURCE: break;
+            case CLASS: invisibles.append(tc); break;
+            case RUNTIME: visibles.append(tc); break;
+            default: ;// /* fail soft */ throw new AssertionError(vis);
+            }
+        }
+
+        int attrCount = 0;
+        if (visibles.length() != 0) {
+            int attrIndex = writeAttr(names.RuntimeVisibleTypeAnnotations);
+            databuf.appendChar(visibles.length());
+            for (Attribute.TypeCompound p : visibles)
+                writeTypeAnnotation(p);
+            endAttr(attrIndex);
+            attrCount++;
+        }
+
+        if (invisibles.length() != 0) {
+            int attrIndex = writeAttr(names.RuntimeInvisibleTypeAnnotations);
+            databuf.appendChar(invisibles.length());
+            for (Attribute.TypeCompound p : invisibles)
+                writeTypeAnnotation(p);
+            endAttr(attrIndex);
+            attrCount++;
+        }
+
+        return attrCount;
+    }
+
+    /** A visitor to write an attribute including its leading
+     *  single-character marker.
+     */
+    class AttributeWriter implements Attribute.Visitor {
+        public void visitConstant(Attribute.Constant _value) {
+            Object value = _value.value;
+            switch (_value.type.getTag()) {
+            case BYTE:
+                databuf.appendByte('B');
+                break;
+            case CHAR:
+                databuf.appendByte('C');
+                break;
+            case SHORT:
+                databuf.appendByte('S');
+                break;
+            case INT:
+                databuf.appendByte('I');
+                break;
+            case LONG:
+                databuf.appendByte('J');
+                break;
+            case FLOAT:
+                databuf.appendByte('F');
+                break;
+            case DOUBLE:
+                databuf.appendByte('D');
+                break;
+            case BOOLEAN:
+                databuf.appendByte('Z');
+                break;
+            case CLASS:
+                Assert.check(value instanceof String);
+                databuf.appendByte('s');
+                value = names.fromString(value.toString()); // CONSTANT_Utf8
+                break;
+            default:
+                throw new AssertionError(_value.type);
+            }
+            databuf.appendChar(pool.put(value));
+        }
+        public void visitEnum(Attribute.Enum e) {
+            databuf.appendByte('e');
+            databuf.appendChar(pool.put(typeSig(e.value.type)));
+            databuf.appendChar(pool.put(e.value.name));
+        }
+        public void visitClass(Attribute.Class clazz) {
+            databuf.appendByte('c');
+            databuf.appendChar(pool.put(typeSig(clazz.classType)));
+        }
+        public void visitCompound(Attribute.Compound compound) {
+            databuf.appendByte('@');
+            writeCompoundAttribute(compound);
+        }
+        public void visitError(Attribute.Error x) {
+            throw new AssertionError(x);
+        }
+        public void visitArray(Attribute.Array array) {
+            databuf.appendByte('[');
+            databuf.appendChar(array.values.length);
+            for (Attribute a : array.values) {
+                a.accept(this);
+            }
+        }
+    }
+    AttributeWriter awriter = new AttributeWriter();
+
+    /** Write a compound attribute excluding the '@' marker. */
+    void writeCompoundAttribute(Attribute.Compound c) {
+        databuf.appendChar(pool.put(typeSig(c.type)));
+        databuf.appendChar(c.values.length());
+        for (Pair<MethodSymbol,Attribute> p : c.values) {
+            databuf.appendChar(pool.put(p.fst.name));
+            p.snd.accept(awriter);
+        }
+    }
+
+    void writeTypeAnnotation(Attribute.TypeCompound c) {
+        writePosition(c.position);
+        writeCompoundAttribute(c);
+    }
+
+    void writePosition(TypeAnnotationPosition p) {
+        databuf.appendByte(p.type.targetTypeValue()); // TargetType tag is a byte
+        switch (p.type) {
+        // instanceof
+        case INSTANCEOF:
+        // new expression
+        case NEW:
+        // constructor/method reference receiver
+        case CONSTRUCTOR_REFERENCE:
+        case METHOD_REFERENCE:
+            databuf.appendChar(p.offset);
+            break;
+        // local variable
+        case LOCAL_VARIABLE:
+        // resource variable
+        case RESOURCE_VARIABLE:
+            databuf.appendChar(p.lvarOffset.length);  // for table length
+            for (int i = 0; i < p.lvarOffset.length; ++i) {
+                databuf.appendChar(p.lvarOffset[i]);
+                databuf.appendChar(p.lvarLength[i]);
+                databuf.appendChar(p.lvarIndex[i]);
+            }
+            break;
+        // exception parameter
+        case EXCEPTION_PARAMETER:
+            databuf.appendChar(p.exception_index);
+            break;
+        // method receiver
+        case METHOD_RECEIVER:
+            // Do nothing
+            break;
+        // type parameter
+        case CLASS_TYPE_PARAMETER:
+        case METHOD_TYPE_PARAMETER:
+            databuf.appendByte(p.parameter_index);
+            break;
+        // type parameter bound
+        case CLASS_TYPE_PARAMETER_BOUND:
+        case METHOD_TYPE_PARAMETER_BOUND:
+            databuf.appendByte(p.parameter_index);
+            databuf.appendByte(p.bound_index);
+            break;
+        // class extends or implements clause
+        case CLASS_EXTENDS:
+            databuf.appendChar(p.type_index);
+            break;
+        // throws
+        case THROWS:
+            databuf.appendChar(p.type_index);
+            break;
+        // method parameter
+        case METHOD_FORMAL_PARAMETER:
+            databuf.appendByte(p.parameter_index);
+            break;
+        // type cast
+        case CAST:
+        // method/constructor/reference type argument
+        case CONSTRUCTOR_INVOCATION_TYPE_ARGUMENT:
+        case METHOD_INVOCATION_TYPE_ARGUMENT:
+        case CONSTRUCTOR_REFERENCE_TYPE_ARGUMENT:
+        case METHOD_REFERENCE_TYPE_ARGUMENT:
+            databuf.appendChar(p.offset);
+            databuf.appendByte(p.type_index);
+            break;
+        // We don't need to worry about these
+        case METHOD_RETURN:
+        case FIELD:
+            break;
+        case UNKNOWN:
+            throw new AssertionError("jvm.ClassWriter: UNKNOWN target type should never occur!");
+        default:
+            throw new AssertionError("jvm.ClassWriter: Unknown target type for position: " + p);
+        }
+
+        { // Append location data for generics/arrays.
+            databuf.appendByte(p.location.size());
+            java.util.List<Integer> loc = TypeAnnotationPosition.getBinaryFromTypePath(p.location);
+            for (int i : loc)
+                databuf.appendByte((byte)i);
+        }
+    }
+
+/**********************************************************************
+ * Writing Objects
+ **********************************************************************/
+
+    /** Enter an inner class into the `innerClasses' set/queue.
+     */
+    void enterInner(ClassSymbol c) {
+        if (c.type.isCompound()) {
+            throw new AssertionError("Unexpected intersection type: " + c.type);
+        }
+        try {
+            c.complete();
+        } catch (CompletionFailure ex) {
+            System.err.println("error: " + c + ": " + ex.getMessage());
+            throw ex;
+        }
+        if (!c.type.hasTag(CLASS)) return; // arrays
+        if (pool != null && // pool might be null if called from xClassName
+            c.owner.enclClass() != null &&
+            (innerClasses == null || !innerClasses.contains(c))) {
+//          log.errWriter.println("enter inner " + c);//DEBUG
+            enterInner(c.owner.enclClass());
+            pool.put(c);
+            if (c.name != names.empty)
+                pool.put(c.name);
+            if (innerClasses == null) {
+                innerClasses = new HashSet<ClassSymbol>();
+                innerClassesQueue = new ListBuffer<ClassSymbol>();
+                pool.put(names.InnerClasses);
+            }
+            innerClasses.add(c);
+            innerClassesQueue.append(c);
+        }
+    }
+
+    /** Write "inner classes" attribute.
+     */
+    void writeInnerClasses() {
+        int alenIdx = writeAttr(names.InnerClasses);
+        databuf.appendChar(innerClassesQueue.length());
+        for (List<ClassSymbol> l = innerClassesQueue.toList();
+             l.nonEmpty();
+             l = l.tail) {
+            ClassSymbol inner = l.head;
+            inner.markAbstractIfNeeded(types);
+            char flags = (char) adjustFlags(inner.flags_field);
+            if ((flags & INTERFACE) != 0) flags |= ABSTRACT; // Interfaces are always ABSTRACT
+            if (inner.name.isEmpty()) flags &= ~FINAL; // Anonymous class: unset FINAL flag
+            flags &= ~STRICTFP; //inner classes should not have the strictfp flag set.
+            if (dumpInnerClassModifiers) {
+                PrintWriter pw = log.getWriter(Log.WriterKind.ERROR);
+                pw.println("INNERCLASS  " + inner.name);
+                pw.println("---" + flagNames(flags));
+            }
+            databuf.appendChar(pool.get(inner));
+            databuf.appendChar(
+                inner.owner.kind == TYP && !inner.name.isEmpty() ? pool.get(inner.owner) : 0);
+            databuf.appendChar(
+                !inner.name.isEmpty() ? pool.get(inner.name) : 0);
+            databuf.appendChar(flags);
+        }
+        endAttr(alenIdx);
+    }
+
+    /** Write "bootstrapMethods" attribute.
+     */
+    void writeBootstrapMethods() {
+        int alenIdx = writeAttr(names.BootstrapMethods);
+        databuf.appendChar(bootstrapMethods.size());
+        for (Map.Entry<DynamicMethod, MethodHandle> entry : bootstrapMethods.entrySet()) {
+            DynamicMethod dmeth = entry.getKey();
+            DynamicMethodSymbol dsym = (DynamicMethodSymbol)dmeth.baseSymbol();
+            //write BSM handle
+            databuf.appendChar(pool.get(entry.getValue()));
+            //write static args length
+            databuf.appendChar(dsym.staticArgs.length);
+            //write static args array
+            Object[] uniqueArgs = dmeth.uniqueStaticArgs;
+            for (Object o : uniqueArgs) {
+                databuf.appendChar(pool.get(o));
+            }
+        }
+        endAttr(alenIdx);
+    }
+
+    /** Write field symbol, entering all references into constant pool.
+     */
+    void writeField(VarSymbol v) {
+        int flags = adjustFlags(v.flags());
+        databuf.appendChar(flags);
+        if (dumpFieldModifiers) {
+            PrintWriter pw = log.getWriter(Log.WriterKind.ERROR);
+            pw.println("FIELD  " + fieldName(v));
+            pw.println("---" + flagNames(v.flags()));
+        }
+        databuf.appendChar(pool.put(fieldName(v)));
+        databuf.appendChar(pool.put(typeSig(v.erasure(types))));
+        int acountIdx = beginAttrs();
+        int acount = 0;
+        if (v.getConstValue() != null) {
+            int alenIdx = writeAttr(names.ConstantValue);
+            databuf.appendChar(pool.put(v.getConstValue()));
+            endAttr(alenIdx);
+            acount++;
+        }
+        acount += writeMemberAttrs(v);
+        endAttrs(acountIdx, acount);
+    }
+
+    /** Write method symbol, entering all references into constant pool.
+     */
+    void writeMethod(MethodSymbol m) {
+        int flags = adjustFlags(m.flags());
+        databuf.appendChar(flags);
+        if (dumpMethodModifiers) {
+            PrintWriter pw = log.getWriter(Log.WriterKind.ERROR);
+            pw.println("METHOD  " + fieldName(m));
+            pw.println("---" + flagNames(m.flags()));
+        }
+        databuf.appendChar(pool.put(fieldName(m)));
+        databuf.appendChar(pool.put(typeSig(m.externalType(types))));
+        int acountIdx = beginAttrs();
+        int acount = 0;
+        if (m.code != null) {
+            int alenIdx = writeAttr(names.Code);
+            writeCode(m.code);
+            m.code = null; // to conserve space
+            endAttr(alenIdx);
+            acount++;
+        }
+        List<Type> thrown = m.erasure(types).getThrownTypes();
+        if (thrown.nonEmpty()) {
+            int alenIdx = writeAttr(names.Exceptions);
+            databuf.appendChar(thrown.length());
+            for (List<Type> l = thrown; l.nonEmpty(); l = l.tail)
+                databuf.appendChar(pool.put(l.head.tsym));
+            endAttr(alenIdx);
+            acount++;
+        }
+        if (m.defaultValue != null) {
+            int alenIdx = writeAttr(names.AnnotationDefault);
+            m.defaultValue.accept(awriter);
+            endAttr(alenIdx);
+            acount++;
+        }
+        if (options.isSet(PARAMETERS))
+            acount += writeMethodParametersAttr(m);
+        acount += writeMemberAttrs(m);
+        acount += writeParameterAttrs(m);
+        endAttrs(acountIdx, acount);
+    }
+
+    /** Write code attribute of method.
+     */
+    void writeCode(Code code) {
+        databuf.appendChar(code.max_stack);
+        databuf.appendChar(code.max_locals);
+        databuf.appendInt(code.cp);
+        databuf.appendBytes(code.code, 0, code.cp);
+        databuf.appendChar(code.catchInfo.length());
+        for (List<char[]> l = code.catchInfo.toList();
+             l.nonEmpty();
+             l = l.tail) {
+            for (int i = 0; i < l.head.length; i++)
+                databuf.appendChar(l.head[i]);
+        }
+        int acountIdx = beginAttrs();
+        int acount = 0;
+
+        if (code.lineInfo.nonEmpty()) {
+            int alenIdx = writeAttr(names.LineNumberTable);
+            databuf.appendChar(code.lineInfo.length());
+            for (List<char[]> l = code.lineInfo.reverse();
+                 l.nonEmpty();
+                 l = l.tail)
+                for (int i = 0; i < l.head.length; i++)
+                    databuf.appendChar(l.head[i]);
+            endAttr(alenIdx);
+            acount++;
+        }
+
+        if (genCrt && (code.crt != null)) {
+            CRTable crt = code.crt;
+            int alenIdx = writeAttr(names.CharacterRangeTable);
+            int crtIdx = beginAttrs();
+            int crtEntries = crt.writeCRT(databuf, code.lineMap, log);
+            endAttrs(crtIdx, crtEntries);
+            endAttr(alenIdx);
+            acount++;
+        }
+
+        // counter for number of generic local variables
+        if (code.varDebugInfo && code.varBufferSize > 0) {
+            int nGenericVars = 0;
+            int alenIdx = writeAttr(names.LocalVariableTable);
+            databuf.appendChar(code.getLVTSize());
+            for (int i=0; i<code.varBufferSize; i++) {
+                Code.LocalVar var = code.varBuffer[i];
+
+                for (Code.LocalVar.Range r: var.aliveRanges) {
+                    // write variable info
+                    Assert.check(r.start_pc >= 0
+                            && r.start_pc <= code.cp);
+                    databuf.appendChar(r.start_pc);
+                    Assert.check(r.length > 0
+                            && (r.start_pc + r.length) <= code.cp);
+                    databuf.appendChar(r.length);
+                    VarSymbol sym = var.sym;
+                    databuf.appendChar(pool.put(sym.name));
+                    Type vartype = sym.erasure(types);
+                    databuf.appendChar(pool.put(typeSig(vartype)));
+                    databuf.appendChar(var.reg);
+                    if (needsLocalVariableTypeEntry(var.sym.type)) {
+                        nGenericVars++;
+                    }
+                }
+            }
+            endAttr(alenIdx);
+            acount++;
+
+            if (nGenericVars > 0) {
+                alenIdx = writeAttr(names.LocalVariableTypeTable);
+                databuf.appendChar(nGenericVars);
+                int count = 0;
+
+                for (int i=0; i<code.varBufferSize; i++) {
+                    Code.LocalVar var = code.varBuffer[i];
+                    VarSymbol sym = var.sym;
+                    if (!needsLocalVariableTypeEntry(sym.type))
+                        continue;
+                    for (Code.LocalVar.Range r : var.aliveRanges) {
+                        // write variable info
+                        databuf.appendChar(r.start_pc);
+                        databuf.appendChar(r.length);
+                        databuf.appendChar(pool.put(sym.name));
+                        databuf.appendChar(pool.put(typeSig(sym.type)));
+                        databuf.appendChar(var.reg);
+                        count++;
+                    }
+                }
+                Assert.check(count == nGenericVars);
+                endAttr(alenIdx);
+                acount++;
+            }
+        }
+
+        if (code.stackMapBufferSize > 0) {
+            if (debugstackmap) System.out.println("Stack map for " + code.meth);
+            int alenIdx = writeAttr(code.stackMap.getAttributeName(names));
+            writeStackMap(code);
+            endAttr(alenIdx);
+            acount++;
+        }
+
+        acount += writeTypeAnnotations(code.meth.getRawTypeAttributes(), true);
+
+        endAttrs(acountIdx, acount);
+    }
+    //where
+    private boolean needsLocalVariableTypeEntry(Type t) {
+        //a local variable needs a type-entry if its type T is generic
+        //(i.e. |T| != T) and if it's not an intersection type (not supported
+        //in signature attribute grammar)
+        return (!types.isSameType(t, types.erasure(t)) &&
+                !t.isCompound());
+    }
+
+    void writeStackMap(Code code) {
+        int nframes = code.stackMapBufferSize;
+        if (debugstackmap) System.out.println(" nframes = " + nframes);
+        databuf.appendChar(nframes);
+
+        switch (code.stackMap) {
+        case CLDC:
+            for (int i=0; i<nframes; i++) {
+                if (debugstackmap) System.out.print("  " + i + ":");
+                Code.StackMapFrame frame = code.stackMapBuffer[i];
+
+                // output PC
+                if (debugstackmap) System.out.print(" pc=" + frame.pc);
+                databuf.appendChar(frame.pc);
+
+                // output locals
+                int localCount = 0;
+                for (int j=0; j<frame.locals.length;
+                     j += (target.generateEmptyAfterBig() ? 1 : Code.width(frame.locals[j]))) {
+                    localCount++;
+                }
+                if (debugstackmap) System.out.print(" nlocals=" +
+                                                    localCount);
+                databuf.appendChar(localCount);
+                for (int j=0; j<frame.locals.length;
+                     j += (target.generateEmptyAfterBig() ? 1 : Code.width(frame.locals[j]))) {
+                    if (debugstackmap) System.out.print(" local[" + j + "]=");
+                    writeStackMapType(frame.locals[j]);
+                }
+
+                // output stack
+                int stackCount = 0;
+                for (int j=0; j<frame.stack.length;
+                     j += (target.generateEmptyAfterBig() ? 1 : Code.width(frame.stack[j]))) {
+                    stackCount++;
+                }
+                if (debugstackmap) System.out.print(" nstack=" +
+                                                    stackCount);
+                databuf.appendChar(stackCount);
+                for (int j=0; j<frame.stack.length;
+                     j += (target.generateEmptyAfterBig() ? 1 : Code.width(frame.stack[j]))) {
+                    if (debugstackmap) System.out.print(" stack[" + j + "]=");
+                    writeStackMapType(frame.stack[j]);
+                }
+                if (debugstackmap) System.out.println();
+            }
+            break;
+        case JSR202: {
+            Assert.checkNull(code.stackMapBuffer);
+            for (int i=0; i<nframes; i++) {
+                if (debugstackmap) System.out.print("  " + i + ":");
+                StackMapTableFrame frame = code.stackMapTableBuffer[i];
+                frame.write(this);
+                if (debugstackmap) System.out.println();
+            }
+            break;
+        }
+        default:
+            throw new AssertionError("Unexpected stackmap format value");
+        }
+    }
+
+        //where
+        void writeStackMapType(Type t) {
+            if (t == null) {
+                if (debugstackmap) System.out.print("empty");
+                databuf.appendByte(0);
+            }
+            else switch(t.getTag()) {
+            case BYTE:
+            case CHAR:
+            case SHORT:
+            case INT:
+            case BOOLEAN:
+                if (debugstackmap) System.out.print("int");
+                databuf.appendByte(1);
+                break;
+            case FLOAT:
+                if (debugstackmap) System.out.print("float");
+                databuf.appendByte(2);
+                break;
+            case DOUBLE:
+                if (debugstackmap) System.out.print("double");
+                databuf.appendByte(3);
+                break;
+            case LONG:
+                if (debugstackmap) System.out.print("long");
+                databuf.appendByte(4);
+                break;
+            case BOT: // null
+                if (debugstackmap) System.out.print("null");
+                databuf.appendByte(5);
+                break;
+            case CLASS:
+            case ARRAY:
+                if (debugstackmap) System.out.print("object(" + t + ")");
+                databuf.appendByte(7);
+                databuf.appendChar(pool.put(t));
+                break;
+            case TYPEVAR:
+                if (debugstackmap) System.out.print("object(" + types.erasure(t).tsym + ")");
+                databuf.appendByte(7);
+                databuf.appendChar(pool.put(types.erasure(t).tsym));
+                break;
+            case UNINITIALIZED_THIS:
+                if (debugstackmap) System.out.print("uninit_this");
+                databuf.appendByte(6);
+                break;
+            case UNINITIALIZED_OBJECT:
+                { UninitializedType uninitType = (UninitializedType)t;
+                databuf.appendByte(8);
+                if (debugstackmap) System.out.print("uninit_object@" + uninitType.offset);
+                databuf.appendChar(uninitType.offset);
+                }
+                break;
+            default:
+                throw new AssertionError();
+            }
+        }
+
+    /** An entry in the JSR202 StackMapTable */
+    abstract static class StackMapTableFrame {
+        abstract int getFrameType();
+
+        void write(ClassWriter writer) {
+            int frameType = getFrameType();
+            writer.databuf.appendByte(frameType);
+            if (writer.debugstackmap) System.out.print(" frame_type=" + frameType);
+        }
+
+        static class SameFrame extends StackMapTableFrame {
+            final int offsetDelta;
+            SameFrame(int offsetDelta) {
+                this.offsetDelta = offsetDelta;
+            }
+            int getFrameType() {
+                return (offsetDelta < SAME_FRAME_SIZE) ? offsetDelta : SAME_FRAME_EXTENDED;
+            }
+            @Override
+            void write(ClassWriter writer) {
+                super.write(writer);
+                if (getFrameType() == SAME_FRAME_EXTENDED) {
+                    writer.databuf.appendChar(offsetDelta);
+                    if (writer.debugstackmap){
+                        System.out.print(" offset_delta=" + offsetDelta);
+                    }
+                }
+            }
+        }
+
+        static class SameLocals1StackItemFrame extends StackMapTableFrame {
+            final int offsetDelta;
+            final Type stack;
+            SameLocals1StackItemFrame(int offsetDelta, Type stack) {
+                this.offsetDelta = offsetDelta;
+                this.stack = stack;
+            }
+            int getFrameType() {
+                return (offsetDelta < SAME_FRAME_SIZE) ?
+                       (SAME_FRAME_SIZE + offsetDelta) :
+                       SAME_LOCALS_1_STACK_ITEM_EXTENDED;
+            }
+            @Override
+            void write(ClassWriter writer) {
+                super.write(writer);
+                if (getFrameType() == SAME_LOCALS_1_STACK_ITEM_EXTENDED) {
+                    writer.databuf.appendChar(offsetDelta);
+                    if (writer.debugstackmap) {
+                        System.out.print(" offset_delta=" + offsetDelta);
+                    }
+                }
+                if (writer.debugstackmap) {
+                    System.out.print(" stack[" + 0 + "]=");
+                }
+                writer.writeStackMapType(stack);
+            }
+        }
+
+        static class ChopFrame extends StackMapTableFrame {
+            final int frameType;
+            final int offsetDelta;
+            ChopFrame(int frameType, int offsetDelta) {
+                this.frameType = frameType;
+                this.offsetDelta = offsetDelta;
+            }
+            int getFrameType() { return frameType; }
+            @Override
+            void write(ClassWriter writer) {
+                super.write(writer);
+                writer.databuf.appendChar(offsetDelta);
+                if (writer.debugstackmap) {
+                    System.out.print(" offset_delta=" + offsetDelta);
+                }
+            }
+        }
+
+        static class AppendFrame extends StackMapTableFrame {
+            final int frameType;
+            final int offsetDelta;
+            final Type[] locals;
+            AppendFrame(int frameType, int offsetDelta, Type[] locals) {
+                this.frameType = frameType;
+                this.offsetDelta = offsetDelta;
+                this.locals = locals;
+            }
+            int getFrameType() { return frameType; }
+            @Override
+            void write(ClassWriter writer) {
+                super.write(writer);
+                writer.databuf.appendChar(offsetDelta);
+                if (writer.debugstackmap) {
+                    System.out.print(" offset_delta=" + offsetDelta);
+                }
+                for (int i=0; i<locals.length; i++) {
+                     if (writer.debugstackmap) System.out.print(" locals[" + i + "]=");
+                     writer.writeStackMapType(locals[i]);
+                }
+            }
+        }
+
+        static class FullFrame extends StackMapTableFrame {
+            final int offsetDelta;
+            final Type[] locals;
+            final Type[] stack;
+            FullFrame(int offsetDelta, Type[] locals, Type[] stack) {
+                this.offsetDelta = offsetDelta;
+                this.locals = locals;
+                this.stack = stack;
+            }
+            int getFrameType() { return FULL_FRAME; }
+            @Override
+            void write(ClassWriter writer) {
+                super.write(writer);
+                writer.databuf.appendChar(offsetDelta);
+                writer.databuf.appendChar(locals.length);
+                if (writer.debugstackmap) {
+                    System.out.print(" offset_delta=" + offsetDelta);
+                    System.out.print(" nlocals=" + locals.length);
+                }
+                for (int i=0; i<locals.length; i++) {
+                    if (writer.debugstackmap) System.out.print(" locals[" + i + "]=");
+                    writer.writeStackMapType(locals[i]);
+                }
+
+                writer.databuf.appendChar(stack.length);
+                if (writer.debugstackmap) { System.out.print(" nstack=" + stack.length); }
+                for (int i=0; i<stack.length; i++) {
+                    if (writer.debugstackmap) System.out.print(" stack[" + i + "]=");
+                    writer.writeStackMapType(stack[i]);
+                }
+            }
+        }
+
+       /** Compare this frame with the previous frame and produce
+        *  an entry of compressed stack map frame. */
+        static StackMapTableFrame getInstance(Code.StackMapFrame this_frame,
+                                              int prev_pc,
+                                              Type[] prev_locals,
+                                              Types types) {
+            Type[] locals = this_frame.locals;
+            Type[] stack = this_frame.stack;
+            int offset_delta = this_frame.pc - prev_pc - 1;
+            if (stack.length == 1) {
+                if (locals.length == prev_locals.length
+                    && compare(prev_locals, locals, types) == 0) {
+                    return new SameLocals1StackItemFrame(offset_delta, stack[0]);
+                }
+            } else if (stack.length == 0) {
+                int diff_length = compare(prev_locals, locals, types);
+                if (diff_length == 0) {
+                    return new SameFrame(offset_delta);
+                } else if (-MAX_LOCAL_LENGTH_DIFF < diff_length && diff_length < 0) {
+                    // APPEND
+                    Type[] local_diff = new Type[-diff_length];
+                    for (int i=prev_locals.length, j=0; i<locals.length; i++,j++) {
+                        local_diff[j] = locals[i];
+                    }
+                    return new AppendFrame(SAME_FRAME_EXTENDED - diff_length,
+                                           offset_delta,
+                                           local_diff);
+                } else if (0 < diff_length && diff_length < MAX_LOCAL_LENGTH_DIFF) {
+                    // CHOP
+                    return new ChopFrame(SAME_FRAME_EXTENDED - diff_length,
+                                         offset_delta);
+                }
+            }
+            // FULL_FRAME
+            return new FullFrame(offset_delta, locals, stack);
+        }
+
+        static boolean isInt(Type t) {
+            return (t.getTag().isStrictSubRangeOf(INT)  || t.hasTag(BOOLEAN));
+        }
+
+        static boolean isSameType(Type t1, Type t2, Types types) {
+            if (t1 == null) { return t2 == null; }
+            if (t2 == null) { return false; }
+
+            if (isInt(t1) && isInt(t2)) { return true; }
+
+            if (t1.hasTag(UNINITIALIZED_THIS)) {
+                return t2.hasTag(UNINITIALIZED_THIS);
+            } else if (t1.hasTag(UNINITIALIZED_OBJECT)) {
+                if (t2.hasTag(UNINITIALIZED_OBJECT)) {
+                    return ((UninitializedType)t1).offset == ((UninitializedType)t2).offset;
+                } else {
+                    return false;
+                }
+            } else if (t2.hasTag(UNINITIALIZED_THIS) || t2.hasTag(UNINITIALIZED_OBJECT)) {
+                return false;
+            }
+
+            return types.isSameType(t1, t2);
+        }
+
+        static int compare(Type[] arr1, Type[] arr2, Types types) {
+            int diff_length = arr1.length - arr2.length;
+            if (diff_length > MAX_LOCAL_LENGTH_DIFF || diff_length < -MAX_LOCAL_LENGTH_DIFF) {
+                return Integer.MAX_VALUE;
+            }
+            int len = (diff_length > 0) ? arr2.length : arr1.length;
+            for (int i=0; i<len; i++) {
+                if (!isSameType(arr1[i], arr2[i], types)) {
+                    return Integer.MAX_VALUE;
+                }
+            }
+            return diff_length;
+        }
+    }
+
+    void writeFields(Scope.Entry e) {
+        // process them in reverse sibling order;
+        // i.e., process them in declaration order.
+        List<VarSymbol> vars = List.nil();
+        for (Scope.Entry i = e; i != null; i = i.sibling) {
+            if (i.sym.kind == VAR) vars = vars.prepend((VarSymbol)i.sym);
+        }
+        while (vars.nonEmpty()) {
+            writeField(vars.head);
+            vars = vars.tail;
+        }
+    }
+
+    void writeMethods(Scope.Entry e) {
+        List<MethodSymbol> methods = List.nil();
+        for (Scope.Entry i = e; i != null; i = i.sibling) {
+            if (i.sym.kind == MTH && (i.sym.flags() & HYPOTHETICAL) == 0)
+                methods = methods.prepend((MethodSymbol)i.sym);
+        }
+        while (methods.nonEmpty()) {
+            writeMethod(methods.head);
+            methods = methods.tail;
+        }
+    }
+
+    /** Emit a class file for a given class.
+     *  @param c      The class from which a class file is generated.
+     */
+    public JavaFileObject writeClass(ClassSymbol c)
+        throws IOException, PoolOverflow, StringOverflow
+    {
+        JavaFileObject outFile
+            = fileManager.getJavaFileForOutput(CLASS_OUTPUT,
+                                               c.flatname.toString(),
+                                               JavaFileObject.Kind.CLASS,
+                                               c.sourcefile);
+        OutputStream out = outFile.openOutputStream();
+        try {
+            writeClassFile(out, c);
+            if (verbose)
+                log.printVerbose("wrote.file", outFile);
+            out.close();
+            out = null;
+        } finally {
+            if (out != null) {
+                // if we are propagating an exception, delete the file
+                out.close();
+                outFile.delete();
+                outFile = null;
+            }
+        }
+        return outFile; // may be null if write failed
+    }
+
+    /** Write class `c' to outstream `out'.
+     */
+    public void writeClassFile(OutputStream out, ClassSymbol c)
+        throws IOException, PoolOverflow, StringOverflow {
+        Assert.check((c.flags() & COMPOUND) == 0);
+        databuf.reset();
+        poolbuf.reset();
+        signatureGen.reset();
+        pool = c.pool;
+        innerClasses = null;
+        innerClassesQueue = null;
+        bootstrapMethods = new LinkedHashMap<DynamicMethod, MethodHandle>();
+
+        Type supertype = types.supertype(c.type);
+        List<Type> interfaces = types.interfaces(c.type);
+        List<Type> typarams = c.type.getTypeArguments();
+
+        int flags = adjustFlags(c.flags() & ~DEFAULT);
+        if ((flags & PROTECTED) != 0) flags |= PUBLIC;
+        flags = flags & ClassFlags & ~STRICTFP;
+        if ((flags & INTERFACE) == 0) flags |= ACC_SUPER;
+        if (c.isInner() && c.name.isEmpty()) flags &= ~FINAL;
+        if (dumpClassModifiers) {
+            PrintWriter pw = log.getWriter(Log.WriterKind.ERROR);
+            pw.println();
+            pw.println("CLASSFILE  " + c.getQualifiedName());
+            pw.println("---" + flagNames(flags));
+        }
+        databuf.appendChar(flags);
+
+        databuf.appendChar(pool.put(c));
+        databuf.appendChar(supertype.hasTag(CLASS) ? pool.put(supertype.tsym) : 0);
+        databuf.appendChar(interfaces.length());
+        for (List<Type> l = interfaces; l.nonEmpty(); l = l.tail)
+            databuf.appendChar(pool.put(l.head.tsym));
+        int fieldsCount = 0;
+        int methodsCount = 0;
+        for (Scope.Entry e = c.members().elems; e != null; e = e.sibling) {
+            switch (e.sym.kind) {
+            case VAR: fieldsCount++; break;
+            case MTH: if ((e.sym.flags() & HYPOTHETICAL) == 0) methodsCount++;
+                      break;
+            case TYP: enterInner((ClassSymbol)e.sym); break;
+            default : Assert.error();
+            }
+        }
+
+        if (c.trans_local != null) {
+            for (ClassSymbol local : c.trans_local) {
+                enterInner(local);
+            }
+        }
+
+        databuf.appendChar(fieldsCount);
+        writeFields(c.members().elems);
+        databuf.appendChar(methodsCount);
+        writeMethods(c.members().elems);
+
+        int acountIdx = beginAttrs();
+        int acount = 0;
+
+        boolean sigReq =
+            typarams.length() != 0 || supertype.allparams().length() != 0;
+        for (List<Type> l = interfaces; !sigReq && l.nonEmpty(); l = l.tail)
+            sigReq = l.head.allparams().length() != 0;
+        if (sigReq) {
+            Assert.check(source.allowGenerics());
+            int alenIdx = writeAttr(names.Signature);
+            if (typarams.length() != 0) signatureGen.assembleParamsSig(typarams);
+            signatureGen.assembleSig(supertype);
+            for (List<Type> l = interfaces; l.nonEmpty(); l = l.tail)
+                signatureGen.assembleSig(l.head);
+            databuf.appendChar(pool.put(signatureGen.toName()));
+            signatureGen.reset();
+            endAttr(alenIdx);
+            acount++;
+        }
+
+        if (c.sourcefile != null && emitSourceFile) {
+            int alenIdx = writeAttr(names.SourceFile);
+            // WHM 6/29/1999: Strip file path prefix.  We do it here at
+            // the last possible moment because the sourcefile may be used
+            // elsewhere in error diagnostics. Fixes 4241573.
+            //databuf.appendChar(c.pool.put(c.sourcefile));
+            String simpleName = BaseFileObject.getSimpleName(c.sourcefile);
+            databuf.appendChar(c.pool.put(names.fromString(simpleName)));
+            endAttr(alenIdx);
+            acount++;
+        }
+
+        if (genCrt) {
+            // Append SourceID attribute
+            int alenIdx = writeAttr(names.SourceID);
+            databuf.appendChar(c.pool.put(names.fromString(Long.toString(getLastModified(c.sourcefile)))));
+            endAttr(alenIdx);
+            acount++;
+            // Append CompilationID attribute
+            alenIdx = writeAttr(names.CompilationID);
+            databuf.appendChar(c.pool.put(names.fromString(Long.toString(System.currentTimeMillis()))));
+            endAttr(alenIdx);
+            acount++;
+        }
+
+        acount += writeFlagAttrs(c.flags());
+        acount += writeJavaAnnotations(c.getRawAttributes());
+        acount += writeTypeAnnotations(c.getRawTypeAttributes(), false);
+        acount += writeEnclosingMethodAttribute(c);
+        acount += writeExtraClassAttributes(c);
+
+        poolbuf.appendInt(JAVA_MAGIC);
+        poolbuf.appendChar(target.minorVersion);
+        poolbuf.appendChar(target.majorVersion);
+
+        writePool(c.pool);
+
+        if (innerClasses != null) {
+            writeInnerClasses();
+            acount++;
+        }
+
+        if (!bootstrapMethods.isEmpty()) {
+            writeBootstrapMethods();
+            acount++;
+        }
+
+        endAttrs(acountIdx, acount);
+
+        poolbuf.appendBytes(databuf.elems, 0, databuf.length);
+        out.write(poolbuf.elems, 0, poolbuf.length);
+
+        pool = c.pool = null; // to conserve space
+     }
+
+    /**Allows subclasses to write additional class attributes
+     *
+     * @return the number of attributes written
+     */
+    protected int writeExtraClassAttributes(ClassSymbol c) {
+        return 0;
+    }
+
+    int adjustFlags(final long flags) {
+        int result = (int)flags;
+        if ((flags & SYNTHETIC) != 0  && !target.useSyntheticFlag())
+            result &= ~SYNTHETIC;
+        if ((flags & ENUM) != 0  && !target.useEnumFlag())
+            result &= ~ENUM;
+        if ((flags & ANNOTATION) != 0  && !target.useAnnotationFlag())
+            result &= ~ANNOTATION;
+
+        if ((flags & BRIDGE) != 0  && target.useBridgeFlag())
+            result |= ACC_BRIDGE;
+        if ((flags & VARARGS) != 0  && target.useVarargsFlag())
+            result |= ACC_VARARGS;
+        if ((flags & DEFAULT) != 0)
+            result &= ~ABSTRACT;
+        return result;
+    }
+
+    long getLastModified(FileObject filename) {
+        long mod = 0;
+        try {
+            mod = filename.getLastModified();
+        } catch (SecurityException e) {
+            throw new AssertionError("CRT: couldn't get source file modification date: " + e.getMessage());
+        }
+        return mod;
+    }
+}

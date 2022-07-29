@@ -1,156 +1,151 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.AnnotationTypeDoc;
-/*     */ import com.sun.javadoc.AnnotationTypeElementDoc;
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.MemberDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlConstants;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.formats.html.markup.StringContent;
-/*     */ import com.sun.tools.doclets.internal.toolkit.AnnotationTypeOptionalMemberWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.MemberSummaryWriter;
-/*     */ import java.io.IOException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class AnnotationTypeOptionalMemberWriterImpl
-/*     */   extends AnnotationTypeRequiredMemberWriterImpl
-/*     */   implements AnnotationTypeOptionalMemberWriter, MemberSummaryWriter
-/*     */ {
-/*     */   public AnnotationTypeOptionalMemberWriterImpl(SubWriterHolderWriter paramSubWriterHolderWriter, AnnotationTypeDoc paramAnnotationTypeDoc) {
-/*  57 */     super(paramSubWriterHolderWriter, paramAnnotationTypeDoc);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMemberSummaryHeader(ClassDoc paramClassDoc, Content paramContent) {
-/*  65 */     paramContent.addContent(HtmlConstants.START_OF_ANNOTATION_TYPE_OPTIONAL_MEMBER_SUMMARY);
-/*     */     
-/*  67 */     Content content = this.writer.getMemberTreeHeader();
-/*  68 */     this.writer.addSummaryHeader(this, paramClassDoc, content);
-/*  69 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addDefaultValueInfo(MemberDoc paramMemberDoc, Content paramContent) {
-/*  76 */     if (((AnnotationTypeElementDoc)paramMemberDoc).defaultValue() != null) {
-/*  77 */       HtmlTree htmlTree1 = HtmlTree.DT(this.writer.getResource("doclet.Default"));
-/*  78 */       HtmlTree htmlTree2 = HtmlTree.DL((Content)htmlTree1);
-/*  79 */       HtmlTree htmlTree3 = HtmlTree.DD((Content)new StringContent(((AnnotationTypeElementDoc)paramMemberDoc)
-/*  80 */             .defaultValue().toString()));
-/*  81 */       htmlTree2.addContent((Content)htmlTree3);
-/*  82 */       paramContent.addContent((Content)htmlTree2);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void close() throws IOException {
-/*  90 */     this.writer.close();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryLabel(Content paramContent) {
-/*  97 */     HtmlTree htmlTree = HtmlTree.HEADING(HtmlConstants.SUMMARY_HEADING, this.writer
-/*  98 */         .getResource("doclet.Annotation_Type_Optional_Member_Summary"));
-/*  99 */     paramContent.addContent((Content)htmlTree);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getTableSummary() {
-/* 106 */     return this.configuration.getText("doclet.Member_Table_Summary", this.configuration
-/* 107 */         .getText("doclet.Annotation_Type_Optional_Member_Summary"), this.configuration
-/* 108 */         .getText("doclet.annotation_type_optional_members"));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getCaption() {
-/* 115 */     return this.configuration.getResource("doclet.Annotation_Type_Optional_Members");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String[] getSummaryTableHeader(ProgramElementDoc paramProgramElementDoc) {
-/* 122 */     return new String[] { this.writer
-/* 123 */         .getModifierTypeHeader(), this.configuration
-/* 124 */         .getText("doclet.0_and_1", this.configuration
-/* 125 */           .getText("doclet.Annotation_Type_Optional_Member"), this.configuration
-/* 126 */           .getText("doclet.Description")) };
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryAnchor(ClassDoc paramClassDoc, Content paramContent) {
-/* 135 */     paramContent.addContent(this.writer.getMarkerAnchor(SectionName.ANNOTATION_TYPE_OPTIONAL_ELEMENT_SUMMARY));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getNavSummaryLink(ClassDoc paramClassDoc, boolean paramBoolean) {
-/* 143 */     if (paramBoolean) {
-/* 144 */       return this.writer.getHyperLink(SectionName.ANNOTATION_TYPE_OPTIONAL_ELEMENT_SUMMARY, this.writer
-/*     */           
-/* 146 */           .getResource("doclet.navAnnotationTypeOptionalMember"));
-/*     */     }
-/* 148 */     return this.writer.getResource("doclet.navAnnotationTypeOptionalMember");
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\AnnotationTypeOptionalMemberWriterImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+
+/**
+ * Writes annotation type optional member documentation in HTML format.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Jamie Ho
+ * @author Bhavesh Patel (Modified)
+ */
+public class AnnotationTypeOptionalMemberWriterImpl extends
+        AnnotationTypeRequiredMemberWriterImpl
+    implements AnnotationTypeOptionalMemberWriter, MemberSummaryWriter {
+
+    /**
+     * Construct a new AnnotationTypeOptionalMemberWriterImpl.
+     *
+     * @param writer         the writer that will write the output.
+     * @param annotationType the AnnotationType that holds this member.
+     */
+    public AnnotationTypeOptionalMemberWriterImpl(SubWriterHolderWriter writer,
+        AnnotationTypeDoc annotationType) {
+        super(writer, annotationType);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getMemberSummaryHeader(ClassDoc classDoc,
+            Content memberSummaryTree) {
+        memberSummaryTree.addContent(
+                HtmlConstants.START_OF_ANNOTATION_TYPE_OPTIONAL_MEMBER_SUMMARY);
+        Content memberTree = writer.getMemberTreeHeader();
+        writer.addSummaryHeader(this, classDoc, memberTree);
+        return memberTree;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addDefaultValueInfo(MemberDoc member, Content annotationDocTree) {
+        if (((AnnotationTypeElementDoc) member).defaultValue() != null) {
+            Content dt = HtmlTree.DT(writer.getResource("doclet.Default"));
+            Content dl = HtmlTree.DL(dt);
+            Content dd = HtmlTree.DD(new StringContent(
+                    ((AnnotationTypeElementDoc) member).defaultValue().toString()));
+            dl.addContent(dd);
+            annotationDocTree.addContent(dl);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void close() throws IOException {
+        writer.close();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addSummaryLabel(Content memberTree) {
+        Content label = HtmlTree.HEADING(HtmlConstants.SUMMARY_HEADING,
+                writer.getResource("doclet.Annotation_Type_Optional_Member_Summary"));
+        memberTree.addContent(label);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String getTableSummary() {
+        return configuration.getText("doclet.Member_Table_Summary",
+                configuration.getText("doclet.Annotation_Type_Optional_Member_Summary"),
+                configuration.getText("doclet.annotation_type_optional_members"));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getCaption() {
+        return configuration.getResource("doclet.Annotation_Type_Optional_Members");
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String[] getSummaryTableHeader(ProgramElementDoc member) {
+        String[] header = new String[] {
+            writer.getModifierTypeHeader(),
+            configuration.getText("doclet.0_and_1",
+                    configuration.getText("doclet.Annotation_Type_Optional_Member"),
+                    configuration.getText("doclet.Description"))
+        };
+        return header;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addSummaryAnchor(ClassDoc cd, Content memberTree) {
+        memberTree.addContent(writer.getMarkerAnchor(
+                SectionName.ANNOTATION_TYPE_OPTIONAL_ELEMENT_SUMMARY));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected Content getNavSummaryLink(ClassDoc cd, boolean link) {
+        if (link) {
+            return writer.getHyperLink(
+                    SectionName.ANNOTATION_TYPE_OPTIONAL_ELEMENT_SUMMARY,
+                    writer.getResource("doclet.navAnnotationTypeOptionalMember"));
+        } else {
+            return writer.getResource("doclet.navAnnotationTypeOptionalMember");
+        }
+    }
+}

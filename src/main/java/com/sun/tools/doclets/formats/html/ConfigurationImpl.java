@@ -1,644 +1,638 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.DocErrorReporter;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.javadoc.RootDoc;
-/*     */ import com.sun.javadoc.SourcePosition;
-/*     */ import com.sun.tools.doclets.formats.html.markup.ContentBuilder;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.WriterFactory;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocFile;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPath;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPaths;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.FatalError;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.MessageRetriever;
-/*     */ import com.sun.tools.doclint.DocLint;
-/*     */ import com.sun.tools.javac.file.JavacFileManager;
-/*     */ import com.sun.tools.javac.util.Context;
-/*     */ import com.sun.tools.javac.util.StringUtils;
-/*     */ import com.sun.tools.javadoc.JavaScriptScanner;
-/*     */ import com.sun.tools.javadoc.RootDocImpl;
-/*     */ import java.net.MalformedURLException;
-/*     */ import java.net.URL;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.Comparator;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.LinkedHashSet;
-/*     */ import java.util.Locale;
-/*     */ import java.util.MissingResourceException;
-/*     */ import java.util.ResourceBundle;
-/*     */ import java.util.Set;
-/*     */ import javax.tools.JavaFileManager;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class ConfigurationImpl
-/*     */   extends Configuration
-/*     */ {
-/*  73 */   public static final String BUILD_DATE = System.getProperty("java.version");
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*  78 */   public String header = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*  83 */   public String packagesheader = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*  88 */   public String footer = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*  93 */   public String doctitle = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*  98 */   public String windowtitle = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 103 */   public String top = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 108 */   public String bottom = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 113 */   public String helpfile = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 118 */   public String stylesheetfile = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 123 */   public String docrootparent = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean nohelp = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean splitindex = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean createindex = true;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean classuse = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean createtree = true;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean nodeprecatedlist = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean nonavbar = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private boolean nooverview = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean overview = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean createoverview = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 182 */   public Set<String> doclintOpts = new LinkedHashSet<>();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private boolean allowScriptInComments;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public final MessageRetriever standardmessage;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 198 */   public DocPath topFile = DocPath.empty;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 203 */   public ClassDoc currentcd = null;
-/*     */ 
-/*     */   
-/*     */   private final String versionRBName = "com.sun.tools.javadoc.resources.version";
-/*     */   
-/*     */   private ResourceBundle versionRB;
-/*     */   
-/*     */   private JavaFileManager fileManager;
-/*     */ 
-/*     */   
-/*     */   public ConfigurationImpl() {
-/* 214 */     this.versionRBName = "com.sun.tools.javadoc.resources.version";
-/*     */     this.standardmessage = new MessageRetriever(this, "com.sun.tools.doclets.formats.html.resources.standard");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getDocletSpecificBuildDate() {
-/* 222 */     if (this.versionRB == null) {
-/*     */       try {
-/* 224 */         this.versionRB = ResourceBundle.getBundle("com.sun.tools.javadoc.resources.version");
-/* 225 */       } catch (MissingResourceException missingResourceException) {
-/* 226 */         return BUILD_DATE;
-/*     */       } 
-/*     */     }
-/*     */     
-/*     */     try {
-/* 231 */       return this.versionRB.getString("release");
-/* 232 */     } catch (MissingResourceException missingResourceException) {
-/* 233 */       return BUILD_DATE;
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void setSpecificDocletOptions(String[][] paramArrayOfString) {
-/* 245 */     for (byte b = 0; b < paramArrayOfString.length; b++) {
-/* 246 */       String[] arrayOfString = paramArrayOfString[b];
-/* 247 */       String str = StringUtils.toLowerCase(arrayOfString[0]);
-/* 248 */       if (str.equals("-footer")) {
-/* 249 */         this.footer = arrayOfString[1];
-/* 250 */       } else if (str.equals("-header")) {
-/* 251 */         this.header = arrayOfString[1];
-/* 252 */       } else if (str.equals("-packagesheader")) {
-/* 253 */         this.packagesheader = arrayOfString[1];
-/* 254 */       } else if (str.equals("-doctitle")) {
-/* 255 */         this.doctitle = arrayOfString[1];
-/* 256 */       } else if (str.equals("-windowtitle")) {
-/* 257 */         this.windowtitle = arrayOfString[1].replaceAll("\\<.*?>", "");
-/* 258 */       } else if (str.equals("-top")) {
-/* 259 */         this.top = arrayOfString[1];
-/* 260 */       } else if (str.equals("-bottom")) {
-/* 261 */         this.bottom = arrayOfString[1];
-/* 262 */       } else if (str.equals("-helpfile")) {
-/* 263 */         this.helpfile = arrayOfString[1];
-/* 264 */       } else if (str.equals("-stylesheetfile")) {
-/* 265 */         this.stylesheetfile = arrayOfString[1];
-/* 266 */       } else if (str.equals("-charset")) {
-/* 267 */         this.charset = arrayOfString[1];
-/* 268 */       } else if (str.equals("-xdocrootparent")) {
-/* 269 */         this.docrootparent = arrayOfString[1];
-/* 270 */       } else if (str.equals("-nohelp")) {
-/* 271 */         this.nohelp = true;
-/* 272 */       } else if (str.equals("-splitindex")) {
-/* 273 */         this.splitindex = true;
-/* 274 */       } else if (str.equals("-noindex")) {
-/* 275 */         this.createindex = false;
-/* 276 */       } else if (str.equals("-use")) {
-/* 277 */         this.classuse = true;
-/* 278 */       } else if (str.equals("-notree")) {
-/* 279 */         this.createtree = false;
-/* 280 */       } else if (str.equals("-nodeprecatedlist")) {
-/* 281 */         this.nodeprecatedlist = true;
-/* 282 */       } else if (str.equals("-nonavbar")) {
-/* 283 */         this.nonavbar = true;
-/* 284 */       } else if (str.equals("-nooverview")) {
-/* 285 */         this.nooverview = true;
-/* 286 */       } else if (str.equals("-overview")) {
-/* 287 */         this.overview = true;
-/* 288 */       } else if (str.equals("-xdoclint")) {
-/* 289 */         this.doclintOpts.add(null);
-/* 290 */       } else if (str.startsWith("-xdoclint:")) {
-/* 291 */         this.doclintOpts.add(str.substring(str.indexOf(":") + 1));
-/* 292 */       } else if (str.equals("--allow-script-in-comments")) {
-/* 293 */         this.allowScriptInComments = true;
-/*     */       } 
-/*     */     } 
-/*     */     
-/* 297 */     if ((this.root.specifiedClasses()).length > 0) {
-/* 298 */       HashMap<Object, Object> hashMap = new HashMap<>();
-/*     */       
-/* 300 */       ClassDoc[] arrayOfClassDoc = this.root.classes();
-/* 301 */       for (byte b1 = 0; b1 < arrayOfClassDoc.length; b1++) {
-/* 302 */         PackageDoc packageDoc = arrayOfClassDoc[b1].containingPackage();
-/* 303 */         if (!hashMap.containsKey(packageDoc.name())) {
-/* 304 */           hashMap.put(packageDoc.name(), packageDoc);
-/*     */         }
-/*     */       } 
-/*     */     } 
-/* 308 */     setCreateOverview();
-/* 309 */     setTopFile(this.root);
-/*     */     
-/* 311 */     if (this.root instanceof RootDocImpl) {
-/* 312 */       ((RootDocImpl)this.root).initDocLint(this.doclintOpts, this.tagletManager.getCustomTagNames());
-/* 313 */       JavaScriptScanner javaScriptScanner = ((RootDocImpl)this.root).initJavaScriptScanner(isAllowScriptInComments());
-/* 314 */       if (javaScriptScanner != null) {
-/*     */ 
-/*     */ 
-/*     */         
-/* 318 */         checkJavaScript(javaScriptScanner, "-header", this.header);
-/* 319 */         checkJavaScript(javaScriptScanner, "-footer", this.footer);
-/* 320 */         checkJavaScript(javaScriptScanner, "-top", this.top);
-/* 321 */         checkJavaScript(javaScriptScanner, "-bottom", this.bottom);
-/* 322 */         checkJavaScript(javaScriptScanner, "-doctitle", this.doctitle);
-/* 323 */         checkJavaScript(javaScriptScanner, "-packagesheader", this.packagesheader);
-/*     */       } 
-/*     */     } 
-/*     */   }
-/*     */   
-/*     */   private void checkJavaScript(JavaScriptScanner paramJavaScriptScanner, final String opt, String paramString2) {
-/* 329 */     paramJavaScriptScanner.parse(paramString2, new JavaScriptScanner.Reporter() {
-/*     */           public void report() {
-/* 331 */             ConfigurationImpl.this.root.printError(ConfigurationImpl.this.getText("doclet.JavaScript_in_option", opt));
-/* 332 */             throw new FatalError();
-/*     */           }
-/*     */         });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public int optionLength(String paramString) {
-/* 354 */     int i = -1;
-/* 355 */     if ((i = super.optionLength(paramString)) > 0) {
-/* 356 */       return i;
-/*     */     }
-/*     */     
-/* 359 */     paramString = StringUtils.toLowerCase(paramString);
-/* 360 */     if (paramString.equals("-nodeprecatedlist") || paramString
-/* 361 */       .equals("-noindex") || paramString
-/* 362 */       .equals("-notree") || paramString
-/* 363 */       .equals("-nohelp") || paramString
-/* 364 */       .equals("-splitindex") || paramString
-/* 365 */       .equals("-serialwarn") || paramString
-/* 366 */       .equals("-use") || paramString
-/* 367 */       .equals("-nonavbar") || paramString
-/* 368 */       .equals("-nooverview") || paramString
-/* 369 */       .equals("-xdoclint") || paramString
-/* 370 */       .startsWith("-xdoclint:") || paramString
-/* 371 */       .equals("--allow-script-in-comments"))
-/* 372 */       return 1; 
-/* 373 */     if (paramString.equals("-help")) {
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */       
-/* 378 */       System.out.println(getText("doclet.usage"));
-/* 379 */       return 1;
-/* 380 */     }  if (paramString.equals("-x")) {
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */       
-/* 385 */       System.out.println(getText("doclet.X.usage"));
-/* 386 */       return 1;
-/* 387 */     }  if (paramString.equals("-footer") || paramString
-/* 388 */       .equals("-header") || paramString
-/* 389 */       .equals("-packagesheader") || paramString
-/* 390 */       .equals("-doctitle") || paramString
-/* 391 */       .equals("-windowtitle") || paramString
-/* 392 */       .equals("-top") || paramString
-/* 393 */       .equals("-bottom") || paramString
-/* 394 */       .equals("-helpfile") || paramString
-/* 395 */       .equals("-stylesheetfile") || paramString
-/* 396 */       .equals("-charset") || paramString
-/* 397 */       .equals("-overview") || paramString
-/* 398 */       .equals("-xdocrootparent")) {
-/* 399 */       return 2;
-/*     */     }
-/* 401 */     return 0;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean validOptions(String[][] paramArrayOfString, DocErrorReporter paramDocErrorReporter) {
-/* 411 */     boolean bool1 = false;
-/* 412 */     boolean bool2 = false;
-/* 413 */     boolean bool3 = false;
-/* 414 */     boolean bool4 = false;
-/* 415 */     boolean bool5 = false;
-/* 416 */     boolean bool6 = false;
-/*     */     
-/* 418 */     if (!generalValidOptions(paramArrayOfString, paramDocErrorReporter)) {
-/* 419 */       return false;
-/*     */     }
-/*     */     
-/* 422 */     for (byte b = 0; b < paramArrayOfString.length; b++) {
-/* 423 */       String[] arrayOfString = paramArrayOfString[b];
-/* 424 */       String str = StringUtils.toLowerCase(arrayOfString[0]);
-/* 425 */       if (str.equals("-helpfile")) {
-/* 426 */         if (bool2 == true) {
-/* 427 */           paramDocErrorReporter.printError(getText("doclet.Option_conflict", "-helpfile", "-nohelp"));
-/*     */           
-/* 429 */           return false;
-/*     */         } 
-/* 431 */         if (bool1 == true) {
-/* 432 */           paramDocErrorReporter.printError(getText("doclet.Option_reuse", "-helpfile"));
-/*     */           
-/* 434 */           return false;
-/*     */         } 
-/* 436 */         DocFile docFile = DocFile.createFileForInput(this, arrayOfString[1]);
-/* 437 */         if (!docFile.exists()) {
-/* 438 */           paramDocErrorReporter.printError(getText("doclet.File_not_found", arrayOfString[1]));
-/* 439 */           return false;
-/*     */         } 
-/* 441 */         bool1 = true;
-/* 442 */       } else if (str.equals("-nohelp")) {
-/* 443 */         if (bool1 == true) {
-/* 444 */           paramDocErrorReporter.printError(getText("doclet.Option_conflict", "-nohelp", "-helpfile"));
-/*     */           
-/* 446 */           return false;
-/*     */         } 
-/* 448 */         bool2 = true;
-/* 449 */       } else if (str.equals("-xdocrootparent")) {
-/*     */         try {
-/* 451 */           new URL(arrayOfString[1]);
-/* 452 */         } catch (MalformedURLException malformedURLException) {
-/* 453 */           paramDocErrorReporter.printError(getText("doclet.MalformedURL", arrayOfString[1]));
-/* 454 */           return false;
-/*     */         } 
-/* 456 */       } else if (str.equals("-overview")) {
-/* 457 */         if (bool4 == true) {
-/* 458 */           paramDocErrorReporter.printError(getText("doclet.Option_conflict", "-overview", "-nooverview"));
-/*     */           
-/* 460 */           return false;
-/*     */         } 
-/* 462 */         if (bool3 == true) {
-/* 463 */           paramDocErrorReporter.printError(getText("doclet.Option_reuse", "-overview"));
-/*     */           
-/* 465 */           return false;
-/*     */         } 
-/* 467 */         bool3 = true;
-/* 468 */       } else if (str.equals("-nooverview")) {
-/* 469 */         if (bool3 == true) {
-/* 470 */           paramDocErrorReporter.printError(getText("doclet.Option_conflict", "-nooverview", "-overview"));
-/*     */           
-/* 472 */           return false;
-/*     */         } 
-/* 474 */         bool4 = true;
-/* 475 */       } else if (str.equals("-splitindex")) {
-/* 476 */         if (bool6 == true) {
-/* 477 */           paramDocErrorReporter.printError(getText("doclet.Option_conflict", "-splitindex", "-noindex"));
-/*     */           
-/* 479 */           return false;
-/*     */         } 
-/* 481 */         bool5 = true;
-/* 482 */       } else if (str.equals("-noindex")) {
-/* 483 */         if (bool5 == true) {
-/* 484 */           paramDocErrorReporter.printError(getText("doclet.Option_conflict", "-noindex", "-splitindex"));
-/*     */           
-/* 486 */           return false;
-/*     */         } 
-/* 488 */         bool6 = true;
-/* 489 */       } else if (str.startsWith("-xdoclint:")) {
-/* 490 */         if (str.contains("/")) {
-/* 491 */           paramDocErrorReporter.printError(getText("doclet.Option_doclint_no_qualifiers"));
-/* 492 */           return false;
-/*     */         } 
-/* 494 */         if (!DocLint.isValidOption(str
-/* 495 */             .replace("-xdoclint:", "-Xmsgs:"))) {
-/* 496 */           paramDocErrorReporter.printError(getText("doclet.Option_doclint_invalid_arg"));
-/* 497 */           return false;
-/*     */         } 
-/*     */       } 
-/*     */     } 
-/* 501 */     return true;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public MessageRetriever getDocletSpecificMsg() {
-/* 509 */     return this.standardmessage;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void setTopFile(RootDoc paramRootDoc) {
-/* 523 */     if (!checkForDeprecation(paramRootDoc)) {
-/*     */       return;
-/*     */     }
-/* 526 */     if (this.createoverview) {
-/* 527 */       this.topFile = DocPaths.OVERVIEW_SUMMARY;
-/*     */     }
-/* 529 */     else if (this.packages.length == 1 && this.packages[0].name().equals("")) {
-/* 530 */       if ((paramRootDoc.classes()).length > 0) {
-/* 531 */         ClassDoc[] arrayOfClassDoc = paramRootDoc.classes();
-/* 532 */         Arrays.sort((Object[])arrayOfClassDoc);
-/* 533 */         ClassDoc classDoc = getValidClass(arrayOfClassDoc);
-/* 534 */         this.topFile = DocPath.forClass(classDoc);
-/*     */       } 
-/*     */     } else {
-/* 537 */       this.topFile = DocPath.forPackage(this.packages[0]).resolve(DocPaths.PACKAGE_SUMMARY);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   protected ClassDoc getValidClass(ClassDoc[] paramArrayOfClassDoc) {
-/* 543 */     if (!this.nodeprecated) {
-/* 544 */       return paramArrayOfClassDoc[0];
-/*     */     }
-/* 546 */     for (byte b = 0; b < paramArrayOfClassDoc.length; b++) {
-/* 547 */       if ((paramArrayOfClassDoc[b].tags("deprecated")).length == 0) {
-/* 548 */         return paramArrayOfClassDoc[b];
-/*     */       }
-/*     */     } 
-/* 551 */     return null;
-/*     */   }
-/*     */   
-/*     */   protected boolean checkForDeprecation(RootDoc paramRootDoc) {
-/* 555 */     ClassDoc[] arrayOfClassDoc = paramRootDoc.classes();
-/* 556 */     for (byte b = 0; b < arrayOfClassDoc.length; b++) {
-/* 557 */       if (isGeneratedDoc(arrayOfClassDoc[b])) {
-/* 558 */         return true;
-/*     */       }
-/*     */     } 
-/* 561 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void setCreateOverview() {
-/* 569 */     if ((this.overview || this.packages.length > 1) && !this.nooverview) {
-/* 570 */       this.createoverview = true;
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public WriterFactory getWriterFactory() {
-/* 579 */     return new WriterFactoryImpl(this);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Comparator<ProgramElementDoc> getMemberComparator() {
-/* 587 */     return null;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Locale getLocale() {
-/* 595 */     if (this.root instanceof RootDocImpl) {
-/* 596 */       return ((RootDocImpl)this.root).getLocale();
-/*     */     }
-/* 598 */     return Locale.getDefault();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public JavaFileManager getFileManager() {
-/* 606 */     if (this.fileManager == null)
-/* 607 */       if (this.root instanceof RootDocImpl) {
-/* 608 */         this.fileManager = ((RootDocImpl)this.root).getFileManager();
-/*     */       } else {
-/* 610 */         this.fileManager = (JavaFileManager)new JavacFileManager(new Context(), false, null);
-/*     */       }  
-/* 612 */     return this.fileManager;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean showMessage(SourcePosition paramSourcePosition, String paramString) {
-/* 619 */     if (this.root instanceof RootDocImpl) {
-/* 620 */       return (paramSourcePosition == null || ((RootDocImpl)this.root).showTagMessages());
-/*     */     }
-/* 622 */     return true;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public Content newContent() {
-/* 627 */     return (Content)new ContentBuilder();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isAllowScriptInComments() {
-/* 636 */     return this.allowScriptInComments;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\ConfigurationImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1998, 2016, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.net.*;
+import java.util.*;
+
+import javax.tools.JavaFileManager;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.markup.ContentBuilder;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+import com.sun.tools.doclint.DocLint;
+import com.sun.tools.javac.file.JavacFileManager;
+import com.sun.tools.javac.util.Context;
+import com.sun.tools.javac.util.StringUtils;
+import com.sun.tools.javadoc.JavaScriptScanner;
+import com.sun.tools.javadoc.RootDocImpl;
+
+/**
+ * Configure the output based on the command line options.
+ * <p>
+ * Also determine the length of the command line option. For example,
+ * for a option "-header" there will be a string argument associated, then the
+ * the length of option "-header" is two. But for option "-nohelp" no argument
+ * is needed so it's length is 1.
+ * </p>
+ * <p>
+ * Also do the error checking on the options used. For example it is illegal to
+ * use "-helpfile" option when already "-nohelp" option is used.
+ * </p>
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Robert Field.
+ * @author Atul Dambalkar.
+ * @author Jamie Ho
+ * @author Bhavesh Patel (Modified)
+ */
+public class ConfigurationImpl extends Configuration {
+
+    /**
+     * The build date.  Note: For now, we will use
+     * a version number instead of a date.
+     */
+    public static final String BUILD_DATE = System.getProperty("java.version");
+
+    /**
+     * Argument for command line option "-header".
+     */
+    public String header = "";
+
+    /**
+     * Argument for command line option "-packagesheader".
+     */
+    public String packagesheader = "";
+
+    /**
+     * Argument for command line option "-footer".
+     */
+    public String footer = "";
+
+    /**
+     * Argument for command line option "-doctitle".
+     */
+    public String doctitle = "";
+
+    /**
+     * Argument for command line option "-windowtitle".
+     */
+    public String windowtitle = "";
+
+    /**
+     * Argument for command line option "-top".
+     */
+    public String top = "";
+
+    /**
+     * Argument for command line option "-bottom".
+     */
+    public String bottom = "";
+
+    /**
+     * Argument for command line option "-helpfile".
+     */
+    public String helpfile = "";
+
+    /**
+     * Argument for command line option "-stylesheetfile".
+     */
+    public String stylesheetfile = "";
+
+    /**
+     * Argument for command line option "-Xdocrootparent".
+     */
+    public String docrootparent = "";
+
+    /**
+     * True if command line option "-nohelp" is used. Default value is false.
+     */
+    public boolean nohelp = false;
+
+    /**
+     * True if command line option "-splitindex" is used. Default value is
+     * false.
+     */
+    public boolean splitindex = false;
+
+    /**
+     * False if command line option "-noindex" is used. Default value is true.
+     */
+    public boolean createindex = true;
+
+    /**
+     * True if command line option "-use" is used. Default value is false.
+     */
+    public boolean classuse = false;
+
+    /**
+     * False if command line option "-notree" is used. Default value is true.
+     */
+    public boolean createtree = true;
+
+    /**
+     * True if command line option "-nodeprecated" is used. Default value is
+     * false.
+     */
+    public boolean nodeprecatedlist = false;
+
+    /**
+     * True if command line option "-nonavbar" is used. Default value is false.
+     */
+    public boolean nonavbar = false;
+
+    /**
+     * True if command line option "-nooverview" is used. Default value is
+     * false
+     */
+    private boolean nooverview = false;
+
+    /**
+     * True if command line option "-overview" is used. Default value is false.
+     */
+    public boolean overview = false;
+
+    /**
+     * This is true if option "-overview" is used or option "-overview" is not
+     * used and number of packages is more than one.
+     */
+    public boolean createoverview = false;
+
+    /**
+     * Collected set of doclint options
+     */
+    public Set<String> doclintOpts = new LinkedHashSet<String>();
+
+    /**
+     * Whether or not to check for JavaScript in doc comments.
+     */
+    private boolean allowScriptInComments;
+
+    /**
+     * Unique Resource Handler for this package.
+     */
+    public final MessageRetriever standardmessage;
+
+    /**
+     * First file to appear in the right-hand frame in the generated
+     * documentation.
+     */
+    public DocPath topFile = DocPath.empty;
+
+    /**
+     * The classdoc for the class file getting generated.
+     */
+    public ClassDoc currentcd = null;  // Set this classdoc in the ClassWriter.
+
+    /**
+     * Constructor. Initializes resource for the
+     * {@link MessageRetriever MessageRetriever}.
+     */
+    public ConfigurationImpl() {
+        standardmessage = new MessageRetriever(this,
+            "com.sun.tools.doclets.formats.html.resources.standard");
+    }
+
+    private final String versionRBName = "com.sun.tools.javadoc.resources.version";
+    private ResourceBundle versionRB;
+
+    /**
+     * Return the build date for the doclet.
+     */
+    @Override
+    public String getDocletSpecificBuildDate() {
+        if (versionRB == null) {
+            try {
+                versionRB = ResourceBundle.getBundle(versionRBName);
+            } catch (MissingResourceException e) {
+                return BUILD_DATE;
+            }
+        }
+
+        try {
+            return versionRB.getString("release");
+        } catch (MissingResourceException e) {
+            return BUILD_DATE;
+        }
+    }
+
+    /**
+     * Depending upon the command line options provided by the user, set
+     * configure the output generation environment.
+     *
+     * @param options The array of option names and values.
+     */
+    @Override
+    public void setSpecificDocletOptions(String[][] options) {
+        for (int oi = 0; oi < options.length; ++oi) {
+            String[] os = options[oi];
+            String opt = StringUtils.toLowerCase(os[0]);
+            if (opt.equals("-footer")) {
+                footer = os[1];
+            } else if (opt.equals("-header")) {
+                header = os[1];
+            } else if (opt.equals("-packagesheader")) {
+                packagesheader = os[1];
+            } else if (opt.equals("-doctitle")) {
+                doctitle = os[1];
+            } else if (opt.equals("-windowtitle")) {
+                windowtitle = os[1].replaceAll("\\<.*?>", "");
+            } else if (opt.equals("-top")) {
+                top = os[1];
+            } else if (opt.equals("-bottom")) {
+                bottom = os[1];
+            } else if (opt.equals("-helpfile")) {
+                helpfile = os[1];
+            } else if (opt.equals("-stylesheetfile")) {
+                stylesheetfile = os[1];
+            } else if (opt.equals("-charset")) {
+                charset = os[1];
+            } else if (opt.equals("-xdocrootparent")) {
+                docrootparent = os[1];
+            } else if (opt.equals("-nohelp")) {
+                nohelp = true;
+            } else if (opt.equals("-splitindex")) {
+                splitindex = true;
+            } else if (opt.equals("-noindex")) {
+                createindex = false;
+            } else if (opt.equals("-use")) {
+                classuse = true;
+            } else if (opt.equals("-notree")) {
+                createtree = false;
+            } else if (opt.equals("-nodeprecatedlist")) {
+                nodeprecatedlist = true;
+            } else if (opt.equals("-nonavbar")) {
+                nonavbar = true;
+            } else if (opt.equals("-nooverview")) {
+                nooverview = true;
+            } else if (opt.equals("-overview")) {
+                overview = true;
+            } else if (opt.equals("-xdoclint")) {
+                doclintOpts.add(null);
+            } else if (opt.startsWith("-xdoclint:")) {
+                doclintOpts.add(opt.substring(opt.indexOf(":") + 1));
+            } else if (opt.equals("--allow-script-in-comments")) {
+                allowScriptInComments = true;
+            }
+        }
+
+        if (root.specifiedClasses().length > 0) {
+            Map<String,PackageDoc> map = new HashMap<String,PackageDoc>();
+            PackageDoc pd;
+            ClassDoc[] classes = root.classes();
+            for (int i = 0; i < classes.length; i++) {
+                pd = classes[i].containingPackage();
+                if(! map.containsKey(pd.name())) {
+                    map.put(pd.name(), pd);
+                }
+            }
+        }
+        setCreateOverview();
+        setTopFile(root);
+
+        if (root instanceof RootDocImpl) {
+            ((RootDocImpl) root).initDocLint(doclintOpts, tagletManager.getCustomTagNames());
+            JavaScriptScanner jss = ((RootDocImpl) root).initJavaScriptScanner(isAllowScriptInComments());
+            if (jss != null) {
+                // In a more object-oriented world, this would be done by methods on the Option objects.
+                // Note that -windowtitle silently removes any and all HTML elements, and so does not need
+                // to be handled here.
+                checkJavaScript(jss, "-header", header);
+                checkJavaScript(jss, "-footer", footer);
+                checkJavaScript(jss, "-top", top);
+                checkJavaScript(jss, "-bottom", bottom);
+                checkJavaScript(jss, "-doctitle", doctitle);
+                checkJavaScript(jss, "-packagesheader", packagesheader);
+            }
+        }
+    }
+
+    private void checkJavaScript(JavaScriptScanner jss, final String opt, String value) {
+        jss.parse(value, new JavaScriptScanner.Reporter() {
+            public void report() {
+                root.printError(getText("doclet.JavaScript_in_option", opt));
+                throw new FatalError();
+            }
+        });
+    }
+
+    /**
+     * Returns the "length" of a given option. If an option takes no
+     * arguments, its length is one. If it takes one argument, it's
+     * length is two, and so on. This method is called by JavaDoc to
+     * parse the options it does not recognize. It then calls
+     * {@link #validOptions(String[][], DocErrorReporter)} to
+     * validate them.
+     * <b>Note:</b><br>
+     * The options arrive as case-sensitive strings. For options that
+     * are not case-sensitive, use toLowerCase() on the option string
+     * before comparing it.
+     * </blockquote>
+     *
+     * @return number of arguments + 1 for a option. Zero return means
+     * option not known.  Negative value means error occurred.
+     */
+    public int optionLength(String option) {
+        int result = -1;
+        if ((result = super.optionLength(option)) > 0) {
+            return result;
+        }
+        // otherwise look for the options we have added
+        option = StringUtils.toLowerCase(option);
+        if (option.equals("-nodeprecatedlist") ||
+            option.equals("-noindex") ||
+            option.equals("-notree") ||
+            option.equals("-nohelp") ||
+            option.equals("-splitindex") ||
+            option.equals("-serialwarn") ||
+            option.equals("-use") ||
+            option.equals("-nonavbar") ||
+            option.equals("-nooverview") ||
+            option.equals("-xdoclint") ||
+            option.startsWith("-xdoclint:") ||
+            option.equals("--allow-script-in-comments")) {
+            return 1;
+        } else if (option.equals("-help")) {
+            // Uugh: first, this should not be hidden inside optionLength,
+            // and second, we should not be writing directly to stdout.
+            // But we have no access to a DocErrorReporter, which would
+            // allow use of reporter.printNotice
+            System.out.println(getText("doclet.usage"));
+            return 1;
+        } else if (option.equals("-x")) {
+            // Uugh: first, this should not be hidden inside optionLength,
+            // and second, we should not be writing directly to stdout.
+            // But we have no access to a DocErrorReporter, which would
+            // allow use of reporter.printNotice
+            System.out.println(getText("doclet.X.usage"));
+            return 1;
+        } else if (option.equals("-footer") ||
+                   option.equals("-header") ||
+                   option.equals("-packagesheader") ||
+                   option.equals("-doctitle") ||
+                   option.equals("-windowtitle") ||
+                   option.equals("-top") ||
+                   option.equals("-bottom") ||
+                   option.equals("-helpfile") ||
+                   option.equals("-stylesheetfile") ||
+                   option.equals("-charset") ||
+                   option.equals("-overview") ||
+                   option.equals("-xdocrootparent")) {
+            return 2;
+        } else {
+            return 0;
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean validOptions(String options[][],
+            DocErrorReporter reporter) {
+        boolean helpfile = false;
+        boolean nohelp = false;
+        boolean overview = false;
+        boolean nooverview = false;
+        boolean splitindex = false;
+        boolean noindex = false;
+        // check shared options
+        if (!generalValidOptions(options, reporter)) {
+            return false;
+        }
+        // otherwise look at our options
+        for (int oi = 0; oi < options.length; ++oi) {
+            String[] os = options[oi];
+            String opt = StringUtils.toLowerCase(os[0]);
+            if (opt.equals("-helpfile")) {
+                if (nohelp == true) {
+                    reporter.printError(getText("doclet.Option_conflict",
+                        "-helpfile", "-nohelp"));
+                    return false;
+                }
+                if (helpfile == true) {
+                    reporter.printError(getText("doclet.Option_reuse",
+                        "-helpfile"));
+                    return false;
+                }
+                DocFile help = DocFile.createFileForInput(this, os[1]);
+                if (!help.exists()) {
+                    reporter.printError(getText("doclet.File_not_found", os[1]));
+                    return false;
+                }
+                helpfile = true;
+            } else  if (opt.equals("-nohelp")) {
+                if (helpfile == true) {
+                    reporter.printError(getText("doclet.Option_conflict",
+                        "-nohelp", "-helpfile"));
+                    return false;
+                }
+                nohelp = true;
+            } else if (opt.equals("-xdocrootparent")) {
+                try {
+                    new URL(os[1]);
+                } catch (MalformedURLException e) {
+                    reporter.printError(getText("doclet.MalformedURL", os[1]));
+                    return false;
+                }
+            } else if (opt.equals("-overview")) {
+                if (nooverview == true) {
+                    reporter.printError(getText("doclet.Option_conflict",
+                        "-overview", "-nooverview"));
+                    return false;
+                }
+                if (overview == true) {
+                    reporter.printError(getText("doclet.Option_reuse",
+                        "-overview"));
+                    return false;
+                }
+                overview = true;
+            } else  if (opt.equals("-nooverview")) {
+                if (overview == true) {
+                    reporter.printError(getText("doclet.Option_conflict",
+                        "-nooverview", "-overview"));
+                    return false;
+                }
+                nooverview = true;
+            } else if (opt.equals("-splitindex")) {
+                if (noindex == true) {
+                    reporter.printError(getText("doclet.Option_conflict",
+                        "-splitindex", "-noindex"));
+                    return false;
+                }
+                splitindex = true;
+            } else if (opt.equals("-noindex")) {
+                if (splitindex == true) {
+                    reporter.printError(getText("doclet.Option_conflict",
+                        "-noindex", "-splitindex"));
+                    return false;
+                }
+                noindex = true;
+            } else if (opt.startsWith("-xdoclint:")) {
+                if (opt.contains("/")) {
+                    reporter.printError(getText("doclet.Option_doclint_no_qualifiers"));
+                    return false;
+                }
+                if (!DocLint.isValidOption(
+                        opt.replace("-xdoclint:", DocLint.XMSGS_CUSTOM_PREFIX))) {
+                    reporter.printError(getText("doclet.Option_doclint_invalid_arg"));
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MessageRetriever getDocletSpecificMsg() {
+        return standardmessage;
+    }
+
+    /**
+     * Decide the page which will appear first in the right-hand frame. It will
+     * be "overview-summary.html" if "-overview" option is used or no
+     * "-overview" but the number of packages is more than one. It will be
+     * "package-summary.html" of the respective package if there is only one
+     * package to document. It will be a class page(first in the sorted order),
+     * if only classes are provided on the command line.
+     *
+     * @param root Root of the program structure.
+     */
+    protected void setTopFile(RootDoc root) {
+        if (!checkForDeprecation(root)) {
+            return;
+        }
+        if (createoverview) {
+            topFile = DocPaths.OVERVIEW_SUMMARY;
+        } else {
+            if (packages.length == 1 && packages[0].name().equals("")) {
+                if (root.classes().length > 0) {
+                    ClassDoc[] classarr = root.classes();
+                    Arrays.sort(classarr);
+                    ClassDoc cd = getValidClass(classarr);
+                    topFile = DocPath.forClass(cd);
+                }
+            } else {
+                topFile = DocPath.forPackage(packages[0]).resolve(DocPaths.PACKAGE_SUMMARY);
+            }
+        }
+    }
+
+    protected ClassDoc getValidClass(ClassDoc[] classarr) {
+        if (!nodeprecated) {
+            return classarr[0];
+        }
+        for (int i = 0; i < classarr.length; i++) {
+            if (classarr[i].tags("deprecated").length == 0) {
+                return classarr[i];
+            }
+        }
+        return null;
+    }
+
+    protected boolean checkForDeprecation(RootDoc root) {
+        ClassDoc[] classarr = root.classes();
+        for (int i = 0; i < classarr.length; i++) {
+            if (isGeneratedDoc(classarr[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Generate "overview.html" page if option "-overview" is used or number of
+     * packages is more than one. Sets {@link #createoverview} field to true.
+     */
+    protected void setCreateOverview() {
+        if ((overview || packages.length > 1) && !nooverview) {
+            createoverview = true;
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public WriterFactory getWriterFactory() {
+        return new WriterFactoryImpl(this);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Comparator<ProgramElementDoc> getMemberComparator() {
+        return null;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Locale getLocale() {
+        if (root instanceof RootDocImpl)
+            return ((RootDocImpl)root).getLocale();
+        else
+            return Locale.getDefault();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public JavaFileManager getFileManager() {
+        if (fileManager == null) {
+            if (root instanceof RootDocImpl)
+                fileManager = ((RootDocImpl) root).getFileManager();
+            else
+                fileManager = new JavacFileManager(new Context(), false, null);
+        }
+        return fileManager;
+    }
+
+    private JavaFileManager fileManager;
+
+    @Override
+    public boolean showMessage(SourcePosition pos, String key) {
+        if (root instanceof RootDocImpl) {
+            return pos == null || ((RootDocImpl) root).showTagMessages();
+        }
+        return true;
+    }
+
+    @Override
+    public Content newContent() {
+        return new ContentBuilder();
+    }
+
+    /**
+     * Returns whether or not to allow JavaScript in comments.
+     * Default is off; can be set true from a command line option.
+     * @return the allowScriptInComments
+     */
+    public boolean isAllowScriptInComments() {
+        return allowScriptInComments;
+    }
+}

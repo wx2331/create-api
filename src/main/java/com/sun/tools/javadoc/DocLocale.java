@@ -1,249 +1,243 @@
-/*     */ package com.sun.tools.javadoc;
-/*     */ 
-/*     */ import java.text.BreakIterator;
-/*     */ import java.text.Collator;
-/*     */ import java.util.Locale;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ class DocLocale
-/*     */ {
-/*     */   final String localeName;
-/*     */   final Locale locale;
-/*     */   final Collator collator;
-/*     */   private final DocEnv docenv;
-/*     */   private final BreakIterator sentenceBreaker;
-/*     */   private boolean useBreakIterator = false;
-/*  82 */   static final String[] sentenceTerminators = new String[] { "<p>", "</p>", "<h1>", "<h2>", "<h3>", "<h4>", "<h5>", "<h6>", "</h1>", "</h2>", "</h3>", "</h4>", "</h5>", "</h6>", "<hr>", "<pre>", "</pre>" };
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   DocLocale(DocEnv paramDocEnv, String paramString, boolean paramBoolean) {
-/*  94 */     this.docenv = paramDocEnv;
-/*  95 */     this.localeName = paramString;
-/*  96 */     this.useBreakIterator = paramBoolean;
-/*  97 */     this.locale = getLocale();
-/*  98 */     if (this.locale == null) {
-/*  99 */       paramDocEnv.exit();
-/*     */     } else {
-/* 101 */       Locale.setDefault(this.locale);
-/*     */     } 
-/* 103 */     this.collator = Collator.getInstance(this.locale);
-/* 104 */     this.sentenceBreaker = BreakIterator.getSentenceInstance(this.locale);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private Locale getLocale() {
-/* 113 */     Locale locale = null;
-/* 114 */     if (this.localeName.length() > 0) {
-/* 115 */       int i = this.localeName.indexOf('_');
-/* 116 */       int j = -1;
-/* 117 */       String str1 = null;
-/* 118 */       String str2 = null;
-/* 119 */       String str3 = null;
-/* 120 */       if (i == 2) {
-/* 121 */         str1 = this.localeName.substring(0, i);
-/* 122 */         j = this.localeName.indexOf('_', i + 1);
-/* 123 */         if (j > 0) {
-/* 124 */           if (j != i + 3 || this.localeName
-/* 125 */             .length() <= j + 1) {
-/* 126 */             this.docenv.error(null, "main.malformed_locale_name", this.localeName);
-/* 127 */             return null;
-/*     */           } 
-/* 129 */           str2 = this.localeName.substring(i + 1, j);
-/*     */           
-/* 131 */           str3 = this.localeName.substring(j + 1);
-/* 132 */         } else if (this.localeName.length() == i + 3) {
-/* 133 */           str2 = this.localeName.substring(i + 1);
-/*     */         } else {
-/* 135 */           this.docenv.error(null, "main.malformed_locale_name", this.localeName);
-/* 136 */           return null;
-/*     */         } 
-/* 138 */       } else if (i == -1 && this.localeName.length() == 2) {
-/* 139 */         str1 = this.localeName;
-/*     */       } else {
-/* 141 */         this.docenv.error(null, "main.malformed_locale_name", this.localeName);
-/* 142 */         return null;
-/*     */       } 
-/* 144 */       locale = searchLocale(str1, str2, str3);
-/* 145 */       if (locale == null) {
-/* 146 */         this.docenv.error(null, "main.illegal_locale_name", this.localeName);
-/* 147 */         return null;
-/*     */       } 
-/* 149 */       return locale;
-/*     */     } 
-/*     */     
-/* 152 */     return Locale.getDefault();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private Locale searchLocale(String paramString1, String paramString2, String paramString3) {
-/* 162 */     Locale[] arrayOfLocale = Locale.getAvailableLocales();
-/* 163 */     for (byte b = 0; b < arrayOfLocale.length; b++) {
-/* 164 */       if (arrayOfLocale[b].getLanguage().equals(paramString1) && (paramString2 == null || arrayOfLocale[b]
-/* 165 */         .getCountry().equals(paramString2)) && (paramString3 == null || arrayOfLocale[b]
-/* 166 */         .getVariant().equals(paramString3))) {
-/* 167 */         return arrayOfLocale[b];
-/*     */       }
-/*     */     } 
-/* 170 */     return null;
-/*     */   }
-/*     */   
-/*     */   String localeSpecificFirstSentence(DocImpl paramDocImpl, String paramString) {
-/* 174 */     if (paramString == null || paramString.length() == 0) {
-/* 175 */       return "";
-/*     */     }
-/* 177 */     int i = paramString.indexOf("-->");
-/* 178 */     if (paramString.trim().startsWith("<!--") && i != -1) {
-/* 179 */       return localeSpecificFirstSentence(paramDocImpl, paramString.substring(i + 3, paramString.length()));
-/*     */     }
-/* 181 */     if (this.useBreakIterator || !this.locale.getLanguage().equals("en")) {
-/* 182 */       this.sentenceBreaker.setText(paramString.replace('\n', ' '));
-/* 183 */       int j = this.sentenceBreaker.first();
-/* 184 */       int k = this.sentenceBreaker.next();
-/* 185 */       return paramString.substring(j, k).trim();
-/*     */     } 
-/* 187 */     return englishLanguageFirstSentence(paramString).trim();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private String englishLanguageFirstSentence(String paramString) {
-/* 196 */     if (paramString == null) {
-/* 197 */       return null;
-/*     */     }
-/* 199 */     int i = paramString.length();
-/* 200 */     boolean bool = false;
-/* 201 */     for (byte b = 0; b < i; b++) {
-/* 202 */       switch (paramString.charAt(b)) {
-/*     */         case '.':
-/* 204 */           bool = true;
-/*     */           break;
-/*     */         case '\t':
-/*     */         case '\n':
-/*     */         case '\f':
-/*     */         case '\r':
-/*     */         case ' ':
-/* 211 */           if (bool) {
-/* 212 */             return paramString.substring(0, b);
-/*     */           }
-/*     */           break;
-/*     */         case '<':
-/* 216 */           if (b > 0 && 
-/* 217 */             htmlSentenceTerminatorFound(paramString, b)) {
-/* 218 */             return paramString.substring(0, b);
-/*     */           }
-/*     */           break;
-/*     */         
-/*     */         default:
-/* 223 */           bool = false; break;
-/*     */       } 
-/*     */     } 
-/* 226 */     return paramString;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private boolean htmlSentenceTerminatorFound(String paramString, int paramInt) {
-/* 234 */     for (byte b = 0; b < sentenceTerminators.length; b++) {
-/* 235 */       String str = sentenceTerminators[b];
-/* 236 */       if (paramString.regionMatches(true, paramInt, str, 0, str
-/* 237 */           .length())) {
-/* 238 */         return true;
-/*     */       }
-/*     */     } 
-/* 241 */     return false;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javadoc\DocLocale.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2000, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javadoc;
+
+import java.text.BreakIterator;
+import java.text.Collator;
+import java.util.Locale;
+
+/**
+ * This class holds the information about locales.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @since 1.4
+ * @author Robert Field
+ */
+class DocLocale {
+
+    /**
+     * The locale name will be set by Main, if option is provided on the
+     * command line.
+     */
+    final String localeName;
+
+    /**
+     * The locale to be used. If user doesn't provide this,
+     * then set it to default locale value.
+     */
+    final Locale locale;
+
+    /**
+     * The collator for this application. This is to take care of Locale
+     * Specific or Natural Language Text sorting.
+     */
+    final Collator collator;
+
+    /**
+     * Enclosing DocEnv
+     */
+    private final DocEnv docenv;
+
+    /**
+     * Sentence instance from the BreakIterator.
+     */
+    private final BreakIterator sentenceBreaker;
+
+    /**
+     * True is we should use <code>BreakIterator</code>
+     * to compute first sentence.
+     */
+    private boolean useBreakIterator = false;
+
+    /**
+     * The HTML sentence terminators.
+     */
+    static final String[] sentenceTerminators =
+                    {
+                        "<p>", "</p>", "<h1>", "<h2>",
+                        "<h3>", "<h4>", "<h5>", "<h6>",
+                        "</h1>", "</h2>", "</h3>", "</h4>", "</h5>",
+                        "</h6>", "<hr>", "<pre>", "</pre>"
+                    };
+
+    /**
+     * Constructor
+     */
+    DocLocale(DocEnv docenv, String localeName, boolean useBreakIterator) {
+        this.docenv = docenv;
+        this.localeName = localeName;
+        this.useBreakIterator = useBreakIterator;
+        locale = getLocale();
+        if (locale == null) {
+            docenv.exit();
+        } else {
+            Locale.setDefault(locale); // NOTE: updating global state
+        }
+        collator = Collator.getInstance(locale);
+        sentenceBreaker = BreakIterator.getSentenceInstance(locale);
+    }
+
+    /**
+     * Get the locale if specified on the command line
+     * else return null and if locale option is not used
+     * then return default locale.
+     */
+    private Locale getLocale() {
+        Locale userlocale = null;
+        if (localeName.length() > 0) {
+            int firstuscore = localeName.indexOf('_');
+            int seconduscore = -1;
+            String language = null;
+            String country = null;
+            String variant = null;
+            if (firstuscore == 2) {
+                language = localeName.substring(0, firstuscore);
+                seconduscore = localeName.indexOf('_', firstuscore + 1);
+                if (seconduscore > 0) {
+                    if (seconduscore != firstuscore + 3 ||
+                           localeName.length() <= seconduscore + 1) {
+                        docenv.error(null, "main.malformed_locale_name", localeName);
+                        return null;
+                    }
+                    country = localeName.substring(firstuscore + 1,
+                                                   seconduscore);
+                    variant = localeName.substring(seconduscore + 1);
+                } else if (localeName.length() == firstuscore + 3) {
+                    country = localeName.substring(firstuscore + 1);
+                } else {
+                    docenv.error(null, "main.malformed_locale_name", localeName);
+                    return null;
+                }
+            } else if (firstuscore == -1 && localeName.length() == 2) {
+                language = localeName;
+            } else {
+                docenv.error(null, "main.malformed_locale_name", localeName);
+                return null;
+            }
+            userlocale = searchLocale(language, country, variant);
+            if (userlocale == null) {
+                docenv.error(null, "main.illegal_locale_name", localeName);
+                return null;
+            } else {
+                return userlocale;
+            }
+        } else {
+            return Locale.getDefault();
+        }
+    }
+
+    /**
+     * Search the locale for specified language, specified country and
+     * specified variant.
+     */
+    private Locale searchLocale(String language, String country,
+                                String variant) {
+        Locale[] locales = Locale.getAvailableLocales();
+        for (int i = 0; i < locales.length; i++) {
+            if (locales[i].getLanguage().equals(language) &&
+               (country == null || locales[i].getCountry().equals(country)) &&
+               (variant == null || locales[i].getVariant().equals(variant))) {
+                return locales[i];
+            }
+        }
+        return null;
+    }
+
+    String localeSpecificFirstSentence(DocImpl doc, String s) {
+        if (s == null || s.length() == 0) {
+            return "";
+        }
+        int index = s.indexOf("-->");
+        if(s.trim().startsWith("<!--") && index != -1) {
+            return localeSpecificFirstSentence(doc, s.substring(index + 3, s.length()));
+        }
+        if (useBreakIterator || !locale.getLanguage().equals("en")) {
+            sentenceBreaker.setText(s.replace('\n', ' '));
+            int start = sentenceBreaker.first();
+            int end = sentenceBreaker.next();
+            return s.substring(start, end).trim();
+        } else {
+            return englishLanguageFirstSentence(s).trim();
+        }
+    }
+
+    /**
+     * Return the first sentence of a string, where a sentence ends
+     * with a period followed be white space.
+     */
+    private String englishLanguageFirstSentence(String s) {
+        if (s == null) {
+            return null;
+        }
+        int len = s.length();
+        boolean period = false;
+        for (int i = 0 ; i < len ; i++) {
+            switch (s.charAt(i)) {
+                case '.':
+                    period = true;
+                    break;
+                case ' ':
+                case '\t':
+                case '\n':
+            case '\r':
+            case '\f':
+                    if (period) {
+                        return s.substring(0, i);
+                    }
+                    break;
+            case '<':
+                    if (i > 0) {
+                        if (htmlSentenceTerminatorFound(s, i)) {
+                            return s.substring(0, i);
+                        }
+                    }
+                    break;
+                default:
+                    period = false;
+            }
+        }
+        return s;
+    }
+
+    /**
+     * Find out if there is any HTML tag in the given string. If found
+     * return true else return false.
+     */
+    private boolean htmlSentenceTerminatorFound(String str, int index) {
+        for (int i = 0; i < sentenceTerminators.length; i++) {
+            String terminator = sentenceTerminators[i];
+            if (str.regionMatches(true, index, terminator,
+                                  0, terminator.length())) {
+                    return true;
+            }
+        }
+        return false;
+    }
+}

@@ -1,803 +1,777 @@
-/*     */ package com.sun.tools.javac.file;
-/*     */
-/*     */ import com.sun.tools.javac.code.Lint;
-/*     */ import com.sun.tools.javac.main.Option;
-/*     */ import com.sun.tools.javac.util.ListBuffer;
-/*     */ import com.sun.tools.javac.util.Log;
-/*     */ import com.sun.tools.javac.util.Options;
-/*     */ import com.sun.tools.javac.util.StringUtils;
-/*     */ import java.io.File;
-/*     */ import java.io.FileNotFoundException;
-/*     */ import java.io.IOException;
-/*     */ import java.net.MalformedURLException;
-/*     */ import java.net.URL;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.Collection;
-/*     */ import java.util.Collections;
-/*     */ import java.util.EnumMap;
-/*     */ import java.util.EnumSet;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.LinkedHashSet;
-/*     */ import java.util.Map;
-/*     */ import java.util.Set;
-/*     */ import java.util.StringTokenizer;
-/*     */ import java.util.zip.ZipFile;
-/*     */ import javax.tools.JavaFileManager;
-/*     */ import javax.tools.StandardLocation;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class Locations
-/*     */ {
-/*     */   private Log log;
-/*     */   private Options options;
-/*     */   private Lint lint;
-/*     */   private FSInfo fsInfo;
-/*     */   private boolean warn;
-/*     */   private boolean inited = false;
-/*     */   Map<JavaFileManager.Location, LocationHandler> handlersForLocation;
-/*     */   Map<Option, LocationHandler> handlersForOption;
-/*     */
-/*     */   public Locations() {
-/*  92 */     initHandlers();
-/*     */   }
-/*     */
-/*     */   public void update(Log paramLog, Options paramOptions, Lint paramLint, FSInfo paramFSInfo) {
-/*  96 */     this.log = paramLog;
-/*  97 */     this.options = paramOptions;
-/*  98 */     this.lint = paramLint;
-/*  99 */     this.fsInfo = paramFSInfo;
-/*     */   }
-/*     */
-/*     */   public Collection<File> bootClassPath() {
-/* 103 */     return getLocation(StandardLocation.PLATFORM_CLASS_PATH);
-/*     */   }
-/*     */
-/*     */
-/*     */   public boolean isDefaultBootClassPath() {
-/* 108 */     BootClassPathLocationHandler bootClassPathLocationHandler = (BootClassPathLocationHandler)getHandler(StandardLocation.PLATFORM_CLASS_PATH);
-/* 109 */     return bootClassPathLocationHandler.isDefault();
-/*     */   }
-/*     */
-/*     */
-/*     */   boolean isDefaultBootClassPathRtJar(File paramFile) {
-/* 114 */     BootClassPathLocationHandler bootClassPathLocationHandler = (BootClassPathLocationHandler)getHandler(StandardLocation.PLATFORM_CLASS_PATH);
-/* 115 */     return bootClassPathLocationHandler.isDefaultRtJar(paramFile);
-/*     */   }
-/*     */
-/*     */   public Collection<File> userClassPath() {
-/* 119 */     return getLocation(StandardLocation.CLASS_PATH);
-/*     */   }
-/*     */
-/*     */   public Collection<File> sourcePath() {
-/* 123 */     Collection<File> collection = getLocation(StandardLocation.SOURCE_PATH);
-/*     */
-/* 125 */     return (collection == null || collection.isEmpty()) ? null : collection;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private static Iterable<File> getPathEntries(String paramString) {
-/* 134 */     return getPathEntries(paramString, null);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private static Iterable<File> getPathEntries(String paramString, File paramFile) {
-/* 147 */     ListBuffer listBuffer = new ListBuffer();
-/* 148 */     int i = 0;
-/* 149 */     while (i <= paramString.length()) {
-/* 150 */       int j = paramString.indexOf(File.pathSeparatorChar, i);
-/* 151 */       if (j == -1)
-/* 152 */         j = paramString.length();
-/* 153 */       if (i < j) {
-/* 154 */         listBuffer.add(new File(paramString.substring(i, j)));
-/* 155 */       } else if (paramFile != null) {
-/* 156 */         listBuffer.add(paramFile);
-/* 157 */       }  i = j + 1;
-/*     */     }
-/* 159 */     return (Iterable<File>)listBuffer;
-/*     */   }
-/*     */
-/*     */
-/*     */   private class Path
-/*     */     extends LinkedHashSet<File>
-/*     */   {
-/*     */     private static final long serialVersionUID = 0L;
-/*     */
-/*     */     private boolean expandJarClassPaths = false;
-/*     */
-/* 170 */     private Set<File> canonicalValues = new HashSet<>();
-/*     */
-/*     */     public Path expandJarClassPaths(boolean param1Boolean) {
-/* 173 */       this.expandJarClassPaths = param1Boolean;
-/* 174 */       return this;
-/*     */     }
-/*     */
-/*     */
-/* 178 */     private File emptyPathDefault = null;
-/*     */
-/*     */     public Path emptyPathDefault(File param1File) {
-/* 181 */       this.emptyPathDefault = param1File;
-/* 182 */       return this;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */     public Path addDirectories(String param1String, boolean param1Boolean) {
-/* 188 */       boolean bool = this.expandJarClassPaths;
-/* 189 */       this.expandJarClassPaths = true;
-/*     */       try {
-/* 191 */         if (param1String != null)
-/* 192 */           for (File file : Locations.getPathEntries(param1String))
-/* 193 */             addDirectory(file, param1Boolean);
-/* 194 */         return this;
-/*     */       } finally {
-/* 196 */         this.expandJarClassPaths = bool;
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public Path addDirectories(String param1String) {
-/* 201 */       return addDirectories(param1String, Locations.this.warn);
-/*     */     }
-/*     */
-/*     */     private void addDirectory(File param1File, boolean param1Boolean) {
-/* 205 */       if (!param1File.isDirectory()) {
-/* 206 */         if (param1Boolean) {
-/* 207 */           Locations.this.log.warning(Lint.LintCategory.PATH, "dir.path.element.not.found", new Object[] { param1File });
-/*     */         }
-/*     */
-/*     */         return;
-/*     */       }
-/* 212 */       File[] arrayOfFile = param1File.listFiles();
-/* 213 */       if (arrayOfFile == null) {
-/*     */         return;
-/*     */       }
-/* 216 */       for (File file : arrayOfFile) {
-/* 217 */         if (Locations.this.isArchive(file))
-/* 218 */           addFile(file, param1Boolean);
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public Path addFiles(String param1String, boolean param1Boolean) {
-/* 223 */       if (param1String != null) {
-/* 224 */         addFiles(Locations.getPathEntries(param1String, this.emptyPathDefault), param1Boolean);
-/*     */       }
-/* 226 */       return this;
-/*     */     }
-/*     */
-/*     */     public Path addFiles(String param1String) {
-/* 230 */       return addFiles(param1String, Locations.this.warn);
-/*     */     }
-/*     */
-/*     */     public Path addFiles(Iterable<? extends File> param1Iterable, boolean param1Boolean) {
-/* 234 */       if (param1Iterable != null)
-/* 235 */         for (File file : param1Iterable) {
-/* 236 */           addFile(file, param1Boolean);
-/*     */         }
-/* 238 */       return this;
-/*     */     }
-/*     */
-/*     */     public Path addFiles(Iterable<? extends File> param1Iterable) {
-/* 242 */       return addFiles(param1Iterable, Locations.this.warn);
-/*     */     }
-/*     */
-/*     */     public void addFile(File param1File, boolean param1Boolean) {
-/* 246 */       if (contains(param1File)) {
-/*     */         return;
-/*     */       }
-/*     */
-/*     */
-/* 251 */       if (!Locations.this.fsInfo.exists(param1File)) {
-/*     */
-/* 253 */         if (param1Boolean) {
-/* 254 */           Locations.this.log.warning(Lint.LintCategory.PATH, "path.element.not.found", new Object[] { param1File });
-/*     */         }
-/*     */
-/* 257 */         add((E)param1File);
-/*     */
-/*     */         return;
-/*     */       }
-/* 261 */       File file = Locations.this.fsInfo.getCanonicalFile(param1File);
-/* 262 */       if (this.canonicalValues.contains(file)) {
-/*     */         return;
-/*     */       }
-/*     */
-/*     */
-/* 267 */       if (Locations.this.fsInfo.isFile(param1File))
-/*     */       {
-/* 269 */         if (!Locations.this.isArchive(param1File)) {
-/*     */
-/*     */           try {
-/*     */
-/* 273 */             ZipFile zipFile = new ZipFile(param1File);
-/* 274 */             zipFile.close();
-/* 275 */             if (param1Boolean) {
-/* 276 */               Locations.this.log.warning(Lint.LintCategory.PATH, "unexpected.archive.file", new Object[] { param1File });
-/*     */             }
-/*     */           }
-/* 279 */           catch (IOException iOException) {
-/*     */
-/* 281 */             if (param1Boolean) {
-/* 282 */               Locations.this.log.warning(Lint.LintCategory.PATH, "invalid.archive.file", new Object[] { param1File });
-/*     */             }
-/*     */
-/*     */
-/*     */             return;
-/*     */           }
-/*     */         }
-/*     */       }
-/*     */
-/*     */
-/* 292 */       add((E)param1File);
-/* 293 */       this.canonicalValues.add(file);
-/*     */
-/* 295 */       if (this.expandJarClassPaths && Locations.this.fsInfo.isFile(param1File)) {
-/* 296 */         addJarClassPath(param1File, param1Boolean);
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     private void addJarClassPath(File param1File, boolean param1Boolean) {
-/*     */       try {
-/* 305 */         for (File file : Locations.this.fsInfo.getJarClassPath(param1File)) {
-/* 306 */           addFile(file, param1Boolean);
-/*     */         }
-/* 308 */       } catch (IOException iOException) {
-/* 309 */         Locations.this.log.error("error.reading.file", new Object[] { param1File, JavacFileManager.getMessage(iOException) });
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   protected abstract class LocationHandler
-/*     */   {
-/*     */     final JavaFileManager.Location location;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     final Set<Option> options;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     protected LocationHandler(JavaFileManager.Location param1Location, Option... param1VarArgs) {
-/* 331 */       this.location = param1Location;
-/* 332 */       this
-/*     */
-/* 334 */         .options = (param1VarArgs.length == 0) ? EnumSet.<Option>noneOf(Option.class) : EnumSet.<Option>copyOf(Arrays.asList(param1VarArgs));
-/*     */     }
-/*     */
-/*     */
-/*     */     void update(Options param1Options) {
-/* 339 */       for (Option option : this.options) {
-/* 340 */         String str = param1Options.get(option);
-/* 341 */         if (str != null) {
-/* 342 */           handleOption(option, str);
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */     abstract boolean handleOption(Option param1Option, String param1String);
-/*     */
-/*     */
-/*     */     abstract Collection<File> getLocation();
-/*     */
-/*     */
-/*     */     abstract void setLocation(Iterable<? extends File> param1Iterable) throws IOException;
-/*     */   }
-/*     */
-/*     */
-/*     */   private class OutputLocationHandler
-/*     */     extends LocationHandler
-/*     */   {
-/*     */     private File outputDir;
-/*     */
-/*     */
-/*     */     OutputLocationHandler(JavaFileManager.Location param1Location, Option... param1VarArgs) {
-/* 365 */       super(param1Location, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */     boolean handleOption(Option param1Option, String param1String) {
-/* 370 */       if (!this.options.contains(param1Option)) {
-/* 371 */         return false;
-/*     */       }
-/*     */
-/*     */
-/*     */
-/*     */
-/* 377 */       this.outputDir = new File(param1String);
-/* 378 */       return true;
-/*     */     }
-/*     */
-/*     */
-/*     */     Collection<File> getLocation() {
-/* 383 */       return (this.outputDir == null) ? null : Collections.<File>singleton(this.outputDir);
-/*     */     }
-/*     */
-/*     */
-/*     */     void setLocation(Iterable<? extends File> param1Iterable) throws IOException {
-/* 388 */       if (param1Iterable == null) {
-/* 389 */         this.outputDir = null;
-/*     */       } else {
-/* 391 */         Iterator<? extends File> iterator = param1Iterable.iterator();
-/* 392 */         if (!iterator.hasNext())
-/* 393 */           throw new IllegalArgumentException("empty path for directory");
-/* 394 */         File file = iterator.next();
-/* 395 */         if (iterator.hasNext())
-/* 396 */           throw new IllegalArgumentException("path too long for directory");
-/* 397 */         if (!file.exists())
-/* 398 */           throw new FileNotFoundException(file + ": does not exist");
-/* 399 */         if (!file.isDirectory())
-/* 400 */           throw new IOException(file + ": not a directory");
-/* 401 */         this.outputDir = file;
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   private class SimpleLocationHandler
-/*     */     extends LocationHandler
-/*     */   {
-/*     */     protected Collection<File> searchPath;
-/*     */
-/*     */
-/*     */
-/*     */     SimpleLocationHandler(JavaFileManager.Location param1Location, Option... param1VarArgs) {
-/* 416 */       super(param1Location, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */     boolean handleOption(Option param1Option, String param1String) {
-/* 421 */       if (!this.options.contains(param1Option))
-/* 422 */         return false;
-/* 423 */       this
-/* 424 */         .searchPath = (param1String == null) ? null : Collections.<File>unmodifiableCollection(createPath().addFiles(param1String));
-/* 425 */       return true;
-/*     */     }
-/*     */
-/*     */
-/*     */     Collection<File> getLocation() {
-/* 430 */       return this.searchPath;
-/*     */     }
-/*     */
-/*     */
-/*     */     void setLocation(Iterable<? extends File> param1Iterable) {
-/*     */       Path path;
-/* 436 */       if (param1Iterable == null) {
-/* 437 */         path = computePath(null);
-/*     */       } else {
-/* 439 */         path = createPath().addFiles(param1Iterable);
-/*     */       }
-/* 441 */       this.searchPath = Collections.unmodifiableCollection(path);
-/*     */     }
-/*     */
-/*     */     protected Path computePath(String param1String) {
-/* 445 */       return createPath().addFiles(param1String);
-/*     */     }
-/*     */
-/*     */     protected Path createPath() {
-/* 449 */       return new Path();
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private class ClassPathLocationHandler
-/*     */     extends SimpleLocationHandler
-/*     */   {
-/*     */     ClassPathLocationHandler() {
-/* 460 */       super(StandardLocation.CLASS_PATH, new Option[] { Option.CLASSPATH, Option.CP });
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */     Collection<File> getLocation() {
-/* 466 */       lazy();
-/* 467 */       return this.searchPath;
-/*     */     }
-/*     */
-/*     */
-/*     */     protected Path computePath(String param1String) {
-/* 472 */       String str = param1String;
-/*     */
-/*     */
-/* 475 */       if (str == null) str = System.getProperty("env.class.path");
-/*     */
-/*     */
-/*     */
-/* 479 */       if (str == null && System.getProperty("application.home") == null) {
-/* 480 */         str = System.getProperty("java.class.path");
-/*     */       }
-/*     */
-/* 483 */       if (str == null) str = ".";
-/*     */
-/* 485 */       return createPath().addFiles(str);
-/*     */     }
-/*     */
-/*     */
-/*     */     protected Path createPath() {
-/* 490 */       return (new Path())
-/* 491 */         .expandJarClassPaths(true)
-/* 492 */         .emptyPathDefault(new File("."));
-/*     */     }
-/*     */
-/*     */     private void lazy() {
-/* 496 */       if (this.searchPath == null) {
-/* 497 */         setLocation((Iterable<? extends File>)null);
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private class BootClassPathLocationHandler
-/*     */     extends LocationHandler
-/*     */   {
-/*     */     private Collection<File> searchPath;
-/*     */
-/*     */
-/*     */
-/* 513 */     final Map<Option, String> optionValues = new EnumMap<>(Option.class);
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 519 */     private File defaultBootClassPathRtJar = null;
-/*     */
-/*     */
-/*     */     private boolean isDefaultBootClassPath;
-/*     */
-/*     */
-/*     */
-/*     */     BootClassPathLocationHandler() {
-/* 527 */       super(StandardLocation.PLATFORM_CLASS_PATH, new Option[] { Option.BOOTCLASSPATH, Option.XBOOTCLASSPATH, Option.XBOOTCLASSPATH_PREPEND, Option.XBOOTCLASSPATH_APPEND, Option.ENDORSEDDIRS, Option.DJAVA_ENDORSED_DIRS, Option.EXTDIRS, Option.DJAVA_EXT_DIRS });
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     boolean isDefault() {
-/* 536 */       lazy();
-/* 537 */       return this.isDefaultBootClassPath;
-/*     */     }
-/*     */
-/*     */     boolean isDefaultRtJar(File param1File) {
-/* 541 */       lazy();
-/* 542 */       return param1File.equals(this.defaultBootClassPathRtJar);
-/*     */     }
-/*     */
-/*     */
-/*     */     boolean handleOption(Option param1Option, String param1String) {
-/* 547 */       if (!this.options.contains(param1Option)) {
-/* 548 */         return false;
-/*     */       }
-/* 550 */       param1Option = canonicalize(param1Option);
-/* 551 */       this.optionValues.put(param1Option, param1String);
-/* 552 */       if (param1Option == Option.BOOTCLASSPATH) {
-/* 553 */         this.optionValues.remove(Option.XBOOTCLASSPATH_PREPEND);
-/* 554 */         this.optionValues.remove(Option.XBOOTCLASSPATH_APPEND);
-/*     */       }
-/* 556 */       this.searchPath = null;
-/* 557 */       return true;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     private Option canonicalize(Option param1Option) {
-/*     */       // Byte code:
-/*     */       //   0: getstatic com/sun/tools/javac/file/Locations$1.$SwitchMap$com$sun$tools$javac$main$Option : [I
-/*     */       //   3: aload_1
-/*     */       //   4: invokevirtual ordinal : ()I
-/*     */       //   7: iaload
-/*     */       //   8: tableswitch default -> 48, 1 -> 36, 2 -> 40, 3 -> 44
-/*     */       //   36: getstatic com/sun/tools/javac/main/Option.BOOTCLASSPATH : Lcom/sun/tools/javac/main/Option;
-/*     */       //   39: areturn
-/*     */       //   40: getstatic com/sun/tools/javac/main/Option.ENDORSEDDIRS : Lcom/sun/tools/javac/main/Option;
-/*     */       //   43: areturn
-/*     */       //   44: getstatic com/sun/tools/javac/main/Option.EXTDIRS : Lcom/sun/tools/javac/main/Option;
-/*     */       //   47: areturn
-/*     */       //   48: aload_1
-/*     */       //   49: areturn
-/*     */       // Line number table:
-/*     */       //   Java source line number -> byte code offset
-/*     */       //   #563	-> 0
-/*     */       //   #565	-> 36
-/*     */       //   #567	-> 40
-/*     */       //   #569	-> 44
-/*     */       //   #571	-> 48
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     Collection<File> getLocation() {
-/* 577 */       lazy();
-/* 578 */       return this.searchPath;
-/*     */     }
-/*     */
-/*     */
-/*     */     void setLocation(Iterable<? extends File> param1Iterable) {
-/* 583 */       if (param1Iterable == null) {
-/* 584 */         this.searchPath = null;
-/*     */       } else {
-/* 586 */         this.defaultBootClassPathRtJar = null;
-/* 587 */         this.isDefaultBootClassPath = false;
-/* 588 */         Path path = (new Path()).addFiles(param1Iterable, false);
-/* 589 */         this.searchPath = Collections.unmodifiableCollection(path);
-/* 590 */         this.optionValues.clear();
-/*     */       }
-/*     */     }
-/*     */
-/*     */     Path computePath() {
-/* 595 */       this.defaultBootClassPathRtJar = null;
-/* 596 */       Path path = new Path();
-/*     */
-/* 598 */       String str1 = this.optionValues.get(Option.BOOTCLASSPATH);
-/* 599 */       String str2 = this.optionValues.get(Option.ENDORSEDDIRS);
-/* 600 */       String str3 = this.optionValues.get(Option.EXTDIRS);
-/* 601 */       String str4 = this.optionValues.get(Option.XBOOTCLASSPATH_PREPEND);
-/* 602 */       String str5 = this.optionValues.get(Option.XBOOTCLASSPATH_APPEND);
-/* 603 */       path.addFiles(str4);
-/*     */
-/* 605 */       if (str2 != null) {
-/* 606 */         path.addDirectories(str2);
-/*     */       } else {
-/* 608 */         path.addDirectories(System.getProperty("java.endorsed.dirs"), false);
-/*     */       }
-/* 610 */       if (str1 != null) {
-/* 611 */         path.addFiles(str1);
-/*     */       } else {
-/*     */
-/* 614 */         String str = System.getProperty("sun.boot.class.path");
-/* 615 */         path.addFiles(str, false);
-/* 616 */         File file = new File("rt.jar");
-/* 617 */         for (File file1 : Locations.getPathEntries(str)) {
-/* 618 */           if ((new File(file1.getName())).equals(file)) {
-/* 619 */             this.defaultBootClassPathRtJar = file1;
-/*     */           }
-/*     */         }
-/*     */       }
-/* 623 */       path.addFiles(str5);
-/*     */
-/*     */
-/*     */
-/*     */
-/* 628 */       if (str3 != null) {
-/* 629 */         path.addDirectories(str3);
-/*     */       } else {
-/* 631 */         path.addDirectories(System.getProperty("java.ext.dirs"), false);
-/*     */       }
-/* 633 */       this.isDefaultBootClassPath = (str4 == null && str1 == null && str5 == null);
-/*     */
-/*     */
-/*     */
-/*     */
-/* 638 */       return path;
-/*     */     }
-/*     */
-/*     */     private void lazy() {
-/* 642 */       if (this.searchPath == null) {
-/* 643 */         this.searchPath = Collections.unmodifiableCollection(computePath());
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   void initHandlers() {
-/* 651 */     this.handlersForLocation = new HashMap<>();
-/* 652 */     this.handlersForOption = new EnumMap<>(Option.class);
-/*     */
-/* 654 */     LocationHandler[] arrayOfLocationHandler = { new BootClassPathLocationHandler(), new ClassPathLocationHandler(), new SimpleLocationHandler(StandardLocation.SOURCE_PATH, new Option[] { Option.SOURCEPATH }), new SimpleLocationHandler(StandardLocation.ANNOTATION_PROCESSOR_PATH, new Option[] { Option.PROCESSORPATH }), new OutputLocationHandler(StandardLocation.CLASS_OUTPUT, new Option[] { Option.D }), new OutputLocationHandler(StandardLocation.SOURCE_OUTPUT, new Option[] { Option.S }), new OutputLocationHandler(StandardLocation.NATIVE_HEADER_OUTPUT, new Option[] { Option.H }) };
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 664 */     for (LocationHandler locationHandler : arrayOfLocationHandler) {
-/* 665 */       this.handlersForLocation.put(locationHandler.location, locationHandler);
-/* 666 */       for (Option option : locationHandler.options)
-/* 667 */         this.handlersForOption.put(option, locationHandler);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   boolean handleOption(Option paramOption, String paramString) {
-/* 672 */     LocationHandler locationHandler = this.handlersForOption.get(paramOption);
-/* 673 */     return (locationHandler == null) ? false : locationHandler.handleOption(paramOption, paramString);
-/*     */   }
-/*     */
-/*     */   Collection<File> getLocation(JavaFileManager.Location paramLocation) {
-/* 677 */     LocationHandler locationHandler = getHandler(paramLocation);
-/* 678 */     return (locationHandler == null) ? null : locationHandler.getLocation();
-/*     */   }
-/*     */
-/*     */   File getOutputLocation(JavaFileManager.Location paramLocation) {
-/* 682 */     if (!paramLocation.isOutputLocation())
-/* 683 */       throw new IllegalArgumentException();
-/* 684 */     LocationHandler locationHandler = getHandler(paramLocation);
-/* 685 */     return ((OutputLocationHandler)locationHandler).outputDir;
-/*     */   }
-/*     */
-/*     */   void setLocation(JavaFileManager.Location paramLocation, Iterable<? extends File> paramIterable) throws IOException {
-/* 689 */     LocationHandler locationHandler = getHandler(paramLocation);
-/* 690 */     if (locationHandler == null) {
-/* 691 */       if (paramLocation.isOutputLocation()) {
-/* 692 */         locationHandler = new OutputLocationHandler(paramLocation, new Option[0]);
-/*     */       } else {
-/* 694 */         locationHandler = new SimpleLocationHandler(paramLocation, new Option[0]);
-/* 695 */       }  this.handlersForLocation.put(paramLocation, locationHandler);
-/*     */     }
-/* 697 */     locationHandler.setLocation(paramIterable);
-/*     */   }
-/*     */
-/*     */   protected LocationHandler getHandler(JavaFileManager.Location paramLocation) {
-/* 701 */     paramLocation.getClass();
-/* 702 */     lazy();
-/* 703 */     return this.handlersForLocation.get(paramLocation);
-/*     */   }
-/*     */
-/*     */
-/*     */   protected void lazy() {
-/* 708 */     if (!this.inited) {
-/* 709 */       this.warn = this.lint.isEnabled(Lint.LintCategory.PATH);
-/*     */
-/* 711 */       for (LocationHandler locationHandler : this.handlersForLocation.values()) {
-/* 712 */         locationHandler.update(this.options);
-/*     */       }
-/*     */
-/* 715 */       this.inited = true;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */   private boolean isArchive(File paramFile) {
-/* 721 */     String str = StringUtils.toLowerCase(paramFile.getName());
-/* 722 */     return (this.fsInfo.isFile(paramFile) && (str
-/* 723 */       .endsWith(".jar") || str.endsWith(".zip")));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static URL[] pathToURLs(String paramString) {
-/* 736 */     StringTokenizer stringTokenizer = new StringTokenizer(paramString, File.pathSeparator);
-/* 737 */     URL[] arrayOfURL = new URL[stringTokenizer.countTokens()];
-/* 738 */     byte b = 0;
-/* 739 */     while (stringTokenizer.hasMoreTokens()) {
-/* 740 */       URL uRL = fileToURL(new File(stringTokenizer.nextToken()));
-/* 741 */       if (uRL != null) {
-/* 742 */         arrayOfURL[b++] = uRL;
-/*     */       }
-/*     */     }
-/* 745 */     arrayOfURL = Arrays.<URL>copyOf(arrayOfURL, b);
-/* 746 */     return arrayOfURL;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private static URL fileToURL(File paramFile) {
-/*     */     try {
-/* 759 */       str = paramFile.getCanonicalPath();
-/* 760 */     } catch (IOException iOException) {
-/* 761 */       str = paramFile.getAbsolutePath();
-/*     */     }
-/* 763 */     String str = str.replace(File.separatorChar, '/');
-/* 764 */     if (!str.startsWith("/")) {
-/* 765 */       str = "/" + str;
-/*     */     }
-/*     */
-/* 768 */     if (!paramFile.isFile()) {
-/* 769 */       str = str + "/";
-/*     */     }
-/*     */     try {
-/* 772 */       return new URL("file", "", str);
-/* 773 */     } catch (MalformedURLException malformedURLException) {
-/* 774 */       throw new IllegalArgumentException(paramFile.toString());
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\file\Locations.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.file;
+
+import java.io.FileNotFoundException;
+import java.util.Iterator;
+import java.io.File;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.StringTokenizer;
+import java.util.zip.ZipFile;
+import javax.tools.JavaFileManager.Location;
+import javax.tools.StandardLocation;
+
+import com.sun.tools.javac.code.Lint;
+import com.sun.tools.javac.main.Option;
+import com.sun.tools.javac.util.ListBuffer;
+import com.sun.tools.javac.util.Log;
+import com.sun.tools.javac.util.Options;
+import com.sun.tools.javac.util.StringUtils;
+
+import javax.tools.JavaFileManager;
+import javax.tools.StandardJavaFileManager;
+import static javax.tools.StandardLocation.*;
+import static com.sun.tools.javac.main.Option.*;
+
+/** This class converts command line arguments, environment variables
+ *  and system properties (in File.pathSeparator-separated String form)
+ *  into a boot class path, user class path, and source path (in
+ *  {@code Collection<String>} form).
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Locations {
+
+    /** The log to use for warning output */
+    private Log log;
+
+    /** Collection of command-line options */
+    private Options options;
+
+    /** Handler for -Xlint options */
+    private Lint lint;
+
+    /** Access to (possibly cached) file info */
+    private FSInfo fsInfo;
+
+    /** Whether to warn about non-existent path elements */
+    private boolean warn;
+
+    // TODO: remove need for this
+    private boolean inited = false; // TODO? caching bad?
+
+    public Locations() {
+        initHandlers();
+    }
+
+    public void update(Log log, Options options, Lint lint, FSInfo fsInfo) {
+        this.log = log;
+        this.options = options;
+        this.lint = lint;
+        this.fsInfo = fsInfo;
+    }
+
+    public Collection<File> bootClassPath() {
+        return getLocation(PLATFORM_CLASS_PATH);
+    }
+
+    public boolean isDefaultBootClassPath() {
+        BootClassPathLocationHandler h =
+                (BootClassPathLocationHandler) getHandler(PLATFORM_CLASS_PATH);
+        return h.isDefault();
+    }
+
+    boolean isDefaultBootClassPathRtJar(File file) {
+        BootClassPathLocationHandler h =
+                (BootClassPathLocationHandler) getHandler(PLATFORM_CLASS_PATH);
+        return h.isDefaultRtJar(file);
+    }
+
+    public Collection<File> userClassPath() {
+        return getLocation(CLASS_PATH);
+    }
+
+    public Collection<File> sourcePath() {
+        Collection<File> p = getLocation(SOURCE_PATH);
+        // TODO: this should be handled by the LocationHandler
+        return p == null || p.isEmpty() ? null : p;
+    }
+
+    /**
+     * Split a path into its elements. Empty path elements will be ignored.
+     * @param path The path to be split
+     * @return The elements of the path
+     */
+    private static Iterable<File> getPathEntries(String path) {
+        return getPathEntries(path, null);
+    }
+
+    /**
+     * Split a path into its elements. If emptyPathDefault is not null, all
+     * empty elements in the path, including empty elements at either end of
+     * the path, will be replaced with the value of emptyPathDefault.
+     * @param path The path to be split
+     * @param emptyPathDefault The value to substitute for empty path elements,
+     *  or null, to ignore empty path elements
+     * @return The elements of the path
+     */
+    private static Iterable<File> getPathEntries(String path, File emptyPathDefault) {
+        ListBuffer<File> entries = new ListBuffer<File>();
+        int start = 0;
+        while (start <= path.length()) {
+            int sep = path.indexOf(File.pathSeparatorChar, start);
+            if (sep == -1)
+                sep = path.length();
+            if (start < sep)
+                entries.add(new File(path.substring(start, sep)));
+            else if (emptyPathDefault != null)
+                entries.add(emptyPathDefault);
+            start = sep + 1;
+        }
+        return entries;
+    }
+
+    /**
+     * Utility class to help evaluate a path option.
+     * Duplicate entries are ignored, jar class paths can be expanded.
+     */
+    private class Path extends LinkedHashSet<File> {
+        private static final long serialVersionUID = 0;
+
+        private boolean expandJarClassPaths = false;
+        private Set<File> canonicalValues = new HashSet<File>();
+
+        public Path expandJarClassPaths(boolean x) {
+            expandJarClassPaths = x;
+            return this;
+        }
+
+        /** What to use when path element is the empty string */
+        private File emptyPathDefault = null;
+
+        public Path emptyPathDefault(File x) {
+            emptyPathDefault = x;
+            return this;
+        }
+
+        public Path() { super(); }
+
+        public Path addDirectories(String dirs, boolean warn) {
+            boolean prev = expandJarClassPaths;
+            expandJarClassPaths = true;
+            try {
+                if (dirs != null)
+                    for (File dir : getPathEntries(dirs))
+                        addDirectory(dir, warn);
+                return this;
+            } finally {
+                expandJarClassPaths = prev;
+            }
+        }
+
+        public Path addDirectories(String dirs) {
+            return addDirectories(dirs, warn);
+        }
+
+        private void addDirectory(File dir, boolean warn) {
+            if (!dir.isDirectory()) {
+                if (warn)
+                    log.warning(Lint.LintCategory.PATH,
+                            "dir.path.element.not.found", dir);
+                return;
+            }
+
+            File[] files = dir.listFiles();
+            if (files == null)
+                return;
+
+            for (File direntry : files) {
+                if (isArchive(direntry))
+                    addFile(direntry, warn);
+            }
+        }
+
+        public Path addFiles(String files, boolean warn) {
+            if (files != null) {
+                addFiles(getPathEntries(files, emptyPathDefault), warn);
+            }
+            return this;
+        }
+
+        public Path addFiles(String files) {
+            return addFiles(files, warn);
+        }
+
+        public Path addFiles(Iterable<? extends File> files, boolean warn) {
+            if (files != null) {
+                for (File file: files)
+                    addFile(file, warn);
+            }
+            return this;
+        }
+
+        public Path addFiles(Iterable<? extends File> files) {
+            return addFiles(files, warn);
+        }
+
+        public void addFile(File file, boolean warn) {
+            if (contains(file)) {
+                // discard duplicates
+                return;
+            }
+
+            if (! fsInfo.exists(file)) {
+                /* No such file or directory exists */
+                if (warn) {
+                    log.warning(Lint.LintCategory.PATH,
+                            "path.element.not.found", file);
+                }
+                super.add(file);
+                return;
+            }
+
+            File canonFile = fsInfo.getCanonicalFile(file);
+            if (canonicalValues.contains(canonFile)) {
+                /* Discard duplicates and avoid infinite recursion */
+                return;
+            }
+
+            if (fsInfo.isFile(file)) {
+                /* File is an ordinary file. */
+                if (!isArchive(file)) {
+                    /* Not a recognized extension; open it to see if
+                     it looks like a valid zip file. */
+                    try {
+                        ZipFile z = new ZipFile(file);
+                        z.close();
+                        if (warn) {
+                            log.warning(Lint.LintCategory.PATH,
+                                    "unexpected.archive.file", file);
+                        }
+                    } catch (IOException e) {
+                        // FIXME: include e.getLocalizedMessage in warning
+                        if (warn) {
+                            log.warning(Lint.LintCategory.PATH,
+                                    "invalid.archive.file", file);
+                        }
+                        return;
+                    }
+                }
+            }
+
+            /* Now what we have left is either a directory or a file name
+               conforming to archive naming convention */
+            super.add(file);
+            canonicalValues.add(canonFile);
+
+            if (expandJarClassPaths && fsInfo.isFile(file))
+                addJarClassPath(file, warn);
+        }
+
+        // Adds referenced classpath elements from a jar's Class-Path
+        // Manifest entry.  In some future release, we may want to
+        // update this code to recognize URLs rather than simple
+        // filenames, but if we do, we should redo all path-related code.
+        private void addJarClassPath(File jarFile, boolean warn) {
+            try {
+                for (File f: fsInfo.getJarClassPath(jarFile)) {
+                    addFile(f, warn);
+                }
+            } catch (IOException e) {
+                log.error("error.reading.file", jarFile, JavacFileManager.getMessage(e));
+            }
+        }
+    }
+
+    /**
+     * Base class for handling support for the representation of Locations.
+     * Implementations are responsible for handling the interactions between
+     * the command line options for a location, and API access via setLocation.
+     * @see #initHandlers
+     * @see #getHandler
+     */
+    protected abstract class LocationHandler {
+        final Location location;
+        final Set<Option> options;
+
+        /**
+         * Create a handler. The location and options provide a way to map
+         * from a location or an option to the corresponding handler.
+         * @see #initHandlers
+         */
+        protected LocationHandler(Location location, Option... options) {
+            this.location = location;
+            this.options = options.length == 0 ?
+                EnumSet.noneOf(Option.class):
+                EnumSet.copyOf(Arrays.asList(options));
+        }
+
+        // TODO: TEMPORARY, while Options still used for command line options
+        void update(Options optionTable) {
+            for (Option o: options) {
+                String v = optionTable.get(o);
+                if (v != null) {
+                    handleOption(o, v);
+                }
+            }
+        }
+
+        /** @see JavaFileManager#handleOption */
+        abstract boolean handleOption(Option option, String value);
+        /** @see StandardJavaFileManager#getLocation */
+        abstract Collection<File> getLocation();
+        /** @see StandardJavaFileManager#setLocation */
+        abstract void setLocation(Iterable<? extends File> files) throws IOException;
+    }
+
+    /**
+     * General purpose implementation for output locations,
+     * such as -d/CLASS_OUTPUT and -s/SOURCE_OUTPUT.
+     * All options are treated as equivalent (i.e. aliases.)
+     * The value is a single file, possibly null.
+     */
+    private class OutputLocationHandler extends LocationHandler {
+        private File outputDir;
+
+        OutputLocationHandler(Location location, Option... options) {
+            super(location, options);
+        }
+
+        @Override
+        boolean handleOption(Option option, String value) {
+            if (!options.contains(option))
+                return false;
+
+            // TODO: could/should validate outputDir exists and is a directory
+            // need to decide how best to report issue for benefit of
+            // direct API call on JavaFileManager.handleOption(specifies IAE)
+            // vs. command line decoding.
+            outputDir = new File(value);
+            return true;
+        }
+
+        @Override
+        Collection<File> getLocation() {
+            return (outputDir == null) ? null : Collections.singleton(outputDir);
+        }
+
+        @Override
+        void setLocation(Iterable<? extends File> files) throws IOException {
+            if (files == null) {
+                outputDir = null;
+            } else {
+                Iterator<? extends File> pathIter = files.iterator();
+                if (!pathIter.hasNext())
+                    throw new IllegalArgumentException("empty path for directory");
+                File dir = pathIter.next();
+                if (pathIter.hasNext())
+                    throw new IllegalArgumentException("path too long for directory");
+                if (!dir.exists())
+                    throw new FileNotFoundException(dir + ": does not exist");
+                else if (!dir.isDirectory())
+                    throw new IOException(dir + ": not a directory");
+                outputDir = dir;
+            }
+        }
+    }
+
+    /**
+     * General purpose implementation for search path locations,
+     * such as -sourcepath/SOURCE_PATH and -processorPath/ANNOTATION_PROCESS_PATH.
+     * All options are treated as equivalent (i.e. aliases.)
+     * The value is an ordered set of files and/or directories.
+     */
+    private class SimpleLocationHandler extends LocationHandler {
+        protected Collection<File> searchPath;
+
+        SimpleLocationHandler(Location location, Option... options) {
+            super(location, options);
+        }
+
+        @Override
+        boolean handleOption(Option option, String value) {
+            if (!options.contains(option))
+                return false;
+            searchPath = value == null ? null :
+                    Collections.unmodifiableCollection(createPath().addFiles(value));
+            return true;
+        }
+
+        @Override
+        Collection<File> getLocation() {
+            return searchPath;
+        }
+
+        @Override
+        void setLocation(Iterable<? extends File> files) {
+            Path p;
+            if (files == null) {
+                p = computePath(null);
+            } else {
+                p = createPath().addFiles(files);
+            }
+            searchPath = Collections.unmodifiableCollection(p);
+        }
+
+        protected Path computePath(String value) {
+            return createPath().addFiles(value);
+        }
+
+        protected Path createPath() {
+            return new Path();
+        }
+    }
+
+    /**
+     * Subtype of SimpleLocationHandler for -classpath/CLASS_PATH.
+     * If no value is given, a default is provided, based on system properties
+     * and other values.
+     */
+    private class ClassPathLocationHandler extends SimpleLocationHandler {
+        ClassPathLocationHandler() {
+            super(StandardLocation.CLASS_PATH,
+                    Option.CLASSPATH, Option.CP);
+        }
+
+        @Override
+        Collection<File> getLocation() {
+            lazy();
+            return searchPath;
+        }
+
+        @Override
+        protected Path computePath(String value) {
+            String cp = value;
+
+            // CLASSPATH environment variable when run from `javac'.
+            if (cp == null) cp = System.getProperty("env.class.path");
+
+            // If invoked via a java VM (not the javac launcher), use the
+            // platform class path
+            if (cp == null && System.getProperty("application.home") == null)
+                cp = System.getProperty("java.class.path");
+
+            // Default to current working directory.
+            if (cp == null) cp = ".";
+
+            return createPath().addFiles(cp);
+        }
+
+        @Override
+        protected Path createPath() {
+            return new Path()
+                .expandJarClassPaths(true)         // Only search user jars for Class-Paths
+                .emptyPathDefault(new File("."));  // Empty path elt ==> current directory
+        }
+
+        private void lazy() {
+            if (searchPath == null)
+                setLocation(null);
+        }
+    }
+
+    /**
+     * Custom subtype of LocationHandler for PLATFORM_CLASS_PATH.
+     * Various options are supported for different components of the
+     * platform class path.
+     * Setting a value with setLocation overrides all existing option values.
+     * Setting any option overrides any value set with setLocation, and reverts
+     * to using default values for options that have not been set.
+     * Setting -bootclasspath or -Xbootclasspath overrides any existing
+     * value for -Xbootclasspath/p: and -Xbootclasspath/a:.
+     */
+    private class BootClassPathLocationHandler extends LocationHandler {
+        private Collection<File> searchPath;
+        final Map<Option, String> optionValues = new EnumMap<Option,String>(Option.class);
+
+        /**
+         * rt.jar as found on the default bootclasspath.
+         * If the user specified a bootclasspath, null is used.
+         */
+        private File defaultBootClassPathRtJar = null;
+
+        /**
+         *  Is bootclasspath the default?
+         */
+        private boolean isDefaultBootClassPath;
+
+        BootClassPathLocationHandler() {
+            super(StandardLocation.PLATFORM_CLASS_PATH,
+                    Option.BOOTCLASSPATH, Option.XBOOTCLASSPATH,
+                    Option.XBOOTCLASSPATH_PREPEND,
+                    Option.XBOOTCLASSPATH_APPEND,
+                    Option.ENDORSEDDIRS, Option.DJAVA_ENDORSED_DIRS,
+                    Option.EXTDIRS, Option.DJAVA_EXT_DIRS);
+        }
+
+        boolean isDefault() {
+            lazy();
+            return isDefaultBootClassPath;
+        }
+
+        boolean isDefaultRtJar(File file) {
+            lazy();
+            return file.equals(defaultBootClassPathRtJar);
+        }
+
+        @Override
+        boolean handleOption(Option option, String value) {
+            if (!options.contains(option))
+                return false;
+
+            option = canonicalize(option);
+            optionValues.put(option, value);
+            if (option == BOOTCLASSPATH) {
+                optionValues.remove(XBOOTCLASSPATH_PREPEND);
+                optionValues.remove(XBOOTCLASSPATH_APPEND);
+            }
+            searchPath = null;  // reset to "uninitialized"
+            return true;
+        }
+        // where
+            // TODO: would be better if option aliasing was handled at a higher
+            // level
+            private Option canonicalize(Option option) {
+                switch (option) {
+                    case XBOOTCLASSPATH:
+                        return Option.BOOTCLASSPATH;
+                    case DJAVA_ENDORSED_DIRS:
+                        return Option.ENDORSEDDIRS;
+                    case DJAVA_EXT_DIRS:
+                        return Option.EXTDIRS;
+                    default:
+                        return option;
+                }
+            }
+
+        @Override
+        Collection<File> getLocation() {
+            lazy();
+            return searchPath;
+        }
+
+        @Override
+        void setLocation(Iterable<? extends File> files) {
+            if (files == null) {
+                searchPath = null;  // reset to "uninitialized"
+            } else {
+                defaultBootClassPathRtJar = null;
+                isDefaultBootClassPath = false;
+                Path p = new Path().addFiles(files, false);
+                searchPath = Collections.unmodifiableCollection(p);
+                optionValues.clear();
+            }
+        }
+
+        Path computePath() {
+            defaultBootClassPathRtJar = null;
+            Path path = new Path();
+
+            String bootclasspathOpt = optionValues.get(BOOTCLASSPATH);
+            String endorseddirsOpt = optionValues.get(ENDORSEDDIRS);
+            String extdirsOpt = optionValues.get(EXTDIRS);
+            String xbootclasspathPrependOpt = optionValues.get(XBOOTCLASSPATH_PREPEND);
+            String xbootclasspathAppendOpt = optionValues.get(XBOOTCLASSPATH_APPEND);
+            path.addFiles(xbootclasspathPrependOpt);
+
+            if (endorseddirsOpt != null)
+                path.addDirectories(endorseddirsOpt);
+            else
+                path.addDirectories(System.getProperty("java.endorsed.dirs"), false);
+
+            if (bootclasspathOpt != null) {
+                path.addFiles(bootclasspathOpt);
+            } else {
+                // Standard system classes for this compiler's release.
+                String files = System.getProperty("sun.boot.class.path");
+                path.addFiles(files, false);
+                File rt_jar = new File("rt.jar");
+                for (File file : getPathEntries(files)) {
+                    if (new File(file.getName()).equals(rt_jar))
+                        defaultBootClassPathRtJar = file;
+                }
+            }
+
+            path.addFiles(xbootclasspathAppendOpt);
+
+            // Strictly speaking, standard extensions are not bootstrap
+            // classes, but we treat them identically, so we'll pretend
+            // that they are.
+            if (extdirsOpt != null)
+                path.addDirectories(extdirsOpt);
+            else
+                path.addDirectories(System.getProperty("java.ext.dirs"), false);
+
+            isDefaultBootClassPath =
+                    (xbootclasspathPrependOpt == null) &&
+                    (bootclasspathOpt == null) &&
+                    (xbootclasspathAppendOpt == null);
+
+            return path;
+        }
+
+        private void lazy() {
+            if (searchPath == null)
+                searchPath = Collections.unmodifiableCollection(computePath());
+        }
+    }
+
+    Map<Location, LocationHandler> handlersForLocation;
+    Map<Option, LocationHandler> handlersForOption;
+
+    void initHandlers() {
+        handlersForLocation = new HashMap<Location, LocationHandler>();
+        handlersForOption = new EnumMap<Option, LocationHandler>(Option.class);
+
+        LocationHandler[] handlers = {
+            new BootClassPathLocationHandler(),
+            new ClassPathLocationHandler(),
+            new SimpleLocationHandler(StandardLocation.SOURCE_PATH, Option.SOURCEPATH),
+            new SimpleLocationHandler(StandardLocation.ANNOTATION_PROCESSOR_PATH, Option.PROCESSORPATH),
+            new OutputLocationHandler((StandardLocation.CLASS_OUTPUT), Option.D),
+            new OutputLocationHandler((StandardLocation.SOURCE_OUTPUT), Option.S),
+            new OutputLocationHandler((StandardLocation.NATIVE_HEADER_OUTPUT), Option.H)
+        };
+
+        for (LocationHandler h: handlers) {
+            handlersForLocation.put(h.location, h);
+            for (Option o: h.options)
+                handlersForOption.put(o, h);
+        }
+    }
+
+    boolean handleOption(Option option, String value) {
+        LocationHandler h = handlersForOption.get(option);
+        return (h == null ? false : h.handleOption(option, value));
+    }
+
+    Collection<File> getLocation(Location location) {
+        LocationHandler h = getHandler(location);
+        return (h == null ? null : h.getLocation());
+    }
+
+    File getOutputLocation(Location location) {
+        if (!location.isOutputLocation())
+            throw new IllegalArgumentException();
+        LocationHandler h = getHandler(location);
+        return ((OutputLocationHandler) h).outputDir;
+    }
+
+    void setLocation(Location location, Iterable<? extends File> files) throws IOException {
+        LocationHandler h = getHandler(location);
+        if (h == null) {
+            if (location.isOutputLocation())
+                h = new OutputLocationHandler(location);
+            else
+                h = new SimpleLocationHandler(location);
+            handlersForLocation.put(location, h);
+        }
+        h.setLocation(files);
+    }
+
+    protected LocationHandler getHandler(Location location) {
+        location.getClass(); // null check
+        lazy();
+        return handlersForLocation.get(location);
+    }
+
+// TOGO
+    protected void lazy() {
+        if (!inited) {
+            warn = lint.isEnabled(Lint.LintCategory.PATH);
+
+            for (LocationHandler h: handlersForLocation.values()) {
+                h.update(options);
+            }
+
+            inited = true;
+        }
+    }
+
+    /** Is this the name of an archive file? */
+    private boolean isArchive(File file) {
+        String n = StringUtils.toLowerCase(file.getName());
+        return fsInfo.isFile(file)
+            && (n.endsWith(".jar") || n.endsWith(".zip"));
+    }
+
+    /**
+     * Utility method for converting a search path string to an array
+     * of directory and JAR file URLs.
+     *
+     * Note that this method is called by apt and the DocletInvoker.
+     *
+     * @param path the search path string
+     * @return the resulting array of directory and JAR file URLs
+     */
+    public static URL[] pathToURLs(String path) {
+        StringTokenizer st = new StringTokenizer(path, File.pathSeparator);
+        URL[] urls = new URL[st.countTokens()];
+        int count = 0;
+        while (st.hasMoreTokens()) {
+            URL url = fileToURL(new File(st.nextToken()));
+            if (url != null) {
+                urls[count++] = url;
+            }
+        }
+        urls = Arrays.copyOf(urls, count);
+        return urls;
+    }
+
+    /**
+     * Returns the directory or JAR file URL corresponding to the specified
+     * local file name.
+     *
+     * @param file the File object
+     * @return the resulting directory or JAR file URL, or null if unknown
+     */
+    private static URL fileToURL(File file) {
+        String name;
+        try {
+            name = file.getCanonicalPath();
+        } catch (IOException e) {
+            name = file.getAbsolutePath();
+        }
+        name = name.replace(File.separatorChar, '/');
+        if (!name.startsWith("/")) {
+            name = "/" + name;
+        }
+        // If the file does not exist, then assume that it's a directory
+        if (!file.isFile()) {
+            name = name + "/";
+        }
+        try {
+            return new URL("file", "", name);
+        } catch (MalformedURLException e) {
+            throw new IllegalArgumentException(file.toString());
+        }
+    }
+}

@@ -1,84 +1,80 @@
-/*    */ package com.sun.source.util;
-/*    */ 
-/*    */ import com.sun.source.doctree.DocTree;
-/*    */ import jdk.Exported;
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ @Exported
-/*    */ public class DocTreePathScanner<R, P>
-/*    */   extends DocTreeScanner<R, P>
-/*    */ {
-/*    */   private DocTreePath path;
-/*    */   
-/*    */   public R scan(DocTreePath paramDocTreePath, P paramP) {
-/* 45 */     this.path = paramDocTreePath;
-/*    */     try {
-/* 47 */       return (R)paramDocTreePath.getLeaf().accept(this, paramP);
-/*    */     } finally {
-/* 49 */       this.path = null;
-/*    */     } 
-/*    */   }
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */   
-/*    */   public R scan(DocTree paramDocTree, P paramP) {
-/* 59 */     if (paramDocTree == null) {
-/* 60 */       return null;
-/*    */     }
-/* 62 */     DocTreePath docTreePath = this.path;
-/* 63 */     this.path = new DocTreePath(this.path, paramDocTree);
-/*    */     try {
-/* 65 */       return (R)paramDocTree.accept(this, paramP);
-/*    */     } finally {
-/* 67 */       this.path = docTreePath;
-/*    */     } 
-/*    */   }
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */   
-/*    */   public DocTreePath getCurrentPath() {
-/* 76 */     return this.path;
-/*    */   }
-/*    */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\sourc\\util\DocTreePathScanner.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2006, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+package com.sun.source.util;
+
+import com.sun.source.doctree.DocTree;
+
+/**
+ * A DocTreeVisitor that visits all the child tree nodes, and provides
+ * support for maintaining a path for the parent nodes.
+ * To visit nodes of a particular type, just override the
+ * corresponding visitorXYZ method.
+ * Inside your method, call super.visitXYZ to visit descendant
+ * nodes.
+ *
+ * @since 1.8
+ */
+@jdk.Exported
+public class DocTreePathScanner<R, P> extends DocTreeScanner<R, P> {
+    /**
+     * Scan a tree from a position identified by a TreePath.
+     */
+    public R scan(DocTreePath path, P p) {
+        this.path = path;
+        try {
+            return path.getLeaf().accept(this, p);
+        } finally {
+            this.path = null;
+        }
+    }
+
+    /**
+     * Scan a single node.
+     * The current path is updated for the duration of the scan.
+     */
+    @Override
+    public R scan(DocTree tree, P p) {
+        if (tree == null)
+            return null;
+
+        DocTreePath prev = path;
+        path = new DocTreePath(path, tree);
+        try {
+            return tree.accept(this, p);
+        } finally {
+            path = prev;
+        }
+    }
+
+    /**
+     * Get the current path for the node, as built up by the currently
+     * active set of scan calls.
+     */
+    public DocTreePath getCurrentPath() {
+        return path;
+    }
+
+    private DocTreePath path;
+}

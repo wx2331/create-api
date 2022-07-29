@@ -1,2343 +1,2337 @@
-/*      */ package com.sun.tools.javac.comp;
-/*      */
-/*      */ import com.sun.source.tree.LambdaExpressionTree;
-/*      */ import com.sun.source.tree.MemberReferenceTree;
-/*      */ import com.sun.tools.javac.code.Attribute;
-/*      */ import com.sun.tools.javac.code.Scope;
-/*      */ import com.sun.tools.javac.code.Symbol;
-/*      */ import com.sun.tools.javac.code.Symtab;
-/*      */ import com.sun.tools.javac.code.Type;
-/*      */ import com.sun.tools.javac.code.TypeTag;
-/*      */ import com.sun.tools.javac.code.Types;
-/*      */ import com.sun.tools.javac.jvm.Pool;
-/*      */ import com.sun.tools.javac.tree.JCTree;
-/*      */ import com.sun.tools.javac.tree.TreeInfo;
-/*      */ import com.sun.tools.javac.tree.TreeMaker;
-/*      */ import com.sun.tools.javac.tree.TreeTranslator;
-/*      */ import com.sun.tools.javac.util.Assert;
-/*      */ import com.sun.tools.javac.util.Context;
-/*      */ import com.sun.tools.javac.util.DiagnosticSource;
-/*      */ import com.sun.tools.javac.util.JCDiagnostic;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.Name;
-/*      */ import com.sun.tools.javac.util.Names;
-/*      */ import com.sun.tools.javac.util.Options;
-/*      */ import java.util.EnumMap;
-/*      */ import java.util.HashMap;
-/*      */ import java.util.HashSet;
-/*      */ import java.util.Iterator;
-/*      */ import java.util.LinkedHashMap;
-/*      */ import java.util.Map;
-/*      */ import java.util.Set;
-/*      */ import javax.lang.model.type.TypeKind;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class LambdaToMethod
-/*      */   extends TreeTranslator
-/*      */ {
-/*      */   private Attr attr;
-/*      */   private JCDiagnostic.Factory diags;
-/*      */   private Log log;
-/*      */   private Lower lower;
-/*      */   private Names names;
-/*      */   private Symtab syms;
-/*      */   private Resolve rs;
-/*      */   private TreeMaker make;
-/*      */   private Types types;
-/*      */   private TransTypes transTypes;
-/*      */   private Env<AttrContext> attrEnv;
-/*      */   private LambdaAnalyzerPreprocessor analyzer;
-/*      */   private Map<JCTree, LambdaAnalyzerPreprocessor.TranslationContext<?>> contextMap;
-/*      */   private LambdaAnalyzerPreprocessor.TranslationContext<?> context;
-/*      */   private KlassInfo kInfo;
-/*      */   private boolean dumpLambdaToMethodStats;
-/*      */   private final boolean forceSerializable;
-/*      */   public static final int FLAG_SERIALIZABLE = 1;
-/*      */   public static final int FLAG_MARKERS = 2;
-/*      */   public static final int FLAG_BRIDGES = 4;
-/*  117 */   protected static final Context.Key<LambdaToMethod> unlambdaKey = new Context.Key();
-/*      */
-/*      */
-/*      */   public static LambdaToMethod instance(Context paramContext) {
-/*  121 */     LambdaToMethod lambdaToMethod = (LambdaToMethod)paramContext.get(unlambdaKey);
-/*  122 */     if (lambdaToMethod == null) {
-/*  123 */       lambdaToMethod = new LambdaToMethod(paramContext);
-/*      */     }
-/*  125 */     return lambdaToMethod;
-/*      */   }
-/*      */   private LambdaToMethod(Context paramContext) {
-/*  128 */     paramContext.put(unlambdaKey, this);
-/*  129 */     this.diags = JCDiagnostic.Factory.instance(paramContext);
-/*  130 */     this.log = Log.instance(paramContext);
-/*  131 */     this.lower = Lower.instance(paramContext);
-/*  132 */     this.names = Names.instance(paramContext);
-/*  133 */     this.syms = Symtab.instance(paramContext);
-/*  134 */     this.rs = Resolve.instance(paramContext);
-/*  135 */     this.make = TreeMaker.instance(paramContext);
-/*  136 */     this.types = Types.instance(paramContext);
-/*  137 */     this.transTypes = TransTypes.instance(paramContext);
-/*  138 */     this.analyzer = new LambdaAnalyzerPreprocessor();
-/*  139 */     Options options = Options.instance(paramContext);
-/*  140 */     this.dumpLambdaToMethodStats = options.isSet("dumpLambdaToMethodStats");
-/*  141 */     this.attr = Attr.instance(paramContext);
-/*  142 */     this.forceSerializable = options.isSet("forceSerializable");
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private class KlassInfo
-/*      */   {
-/*      */     private ListBuffer<JCTree> appendedMethodList;
-/*      */
-/*      */
-/*      */
-/*      */     private final Map<String, ListBuffer<JCTree.JCStatement>> deserializeCases;
-/*      */
-/*      */
-/*      */
-/*      */     private final Symbol.MethodSymbol deserMethodSym;
-/*      */
-/*      */
-/*      */
-/*      */     private final Symbol.VarSymbol deserParamSym;
-/*      */
-/*      */
-/*      */
-/*      */     private final JCTree.JCClassDecl clazz;
-/*      */
-/*      */
-/*      */
-/*      */     private KlassInfo(JCTree.JCClassDecl param1JCClassDecl) {
-/*  171 */       this.clazz = param1JCClassDecl;
-/*  172 */       this.appendedMethodList = new ListBuffer();
-/*  173 */       this.deserializeCases = new HashMap<>();
-/*      */
-/*  175 */       Type.MethodType methodType = new Type.MethodType(List.of(LambdaToMethod.this.syms.serializedLambdaType), LambdaToMethod.this.syms.objectType, List.nil(), (Symbol.TypeSymbol)LambdaToMethod.this.syms.methodClass);
-/*  176 */       this.deserMethodSym = LambdaToMethod.this.makePrivateSyntheticMethod(8L, LambdaToMethod.this.names.deserializeLambda, (Type)methodType, (Symbol)param1JCClassDecl.sym);
-/*  177 */       this
-/*  178 */         .deserParamSym = new Symbol.VarSymbol(16L, LambdaToMethod.this.names.fromString("lambda"), LambdaToMethod.this.syms.serializedLambdaType, (Symbol)this.deserMethodSym);
-/*      */     }
-/*      */
-/*      */     private void addMethod(JCTree param1JCTree) {
-/*  182 */       this.appendedMethodList = this.appendedMethodList.prepend(param1JCTree);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public <T extends JCTree> T translate(T paramT) {
-/*  189 */     LambdaAnalyzerPreprocessor.TranslationContext<?> translationContext = this.contextMap.get(paramT);
-/*  190 */     return translate(paramT, (translationContext != null) ? translationContext : this.context);
-/*      */   }
-/*      */
-/*      */   <T extends JCTree> T translate(T paramT, LambdaAnalyzerPreprocessor.TranslationContext<?> paramTranslationContext) {
-/*  194 */     LambdaAnalyzerPreprocessor.TranslationContext<?> translationContext = this.context;
-/*      */     try {
-/*  196 */       this.context = paramTranslationContext;
-/*  197 */       return (T)super.translate((JCTree)paramT);
-/*      */     } finally {
-/*      */
-/*  200 */       this.context = translationContext;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   <T extends JCTree> List<T> translate(List<T> paramList, LambdaAnalyzerPreprocessor.TranslationContext<?> paramTranslationContext) {
-/*  205 */     ListBuffer listBuffer = new ListBuffer();
-/*  206 */     for (JCTree jCTree : paramList) {
-/*  207 */       listBuffer.append(translate(jCTree, paramTranslationContext));
-/*      */     }
-/*  209 */     return listBuffer.toList();
-/*      */   }
-/*      */
-/*      */   public JCTree translateTopLevelClass(Env<AttrContext> paramEnv, JCTree paramJCTree, TreeMaker paramTreeMaker) {
-/*  213 */     this.make = paramTreeMaker;
-/*  214 */     this.attrEnv = paramEnv;
-/*  215 */     this.context = null;
-/*  216 */     this.contextMap = new HashMap<>();
-/*  217 */     return translate(paramJCTree);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void visitClassDef(JCTree.JCClassDecl paramJCClassDecl) {
-/*  230 */     if (paramJCClassDecl.sym.owner.kind == 1)
-/*      */     {
-/*  232 */       paramJCClassDecl = this.analyzer.analyzeAndPreprocessClass(paramJCClassDecl);
-/*      */     }
-/*  234 */     KlassInfo klassInfo = this.kInfo;
-/*      */     try {
-/*  236 */       this.kInfo = new KlassInfo(paramJCClassDecl);
-/*  237 */       super.visitClassDef(paramJCClassDecl);
-/*  238 */       if (!this.kInfo.deserializeCases.isEmpty()) {
-/*  239 */         int i = this.make.pos;
-/*      */         try {
-/*  241 */           this.make.at((JCDiagnostic.DiagnosticPosition)paramJCClassDecl);
-/*  242 */           this.kInfo.addMethod((JCTree)makeDeserializeMethod((Symbol)paramJCClassDecl.sym));
-/*      */         } finally {
-/*  244 */           this.make.at(i);
-/*      */         }
-/*      */       }
-/*      */
-/*  248 */       List list = this.kInfo.appendedMethodList.toList();
-/*  249 */       paramJCClassDecl.defs = paramJCClassDecl.defs.appendList(list);
-/*  250 */       for (JCTree jCTree : list) {
-/*  251 */         paramJCClassDecl.sym.members().enter((Symbol)((JCTree.JCMethodDecl)jCTree).sym);
-/*      */       }
-/*  253 */       this.result = (JCTree)paramJCClassDecl;
-/*      */     } finally {
-/*  255 */       this.kInfo = klassInfo;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void visitLambda(JCTree.JCLambda paramJCLambda) {
-/*  267 */     LambdaAnalyzerPreprocessor.LambdaTranslationContext lambdaTranslationContext = (LambdaAnalyzerPreprocessor.LambdaTranslationContext)this.context;
-/*  268 */     Symbol.MethodSymbol methodSymbol = lambdaTranslationContext.translatedSym;
-/*  269 */     Type.MethodType methodType = (Type.MethodType)methodSymbol.type;
-/*      */
-/*      */
-/*  272 */     Symbol symbol = lambdaTranslationContext.owner;
-/*  273 */     ListBuffer listBuffer1 = new ListBuffer();
-/*  274 */     ListBuffer listBuffer2 = new ListBuffer();
-/*      */
-/*  276 */     for (Attribute.TypeCompound typeCompound : symbol.getRawTypeAttributes()) {
-/*  277 */       if (typeCompound.position.onLambda == paramJCLambda) {
-/*  278 */         listBuffer2.append(typeCompound); continue;
-/*      */       }
-/*  280 */       listBuffer1.append(typeCompound);
-/*      */     }
-/*      */
-/*  283 */     if (listBuffer2.nonEmpty()) {
-/*  284 */       symbol.setTypeAttributes(listBuffer1.toList());
-/*  285 */       methodSymbol.setTypeAttributes(listBuffer2.toList());
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*  290 */     JCTree.JCMethodDecl jCMethodDecl = this.make.MethodDef(this.make.Modifiers(methodSymbol.flags_field), methodSymbol.name, this.make
-/*      */
-/*  292 */         .QualIdent((Symbol)(methodType.getReturnType()).tsym),
-/*  293 */         List.nil(), lambdaTranslationContext.syntheticParams,
-/*      */
-/*  295 */         (methodType.getThrownTypes() == null) ?
-/*  296 */         List.nil() : this.make
-/*  297 */         .Types(methodType.getThrownTypes()), null, null);
-/*      */
-/*      */
-/*  300 */     jCMethodDecl.sym = methodSymbol;
-/*  301 */     jCMethodDecl.type = (Type)methodType;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  308 */     jCMethodDecl.body = translate(makeLambdaBody(paramJCLambda, jCMethodDecl));
-/*      */
-/*      */
-/*  311 */     this.kInfo.addMethod((JCTree)jCMethodDecl);
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  324 */     listBuffer1 = new ListBuffer();
-/*      */
-/*  326 */     if (lambdaTranslationContext.methodReferenceReceiver != null) {
-/*  327 */       listBuffer1.append(lambdaTranslationContext.methodReferenceReceiver);
-/*  328 */     } else if (!methodSymbol.isStatic()) {
-/*  329 */       listBuffer1.append(makeThis(methodSymbol.owner
-/*  330 */             .enclClass().asType(), (Symbol)lambdaTranslationContext.owner
-/*  331 */             .enclClass()));
-/*      */     }
-/*      */
-/*      */
-/*  335 */     for (Symbol symbol1 : lambdaTranslationContext.getSymbolMap(LambdaSymbolKind.CAPTURED_VAR).keySet()) {
-/*  336 */       if (symbol1 != lambdaTranslationContext.self) {
-/*  337 */         JCTree.JCExpression jCExpression = this.make.Ident(symbol1).setType(symbol1.type);
-/*  338 */         listBuffer1.append(jCExpression);
-/*      */       }
-/*      */     }
-/*      */
-/*  342 */     for (Symbol symbol1 : lambdaTranslationContext.getSymbolMap(LambdaSymbolKind.CAPTURED_OUTER_THIS).keySet()) {
-/*  343 */       JCTree.JCExpression jCExpression = this.make.QualThis(symbol1.type);
-/*  344 */       listBuffer1.append(jCExpression);
-/*      */     }
-/*      */
-/*      */
-/*  348 */     List<JCTree> list = translate(listBuffer1.toList(), lambdaTranslationContext.prev);
-/*      */
-/*      */
-/*  351 */     int i = referenceKind((Symbol)methodSymbol);
-/*      */
-/*      */
-/*  354 */     this.result = (JCTree)makeMetafactoryIndyCall(this.context, i, (Symbol)methodSymbol, (List)list);
-/*      */   }
-/*      */
-/*      */   private JCTree.JCIdent makeThis(Type paramType, Symbol paramSymbol) {
-/*  358 */     Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(8589938704L, this.names._this, paramType, paramSymbol);
-/*      */
-/*      */
-/*      */
-/*  362 */     return this.make.Ident((Symbol)varSymbol);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void visitReference(JCTree.JCMemberReference paramJCMemberReference) {
-/*      */     JCTree.JCIdent jCIdent;
-/*      */     JCTree.JCExpression jCExpression;
-/*  372 */     LambdaAnalyzerPreprocessor.ReferenceTranslationContext referenceTranslationContext = (LambdaAnalyzerPreprocessor.ReferenceTranslationContext)this.context;
-/*      */
-/*      */
-/*      */
-/*  376 */     Symbol symbol = referenceTranslationContext.isSignaturePolymorphic() ? referenceTranslationContext.sigPolySym : paramJCMemberReference.sym;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  382 */     switch (paramJCMemberReference.kind) {
-/*      */
-/*      */       case CAPTURED_THIS:
-/*      */       case TYPE_VAR:
-/*  386 */         jCIdent = makeThis(referenceTranslationContext.owner
-/*  387 */             .enclClass().asType(), (Symbol)referenceTranslationContext.owner
-/*  388 */             .enclClass());
-/*      */         break;
-/*      */
-/*      */       case CAPTURED_VAR:
-/*  392 */         jCExpression = paramJCMemberReference.getQualifierExpression();
-/*  393 */         jCExpression = this.attr.makeNullCheck(jCExpression);
-/*      */         break;
-/*      */
-/*      */       case CAPTURED_OUTER_THIS:
-/*      */       case LOCAL_VAR:
-/*      */       case PARAM:
-/*      */       case null:
-/*  400 */         jCExpression = null;
-/*      */         break;
-/*      */
-/*      */       default:
-/*  404 */         throw new InternalError("Should not have an invalid kind");
-/*      */     }
-/*      */
-/*  407 */     List<JCTree.JCExpression> list = (jCExpression == null) ? List.nil() : translate(List.of(jCExpression), referenceTranslationContext.prev);
-/*      */
-/*      */
-/*      */
-/*  411 */     this.result = (JCTree)makeMetafactoryIndyCall(referenceTranslationContext, referenceTranslationContext.referenceKind(), symbol, list);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void visitIdent(JCTree.JCIdent paramJCIdent) {
-/*  420 */     if (this.context == null || !this.analyzer.lambdaIdentSymbolFilter(paramJCIdent.sym)) {
-/*  421 */       super.visitIdent(paramJCIdent);
-/*      */     } else {
-/*  423 */       int i = this.make.pos;
-/*      */       try {
-/*  425 */         this.make.at((JCDiagnostic.DiagnosticPosition)paramJCIdent);
-/*      */
-/*  427 */         LambdaAnalyzerPreprocessor.LambdaTranslationContext lambdaTranslationContext = (LambdaAnalyzerPreprocessor.LambdaTranslationContext)this.context;
-/*  428 */         JCTree jCTree = lambdaTranslationContext.translate(paramJCIdent);
-/*  429 */         if (jCTree != null) {
-/*  430 */           this.result = jCTree;
-/*      */         }
-/*      */         else {
-/*      */
-/*  434 */           super.visitIdent(paramJCIdent);
-/*      */         }
-/*      */       } finally {
-/*  437 */         this.make.at(i);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void visitSelect(JCTree.JCFieldAccess paramJCFieldAccess) {
-/*  448 */     if (this.context == null || !this.analyzer.lambdaFieldAccessFilter(paramJCFieldAccess)) {
-/*  449 */       super.visitSelect(paramJCFieldAccess);
-/*      */     } else {
-/*  451 */       int i = this.make.pos;
-/*      */       try {
-/*  453 */         this.make.at((JCDiagnostic.DiagnosticPosition)paramJCFieldAccess);
-/*      */
-/*  455 */         LambdaAnalyzerPreprocessor.LambdaTranslationContext lambdaTranslationContext = (LambdaAnalyzerPreprocessor.LambdaTranslationContext)this.context;
-/*  456 */         JCTree jCTree = lambdaTranslationContext.translate(paramJCFieldAccess);
-/*  457 */         if (jCTree != null) {
-/*  458 */           this.result = jCTree;
-/*      */         } else {
-/*  460 */           super.visitSelect(paramJCFieldAccess);
-/*      */         }
-/*      */       } finally {
-/*  463 */         this.make.at(i);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public void visitVarDef(JCTree.JCVariableDecl paramJCVariableDecl) {
-/*  470 */     LambdaAnalyzerPreprocessor.LambdaTranslationContext lambdaTranslationContext = (LambdaAnalyzerPreprocessor.LambdaTranslationContext)this.context;
-/*  471 */     if (this.context != null && lambdaTranslationContext.getSymbolMap(LambdaSymbolKind.LOCAL_VAR).containsKey(paramJCVariableDecl.sym)) {
-/*  472 */       paramJCVariableDecl.init = translate(paramJCVariableDecl.init);
-/*  473 */       paramJCVariableDecl.sym = (Symbol.VarSymbol)lambdaTranslationContext.getSymbolMap(LambdaSymbolKind.LOCAL_VAR).get(paramJCVariableDecl.sym);
-/*  474 */       this.result = (JCTree)paramJCVariableDecl;
-/*  475 */     } else if (this.context != null && lambdaTranslationContext.getSymbolMap(LambdaSymbolKind.TYPE_VAR).containsKey(paramJCVariableDecl.sym)) {
-/*  476 */       JCTree.JCExpression jCExpression = translate(paramJCVariableDecl.init);
-/*  477 */       Symbol.VarSymbol varSymbol = (Symbol.VarSymbol)lambdaTranslationContext.getSymbolMap(LambdaSymbolKind.TYPE_VAR).get(paramJCVariableDecl.sym);
-/*  478 */       int i = this.make.pos;
-/*      */       try {
-/*  480 */         this.result = (JCTree)this.make.at((JCDiagnostic.DiagnosticPosition)paramJCVariableDecl).VarDef(varSymbol, jCExpression);
-/*      */       } finally {
-/*  482 */         this.make.at(i);
-/*      */       }
-/*      */
-/*  485 */       Scope scope = paramJCVariableDecl.sym.owner.members();
-/*  486 */       if (scope != null) {
-/*  487 */         scope.remove((Symbol)paramJCVariableDecl.sym);
-/*  488 */         scope.enter((Symbol)varSymbol);
-/*      */       }
-/*      */     } else {
-/*  491 */       super.visitVarDef(paramJCVariableDecl);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private JCTree.JCBlock makeLambdaBody(JCTree.JCLambda paramJCLambda, JCTree.JCMethodDecl paramJCMethodDecl) {
-/*  500 */     return (paramJCLambda.getBodyKind() == LambdaExpressionTree.BodyKind.EXPRESSION) ?
-/*  501 */       makeLambdaExpressionBody((JCTree.JCExpression)paramJCLambda.body, paramJCMethodDecl) :
-/*  502 */       makeLambdaStatementBody((JCTree.JCBlock)paramJCLambda.body, paramJCMethodDecl, paramJCLambda.canCompleteNormally);
-/*      */   }
-/*      */
-/*      */   private JCTree.JCBlock makeLambdaExpressionBody(JCTree.JCExpression paramJCExpression, JCTree.JCMethodDecl paramJCMethodDecl) {
-/*  506 */     Type type = paramJCMethodDecl.type.getReturnType();
-/*  507 */     boolean bool1 = paramJCExpression.type.hasTag(TypeTag.VOID);
-/*  508 */     boolean bool2 = type.hasTag(TypeTag.VOID);
-/*  509 */     boolean bool3 = this.types.isSameType(type, (this.types.boxedClass((Type)this.syms.voidType)).type);
-/*  510 */     int i = this.make.pos;
-/*      */     try {
-/*  512 */       if (bool2) {
-/*      */
-/*      */
-/*  515 */         JCTree.JCExpressionStatement jCExpressionStatement = this.make.at((JCDiagnostic.DiagnosticPosition)paramJCExpression).Exec(paramJCExpression);
-/*  516 */         return this.make.Block(0L, List.of(jCExpressionStatement));
-/*  517 */       }  if (bool1 && bool3) {
-/*      */
-/*      */
-/*  520 */         ListBuffer listBuffer = new ListBuffer();
-/*  521 */         listBuffer.append(this.make.at((JCDiagnostic.DiagnosticPosition)paramJCExpression).Exec(paramJCExpression));
-/*  522 */         listBuffer.append(this.make.Return((JCTree.JCExpression)this.make.Literal(TypeTag.BOT, null).setType(this.syms.botType)));
-/*  523 */         return this.make.Block(0L, listBuffer.toList());
-/*      */       }
-/*      */
-/*      */
-/*  527 */       JCTree.JCExpression jCExpression = this.transTypes.coerce(this.attrEnv, paramJCExpression, type);
-/*  528 */       return this.make.at((JCDiagnostic.DiagnosticPosition)jCExpression).Block(0L, List.of(this.make.Return(jCExpression)));
-/*      */     } finally {
-/*      */
-/*  531 */       this.make.at(i);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private JCTree.JCBlock makeLambdaStatementBody(JCTree.JCBlock paramJCBlock, final JCTree.JCMethodDecl lambdaMethodDecl, boolean paramBoolean) {
-/*  536 */     final Type restype = lambdaMethodDecl.type.getReturnType();
-/*  537 */     final boolean isTarget_void = type.hasTag(TypeTag.VOID);
-/*  538 */     boolean bool2 = this.types.isSameType(type, (this.types.boxedClass((Type)this.syms.voidType)).type);
-/*      */
-/*      */     class LambdaBodyTranslator
-/*      */       extends TreeTranslator
-/*      */     {
-/*      */       public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl)
-/*      */       {
-/*  545 */         this.result = (JCTree)param1JCClassDecl;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */       public void visitLambda(JCTree.JCLambda param1JCLambda) {
-/*  551 */         this.result = (JCTree)param1JCLambda;
-/*      */       }
-/*      */
-/*      */
-/*      */       public void visitReturn(JCTree.JCReturn param1JCReturn) {
-/*  556 */         boolean bool = (param1JCReturn.expr == null) ? true : false;
-/*  557 */         if (isTarget_void && !bool) {
-/*      */
-/*      */
-/*  560 */           Symbol.VarSymbol varSymbol = LambdaToMethod.this.makeSyntheticVar(0L, LambdaToMethod.this.names.fromString("$loc"), param1JCReturn.expr.type, (Symbol)lambdaMethodDecl.sym);
-/*  561 */           JCTree.JCVariableDecl jCVariableDecl = LambdaToMethod.this.make.VarDef(varSymbol, param1JCReturn.expr);
-/*  562 */           this.result = (JCTree)LambdaToMethod.this.make.Block(0L, List.of(jCVariableDecl, LambdaToMethod.this.make.Return(null)));
-/*  563 */         } else if (!isTarget_void || !bool) {
-/*      */
-/*      */
-/*  566 */           param1JCReturn.expr = LambdaToMethod.this.transTypes.coerce(LambdaToMethod.this.attrEnv, param1JCReturn.expr, restype);
-/*  567 */           this.result = (JCTree)param1JCReturn;
-/*      */         } else {
-/*  569 */           this.result = (JCTree)param1JCReturn;
-/*      */         }
-/*      */       }
-/*      */     };
-/*      */
-/*      */
-/*  575 */     JCTree.JCBlock jCBlock = (JCTree.JCBlock)(new LambdaBodyTranslator()).translate((JCTree)paramJCBlock);
-/*  576 */     if (paramBoolean && bool2)
-/*      */     {
-/*      */
-/*  579 */       jCBlock.stats = jCBlock.stats.append(this.make.Return((JCTree.JCExpression)this.make.Literal(TypeTag.BOT, null).setType(this.syms.botType)));
-/*      */     }
-/*  581 */     return jCBlock;
-/*      */   }
-/*      */
-/*      */   private JCTree.JCMethodDecl makeDeserializeMethod(Symbol paramSymbol) {
-/*  585 */     ListBuffer listBuffer1 = new ListBuffer();
-/*  586 */     ListBuffer listBuffer2 = new ListBuffer();
-/*  587 */     for (Map.Entry entry : this.kInfo.deserializeCases.entrySet()) {
-/*  588 */       JCTree.JCBreak jCBreak = this.make.Break(null);
-/*  589 */       listBuffer2.add(jCBreak);
-/*  590 */       List list = ((ListBuffer)entry.getValue()).append(jCBreak).toList();
-/*  591 */       listBuffer1.add(this.make.Case((JCTree.JCExpression)this.make.Literal(entry.getKey()), list));
-/*      */     }
-/*  593 */     JCTree.JCSwitch jCSwitch = this.make.Switch(deserGetter("getImplMethodName", this.syms.stringType), listBuffer1.toList());
-/*  594 */     for (JCTree.JCBreak jCBreak : listBuffer2) {
-/*  595 */       jCBreak.target = (JCTree)jCSwitch;
-/*      */     }
-/*  597 */     JCTree.JCBlock jCBlock = this.make.Block(0L, List.of(jCSwitch, this.make
-/*      */
-/*  599 */           .Throw((JCTree.JCExpression)makeNewClass(this.syms.illegalArgumentExceptionType,
-/*      */
-/*  601 */               List.of(this.make.Literal("Invalid lambda deserialization"))))));
-/*  602 */     JCTree.JCMethodDecl jCMethodDecl = this.make.MethodDef(this.make.Modifiers(this.kInfo.deserMethodSym.flags()), this.names.deserializeLambda, this.make
-/*      */
-/*  604 */         .QualIdent((Symbol)(this.kInfo.deserMethodSym.getReturnType()).tsym),
-/*  605 */         List.nil(),
-/*  606 */         List.of(this.make.VarDef(this.kInfo.deserParamSym, null)),
-/*  607 */         List.nil(), jCBlock, null);
-/*      */
-/*      */
-/*  610 */     jCMethodDecl.sym = this.kInfo.deserMethodSym;
-/*  611 */     jCMethodDecl.type = this.kInfo.deserMethodSym.type;
-/*      */
-/*  613 */     return jCMethodDecl;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCNewClass makeNewClass(Type paramType, List<JCTree.JCExpression> paramList, Symbol paramSymbol) {
-/*  622 */     JCTree.JCNewClass jCNewClass = this.make.NewClass(null, null, this.make
-/*  623 */         .QualIdent((Symbol)paramType.tsym), paramList, null);
-/*  624 */     jCNewClass.constructor = paramSymbol;
-/*  625 */     jCNewClass.type = paramType;
-/*  626 */     return jCNewClass;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCNewClass makeNewClass(Type paramType, List<JCTree.JCExpression> paramList) {
-/*  634 */     return makeNewClass(paramType, paramList, this.rs
-/*  635 */         .resolveConstructor(null, this.attrEnv, paramType, TreeInfo.types(paramList), List.nil()));
-/*      */   }
-/*      */
-/*      */
-/*      */   private void addDeserializationCase(int paramInt, Symbol paramSymbol, Type paramType, Symbol.MethodSymbol paramMethodSymbol, JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, List<Object> paramList, Type.MethodType paramMethodType) {
-/*  640 */     String str1 = classSig(paramType);
-/*  641 */     String str2 = paramMethodSymbol.getSimpleName().toString();
-/*  642 */     String str3 = typeSig(this.types.erasure(paramMethodSymbol.type));
-/*  643 */     String str4 = classSig(this.types.erasure(paramSymbol.owner.type));
-/*  644 */     String str5 = paramSymbol.getQualifiedName().toString();
-/*  645 */     String str6 = typeSig(this.types.erasure(paramSymbol.type));
-/*      */
-/*  647 */     JCTree.JCExpression jCExpression = eqTest((Type)this.syms.intType, deserGetter("getImplMethodKind", (Type)this.syms.intType), (JCTree.JCExpression)this.make.Literal(Integer.valueOf(paramInt)));
-/*  648 */     ListBuffer listBuffer1 = new ListBuffer();
-/*  649 */     byte b = 0;
-/*  650 */     for (Type type : paramMethodType.getParameterTypes()) {
-/*  651 */       List<JCTree.JCExpression> list = (new ListBuffer()).append(this.make.Literal(Integer.valueOf(b))).toList();
-/*  652 */       List<Type> list1 = (new ListBuffer()).append(this.syms.intType).toList();
-/*  653 */       listBuffer1.add(this.make.TypeCast(this.types.erasure(type), deserGetter("getCapturedArg", this.syms.objectType, list1, list)));
-/*  654 */       b++;
-/*      */     }
-/*  656 */     JCTree.JCIf jCIf = this.make.If(
-/*  657 */         deserTest(deserTest(deserTest(deserTest(deserTest(jCExpression, "getFunctionalInterfaceClass", str1), "getFunctionalInterfaceMethodName", str2), "getFunctionalInterfaceMethodSignature", str3), "getImplClass", str4), "getImplMethodSignature", str6), (JCTree.JCStatement)this.make
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  664 */         .Return(makeIndyCall(paramDiagnosticPosition, this.syms.lambdaMetafactory, this.names.altMetafactory, paramList, paramMethodType, listBuffer1
-/*      */
-/*      */
-/*      */
-/*  668 */             .toList(), paramMethodSymbol.name)), null);
-/*      */
-/*  670 */     ListBuffer listBuffer2 = (ListBuffer)this.kInfo.deserializeCases.get(str5);
-/*  671 */     if (listBuffer2 == null) {
-/*  672 */       listBuffer2 = new ListBuffer();
-/*  673 */       this.kInfo.deserializeCases.put(str5, listBuffer2);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  685 */     listBuffer2.append(jCIf);
-/*      */   }
-/*      */
-/*      */   private JCTree.JCExpression eqTest(Type paramType, JCTree.JCExpression paramJCExpression1, JCTree.JCExpression paramJCExpression2) {
-/*  689 */     JCTree.JCBinary jCBinary = this.make.Binary(JCTree.Tag.EQ, paramJCExpression1, paramJCExpression2);
-/*  690 */     jCBinary.operator = this.rs.resolveBinaryOperator(null, JCTree.Tag.EQ, this.attrEnv, paramType, paramType);
-/*  691 */     jCBinary.setType((Type)this.syms.booleanType);
-/*  692 */     return (JCTree.JCExpression)jCBinary;
-/*      */   }
-/*      */
-/*      */   private JCTree.JCExpression deserTest(JCTree.JCExpression paramJCExpression, String paramString1, String paramString2) {
-/*  696 */     Type.MethodType methodType = new Type.MethodType(List.of(this.syms.objectType), (Type)this.syms.booleanType, List.nil(), (Symbol.TypeSymbol)this.syms.methodClass);
-/*  697 */     Symbol symbol = this.rs.resolveQualifiedMethod(null, this.attrEnv, this.syms.objectType, this.names.equals, List.of(this.syms.objectType), List.nil());
-/*  698 */     JCTree.JCMethodInvocation jCMethodInvocation = this.make.Apply(
-/*  699 */         List.nil(), this.make
-/*  700 */         .Select(deserGetter(paramString1, this.syms.stringType), symbol).setType((Type)methodType),
-/*  701 */         List.of(this.make.Literal(paramString2)));
-/*  702 */     jCMethodInvocation.setType((Type)this.syms.booleanType);
-/*  703 */     JCTree.JCBinary jCBinary = this.make.Binary(JCTree.Tag.AND, paramJCExpression, (JCTree.JCExpression)jCMethodInvocation);
-/*  704 */     jCBinary.operator = this.rs.resolveBinaryOperator(null, JCTree.Tag.AND, this.attrEnv, (Type)this.syms.booleanType, (Type)this.syms.booleanType);
-/*  705 */     jCBinary.setType((Type)this.syms.booleanType);
-/*  706 */     return (JCTree.JCExpression)jCBinary;
-/*      */   }
-/*      */
-/*      */   private JCTree.JCExpression deserGetter(String paramString, Type paramType) {
-/*  710 */     return deserGetter(paramString, paramType, List.nil(), List.nil());
-/*      */   }
-/*      */
-/*      */   private JCTree.JCExpression deserGetter(String paramString, Type paramType, List<Type> paramList, List<JCTree.JCExpression> paramList1) {
-/*  714 */     Type.MethodType methodType = new Type.MethodType(paramList, paramType, List.nil(), (Symbol.TypeSymbol)this.syms.methodClass);
-/*  715 */     Symbol symbol = this.rs.resolveQualifiedMethod(null, this.attrEnv, this.syms.serializedLambdaType, this.names.fromString(paramString), paramList, List.nil());
-/*  716 */     return (JCTree.JCExpression)this.make.Apply(
-/*  717 */         List.nil(), this.make
-/*  718 */         .Select(this.make.Ident((Symbol)this.kInfo.deserParamSym).setType(this.syms.serializedLambdaType), symbol).setType((Type)methodType), paramList1)
-/*  719 */       .setType(paramType);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private Symbol.MethodSymbol makePrivateSyntheticMethod(long paramLong, Name paramName, Type paramType, Symbol paramSymbol) {
-/*  726 */     return new Symbol.MethodSymbol(paramLong | 0x1000L | 0x2L, paramName, paramType, paramSymbol);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private Symbol.VarSymbol makeSyntheticVar(long paramLong, String paramString, Type paramType, Symbol paramSymbol) {
-/*  733 */     return makeSyntheticVar(paramLong, this.names.fromString(paramString), paramType, paramSymbol);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private Symbol.VarSymbol makeSyntheticVar(long paramLong, Name paramName, Type paramType, Symbol paramSymbol) {
-/*  740 */     return new Symbol.VarSymbol(paramLong | 0x1000L, paramName, paramType, paramSymbol);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void setVarargsIfNeeded(JCTree paramJCTree, Type paramType) {
-/*  748 */     if (paramType != null) {
-/*  749 */       switch (paramJCTree.getTag()) { case CAPTURED_THIS:
-/*  750 */           ((JCTree.JCMethodInvocation)paramJCTree).varargsElement = paramType; return;
-/*  751 */         case TYPE_VAR: ((JCTree.JCNewClass)paramJCTree).varargsElement = paramType; return; }
-/*  752 */        throw new AssertionError();
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private List<JCTree.JCExpression> convertArgs(Symbol paramSymbol, List<JCTree.JCExpression> paramList, Type paramType) {
-/*  764 */     Assert.check((paramSymbol.kind == 16));
-/*  765 */     List<Type> list = this.types.erasure(paramSymbol.type).getParameterTypes();
-/*  766 */     if (paramType != null) {
-/*  767 */       Assert.check(((paramSymbol.flags() & 0x400000000L) != 0L));
-/*      */     }
-/*  769 */     return this.transTypes.translateArgs(paramList, list, paramType, this.attrEnv);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private class MemberReferenceToLambda
-/*      */   {
-/*      */     private final JCTree.JCMemberReference tree;
-/*      */
-/*      */     private final LambdaAnalyzerPreprocessor.ReferenceTranslationContext localContext;
-/*      */
-/*      */     private final Symbol owner;
-/*      */
-/*  782 */     private final ListBuffer<JCTree.JCExpression> args = new ListBuffer();
-/*  783 */     private final ListBuffer<JCTree.JCVariableDecl> params = new ListBuffer();
-/*      */
-/*  785 */     private JCTree.JCExpression receiverExpression = null;
-/*      */
-/*      */     MemberReferenceToLambda(JCTree.JCMemberReference param1JCMemberReference, LambdaAnalyzerPreprocessor.ReferenceTranslationContext param1ReferenceTranslationContext, Symbol param1Symbol) {
-/*  788 */       this.tree = param1JCMemberReference;
-/*  789 */       this.localContext = param1ReferenceTranslationContext;
-/*  790 */       this.owner = param1Symbol;
-/*      */     }
-/*      */
-/*      */     JCTree.JCLambda lambda() {
-/*  794 */       int i = LambdaToMethod.this.make.pos;
-/*      */       try {
-/*  796 */         LambdaToMethod.this.make.at((JCDiagnostic.DiagnosticPosition)this.tree);
-/*      */
-/*      */
-/*      */
-/*  800 */         Symbol.VarSymbol varSymbol = addParametersReturnReceiver();
-/*      */
-/*      */
-/*  803 */         JCTree.JCExpression jCExpression = (this.tree.getMode() == MemberReferenceTree.ReferenceMode.INVOKE) ? expressionInvoke(varSymbol) : expressionNew();
-/*      */
-/*  805 */         JCTree.JCLambda jCLambda = LambdaToMethod.this.make.Lambda(this.params.toList(), (JCTree)jCExpression);
-/*  806 */         jCLambda.targets = this.tree.targets;
-/*  807 */         jCLambda.type = this.tree.type;
-/*  808 */         jCLambda.pos = this.tree.pos;
-/*  809 */         return jCLambda;
-/*      */       } finally {
-/*  811 */         LambdaToMethod.this.make.at(i);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     Symbol.VarSymbol addParametersReturnReceiver() {
-/*      */       Symbol.VarSymbol varSymbol;
-/*  821 */       Type type = this.localContext.bridgedRefSig();
-/*  822 */       List list1 = type.getParameterTypes();
-/*  823 */       List list2 = this.tree.getDescriptorType(LambdaToMethod.this.types).getParameterTypes();
-/*      */
-/*      */
-/*      */
-/*  827 */       switch (this.tree.kind) {
-/*      */
-/*      */         case CAPTURED_VAR:
-/*  830 */           varSymbol = addParameter("rec$", (this.tree.getQualifierExpression()).type, false);
-/*  831 */           this.receiverExpression = LambdaToMethod.this.attr.makeNullCheck(this.tree.getQualifierExpression());
-/*      */           break;
-/*      */
-/*      */
-/*      */         case CAPTURED_OUTER_THIS:
-/*  836 */           varSymbol = addParameter("rec$", (Type)(type.getParameterTypes()).head, false);
-/*  837 */           list1 = list1.tail;
-/*  838 */           list2 = list2.tail;
-/*      */           break;
-/*      */         default:
-/*  841 */           varSymbol = null;
-/*      */           break;
-/*      */       }
-/*  844 */       List list3 = this.tree.sym.type.getParameterTypes();
-/*  845 */       int i = list3.size();
-/*  846 */       int j = list1.size();
-/*      */
-/*  848 */       int k = this.localContext.needsVarArgsConversion() ? (i - 1) : i;
-/*      */
-/*      */
-/*  851 */       boolean bool = (this.tree.varargsElement != null || i == list2.size()) ? true : false;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       int m;
-/*      */
-/*      */
-/*      */
-/*  860 */       for (m = 0; list3.nonEmpty() && m < k; m++) {
-/*      */
-/*  862 */         Type type1 = (Type)list3.head;
-/*      */
-/*      */
-/*      */
-/*  866 */         if (bool && ((Type)list2.head).getKind() == TypeKind.TYPEVAR) {
-/*  867 */           Type.TypeVar typeVar = (Type.TypeVar)list2.head;
-/*  868 */           if (typeVar.bound.getKind() == TypeKind.INTERSECTION) {
-/*  869 */             type1 = (Type)list1.head;
-/*      */           }
-/*      */         }
-/*  872 */         addParameter("x$" + m, type1, true);
-/*      */
-/*      */
-/*  875 */         list3 = list3.tail;
-/*  876 */         list1 = list1.tail;
-/*  877 */         list2 = list2.tail;
-/*      */       }
-/*      */
-/*  880 */       for (m = k; m < j; m++) {
-/*  881 */         addParameter("xva$" + m, this.tree.varargsElement, true);
-/*      */       }
-/*      */
-/*  884 */       return varSymbol;
-/*      */     }
-/*      */
-/*      */     JCTree.JCExpression getReceiverExpression() {
-/*  888 */       return this.receiverExpression;
-/*      */     }
-/*      */     private JCTree.JCExpression makeReceiver(Symbol.VarSymbol param1VarSymbol) {
-/*      */       JCTree.JCExpression jCExpression;
-/*  892 */       if (param1VarSymbol == null) return null;
-/*  893 */       JCTree.JCIdent jCIdent = LambdaToMethod.this.make.Ident((Symbol)param1VarSymbol);
-/*  894 */       Type type = this.tree.ownerAccessible ? (this.tree.sym.enclClass()).type : this.tree.expr.type;
-/*  895 */       if (type == LambdaToMethod.this.syms.arrayClass.type)
-/*      */       {
-/*  897 */         type = (this.tree.getQualifierExpression()).type;
-/*      */       }
-/*  899 */       if (!param1VarSymbol.type.tsym.isSubClass((Symbol)type.tsym, LambdaToMethod.this.types)) {
-/*  900 */         jCExpression = LambdaToMethod.this.make.TypeCast((JCTree)LambdaToMethod.this.make.Type(type), (JCTree.JCExpression)jCIdent).setType(type);
-/*      */       }
-/*  902 */       return jCExpression;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private JCTree.JCExpression expressionInvoke(Symbol.VarSymbol param1VarSymbol) {
-/*  913 */       JCTree.JCExpression jCExpression1 = (param1VarSymbol != null) ? makeReceiver(param1VarSymbol) : this.tree.getQualifierExpression();
-/*      */
-/*      */
-/*  916 */       JCTree.JCFieldAccess jCFieldAccess = LambdaToMethod.this.make.Select(jCExpression1, this.tree.sym.name);
-/*  917 */       jCFieldAccess.sym = this.tree.sym;
-/*  918 */       jCFieldAccess.type = this.tree.sym.erasure(LambdaToMethod.this.types);
-/*      */
-/*      */
-/*      */
-/*      */
-/*  923 */       JCTree.JCMethodInvocation jCMethodInvocation = LambdaToMethod.this.make.Apply(List.nil(), (JCTree.JCExpression)jCFieldAccess, LambdaToMethod.this.convertArgs(this.tree.sym, this.args.toList(), this.tree.varargsElement)).setType(this.tree.sym.erasure(LambdaToMethod.this.types).getReturnType());
-/*      */
-/*  925 */       JCTree.JCExpression jCExpression2 = LambdaToMethod.this.transTypes.coerce((JCTree.JCExpression)jCMethodInvocation, this.localContext.generatedRefSig().getReturnType());
-/*  926 */       LambdaToMethod.this.setVarargsIfNeeded((JCTree)jCExpression2, this.tree.varargsElement);
-/*  927 */       return jCExpression2;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private JCTree.JCExpression expressionNew() {
-/*  934 */       if (this.tree.kind == JCTree.JCMemberReference.ReferenceKind.ARRAY_CTOR) {
-/*      */
-/*  936 */         JCTree.JCNewArray jCNewArray = LambdaToMethod.this.make.NewArray(LambdaToMethod.this
-/*  937 */             .make.Type(LambdaToMethod.this.types.elemtype((this.tree.getQualifierExpression()).type)),
-/*  938 */             List.of(LambdaToMethod.this.make.Ident((JCTree.JCVariableDecl)this.params.first())), null);
-/*      */
-/*  940 */         jCNewArray.type = (this.tree.getQualifierExpression()).type;
-/*  941 */         return (JCTree.JCExpression)jCNewArray;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*  946 */       JCTree.JCNewClass jCNewClass = LambdaToMethod.this.make.NewClass(null,
-/*  947 */           List.nil(), LambdaToMethod.this
-/*  948 */           .make.Type((this.tree.getQualifierExpression()).type), LambdaToMethod.this
-/*  949 */           .convertArgs(this.tree.sym, this.args.toList(), this.tree.varargsElement), null);
-/*      */
-/*  951 */       jCNewClass.constructor = this.tree.sym;
-/*  952 */       jCNewClass.constructorType = this.tree.sym.erasure(LambdaToMethod.this.types);
-/*  953 */       jCNewClass.type = (this.tree.getQualifierExpression()).type;
-/*  954 */       LambdaToMethod.this.setVarargsIfNeeded((JCTree)jCNewClass, this.tree.varargsElement);
-/*  955 */       return (JCTree.JCExpression)jCNewClass;
-/*      */     }
-/*      */
-/*      */
-/*      */     private Symbol.VarSymbol addParameter(String param1String, Type param1Type, boolean param1Boolean) {
-/*  960 */       Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(8589938688L, LambdaToMethod.this.names.fromString(param1String), param1Type, this.owner);
-/*  961 */       varSymbol.pos = this.tree.pos;
-/*  962 */       this.params.append(LambdaToMethod.this.make.VarDef(varSymbol, null));
-/*  963 */       if (param1Boolean) {
-/*  964 */         this.args.append(LambdaToMethod.this.make.Ident((Symbol)varSymbol));
-/*      */       }
-/*  966 */       return varSymbol;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private Type.MethodType typeToMethodType(Type paramType) {
-/*  971 */     Type type = this.types.erasure(paramType);
-/*  972 */     return new Type.MethodType(type.getParameterTypes(), type
-/*  973 */         .getReturnType(), type
-/*  974 */         .getThrownTypes(), (Symbol.TypeSymbol)this.syms.methodClass);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private JCTree.JCExpression makeMetafactoryIndyCall(LambdaAnalyzerPreprocessor.TranslationContext<?> paramTranslationContext, int paramInt, Symbol paramSymbol, List<JCTree.JCExpression> paramList) {
-/*  983 */     T t = paramTranslationContext.tree;
-/*      */
-/*  985 */     Symbol.MethodSymbol methodSymbol = (Symbol.MethodSymbol)this.types.findDescriptorSymbol(((JCTree.JCFunctionalExpression)t).type.tsym);
-/*  986 */     List<Object> list = List.of(
-/*  987 */         typeToMethodType(methodSymbol.type), new Pool.MethodHandle(paramInt, paramSymbol, this.types),
-/*      */
-/*  989 */         typeToMethodType(t.getDescriptorType(this.types)));
-/*      */
-/*      */
-/*  992 */     ListBuffer listBuffer = new ListBuffer();
-/*  993 */     for (JCTree.JCExpression jCExpression : paramList) {
-/*  994 */       listBuffer.append(jCExpression.type);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1000 */     Type.MethodType methodType = new Type.MethodType(listBuffer.toList(), ((JCTree.JCFunctionalExpression)t).type, List.nil(), (Symbol.TypeSymbol)this.syms.methodClass);
-/*      */
-/*      */
-/* 1003 */     Name name = paramTranslationContext.needsAltMetafactory() ? this.names.altMetafactory : this.names.metafactory;
-/*      */
-/*      */
-/* 1006 */     if (paramTranslationContext.needsAltMetafactory()) {
-/* 1007 */       ListBuffer listBuffer1 = new ListBuffer();
-/* 1008 */       for (Type type : ((JCTree.JCFunctionalExpression)t).targets.tail) {
-/* 1009 */         if (type.tsym != this.syms.serializableType.tsym) {
-/* 1010 */           listBuffer1.append(type.tsym);
-/*      */         }
-/*      */       }
-/* 1013 */       int i = paramTranslationContext.isSerializable() ? 1 : 0;
-/* 1014 */       boolean bool1 = listBuffer1.nonEmpty();
-/* 1015 */       boolean bool2 = paramTranslationContext.bridges.nonEmpty();
-/* 1016 */       if (bool1) {
-/* 1017 */         i |= 0x2;
-/*      */       }
-/* 1019 */       if (bool2) {
-/* 1020 */         i |= 0x4;
-/*      */       }
-/* 1022 */       list = list.append(Integer.valueOf(i));
-/* 1023 */       if (bool1) {
-/* 1024 */         list = list.append(Integer.valueOf(listBuffer1.length()));
-/* 1025 */         list = list.appendList(listBuffer1.toList());
-/*      */       }
-/* 1027 */       if (bool2) {
-/* 1028 */         list = list.append(Integer.valueOf(paramTranslationContext.bridges.length() - 1));
-/* 1029 */         for (Symbol symbol : paramTranslationContext.bridges) {
-/* 1030 */           Type type = symbol.erasure(this.types);
-/* 1031 */           if (!this.types.isSameType(type, methodSymbol.erasure(this.types))) {
-/* 1032 */             list = list.append(symbol.erasure(this.types));
-/*      */           }
-/*      */         }
-/*      */       }
-/* 1036 */       if (paramTranslationContext.isSerializable()) {
-/* 1037 */         int j = this.make.pos;
-/*      */         try {
-/* 1039 */           this.make.at((JCDiagnostic.DiagnosticPosition)this.kInfo.clazz);
-/* 1040 */           addDeserializationCase(paramInt, paramSymbol, ((JCTree.JCFunctionalExpression)t).type, methodSymbol, (JCDiagnostic.DiagnosticPosition)t, list, methodType);
-/*      */         } finally {
-/*      */
-/* 1043 */           this.make.at(j);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/* 1048 */     return makeIndyCall((JCDiagnostic.DiagnosticPosition)t, this.syms.lambdaMetafactory, name, list, methodType, paramList, methodSymbol.name);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private JCTree.JCExpression makeIndyCall(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType, Name paramName1, List<Object> paramList, Type.MethodType paramMethodType, List<JCTree.JCExpression> paramList1, Name paramName2) {
-/* 1058 */     int i = this.make.pos;
-/*      */     try {
-/* 1060 */       this.make.at(paramDiagnosticPosition);
-/*      */
-/*      */
-/* 1063 */       List<Type> list = List.of(this.syms.methodHandleLookupType, this.syms.stringType, this.syms.methodTypeType).appendList(bsmStaticArgToTypes(paramList));
-/*      */
-/* 1065 */       Symbol.MethodSymbol methodSymbol = this.rs.resolveInternalMethod(paramDiagnosticPosition, this.attrEnv, paramType, paramName1, list,
-/* 1066 */           List.nil());
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1076 */       Symbol.DynamicMethodSymbol dynamicMethodSymbol = new Symbol.DynamicMethodSymbol(paramName2, (Symbol)this.syms.noSymbol, methodSymbol.isStatic() ? 6 : 5, methodSymbol, (Type)paramMethodType, paramList.toArray());
-/*      */
-/* 1078 */       JCTree.JCFieldAccess jCFieldAccess = this.make.Select(this.make.QualIdent((Symbol)paramType.tsym), paramName1);
-/* 1079 */       jCFieldAccess.sym = (Symbol)dynamicMethodSymbol;
-/* 1080 */       jCFieldAccess.type = paramMethodType.getReturnType();
-/*      */
-/* 1082 */       JCTree.JCMethodInvocation jCMethodInvocation = this.make.Apply(List.nil(), (JCTree.JCExpression)jCFieldAccess, paramList1);
-/* 1083 */       jCMethodInvocation.type = paramMethodType.getReturnType();
-/* 1084 */       return (JCTree.JCExpression)jCMethodInvocation;
-/*      */     } finally {
-/* 1086 */       this.make.at(i);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private List<Type> bsmStaticArgToTypes(List<Object> paramList) {
-/* 1091 */     ListBuffer listBuffer = new ListBuffer();
-/* 1092 */     for (Object object : paramList) {
-/* 1093 */       listBuffer.append(bsmStaticArgToType(object));
-/*      */     }
-/* 1095 */     return listBuffer.toList();
-/*      */   }
-/*      */
-/*      */   private Type bsmStaticArgToType(Object paramObject) {
-/* 1099 */     Assert.checkNonNull(paramObject);
-/* 1100 */     if (paramObject instanceof Symbol.ClassSymbol)
-/* 1101 */       return this.syms.classType;
-/* 1102 */     if (paramObject instanceof Integer)
-/* 1103 */       return (Type)this.syms.intType;
-/* 1104 */     if (paramObject instanceof Long)
-/* 1105 */       return (Type)this.syms.longType;
-/* 1106 */     if (paramObject instanceof Float)
-/* 1107 */       return (Type)this.syms.floatType;
-/* 1108 */     if (paramObject instanceof Double)
-/* 1109 */       return (Type)this.syms.doubleType;
-/* 1110 */     if (paramObject instanceof String)
-/* 1111 */       return this.syms.stringType;
-/* 1112 */     if (paramObject instanceof Pool.MethodHandle)
-/* 1113 */       return this.syms.methodHandleType;
-/* 1114 */     if (paramObject instanceof Type.MethodType) {
-/* 1115 */       return this.syms.methodTypeType;
-/*      */     }
-/* 1117 */     Assert.error("bad static arg " + paramObject.getClass());
-/* 1118 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private int referenceKind(Symbol paramSymbol) {
-/* 1126 */     if (paramSymbol.isConstructor()) {
-/* 1127 */       return 8;
-/*      */     }
-/* 1129 */     if (paramSymbol.isStatic())
-/* 1130 */       return 6;
-/* 1131 */     if ((paramSymbol.flags() & 0x2L) != 0L)
-/* 1132 */       return 7;
-/* 1133 */     if (paramSymbol.enclClass().isInterface()) {
-/* 1134 */       return 9;
-/*      */     }
-/* 1136 */     return 5;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   class LambdaAnalyzerPreprocessor
-/*      */     extends TreeTranslator
-/*      */   {
-/*      */     private List<Frame> frameStack;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1157 */     private int lambdaCount = 0;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private List<Symbol.ClassSymbol> typesUnderConstruction;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private class SyntheticMethodNameCounter
-/*      */     {
-/* 1169 */       private Map<String, Integer> map = new HashMap<>();
-/*      */       int getIndex(StringBuilder param2StringBuilder) {
-/* 1171 */         String str = param2StringBuilder.toString();
-/* 1172 */         Integer integer = this.map.get(str);
-/* 1173 */         if (integer == null) {
-/* 1174 */           integer = Integer.valueOf(0);
-/*      */         }
-/* 1176 */         integer = Integer.valueOf(integer.intValue() + 1);
-/* 1177 */         this.map.put(str, integer);
-/* 1178 */         return integer.intValue();
-/*      */       }
-/*      */       private SyntheticMethodNameCounter() {} }
-/* 1181 */     private SyntheticMethodNameCounter syntheticMethodNameCounts = new SyntheticMethodNameCounter();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private Map<Symbol, JCTree.JCClassDecl> localClassDefs;
-/*      */
-/*      */
-/*      */
-/* 1190 */     private Map<Symbol.ClassSymbol, Symbol> clinits = new HashMap<>();
-/*      */
-/*      */
-/*      */     private JCTree.JCClassDecl analyzeAndPreprocessClass(JCTree.JCClassDecl param1JCClassDecl) {
-/* 1194 */       this.frameStack = List.nil();
-/* 1195 */       this.typesUnderConstruction = List.nil();
-/* 1196 */       this.localClassDefs = new HashMap<>();
-/* 1197 */       return (JCTree.JCClassDecl)translate((JCTree)param1JCClassDecl);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitApply(JCTree.JCMethodInvocation param1JCMethodInvocation) {
-/* 1202 */       List<Symbol.ClassSymbol> list = this.typesUnderConstruction;
-/*      */       try {
-/* 1204 */         Name name = TreeInfo.name((JCTree)param1JCMethodInvocation.meth);
-/* 1205 */         if (name == LambdaToMethod.this.names._this || name == LambdaToMethod.this.names._super) {
-/* 1206 */           this.typesUnderConstruction = this.typesUnderConstruction.prepend(currentClass());
-/*      */         }
-/* 1208 */         super.visitApply(param1JCMethodInvocation);
-/*      */       } finally {
-/* 1210 */         this.typesUnderConstruction = list;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     private Symbol.ClassSymbol currentClass() {
-/* 1215 */       for (Frame frame : this.frameStack) {
-/* 1216 */         if (frame.tree.hasTag(JCTree.Tag.CLASSDEF)) {
-/* 1217 */           JCTree.JCClassDecl jCClassDecl = (JCTree.JCClassDecl)frame.tree;
-/* 1218 */           return jCClassDecl.sym;
-/*      */         }
-/*      */       }
-/* 1221 */       return null;
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitBlock(JCTree.JCBlock param1JCBlock) {
-/* 1226 */       List<Frame> list = this.frameStack;
-/*      */       try {
-/* 1228 */         if (this.frameStack.nonEmpty() && ((Frame)this.frameStack.head).tree.hasTag(JCTree.Tag.CLASSDEF)) {
-/* 1229 */           this.frameStack = this.frameStack.prepend(new Frame((JCTree)param1JCBlock));
-/*      */         }
-/* 1231 */         super.visitBlock(param1JCBlock);
-/*      */       } finally {
-/*      */
-/* 1234 */         this.frameStack = list;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) {
-/* 1240 */       List<Frame> list = this.frameStack;
-/* 1241 */       int i = this.lambdaCount;
-/* 1242 */       SyntheticMethodNameCounter syntheticMethodNameCounter = this.syntheticMethodNameCounts;
-/*      */
-/* 1244 */       Map<Symbol.ClassSymbol, Symbol> map = this.clinits;
-/* 1245 */       DiagnosticSource diagnosticSource = LambdaToMethod.this.log.currentSource();
-/*      */       try {
-/* 1247 */         LambdaToMethod.this.log.useSource(param1JCClassDecl.sym.sourcefile);
-/* 1248 */         this.lambdaCount = 0;
-/* 1249 */         this.syntheticMethodNameCounts = new SyntheticMethodNameCounter();
-/* 1250 */         map = new HashMap<>();
-/* 1251 */         if (param1JCClassDecl.sym.owner.kind == 16) {
-/* 1252 */           this.localClassDefs.put(param1JCClassDecl.sym, param1JCClassDecl);
-/*      */         }
-/* 1254 */         if (directlyEnclosingLambda() != null) {
-/* 1255 */           param1JCClassDecl.sym.owner = owner();
-/* 1256 */           if (param1JCClassDecl.sym.hasOuterInstance()) {
-/*      */
-/*      */
-/* 1259 */             TranslationContext<?> translationContext = context();
-/* 1260 */             while (translationContext != null) {
-/* 1261 */               if (translationContext.tree.getTag() == JCTree.Tag.LAMBDA) {
-/* 1262 */                 ((LambdaTranslationContext)translationContext)
-/* 1263 */                   .addSymbol((Symbol)(param1JCClassDecl.sym.type.getEnclosingType()).tsym, LambdaSymbolKind.CAPTURED_THIS);
-/*      */               }
-/* 1265 */               translationContext = translationContext.prev;
-/*      */             }
-/*      */           }
-/*      */         }
-/* 1269 */         this.frameStack = this.frameStack.prepend(new Frame((JCTree)param1JCClassDecl));
-/* 1270 */         super.visitClassDef(param1JCClassDecl);
-/*      */       } finally {
-/*      */
-/* 1273 */         LambdaToMethod.this.log.useSource(diagnosticSource.getFile());
-/* 1274 */         this.frameStack = list;
-/* 1275 */         this.lambdaCount = i;
-/* 1276 */         this.syntheticMethodNameCounts = syntheticMethodNameCounter;
-/* 1277 */         this.clinits = map;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitIdent(JCTree.JCIdent param1JCIdent) {
-/* 1283 */       if (context() != null && lambdaIdentSymbolFilter(param1JCIdent.sym)) {
-/* 1284 */         if (param1JCIdent.sym.kind == 4 && param1JCIdent.sym.owner.kind == 16 && param1JCIdent.type
-/*      */
-/* 1286 */           .constValue() == null) {
-/* 1287 */           TranslationContext<?> translationContext = context();
-/* 1288 */           while (translationContext != null) {
-/* 1289 */             if (translationContext.tree.getTag() == JCTree.Tag.LAMBDA) {
-/* 1290 */               JCTree jCTree = capturedDecl(translationContext.depth, param1JCIdent.sym);
-/* 1291 */               if (jCTree == null)
-/* 1292 */                 break;  ((LambdaTranslationContext)translationContext)
-/* 1293 */                 .addSymbol(param1JCIdent.sym, LambdaSymbolKind.CAPTURED_VAR);
-/*      */             }
-/* 1295 */             translationContext = translationContext.prev;
-/*      */           }
-/* 1297 */         } else if (param1JCIdent.sym.owner.kind == 2) {
-/* 1298 */           TranslationContext<?> translationContext = context();
-/* 1299 */           while (translationContext != null) {
-/* 1300 */             if (translationContext.tree.hasTag(JCTree.Tag.LAMBDA)) {
-/* 1301 */               JCTree.JCClassDecl jCClassDecl; JCTree jCTree = capturedDecl(translationContext.depth, param1JCIdent.sym);
-/* 1302 */               if (jCTree == null)
-/* 1303 */                 break;  switch (jCTree.getTag()) {
-/*      */                 case CAPTURED_VAR:
-/* 1305 */                   jCClassDecl = (JCTree.JCClassDecl)jCTree;
-/* 1306 */                   ((LambdaTranslationContext)translationContext)
-/* 1307 */                     .addSymbol((Symbol)jCClassDecl.sym, LambdaSymbolKind.CAPTURED_THIS);
-/*      */                   break;
-/*      */                 default:
-/* 1310 */                   Assert.error("bad block kind"); break;
-/*      */               }
-/*      */             }
-/* 1313 */             translationContext = translationContext.prev;
-/*      */           }
-/*      */         }
-/*      */       }
-/* 1317 */       super.visitIdent(param1JCIdent);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitLambda(JCTree.JCLambda param1JCLambda) {
-/* 1322 */       analyzeLambda(param1JCLambda, "lambda.stat");
-/*      */     }
-/*      */
-/*      */
-/*      */     private void analyzeLambda(JCTree.JCLambda param1JCLambda, JCTree.JCExpression param1JCExpression) {
-/* 1327 */       JCTree.JCExpression jCExpression = (JCTree.JCExpression)translate((JCTree)param1JCExpression);
-/* 1328 */       LambdaTranslationContext lambdaTranslationContext = analyzeLambda(param1JCLambda, "mref.stat.1");
-/* 1329 */       if (jCExpression != null) {
-/* 1330 */         lambdaTranslationContext.methodReferenceReceiver = jCExpression;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     private LambdaTranslationContext analyzeLambda(JCTree.JCLambda param1JCLambda, String param1String) {
-/* 1335 */       List<Frame> list = this.frameStack;
-/*      */       try {
-/* 1337 */         LambdaTranslationContext lambdaTranslationContext = new LambdaTranslationContext(param1JCLambda);
-/* 1338 */         if (LambdaToMethod.this.dumpLambdaToMethodStats) {
-/* 1339 */           LambdaToMethod.this.log.note((JCDiagnostic.DiagnosticPosition)param1JCLambda, param1String, new Object[] { Boolean.valueOf(lambdaTranslationContext.needsAltMetafactory()), lambdaTranslationContext.translatedSym });
-/*      */         }
-/* 1341 */         this.frameStack = this.frameStack.prepend(new Frame((JCTree)param1JCLambda));
-/* 1342 */         for (JCTree.JCVariableDecl jCVariableDecl : param1JCLambda.params) {
-/* 1343 */           lambdaTranslationContext.addSymbol((Symbol)jCVariableDecl.sym, LambdaSymbolKind.PARAM);
-/* 1344 */           ((Frame)this.frameStack.head).addLocal((Symbol)jCVariableDecl.sym);
-/*      */         }
-/* 1346 */         LambdaToMethod.this.contextMap.put(param1JCLambda, lambdaTranslationContext);
-/* 1347 */         super.visitLambda(param1JCLambda);
-/* 1348 */         lambdaTranslationContext.complete();
-/* 1349 */         return lambdaTranslationContext;
-/*      */       } finally {
-/*      */
-/* 1352 */         this.frameStack = list;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitMethodDef(JCTree.JCMethodDecl param1JCMethodDecl) {
-/* 1358 */       List<Frame> list = this.frameStack;
-/*      */       try {
-/* 1360 */         this.frameStack = this.frameStack.prepend(new Frame((JCTree)param1JCMethodDecl));
-/* 1361 */         super.visitMethodDef(param1JCMethodDecl);
-/*      */       } finally {
-/*      */
-/* 1364 */         this.frameStack = list;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitNewClass(JCTree.JCNewClass param1JCNewClass) {
-/* 1370 */       Symbol.TypeSymbol typeSymbol = param1JCNewClass.type.tsym;
-/* 1371 */       boolean bool1 = currentlyInClass((Symbol)typeSymbol);
-/* 1372 */       boolean bool2 = typeSymbol.isLocal();
-/* 1373 */       if ((bool1 && bool2) || lambdaNewClassFilter(context(), param1JCNewClass)) {
-/* 1374 */         TranslationContext<?> translationContext = context();
-/* 1375 */         while (translationContext != null) {
-/* 1376 */           if (translationContext.tree.getTag() == JCTree.Tag.LAMBDA) {
-/* 1377 */             ((LambdaTranslationContext)translationContext)
-/* 1378 */               .addSymbol((Symbol)(param1JCNewClass.type.getEnclosingType()).tsym, LambdaSymbolKind.CAPTURED_THIS);
-/*      */           }
-/* 1380 */           translationContext = translationContext.prev;
-/*      */         }
-/*      */       }
-/* 1383 */       if (context() != null && !bool1 && bool2) {
-/* 1384 */         LambdaTranslationContext lambdaTranslationContext = (LambdaTranslationContext)context();
-/* 1385 */         captureLocalClassDefs((Symbol)typeSymbol, lambdaTranslationContext);
-/*      */       }
-/* 1387 */       super.visitNewClass(param1JCNewClass);
-/*      */     }
-/*      */
-/*      */     void captureLocalClassDefs(Symbol param1Symbol, final LambdaTranslationContext lambdaContext) {
-/* 1391 */       JCTree.JCClassDecl jCClassDecl = this.localClassDefs.get(param1Symbol);
-/* 1392 */       if (jCClassDecl != null && lambdaContext.freeVarProcessedLocalClasses.add(param1Symbol)) {
-/* 1393 */         LambdaToMethod.this.lower.getClass(); Lower.BasicFreeVarCollector basicFreeVarCollector = new Lower.BasicFreeVarCollector(LambdaToMethod.this.lower)
-/*      */           {
-/*      */             void addFreeVars(Symbol.ClassSymbol param2ClassSymbol) {
-/* 1396 */               LambdaAnalyzerPreprocessor.this.captureLocalClassDefs((Symbol)param2ClassSymbol, lambdaContext);
-/*      */             }
-/*      */
-/*      */             void visitSymbol(Symbol param2Symbol) {
-/* 1400 */               if (param2Symbol.kind == 4 && param2Symbol.owner.kind == 16 && ((Symbol.VarSymbol)param2Symbol)
-/*      */
-/* 1402 */                 .getConstValue() == null) {
-/* 1403 */                 LambdaAnalyzerPreprocessor.TranslationContext<?> translationContext = LambdaAnalyzerPreprocessor.this.context();
-/* 1404 */                 while (translationContext != null) {
-/* 1405 */                   if (translationContext.tree.getTag() == JCTree.Tag.LAMBDA) {
-/* 1406 */                     JCTree jCTree = LambdaAnalyzerPreprocessor.this.capturedDecl(translationContext.depth, param2Symbol);
-/* 1407 */                     if (jCTree == null)
-/* 1408 */                       break;  ((LambdaAnalyzerPreprocessor.LambdaTranslationContext)translationContext).addSymbol(param2Symbol, LambdaSymbolKind.CAPTURED_VAR);
-/*      */                   }
-/* 1410 */                   translationContext = translationContext.prev;
-/*      */                 }
-/*      */               }
-/*      */             }
-/*      */           };
-/* 1415 */         basicFreeVarCollector.scan((JCTree)jCClassDecl);
-/*      */       }
-/*      */     }
-/*      */
-/*      */     boolean currentlyInClass(Symbol param1Symbol) {
-/* 1420 */       for (Frame frame : this.frameStack) {
-/* 1421 */         if (frame.tree.hasTag(JCTree.Tag.CLASSDEF)) {
-/* 1422 */           JCTree.JCClassDecl jCClassDecl = (JCTree.JCClassDecl)frame.tree;
-/* 1423 */           if (jCClassDecl.sym == param1Symbol) {
-/* 1424 */             return true;
-/*      */           }
-/*      */         }
-/*      */       }
-/* 1428 */       return false;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitReference(JCTree.JCMemberReference param1JCMemberReference) {
-/* 1445 */       ReferenceTranslationContext referenceTranslationContext = new ReferenceTranslationContext(param1JCMemberReference);
-/* 1446 */       LambdaToMethod.this.contextMap.put(param1JCMemberReference, referenceTranslationContext);
-/* 1447 */       if (referenceTranslationContext.needsConversionToLambda()) {
-/*      */
-/* 1449 */         MemberReferenceToLambda memberReferenceToLambda = new MemberReferenceToLambda(param1JCMemberReference, referenceTranslationContext, owner());
-/* 1450 */         analyzeLambda(memberReferenceToLambda.lambda(), memberReferenceToLambda.getReceiverExpression());
-/*      */       } else {
-/* 1452 */         super.visitReference(param1JCMemberReference);
-/* 1453 */         if (LambdaToMethod.this.dumpLambdaToMethodStats) {
-/* 1454 */           LambdaToMethod.this.log.note((JCDiagnostic.DiagnosticPosition)param1JCMemberReference, "mref.stat", new Object[] { Boolean.valueOf(referenceTranslationContext.needsAltMetafactory()), null });
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitSelect(JCTree.JCFieldAccess param1JCFieldAccess) {
-/* 1461 */       if (context() != null && param1JCFieldAccess.sym.kind == 4 && (param1JCFieldAccess.sym.name ==
-/* 1462 */         LambdaToMethod.this.names._this || param1JCFieldAccess.sym.name ==
-/* 1463 */         LambdaToMethod.this.names._super)) {
-/*      */
-/*      */
-/* 1466 */         TranslationContext<?> translationContext = context();
-/* 1467 */         while (translationContext != null) {
-/* 1468 */           if (translationContext.tree.hasTag(JCTree.Tag.LAMBDA)) {
-/* 1469 */             JCTree.JCClassDecl jCClassDecl = (JCTree.JCClassDecl)capturedDecl(translationContext.depth, param1JCFieldAccess.sym);
-/* 1470 */             if (jCClassDecl == null)
-/* 1471 */               break;  ((LambdaTranslationContext)translationContext).addSymbol((Symbol)jCClassDecl.sym, LambdaSymbolKind.CAPTURED_THIS);
-/*      */           }
-/* 1473 */           translationContext = translationContext.prev;
-/*      */         }
-/*      */       }
-/* 1476 */       super.visitSelect(param1JCFieldAccess);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitVarDef(JCTree.JCVariableDecl param1JCVariableDecl) {
-/* 1481 */       TranslationContext<?> translationContext = context();
-/* 1482 */       LambdaTranslationContext lambdaTranslationContext = (translationContext != null && translationContext instanceof LambdaTranslationContext) ? (LambdaTranslationContext)translationContext : null;
-/*      */
-/*      */
-/* 1485 */       if (lambdaTranslationContext != null) {
-/* 1486 */         if (((Frame)this.frameStack.head).tree.hasTag(JCTree.Tag.LAMBDA)) {
-/* 1487 */           lambdaTranslationContext.addSymbol((Symbol)param1JCVariableDecl.sym, LambdaSymbolKind.LOCAL_VAR);
-/*      */         }
-/*      */
-/*      */
-/* 1491 */         Type type = param1JCVariableDecl.sym.asType();
-/* 1492 */         if (inClassWithinLambda() && !LambdaToMethod.this.types.isSameType(LambdaToMethod.this.types.erasure(type), type)) {
-/* 1493 */           lambdaTranslationContext.addSymbol((Symbol)param1JCVariableDecl.sym, LambdaSymbolKind.TYPE_VAR);
-/*      */         }
-/*      */       }
-/*      */
-/* 1497 */       List<Frame> list = this.frameStack;
-/*      */       try {
-/* 1499 */         if (param1JCVariableDecl.sym.owner.kind == 16) {
-/* 1500 */           ((Frame)this.frameStack.head).addLocal((Symbol)param1JCVariableDecl.sym);
-/*      */         }
-/* 1502 */         this.frameStack = this.frameStack.prepend(new Frame((JCTree)param1JCVariableDecl));
-/* 1503 */         super.visitVarDef(param1JCVariableDecl);
-/*      */       } finally {
-/*      */
-/* 1506 */         this.frameStack = list;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private Symbol owner() {
-/* 1515 */       return owner(false);
-/*      */     }
-/*      */
-/*      */
-/*      */     private Symbol owner(boolean param1Boolean) {
-/* 1520 */       List<Frame> list = this.frameStack;
-/* 1521 */       while (list.nonEmpty()) {
-/* 1522 */         JCTree.JCClassDecl jCClassDecl1, jCClassDecl2; switch (((Frame)list.head).tree.getTag()) {
-/*      */           case CAPTURED_OUTER_THIS:
-/* 1524 */             if (((JCTree.JCVariableDecl)((Frame)list.head).tree).sym.isLocal()) {
-/* 1525 */               list = list.tail;
-/*      */               continue;
-/*      */             }
-/* 1528 */             jCClassDecl1 = (JCTree.JCClassDecl)((Frame)list.tail.head).tree;
-/* 1529 */             return initSym(jCClassDecl1.sym, ((JCTree.JCVariableDecl)((Frame)list.head).tree).sym
-/* 1530 */                 .flags() & 0x8L);
-/*      */           case LOCAL_VAR:
-/* 1532 */             jCClassDecl2 = (JCTree.JCClassDecl)((Frame)list.tail.head).tree;
-/* 1533 */             return initSym(jCClassDecl2.sym, ((JCTree.JCBlock)((Frame)list.head).tree).flags & 0x8L);
-/*      */
-/*      */           case CAPTURED_VAR:
-/* 1536 */             return (Symbol)((JCTree.JCClassDecl)((Frame)list.head).tree).sym;
-/*      */           case PARAM:
-/* 1538 */             return (Symbol)((JCTree.JCMethodDecl)((Frame)list.head).tree).sym;
-/*      */           case null:
-/* 1540 */             if (!param1Boolean)
-/* 1541 */               return
-/* 1542 */                 (Symbol)((LambdaTranslationContext)LambdaToMethod.this.contextMap.get(((Frame)list.head).tree)).translatedSym;  break;
-/*      */         }
-/* 1544 */         list = list.tail;
-/*      */       }
-/*      */
-/* 1547 */       Assert.error();
-/* 1548 */       return null;
-/*      */     }
-/*      */
-/*      */     private Symbol initSym(Symbol.ClassSymbol param1ClassSymbol, long param1Long) {
-/* 1552 */       boolean bool = ((param1Long & 0x8L) != 0L) ? true : false;
-/* 1553 */       if (bool) {
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1559 */         Symbol.MethodSymbol methodSymbol = LambdaToMethod.this.attr.removeClinit(param1ClassSymbol);
-/* 1560 */         if (methodSymbol != null) {
-/* 1561 */           this.clinits.put(param1ClassSymbol, methodSymbol);
-/* 1562 */           return (Symbol)methodSymbol;
-/*      */         }
-/*      */
-/*      */
-/*      */
-/* 1567 */         methodSymbol = (Symbol.MethodSymbol)this.clinits.get(param1ClassSymbol);
-/* 1568 */         if (methodSymbol == null) {
-/*      */
-/*      */
-/* 1571 */           methodSymbol = LambdaToMethod.this.makePrivateSyntheticMethod(8L,
-/* 1572 */               LambdaToMethod.this.names.clinit, (Type)new Type.MethodType(
-/* 1573 */                 List.nil(), (Type)LambdaToMethod.this.syms.voidType,
-/* 1574 */                 List.nil(), (Symbol.TypeSymbol)LambdaToMethod.this.syms.methodClass), (Symbol)param1ClassSymbol);
-/*      */
-/* 1576 */           this.clinits.put(param1ClassSymbol, methodSymbol);
-/*      */         }
-/* 1578 */         return (Symbol)methodSymbol;
-/*      */       }
-/*      */
-/* 1581 */       Iterator<Symbol> iterator = param1ClassSymbol.members_field.getElementsByName(LambdaToMethod.this.names.init).iterator(); if (iterator.hasNext()) return iterator.next();
-/*      */
-/*      */
-/*      */
-/* 1585 */       Assert.error("init not found");
-/* 1586 */       return null;
-/*      */     }
-/*      */
-/*      */     private JCTree directlyEnclosingLambda() {
-/* 1590 */       if (this.frameStack.isEmpty()) {
-/* 1591 */         return null;
-/*      */       }
-/* 1593 */       List<Frame> list = this.frameStack;
-/* 1594 */       while (list.nonEmpty()) {
-/* 1595 */         switch (((Frame)list.head).tree.getTag()) {
-/*      */           case CAPTURED_VAR:
-/*      */           case PARAM:
-/* 1598 */             return null;
-/*      */           case null:
-/* 1600 */             return ((Frame)list.head).tree;
-/*      */         }
-/* 1602 */         list = list.tail;
-/*      */       }
-/*      */
-/* 1605 */       Assert.error();
-/* 1606 */       return null;
-/*      */     }
-/*      */
-/*      */     private boolean inClassWithinLambda() {
-/* 1610 */       if (this.frameStack.isEmpty()) {
-/* 1611 */         return false;
-/*      */       }
-/* 1613 */       List<Frame> list = this.frameStack;
-/* 1614 */       boolean bool = false;
-/* 1615 */       while (list.nonEmpty()) {
-/* 1616 */         switch (((Frame)list.head).tree.getTag()) {
-/*      */           case null:
-/* 1618 */             return bool;
-/*      */           case CAPTURED_VAR:
-/* 1620 */             bool = true;
-/* 1621 */             list = list.tail;
-/*      */             continue;
-/*      */         }
-/* 1624 */         list = list.tail;
-/*      */       }
-/*      */
-/*      */
-/* 1628 */       return false;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private JCTree capturedDecl(int param1Int, Symbol param1Symbol) {
-/* 1637 */       int i = this.frameStack.size() - 1;
-/* 1638 */       for (Frame frame : this.frameStack) {
-/* 1639 */         Symbol.ClassSymbol classSymbol; switch (frame.tree.getTag()) {
-/*      */           case CAPTURED_VAR:
-/* 1641 */             classSymbol = ((JCTree.JCClassDecl)frame.tree).sym;
-/* 1642 */             if (param1Symbol.isMemberOf((Symbol.TypeSymbol)classSymbol, LambdaToMethod.this.types)) {
-/* 1643 */               return (i > param1Int) ? null : frame.tree;
-/*      */             }
-/*      */             break;
-/*      */           case CAPTURED_OUTER_THIS:
-/* 1647 */             if (((JCTree.JCVariableDecl)frame.tree).sym == param1Symbol && param1Symbol.owner.kind == 16)
-/*      */             {
-/* 1649 */               return (i > param1Int) ? null : frame.tree;
-/*      */             }
-/*      */             break;
-/*      */           case LOCAL_VAR:
-/*      */           case PARAM:
-/*      */           case null:
-/* 1655 */             if (frame.locals != null && frame.locals.contains(param1Symbol)) {
-/* 1656 */               return (i > param1Int) ? null : frame.tree;
-/*      */             }
-/*      */             break;
-/*      */           default:
-/* 1660 */             Assert.error("bad decl kind " + frame.tree.getTag()); break;
-/*      */         }
-/* 1662 */         i--;
-/*      */       }
-/* 1664 */       return null;
-/*      */     }
-/*      */
-/*      */     private TranslationContext<?> context() {
-/* 1668 */       for (Frame frame : this.frameStack) {
-/* 1669 */         TranslationContext<?> translationContext = (TranslationContext)LambdaToMethod.this.contextMap.get(frame.tree);
-/* 1670 */         if (translationContext != null) {
-/* 1671 */           return translationContext;
-/*      */         }
-/*      */       }
-/* 1674 */       return null;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private boolean lambdaIdentSymbolFilter(Symbol param1Symbol) {
-/* 1682 */       return ((param1Symbol.kind == 4 || param1Symbol.kind == 16) &&
-/* 1683 */         !param1Symbol.isStatic() && param1Symbol.name !=
-/* 1684 */         LambdaToMethod.this.names.init);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private boolean lambdaFieldAccessFilter(JCTree.JCFieldAccess param1JCFieldAccess) {
-/* 1695 */       LambdaTranslationContext lambdaTranslationContext = (LambdaToMethod.this.context instanceof LambdaTranslationContext) ? (LambdaTranslationContext)LambdaToMethod.this.context : null;
-/* 1696 */       return (lambdaTranslationContext != null &&
-/* 1697 */         !param1JCFieldAccess.sym.isStatic() && param1JCFieldAccess.name ==
-/* 1698 */         LambdaToMethod.this.names._this && param1JCFieldAccess.sym.owner.kind == 2 &&
-/*      */
-/* 1700 */         !((Map)lambdaTranslationContext.translatedSymbols.get(LambdaSymbolKind.CAPTURED_OUTER_THIS)).isEmpty());
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private boolean lambdaNewClassFilter(TranslationContext<?> param1TranslationContext, JCTree.JCNewClass param1JCNewClass) {
-/* 1708 */       if (param1TranslationContext != null && param1JCNewClass.encl == null && param1JCNewClass.def == null &&
-/*      */
-/*      */
-/* 1711 */         !param1JCNewClass.type.getEnclosingType().hasTag(TypeTag.NONE)) {
-/* 1712 */         Type type1 = param1JCNewClass.type.getEnclosingType();
-/* 1713 */         Type type2 = (param1TranslationContext.owner.enclClass()).type;
-/* 1714 */         while (!type2.hasTag(TypeTag.NONE)) {
-/* 1715 */           if (type2.tsym.isSubClass((Symbol)type1.tsym, LambdaToMethod.this.types)) {
-/* 1716 */             return true;
-/*      */           }
-/* 1718 */           type2 = type2.getEnclosingType();
-/*      */         }
-/* 1720 */         return false;
-/*      */       }
-/* 1722 */       return false;
-/*      */     }
-/*      */
-/*      */     private class Frame
-/*      */     {
-/*      */       final JCTree tree;
-/*      */       List<Symbol> locals;
-/*      */
-/*      */       public Frame(JCTree param2JCTree) {
-/* 1731 */         this.tree = param2JCTree;
-/*      */       }
-/*      */
-/*      */       void addLocal(Symbol param2Symbol) {
-/* 1735 */         if (this.locals == null) {
-/* 1736 */           this.locals = List.nil();
-/*      */         }
-/* 1738 */         this.locals = this.locals.prepend(param2Symbol);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private abstract class TranslationContext<T extends JCTree.JCFunctionalExpression>
-/*      */     {
-/*      */       final T tree;
-/*      */
-/*      */
-/*      */       final Symbol owner;
-/*      */
-/*      */
-/*      */       final int depth;
-/*      */
-/*      */
-/*      */       final TranslationContext<?> prev;
-/*      */
-/*      */
-/*      */       final List<Symbol> bridges;
-/*      */
-/*      */
-/*      */
-/*      */       TranslationContext(T param2T) {
-/* 1764 */         this.tree = param2T;
-/* 1765 */         this.owner = LambdaAnalyzerPreprocessor.this.owner();
-/* 1766 */         this.depth = LambdaAnalyzerPreprocessor.this.frameStack.size() - 1;
-/* 1767 */         this.prev = LambdaAnalyzerPreprocessor.this.context();
-/*      */
-/* 1769 */         Symbol.ClassSymbol classSymbol = LambdaToMethod.this.types.makeFunctionalInterfaceClass(LambdaToMethod.this.attrEnv, LambdaToMethod.this.names.empty, ((JCTree.JCFunctionalExpression)param2T).targets, 1536L);
-/* 1770 */         this.bridges = LambdaToMethod.this.types.functionalInterfaceBridges((Symbol.TypeSymbol)classSymbol);
-/*      */       }
-/*      */
-/*      */
-/*      */       boolean needsAltMetafactory() {
-/* 1775 */         return (((JCTree.JCFunctionalExpression)this.tree).targets.length() > 1 ||
-/* 1776 */           isSerializable() || this.bridges
-/* 1777 */           .length() > 1);
-/*      */       }
-/*      */
-/*      */
-/*      */       boolean isSerializable() {
-/* 1782 */         if (LambdaToMethod.this.forceSerializable) {
-/* 1783 */           return true;
-/*      */         }
-/* 1785 */         for (Type type : ((JCTree.JCFunctionalExpression)this.tree).targets) {
-/* 1786 */           if (LambdaToMethod.this.types.asSuper(type, (Symbol)LambdaToMethod.this.syms.serializableType.tsym) != null) {
-/* 1787 */             return true;
-/*      */           }
-/*      */         }
-/* 1790 */         return false;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       String enclosingMethodName() {
-/* 1798 */         return syntheticMethodNameComponent(this.owner.name);
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       String syntheticMethodNameComponent(Name param2Name) {
-/* 1806 */         if (param2Name == null) {
-/* 1807 */           return "null";
-/*      */         }
-/* 1809 */         String str = param2Name.toString();
-/* 1810 */         if (str.equals("<clinit>")) {
-/* 1811 */           str = "static";
-/* 1812 */         } else if (str.equals("<init>")) {
-/* 1813 */           str = "new";
-/*      */         }
-/* 1815 */         return str;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     private class LambdaTranslationContext
-/*      */       extends TranslationContext<JCTree.JCLambda>
-/*      */     {
-/*      */       final Symbol self;
-/*      */
-/*      */
-/*      */
-/*      */       final Symbol assignedTo;
-/*      */
-/*      */
-/*      */
-/*      */       Map<LambdaSymbolKind, Map<Symbol, Symbol>> translatedSymbols;
-/*      */
-/*      */
-/*      */
-/*      */       Symbol.MethodSymbol translatedSym;
-/*      */
-/*      */
-/*      */
-/*      */       List<JCTree.JCVariableDecl> syntheticParams;
-/*      */
-/*      */
-/*      */
-/*      */       final Set<Symbol> freeVarProcessedLocalClasses;
-/*      */
-/*      */
-/*      */       JCTree.JCExpression methodReferenceReceiver;
-/*      */
-/*      */
-/*      */
-/*      */       LambdaTranslationContext(JCTree.JCLambda param2JCLambda) {
-/* 1853 */         super(param2JCLambda);
-/* 1854 */         Frame frame = (Frame) LambdaAnalyzerPreprocessor.this.frameStack.head;
-/* 1855 */         switch (frame.tree.getTag()) {
-/*      */           case CAPTURED_OUTER_THIS:
-/* 1857 */             this.assignedTo = this.self = (Symbol)((JCTree.JCVariableDecl)frame.tree).sym;
-/*      */             break;
-/*      */           case null:
-/* 1860 */             this.self = null;
-/* 1861 */             this.assignedTo = TreeInfo.symbol((JCTree)((JCTree.JCAssign)frame.tree).getVariable());
-/*      */             break;
-/*      */           default:
-/* 1864 */             this.assignedTo = this.self = null;
-/*      */             break;
-/*      */         }
-/*      */
-/*      */
-/* 1869 */         this.translatedSym = LambdaToMethod.this.makePrivateSyntheticMethod(0L, null, null, (Symbol)this.owner.enclClass());
-/*      */
-/* 1871 */         this.translatedSymbols = new EnumMap<>(LambdaSymbolKind.class);
-/*      */
-/* 1873 */         this.translatedSymbols.put(LambdaSymbolKind.PARAM, new LinkedHashMap<>());
-/* 1874 */         this.translatedSymbols.put(LambdaSymbolKind.LOCAL_VAR, new LinkedHashMap<>());
-/* 1875 */         this.translatedSymbols.put(LambdaSymbolKind.CAPTURED_VAR, new LinkedHashMap<>());
-/* 1876 */         this.translatedSymbols.put(LambdaSymbolKind.CAPTURED_THIS, new LinkedHashMap<>());
-/* 1877 */         this.translatedSymbols.put(LambdaSymbolKind.CAPTURED_OUTER_THIS, new LinkedHashMap<>());
-/* 1878 */         this.translatedSymbols.put(LambdaSymbolKind.TYPE_VAR, new LinkedHashMap<>());
-/*      */
-/* 1880 */         this.freeVarProcessedLocalClasses = new HashSet<>();
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       private String serializedLambdaDisambiguation() {
-/* 1890 */         StringBuilder stringBuilder = new StringBuilder();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1897 */         Assert.check((this.owner.type != null || LambdaAnalyzerPreprocessor.this
-/*      */
-/* 1899 */             .directlyEnclosingLambda() != null));
-/* 1900 */         if (this.owner.type != null) {
-/* 1901 */           stringBuilder.append(LambdaToMethod.this.typeSig(this.owner.type));
-/* 1902 */           stringBuilder.append(":");
-/*      */         }
-/*      */
-/*      */
-/* 1906 */         stringBuilder.append((CharSequence)(LambdaToMethod.this.types.findDescriptorSymbol(this.tree.type.tsym)).owner.flatName());
-/* 1907 */         stringBuilder.append(" ");
-/*      */
-/*      */
-/* 1910 */         if (this.assignedTo != null) {
-/* 1911 */           stringBuilder.append((CharSequence)this.assignedTo.flatName());
-/* 1912 */           stringBuilder.append("=");
-/*      */         }
-/*      */
-/* 1915 */         for (Symbol symbol : getSymbolMap(LambdaSymbolKind.CAPTURED_VAR).keySet()) {
-/* 1916 */           if (symbol != this.self) {
-/* 1917 */             stringBuilder.append(LambdaToMethod.this.typeSig(symbol.type));
-/* 1918 */             stringBuilder.append(" ");
-/* 1919 */             stringBuilder.append((CharSequence)symbol.flatName());
-/* 1920 */             stringBuilder.append(",");
-/*      */           }
-/*      */         }
-/*      */
-/* 1924 */         return stringBuilder.toString();
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       private Name lambdaName() {
-/* 1933 */         return LambdaToMethod.this.names.lambda.append(LambdaToMethod.this.names.fromString(enclosingMethodName() + "$" + LambdaAnalyzerPreprocessor.this.lambdaCount++));
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       private Name serializedLambdaName() {
-/* 1943 */         StringBuilder stringBuilder = new StringBuilder();
-/* 1944 */         stringBuilder.append((CharSequence)LambdaToMethod.this.names.lambda);
-/*      */
-/* 1946 */         stringBuilder.append(enclosingMethodName());
-/* 1947 */         stringBuilder.append('$');
-/*      */
-/*      */
-/* 1950 */         String str1 = serializedLambdaDisambiguation();
-/* 1951 */         stringBuilder.append(Integer.toHexString(str1.hashCode()));
-/* 1952 */         stringBuilder.append('$');
-/*      */
-/*      */
-/* 1955 */         stringBuilder.append(LambdaAnalyzerPreprocessor.this.syntheticMethodNameCounts.getIndex(stringBuilder));
-/* 1956 */         String str2 = stringBuilder.toString();
-/*      */
-/* 1958 */         return LambdaToMethod.this.names.fromString(str2);
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */       Symbol translate(final Symbol sym, LambdaSymbolKind param2LambdaSymbolKind) {
-/*      */         Symbol symbol;
-/*      */         Symbol.VarSymbol varSymbol;
-/*      */         Name name;
-/* 1967 */         switch (param2LambdaSymbolKind) {
-/*      */           case CAPTURED_THIS:
-/* 1969 */             symbol = sym;
-/*      */             break;
-/*      */
-/*      */
-/*      */           case TYPE_VAR:
-/* 1974 */             varSymbol = new Symbol.VarSymbol(sym.flags(), sym.name, LambdaToMethod.this.types.erasure(sym.type), sym.owner);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1979 */             varSymbol.pos = ((Symbol.VarSymbol)sym).pos;
-/*      */             break;
-/*      */           case CAPTURED_VAR:
-/* 1982 */             varSymbol = new Symbol.VarSymbol(8589938704L, sym.name, LambdaToMethod.this.types.erasure(sym.type), (Symbol)this.translatedSym)
-/*      */               {
-/*      */                 public Symbol baseSymbol()
-/*      */                 {
-/* 1986 */                   return sym;
-/*      */                 }
-/*      */               };
-/*      */             break;
-/*      */           case CAPTURED_OUTER_THIS:
-/* 1991 */             name = LambdaToMethod.this.names.fromString(new String(sym.flatName().toString() + LambdaToMethod.this.names.dollarThis));
-/* 1992 */             varSymbol = new Symbol.VarSymbol(8589938704L, name, LambdaToMethod.this.types.erasure(sym.type), (Symbol)this.translatedSym)
-/*      */               {
-/*      */                 public Symbol baseSymbol()
-/*      */                 {
-/* 1996 */                   return sym;
-/*      */                 }
-/*      */               };
-/*      */             break;
-/*      */           case LOCAL_VAR:
-/* 2001 */             varSymbol = new Symbol.VarSymbol(sym.flags() & 0x10L, sym.name, sym.type, (Symbol)this.translatedSym);
-/* 2002 */             varSymbol.pos = ((Symbol.VarSymbol)sym).pos;
-/*      */             break;
-/*      */           case PARAM:
-/* 2005 */             varSymbol = new Symbol.VarSymbol(sym.flags() & 0x10L | 0x200000000L, sym.name, LambdaToMethod.this.types.erasure(sym.type), (Symbol)this.translatedSym);
-/* 2006 */             varSymbol.pos = ((Symbol.VarSymbol)sym).pos;
-/*      */             break;
-/*      */           default:
-/* 2009 */             Assert.error(param2LambdaSymbolKind.name());
-/* 2010 */             throw new AssertionError();
-/*      */         }
-/* 2012 */         if (varSymbol != sym && param2LambdaSymbolKind.propagateAnnotations()) {
-/* 2013 */           varSymbol.setDeclarationAttributes(sym.getRawAttributes());
-/* 2014 */           varSymbol.setTypeAttributes(sym.getRawTypeAttributes());
-/*      */         }
-/* 2016 */         return (Symbol)varSymbol;
-/*      */       }
-/*      */
-/*      */       void addSymbol(Symbol param2Symbol, LambdaSymbolKind param2LambdaSymbolKind) {
-/* 2020 */         if (param2LambdaSymbolKind == LambdaSymbolKind.CAPTURED_THIS && param2Symbol != null && param2Symbol.kind == 2 && !LambdaAnalyzerPreprocessor.this.typesUnderConstruction.isEmpty()) {
-/* 2021 */           Symbol.ClassSymbol classSymbol = LambdaAnalyzerPreprocessor.this.currentClass();
-/* 2022 */           if (classSymbol != null && LambdaAnalyzerPreprocessor.this.typesUnderConstruction.contains(classSymbol)) {
-/*      */
-/* 2024 */             Assert.check((param2Symbol != classSymbol));
-/* 2025 */             param2LambdaSymbolKind = LambdaSymbolKind.CAPTURED_OUTER_THIS;
-/*      */           }
-/*      */         }
-/* 2028 */         Map<Symbol, Symbol> map = getSymbolMap(param2LambdaSymbolKind);
-/* 2029 */         if (!map.containsKey(param2Symbol)) {
-/* 2030 */           map.put(param2Symbol, translate(param2Symbol, param2LambdaSymbolKind));
-/*      */         }
-/*      */       }
-/*      */
-/*      */       Map<Symbol, Symbol> getSymbolMap(LambdaSymbolKind param2LambdaSymbolKind) {
-/* 2035 */         Map<Symbol, Symbol> map = this.translatedSymbols.get(param2LambdaSymbolKind);
-/* 2036 */         Assert.checkNonNull(map);
-/* 2037 */         return map;
-/*      */       }
-/*      */
-/*      */       JCTree translate(JCTree.JCIdent param2JCIdent) {
-/* 2041 */         for (LambdaSymbolKind lambdaSymbolKind : LambdaSymbolKind.values()) {
-/* 2042 */           Map<Symbol, Symbol> map = getSymbolMap(lambdaSymbolKind);
-/* 2043 */           switch (lambdaSymbolKind) {
-/*      */             default:
-/* 2045 */               if (map.containsKey(param2JCIdent.sym)) {
-/* 2046 */                 Symbol symbol = map.get(param2JCIdent.sym);
-/* 2047 */                 return (JCTree)LambdaToMethod.this.make.Ident(symbol).setType(param2JCIdent.type);
-/*      */               }
-/*      */               break;
-/*      */
-/*      */             case CAPTURED_OUTER_THIS:
-/* 2052 */               if (param2JCIdent.sym.owner.kind == 2 && map.containsKey(param2JCIdent.sym.owner)) {
-/*      */
-/* 2054 */                 Symbol symbol = map.get(param2JCIdent.sym.owner);
-/* 2055 */                 JCTree.JCExpression jCExpression = LambdaToMethod.this.make.Ident(symbol).setType(param2JCIdent.sym.owner.type);
-/* 2056 */                 JCTree.JCFieldAccess jCFieldAccess = LambdaToMethod.this.make.Select(jCExpression, param2JCIdent.name);
-/* 2057 */                 jCFieldAccess.setType(param2JCIdent.type);
-/* 2058 */                 TreeInfo.setSymbol((JCTree)jCFieldAccess, param2JCIdent.sym);
-/* 2059 */                 return (JCTree)jCFieldAccess;
-/*      */               }
-/*      */               break;
-/*      */           }
-/*      */         }
-/* 2064 */         return null;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       public JCTree translate(JCTree.JCFieldAccess param2JCFieldAccess) {
-/* 2071 */         Assert.check((param2JCFieldAccess.name == LambdaToMethod.this.names._this));
-/* 2072 */         Map map = this.translatedSymbols.get(LambdaSymbolKind.CAPTURED_OUTER_THIS);
-/* 2073 */         if (map.containsKey(param2JCFieldAccess.sym.owner)) {
-/* 2074 */           Symbol symbol = (Symbol)map.get(param2JCFieldAccess.sym.owner);
-/* 2075 */           return (JCTree)LambdaToMethod.this.make.Ident(symbol).setType(param2JCFieldAccess.sym.owner.type);
-/*      */         }
-/*      */
-/* 2078 */         return null;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       void complete() {
-/* 2088 */         if (this.syntheticParams != null) {
-/*      */           return;
-/*      */         }
-/* 2091 */         boolean bool = this.translatedSym.owner.isInterface();
-/* 2092 */         boolean bool1 = !getSymbolMap(LambdaSymbolKind.CAPTURED_THIS).isEmpty() ? true : false;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2099 */         this.translatedSym.flags_field = 0x2000000001000L | this.owner.flags_field & 0x800L | this.owner.owner.flags_field & 0x800L | 0x2L | (bool1 ? (bool ? 8796093022208L : 0L) : 8L);
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2106 */         ListBuffer listBuffer1 = new ListBuffer();
-/* 2107 */         ListBuffer listBuffer2 = new ListBuffer();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2114 */         for (Symbol symbol : getSymbolMap(LambdaSymbolKind.CAPTURED_VAR).values()) {
-/* 2115 */           listBuffer1.append(LambdaToMethod.this.make.VarDef((Symbol.VarSymbol)symbol, null));
-/* 2116 */           listBuffer2.append(symbol);
-/*      */         }
-/* 2118 */         for (Symbol symbol : getSymbolMap(LambdaSymbolKind.CAPTURED_OUTER_THIS).values()) {
-/* 2119 */           listBuffer1.append(LambdaToMethod.this.make.VarDef((Symbol.VarSymbol)symbol, null));
-/* 2120 */           listBuffer2.append(symbol);
-/*      */         }
-/* 2122 */         for (Symbol symbol : getSymbolMap(LambdaSymbolKind.PARAM).values()) {
-/* 2123 */           listBuffer1.append(LambdaToMethod.this.make.VarDef((Symbol.VarSymbol)symbol, null));
-/* 2124 */           listBuffer2.append(symbol);
-/*      */         }
-/* 2126 */         this.syntheticParams = listBuffer1.toList();
-/*      */
-/* 2128 */         this.translatedSym.params = listBuffer2.toList();
-/*      */
-/*      */
-/* 2131 */         this.translatedSym
-/*      */
-/* 2133 */           .name = isSerializable() ? serializedLambdaName() : lambdaName();
-/*      */
-/*      */
-/* 2136 */         this.translatedSym.type = LambdaToMethod.this.types.createMethodTypeWithParameters(
-/* 2137 */             generatedLambdaSig(),
-/* 2138 */             TreeInfo.types(this.syntheticParams));
-/*      */       }
-/*      */
-/*      */       Type generatedLambdaSig() {
-/* 2142 */         return LambdaToMethod.this.types.erasure(this.tree.getDescriptorType(LambdaToMethod.this.types));
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */     private final class ReferenceTranslationContext
-/*      */       extends TranslationContext<JCTree.JCMemberReference>
-/*      */     {
-/*      */       final boolean isSuper;
-/*      */
-/*      */
-/*      */       final Symbol sigPolySym;
-/*      */
-/*      */
-/*      */       ReferenceTranslationContext(JCTree.JCMemberReference param2JCMemberReference) {
-/* 2158 */         super(param2JCMemberReference);
-/* 2159 */         this.isSuper = param2JCMemberReference.hasKind(JCTree.JCMemberReference.ReferenceKind.SUPER);
-/* 2160 */         this
-/* 2161 */           .sigPolySym = isSignaturePolymorphic() ? (Symbol)LambdaToMethod.this.makePrivateSyntheticMethod(param2JCMemberReference.sym.flags(), param2JCMemberReference.sym.name,
-/*      */
-/* 2163 */             bridgedRefSig(), (Symbol)param2JCMemberReference.sym
-/* 2164 */             .enclClass()) : null;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       int referenceKind() {
-/* 2172 */         return LambdaToMethod.this.referenceKind(this.tree.sym);
-/*      */       }
-/*      */
-/*      */       boolean needsVarArgsConversion() {
-/* 2176 */         return (this.tree.varargsElement != null);
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       boolean isArrayOp() {
-/* 2183 */         return (this.tree.sym.owner == LambdaToMethod.this.syms.arrayClass);
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       boolean receiverAccessible() {
-/* 2190 */         return this.tree.ownerAccessible;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       boolean isPrivateInOtherClass() {
-/* 2198 */         return ((this.tree.sym.flags() & 0x2L) != 0L &&
-/* 2199 */           !LambdaToMethod.this.types.isSameType(LambdaToMethod.this
-/* 2200 */             .types.erasure(this.tree.sym.enclClass().asType()), LambdaToMethod.this
-/* 2201 */             .types.erasure(this.owner.enclClass().asType())));
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       final boolean isSignaturePolymorphic() {
-/* 2209 */         return (this.tree.sym.kind == 16 && LambdaToMethod.this
-/* 2210 */           .types.isSignaturePolymorphic((Symbol.MethodSymbol)this.tree.sym));
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       boolean interfaceParameterIsIntersectionType() {
-/* 2218 */         List list = this.tree.getDescriptorType(LambdaToMethod.this.types).getParameterTypes();
-/* 2219 */         if (this.tree.kind == JCTree.JCMemberReference.ReferenceKind.UNBOUND) {
-/* 2220 */           list = list.tail;
-/*      */         }
-/* 2222 */         for (; list.nonEmpty(); list = list.tail) {
-/* 2223 */           Type type = (Type)list.head;
-/* 2224 */           if (type.getKind() == TypeKind.TYPEVAR) {
-/* 2225 */             Type.TypeVar typeVar = (Type.TypeVar)type;
-/* 2226 */             if (typeVar.bound.getKind() == TypeKind.INTERSECTION) {
-/* 2227 */               return true;
-/*      */             }
-/*      */           }
-/*      */         }
-/* 2231 */         return false;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */       final boolean needsConversionToLambda() {
-/* 2239 */         return (interfaceParameterIsIntersectionType() || this.isSuper ||
-/*      */
-/* 2241 */           needsVarArgsConversion() ||
-/* 2242 */           isArrayOp() ||
-/* 2243 */           isPrivateInOtherClass() ||
-/* 2244 */           !receiverAccessible() || (this.tree
-/* 2245 */           .getMode() == MemberReferenceTree.ReferenceMode.NEW && this.tree.kind != JCTree.JCMemberReference.ReferenceKind.ARRAY_CTOR && (this.tree.sym.owner
-/*      */
-/* 2247 */           .isLocal() || this.tree.sym.owner.isInner())));
-/*      */       }
-/*      */
-/*      */       Type generatedRefSig() {
-/* 2251 */         return LambdaToMethod.this.types.erasure(this.tree.sym.type);
-/*      */       }
-/*      */
-/*      */       Type bridgedRefSig() {
-/* 2255 */         return LambdaToMethod.this.types.erasure((LambdaToMethod.this.types.findDescriptorSymbol(((Type)this.tree.targets.head).tsym)).type); } } } private abstract class TranslationContext<T extends JCTree.JCFunctionalExpression> { final T tree; final Symbol owner; final int depth; final TranslationContext<?> prev; final List<Symbol> bridges; TranslationContext(T param1T) { this.tree = param1T; this.owner = LambdaToMethod.this.owner(); this.depth = ((LambdaAnalyzerPreprocessor)LambdaToMethod.this).frameStack.size() - 1; this.prev = LambdaToMethod.this.context(); Symbol.ClassSymbol classSymbol = LambdaToMethod.this.types.makeFunctionalInterfaceClass(LambdaToMethod.this.attrEnv, LambdaToMethod.this.names.empty, ((JCTree.JCFunctionalExpression)param1T).targets, 1536L); this.bridges = LambdaToMethod.this.types.functionalInterfaceBridges((Symbol.TypeSymbol)classSymbol); } boolean needsAltMetafactory() { return (((JCTree.JCFunctionalExpression)this.tree).targets.length() > 1 || isSerializable() || this.bridges.length() > 1); } boolean isSerializable() { if (LambdaToMethod.this.forceSerializable) return true;  for (Type type : ((JCTree.JCFunctionalExpression)this.tree).targets) { if (LambdaToMethod.this.types.asSuper(type, (Symbol)LambdaToMethod.this.syms.serializableType.tsym) != null) return true;  }  return false; } String enclosingMethodName() { return syntheticMethodNameComponent(this.owner.name); } String syntheticMethodNameComponent(Name param1Name) { if (param1Name == null) return "null";  String str = param1Name.toString(); if (str.equals("<clinit>")) { str = "static"; } else if (str.equals("<init>")) { str = "new"; }  return str; } } private class LambdaTranslationContext extends LambdaAnalyzerPreprocessor.TranslationContext<JCTree.JCLambda> { final Symbol self; final Symbol assignedTo; Map<LambdaSymbolKind, Map<Symbol, Symbol>> translatedSymbols; Symbol.MethodSymbol translatedSym; List<JCTree.JCVariableDecl> syntheticParams; final Set<Symbol> freeVarProcessedLocalClasses; JCTree.JCExpression methodReferenceReceiver; LambdaTranslationContext(JCTree.JCLambda param1JCLambda) { super((LambdaAnalyzerPreprocessor)LambdaToMethod.this, param1JCLambda); LambdaAnalyzerPreprocessor.Frame frame = (LambdaAnalyzerPreprocessor.Frame)((LambdaAnalyzerPreprocessor)LambdaToMethod.this).frameStack.head; switch (frame.tree.getTag()) { case CAPTURED_OUTER_THIS: this.assignedTo = this.self = (Symbol)((JCTree.JCVariableDecl)frame.tree).sym; break;case null: this.self = null; this.assignedTo = TreeInfo.symbol((JCTree)((JCTree.JCAssign)frame.tree).getVariable()); break;default: this.assignedTo = this.self = null; break; }  this.translatedSym = LambdaToMethod.this.makePrivateSyntheticMethod(0L, null, null, (Symbol)this.owner.enclClass()); this.translatedSymbols = new EnumMap<>(LambdaSymbolKind.class); this.translatedSymbols.put(LambdaSymbolKind.PARAM, new LinkedHashMap<>()); this.translatedSymbols.put(LambdaSymbolKind.LOCAL_VAR, new LinkedHashMap<>()); this.translatedSymbols.put(LambdaSymbolKind.CAPTURED_VAR, new LinkedHashMap<>()); this.translatedSymbols.put(LambdaSymbolKind.CAPTURED_THIS, new LinkedHashMap<>()); this.translatedSymbols.put(LambdaSymbolKind.CAPTURED_OUTER_THIS, new LinkedHashMap<>()); this.translatedSymbols.put(LambdaSymbolKind.TYPE_VAR, new LinkedHashMap<>()); this.freeVarProcessedLocalClasses = new HashSet<>(); } private String serializedLambdaDisambiguation() { StringBuilder stringBuilder = new StringBuilder(); Assert.check((this.owner.type != null || this.this$1.directlyEnclosingLambda() != null)); if (this.owner.type != null) { stringBuilder.append(LambdaToMethod.this.typeSig(this.owner.type)); stringBuilder.append(":"); }  stringBuilder.append((CharSequence)(LambdaToMethod.this.types.findDescriptorSymbol(this.tree.type.tsym)).owner.flatName()); stringBuilder.append(" "); if (this.assignedTo != null) { stringBuilder.append((CharSequence)this.assignedTo.flatName()); stringBuilder.append("="); }  for (Symbol symbol : getSymbolMap(LambdaSymbolKind.CAPTURED_VAR).keySet()) { if (symbol != this.self) { stringBuilder.append(LambdaToMethod.this.typeSig(symbol.type)); stringBuilder.append(" "); stringBuilder.append((CharSequence)symbol.flatName()); stringBuilder.append(","); }  }  return stringBuilder.toString(); } private Name lambdaName() { return LambdaToMethod.this.names.lambda.append(LambdaToMethod.this.names.fromString(enclosingMethodName() + "$" + this.this$1.lambdaCount++)); } private Name serializedLambdaName() { StringBuilder stringBuilder = new StringBuilder(); stringBuilder.append((CharSequence)LambdaToMethod.this.names.lambda); stringBuilder.append(enclosingMethodName()); stringBuilder.append('$'); String str1 = serializedLambdaDisambiguation(); stringBuilder.append(Integer.toHexString(str1.hashCode())); stringBuilder.append('$'); stringBuilder.append(this.this$1.syntheticMethodNameCounts.getIndex(stringBuilder)); String str2 = stringBuilder.toString(); return LambdaToMethod.this.names.fromString(str2); } Symbol translate(final Symbol sym, LambdaSymbolKind param1LambdaSymbolKind) { Symbol symbol; Symbol.VarSymbol varSymbol; Name name; switch (param1LambdaSymbolKind) { case CAPTURED_THIS: symbol = sym; break;case TYPE_VAR: varSymbol = new Symbol.VarSymbol(sym.flags(), sym.name, LambdaToMethod.this.types.erasure(sym.type), sym.owner); varSymbol.pos = ((Symbol.VarSymbol)sym).pos; break;case CAPTURED_VAR: varSymbol = new Symbol.VarSymbol(8589938704L, sym.name, LambdaToMethod.this.types.erasure(sym.type), (Symbol)this.translatedSym) { public Symbol baseSymbol() { return sym; } }; break;case CAPTURED_OUTER_THIS: name = LambdaToMethod.this.names.fromString(new String(sym.flatName().toString() + LambdaToMethod.this.names.dollarThis)); varSymbol = new Symbol.VarSymbol(8589938704L, name, LambdaToMethod.this.types.erasure(sym.type), (Symbol)this.translatedSym) { public Symbol baseSymbol() { return sym; } }; break;case LOCAL_VAR: varSymbol = new Symbol.VarSymbol(sym.flags() & 0x10L, sym.name, sym.type, (Symbol)this.translatedSym); varSymbol.pos = ((Symbol.VarSymbol)sym).pos; break;case PARAM: varSymbol = new Symbol.VarSymbol(sym.flags() & 0x10L | 0x200000000L, sym.name, LambdaToMethod.this.types.erasure(sym.type), (Symbol)this.translatedSym); varSymbol.pos = ((Symbol.VarSymbol)sym).pos; break;default: Assert.error(param1LambdaSymbolKind.name()); throw new AssertionError(); }  if (varSymbol != sym && param1LambdaSymbolKind.propagateAnnotations()) { varSymbol.setDeclarationAttributes(sym.getRawAttributes()); varSymbol.setTypeAttributes(sym.getRawTypeAttributes()); }  return (Symbol)varSymbol; } void addSymbol(Symbol param1Symbol, LambdaSymbolKind param1LambdaSymbolKind) { if (param1LambdaSymbolKind == LambdaSymbolKind.CAPTURED_THIS && param1Symbol != null && param1Symbol.kind == 2 && !this.this$1.typesUnderConstruction.isEmpty()) { Symbol.ClassSymbol classSymbol = this.this$1.currentClass(); if (classSymbol != null && this.this$1.typesUnderConstruction.contains(classSymbol)) { Assert.check((param1Symbol != classSymbol)); param1LambdaSymbolKind = LambdaSymbolKind.CAPTURED_OUTER_THIS; }  }  Map<Symbol, Symbol> map = getSymbolMap(param1LambdaSymbolKind); if (!map.containsKey(param1Symbol)) map.put(param1Symbol, translate(param1Symbol, param1LambdaSymbolKind));  } Map<Symbol, Symbol> getSymbolMap(LambdaSymbolKind param1LambdaSymbolKind) { Map<Symbol, Symbol> map = this.translatedSymbols.get(param1LambdaSymbolKind); Assert.checkNonNull(map); return map; } JCTree translate(JCTree.JCIdent param1JCIdent) { for (LambdaSymbolKind lambdaSymbolKind : LambdaSymbolKind.values()) { Map<Symbol, Symbol> map = getSymbolMap(lambdaSymbolKind); switch (lambdaSymbolKind) { default: if (map.containsKey(param1JCIdent.sym)) { Symbol symbol = map.get(param1JCIdent.sym); return (JCTree)LambdaToMethod.this.make.Ident(symbol).setType(param1JCIdent.type); }  break;case CAPTURED_OUTER_THIS: if (param1JCIdent.sym.owner.kind == 2 && map.containsKey(param1JCIdent.sym.owner)) { Symbol symbol = map.get(param1JCIdent.sym.owner); JCTree.JCExpression jCExpression = LambdaToMethod.this.make.Ident(symbol).setType(param1JCIdent.sym.owner.type); JCTree.JCFieldAccess jCFieldAccess = LambdaToMethod.this.make.Select(jCExpression, param1JCIdent.name); jCFieldAccess.setType(param1JCIdent.type); TreeInfo.setSymbol((JCTree)jCFieldAccess, param1JCIdent.sym); return (JCTree)jCFieldAccess; }  break; }  }  return null; } public JCTree translate(JCTree.JCFieldAccess param1JCFieldAccess) { Assert.check((param1JCFieldAccess.name == LambdaToMethod.this.names._this)); Map map = this.translatedSymbols.get(LambdaSymbolKind.CAPTURED_OUTER_THIS); if (map.containsKey(param1JCFieldAccess.sym.owner)) { Symbol symbol = (Symbol)map.get(param1JCFieldAccess.sym.owner); return (JCTree)LambdaToMethod.this.make.Ident(symbol).setType(param1JCFieldAccess.sym.owner.type); }  return null; } void complete() { if (this.syntheticParams != null) return;  boolean bool = this.translatedSym.owner.isInterface(); boolean bool1 = !getSymbolMap(LambdaSymbolKind.CAPTURED_THIS).isEmpty() ? true : false; this.translatedSym.flags_field = 0x2000000001000L | this.owner.flags_field & 0x800L | this.owner.owner.flags_field & 0x800L | 0x2L | (bool1 ? (bool ? 8796093022208L : 0L) : 8L); ListBuffer listBuffer1 = new ListBuffer(); ListBuffer listBuffer2 = new ListBuffer(); for (Symbol symbol : getSymbolMap(LambdaSymbolKind.CAPTURED_VAR).values()) { listBuffer1.append(LambdaToMethod.this.make.VarDef((Symbol.VarSymbol)symbol, null)); listBuffer2.append(symbol); }  for (Symbol symbol : getSymbolMap(LambdaSymbolKind.CAPTURED_OUTER_THIS).values()) { listBuffer1.append(LambdaToMethod.this.make.VarDef((Symbol.VarSymbol)symbol, null)); listBuffer2.append(symbol); }  for (Symbol symbol : getSymbolMap(LambdaSymbolKind.PARAM).values()) { listBuffer1.append(LambdaToMethod.this.make.VarDef((Symbol.VarSymbol)symbol, null)); listBuffer2.append(symbol); }  this.syntheticParams = listBuffer1.toList(); this.translatedSym.params = listBuffer2.toList(); this.translatedSym.name = isSerializable() ? serializedLambdaName() : lambdaName(); this.translatedSym.type = LambdaToMethod.this.types.createMethodTypeWithParameters(generatedLambdaSig(), TreeInfo.types(this.syntheticParams)); } Type generatedLambdaSig() { return LambdaToMethod.this.types.erasure(this.tree.getDescriptorType(LambdaToMethod.this.types)); } } private final class ReferenceTranslationContext extends LambdaAnalyzerPreprocessor.TranslationContext<JCTree.JCMemberReference> { final boolean isSuper; final Symbol sigPolySym; ReferenceTranslationContext(JCTree.JCMemberReference param1JCMemberReference) { super((LambdaAnalyzerPreprocessor)LambdaToMethod.this, param1JCMemberReference); this.isSuper = param1JCMemberReference.hasKind(JCTree.JCMemberReference.ReferenceKind.SUPER); this.sigPolySym = isSignaturePolymorphic() ? (Symbol)LambdaToMethod.this.makePrivateSyntheticMethod(param1JCMemberReference.sym.flags(), param1JCMemberReference.sym.name, bridgedRefSig(), (Symbol)param1JCMemberReference.sym.enclClass()) : null; } Type bridgedRefSig() { return LambdaToMethod.this.types.erasure((LambdaToMethod.this.types.findDescriptorSymbol(((Type)this.tree.targets.head).tsym)).type); }
-/*      */     int referenceKind() { return LambdaToMethod.this.referenceKind(this.tree.sym); }
-/*      */     boolean needsVarArgsConversion() { return (this.tree.varargsElement != null); }
-/*      */     boolean isArrayOp() { return (this.tree.sym.owner == LambdaToMethod.this.syms.arrayClass); }
-/*      */     boolean receiverAccessible() { return this.tree.ownerAccessible; }
-/*      */     boolean isPrivateInOtherClass() { return ((this.tree.sym.flags() & 0x2L) != 0L && !LambdaToMethod.this.types.isSameType(LambdaToMethod.this.types.erasure(this.tree.sym.enclClass().asType()), LambdaToMethod.this.types.erasure(this.owner.enclClass().asType()))); }
-/*      */     final boolean isSignaturePolymorphic() { return (this.tree.sym.kind == 16 && LambdaToMethod.this.types.isSignaturePolymorphic((Symbol.MethodSymbol)this.tree.sym)); } boolean interfaceParameterIsIntersectionType() { List list = this.tree.getDescriptorType(LambdaToMethod.this.types).getParameterTypes(); if (this.tree.kind == JCTree.JCMemberReference.ReferenceKind.UNBOUND)
-/*      */         list = list.tail;  for (; list.nonEmpty(); list = list.tail) { Type type = (Type)list.head; if (type.getKind() == TypeKind.TYPEVAR) { Type.TypeVar typeVar = (Type.TypeVar)type; if (typeVar.bound.getKind() == TypeKind.INTERSECTION)
-/*      */             return true;  }  }  return false; } final boolean needsConversionToLambda() { return (interfaceParameterIsIntersectionType() || this.isSuper || needsVarArgsConversion() || isArrayOp() || isPrivateInOtherClass() || !receiverAccessible() || (this.tree.getMode() == MemberReferenceTree.ReferenceMode.NEW && this.tree.kind != JCTree.JCMemberReference.ReferenceKind.ARRAY_CTOR && (this.tree.sym.owner.isLocal() || this.tree.sym.owner.isInner()))); } Type generatedRefSig() { return LambdaToMethod.this.types.erasure(this.tree.sym.type); } }
-/*      */    enum LambdaSymbolKind
-/*      */   {
-/* 2266 */     PARAM,
-/* 2267 */     LOCAL_VAR,
-/* 2268 */     CAPTURED_VAR,
-/* 2269 */     CAPTURED_THIS,
-/* 2270 */     CAPTURED_OUTER_THIS,
-/* 2271 */     TYPE_VAR;
-/*      */
-/*      */     boolean propagateAnnotations() {
-/* 2274 */       switch (this) {
-/*      */         case CAPTURED_THIS:
-/*      */         case CAPTURED_VAR:
-/*      */         case CAPTURED_OUTER_THIS:
-/* 2278 */           return false;
-/*      */       }
-/* 2280 */       return true;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private String typeSig(Type paramType) {
-/* 2292 */     L2MSignatureGenerator l2MSignatureGenerator = new L2MSignatureGenerator();
-/* 2293 */     l2MSignatureGenerator.assembleSig(paramType);
-/* 2294 */     return l2MSignatureGenerator.toString();
-/*      */   }
-/*      */
-/*      */   private String classSig(Type paramType) {
-/* 2298 */     L2MSignatureGenerator l2MSignatureGenerator = new L2MSignatureGenerator();
-/* 2299 */     l2MSignatureGenerator.assembleClassSig(paramType);
-/* 2300 */     return l2MSignatureGenerator.toString();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private class L2MSignatureGenerator
-/*      */     extends Types.SignatureGenerator
-/*      */   {
-/* 2311 */     StringBuilder sb = new StringBuilder();
-/*      */
-/*      */     L2MSignatureGenerator() {
-/* 2314 */       super(LambdaToMethod.this.types);
-/*      */     }
-/*      */
-/*      */
-/*      */     protected void append(char param1Char) {
-/* 2319 */       this.sb.append(param1Char);
-/*      */     }
-/*      */
-/*      */
-/*      */     protected void append(byte[] param1ArrayOfbyte) {
-/* 2324 */       this.sb.append(new String(param1ArrayOfbyte));
-/*      */     }
-/*      */
-/*      */
-/*      */     protected void append(Name param1Name) {
-/* 2329 */       this.sb.append(param1Name.toString());
-/*      */     }
-/*      */
-/*      */
-/*      */     public String toString() {
-/* 2334 */       return this.sb.toString();
-/*      */     }
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\comp\LambdaToMethod.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2010, 2017, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+package com.sun.tools.javac.comp;
+
+import com.sun.tools.javac.tree.*;
+import com.sun.tools.javac.tree.JCTree.*;
+import com.sun.tools.javac.tree.JCTree.JCMemberReference.ReferenceKind;
+import com.sun.tools.javac.tree.TreeMaker;
+import com.sun.tools.javac.tree.TreeTranslator;
+import com.sun.tools.javac.code.Attribute;
+import com.sun.tools.javac.code.Kinds;
+import com.sun.tools.javac.code.Scope;
+import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.code.Symbol.ClassSymbol;
+import com.sun.tools.javac.code.Symbol.DynamicMethodSymbol;
+import com.sun.tools.javac.code.Symbol.MethodSymbol;
+import com.sun.tools.javac.code.Symbol.TypeSymbol;
+import com.sun.tools.javac.code.Symbol.VarSymbol;
+import com.sun.tools.javac.code.Symtab;
+import com.sun.tools.javac.code.Type;
+import com.sun.tools.javac.code.Type.MethodType;
+import com.sun.tools.javac.code.Type.TypeVar;
+import com.sun.tools.javac.code.Types;
+import com.sun.tools.javac.comp.LambdaToMethod.LambdaAnalyzerPreprocessor.*;
+import com.sun.tools.javac.comp.Lower.BasicFreeVarCollector;
+import com.sun.tools.javac.jvm.*;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
+import com.sun.source.tree.MemberReferenceTree.ReferenceMode;
+
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+
+import static com.sun.tools.javac.comp.LambdaToMethod.LambdaSymbolKind.*;
+import static com.sun.tools.javac.code.Flags.*;
+import static com.sun.tools.javac.code.Kinds.*;
+import static com.sun.tools.javac.code.TypeTag.*;
+import static com.sun.tools.javac.tree.JCTree.Tag.*;
+import javax.lang.model.type.TypeKind;
+
+/**
+ * This pass desugars lambda expressions into static methods
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class LambdaToMethod extends TreeTranslator {
+
+    private Attr attr;
+    private JCDiagnostic.Factory diags;
+    private Log log;
+    private Lower lower;
+    private Names names;
+    private Symtab syms;
+    private Resolve rs;
+    private TreeMaker make;
+    private Types types;
+    private TransTypes transTypes;
+    private Env<AttrContext> attrEnv;
+
+    /** the analyzer scanner */
+    private LambdaAnalyzerPreprocessor analyzer;
+
+    /** map from lambda trees to translation contexts */
+    private Map<JCTree, TranslationContext<?>> contextMap;
+
+    /** current translation context (visitor argument) */
+    private TranslationContext<?> context;
+
+    /** info about the current class being processed */
+    private KlassInfo kInfo;
+
+    /** dump statistics about lambda code generation */
+    private boolean dumpLambdaToMethodStats;
+
+    /** force serializable representation, for stress testing **/
+    private final boolean forceSerializable;
+
+    /** Flag for alternate metafactories indicating the lambda object is intended to be serializable */
+    public static final int FLAG_SERIALIZABLE = 1 << 0;
+
+    /** Flag for alternate metafactories indicating the lambda object has multiple targets */
+    public static final int FLAG_MARKERS = 1 << 1;
+
+    /** Flag for alternate metafactories indicating the lambda object requires multiple bridges */
+    public static final int FLAG_BRIDGES = 1 << 2;
+
+    // <editor-fold defaultstate="collapsed" desc="Instantiating">
+    protected static final Context.Key<LambdaToMethod> unlambdaKey =
+            new Context.Key<LambdaToMethod>();
+
+    public static LambdaToMethod instance(Context context) {
+        LambdaToMethod instance = context.get(unlambdaKey);
+        if (instance == null) {
+            instance = new LambdaToMethod(context);
+        }
+        return instance;
+    }
+    private LambdaToMethod(Context context) {
+        context.put(unlambdaKey, this);
+        diags = JCDiagnostic.Factory.instance(context);
+        log = Log.instance(context);
+        lower = Lower.instance(context);
+        names = Names.instance(context);
+        syms = Symtab.instance(context);
+        rs = Resolve.instance(context);
+        make = TreeMaker.instance(context);
+        types = Types.instance(context);
+        transTypes = TransTypes.instance(context);
+        analyzer = new LambdaAnalyzerPreprocessor();
+        Options options = Options.instance(context);
+        dumpLambdaToMethodStats = options.isSet("dumpLambdaToMethodStats");
+        attr = Attr.instance(context);
+        forceSerializable = options.isSet("forceSerializable");
+    }
+    // </editor-fold>
+
+    private class KlassInfo {
+
+        /**
+         * list of methods to append
+         */
+        private ListBuffer<JCTree> appendedMethodList;
+
+        /**
+         * list of deserialization cases
+         */
+        private final Map<String, ListBuffer<JCStatement>> deserializeCases;
+
+       /**
+         * deserialize method symbol
+         */
+        private final MethodSymbol deserMethodSym;
+
+        /**
+         * deserialize method parameter symbol
+         */
+        private final VarSymbol deserParamSym;
+
+        private final JCClassDecl clazz;
+
+        private KlassInfo(JCClassDecl clazz) {
+            this.clazz = clazz;
+            appendedMethodList = new ListBuffer<>();
+            deserializeCases = new HashMap<String, ListBuffer<JCStatement>>();
+            MethodType type = new MethodType(List.of(syms.serializedLambdaType), syms.objectType,
+                    List.<Type>nil(), syms.methodClass);
+            deserMethodSym = makePrivateSyntheticMethod(STATIC, names.deserializeLambda, type, clazz.sym);
+            deserParamSym = new VarSymbol(FINAL, names.fromString("lambda"),
+                    syms.serializedLambdaType, deserMethodSym);
+        }
+
+        private void addMethod(JCTree decl) {
+            appendedMethodList = appendedMethodList.prepend(decl);
+        }
+    }
+
+    // <editor-fold defaultstate="collapsed" desc="translate methods">
+    @Override
+    public <T extends JCTree> T translate(T tree) {
+        TranslationContext<?> newContext = contextMap.get(tree);
+        return translate(tree, newContext != null ? newContext : context);
+    }
+
+    <T extends JCTree> T translate(T tree, TranslationContext<?> newContext) {
+        TranslationContext<?> prevContext = context;
+        try {
+            context = newContext;
+            return super.translate(tree);
+        }
+        finally {
+            context = prevContext;
+        }
+    }
+
+    <T extends JCTree> List<T> translate(List<T> trees, TranslationContext<?> newContext) {
+        ListBuffer<T> buf = new ListBuffer<>();
+        for (T tree : trees) {
+            buf.append(translate(tree, newContext));
+        }
+        return buf.toList();
+    }
+
+    public JCTree translateTopLevelClass(Env<AttrContext> env, JCTree cdef, TreeMaker make) {
+        this.make = make;
+        this.attrEnv = env;
+        this.context = null;
+        this.contextMap = new HashMap<JCTree, TranslationContext<?>>();
+        return translate(cdef);
+    }
+    // </editor-fold>
+
+    // <editor-fold defaultstate="collapsed" desc="visitor methods">
+    /**
+     * Visit a class.
+     * Maintain the translatedMethodList across nested classes.
+     * Append the translatedMethodList to the class after it is translated.
+     * @param tree
+     */
+    @Override
+    public void visitClassDef(JCClassDecl tree) {
+        if (tree.sym.owner.kind == PCK) {
+            //analyze class
+            tree = analyzer.analyzeAndPreprocessClass(tree);
+        }
+        KlassInfo prevKlassInfo = kInfo;
+        try {
+            kInfo = new KlassInfo(tree);
+            super.visitClassDef(tree);
+            if (!kInfo.deserializeCases.isEmpty()) {
+                int prevPos = make.pos;
+                try {
+                    make.at(tree);
+                    kInfo.addMethod(makeDeserializeMethod(tree.sym));
+                } finally {
+                    make.at(prevPos);
+                }
+            }
+            //add all translated instance methods here
+            List<JCTree> newMethods = kInfo.appendedMethodList.toList();
+            tree.defs = tree.defs.appendList(newMethods);
+            for (JCTree lambda : newMethods) {
+                tree.sym.members().enter(((JCMethodDecl)lambda).sym);
+            }
+            result = tree;
+        } finally {
+            kInfo = prevKlassInfo;
+        }
+    }
+
+    /**
+     * Translate a lambda into a method to be inserted into the class.
+     * Then replace the lambda site with an invokedynamic call of to lambda
+     * meta-factory, which will use the lambda method.
+     * @param tree
+     */
+    @Override
+    public void visitLambda(JCLambda tree) {
+        LambdaTranslationContext localContext = (LambdaTranslationContext)context;
+        MethodSymbol sym = localContext.translatedSym;
+        MethodType lambdaType = (MethodType) sym.type;
+
+        {
+            Symbol owner = localContext.owner;
+            ListBuffer<Attribute.TypeCompound> ownerTypeAnnos = new ListBuffer<Attribute.TypeCompound>();
+            ListBuffer<Attribute.TypeCompound> lambdaTypeAnnos = new ListBuffer<Attribute.TypeCompound>();
+
+            for (Attribute.TypeCompound tc : owner.getRawTypeAttributes()) {
+                if (tc.position.onLambda == tree) {
+                    lambdaTypeAnnos.append(tc);
+                } else {
+                    ownerTypeAnnos.append(tc);
+                }
+            }
+            if (lambdaTypeAnnos.nonEmpty()) {
+                owner.setTypeAttributes(ownerTypeAnnos.toList());
+                sym.setTypeAttributes(lambdaTypeAnnos.toList());
+            }
+        }
+
+        //create the method declaration hoisting the lambda body
+        JCMethodDecl lambdaDecl = make.MethodDef(make.Modifiers(sym.flags_field),
+                sym.name,
+                make.QualIdent(lambdaType.getReturnType().tsym),
+                List.<JCTypeParameter>nil(),
+                localContext.syntheticParams,
+                lambdaType.getThrownTypes() == null ?
+                    List.<JCExpression>nil() :
+                    make.Types(lambdaType.getThrownTypes()),
+                null,
+                null);
+        lambdaDecl.sym = sym;
+        lambdaDecl.type = lambdaType;
+
+        //translate lambda body
+        //As the lambda body is translated, all references to lambda locals,
+        //captured variables, enclosing members are adjusted accordingly
+        //to refer to the static method parameters (rather than i.e. acessing to
+        //captured members directly).
+        lambdaDecl.body = translate(makeLambdaBody(tree, lambdaDecl));
+
+        //Add the method to the list of methods to be added to this class.
+        kInfo.addMethod(lambdaDecl);
+
+        //now that we have generated a method for the lambda expression,
+        //we can translate the lambda into a method reference pointing to the newly
+        //created method.
+        //
+        //Note that we need to adjust the method handle so that it will match the
+        //signature of the SAM descriptor - this means that the method reference
+        //should be added the following synthetic arguments:
+        //
+        // * the "this" argument if it is an instance method
+        // * enclosing locals captured by the lambda expression
+
+        ListBuffer<JCExpression> syntheticInits = new ListBuffer<>();
+
+        if (localContext.methodReferenceReceiver != null) {
+            syntheticInits.append(localContext.methodReferenceReceiver);
+        } else if (!sym.isStatic()) {
+            syntheticInits.append(makeThis(
+                    sym.owner.enclClass().asType(),
+                    localContext.owner.enclClass()));
+        }
+
+        //add captured locals
+        for (Symbol fv : localContext.getSymbolMap(CAPTURED_VAR).keySet()) {
+            if (fv != localContext.self) {
+                JCTree captured_local = make.Ident(fv).setType(fv.type);
+                syntheticInits.append((JCExpression) captured_local);
+            }
+        }
+        // add captured outer this instances (used only when `this' capture itself is illegal)
+        for (Symbol fv : localContext.getSymbolMap(CAPTURED_OUTER_THIS).keySet()) {
+            JCTree captured_local = make.QualThis(fv.type);
+            syntheticInits.append((JCExpression) captured_local);
+        }
+
+        //then, determine the arguments to the indy call
+        List<JCExpression> indy_args = translate(syntheticInits.toList(), localContext.prev);
+
+        //build a sam instance using an indy call to the meta-factory
+        int refKind = referenceKind(sym);
+
+        //convert to an invokedynamic call
+        result = makeMetafactoryIndyCall(context, refKind, sym, indy_args);
+    }
+
+    private JCIdent makeThis(Type type, Symbol owner) {
+        VarSymbol _this = new VarSymbol(PARAMETER | FINAL | SYNTHETIC,
+                names._this,
+                type,
+                owner);
+        return make.Ident(_this);
+    }
+
+    /**
+     * Translate a method reference into an invokedynamic call to the
+     * meta-factory.
+     * @param tree
+     */
+    @Override
+    public void visitReference(JCMemberReference tree) {
+        ReferenceTranslationContext localContext = (ReferenceTranslationContext)context;
+
+        //first determine the method symbol to be used to generate the sam instance
+        //this is either the method reference symbol, or the bridged reference symbol
+        Symbol refSym = localContext.isSignaturePolymorphic()
+                ? localContext.sigPolySym
+                : tree.sym;
+
+        //the qualifying expression is treated as a special captured arg
+        JCExpression init;
+        switch(tree.kind) {
+
+            case IMPLICIT_INNER:    /** Inner :: new */
+            case SUPER:             /** super :: instMethod */
+                init = makeThis(
+                    localContext.owner.enclClass().asType(),
+                    localContext.owner.enclClass());
+                break;
+
+            case BOUND:             /** Expr :: instMethod */
+                init = tree.getQualifierExpression();
+                init = attr.makeNullCheck(init);
+                break;
+
+            case UNBOUND:           /** Type :: instMethod */
+            case STATIC:            /** Type :: staticMethod */
+            case TOPLEVEL:          /** Top level :: new */
+            case ARRAY_CTOR:        /** ArrayType :: new */
+                init = null;
+                break;
+
+            default:
+                throw new InternalError("Should not have an invalid kind");
+        }
+
+        List<JCExpression> indy_args = init==null? List.<JCExpression>nil() : translate(List.of(init), localContext.prev);
+
+
+        //build a sam instance using an indy call to the meta-factory
+        result = makeMetafactoryIndyCall(localContext, localContext.referenceKind(), refSym, indy_args);
+    }
+
+    /**
+     * Translate identifiers within a lambda to the mapped identifier
+     * @param tree
+     */
+    @Override
+    public void visitIdent(JCIdent tree) {
+        if (context == null || !analyzer.lambdaIdentSymbolFilter(tree.sym)) {
+            super.visitIdent(tree);
+        } else {
+            int prevPos = make.pos;
+            try {
+                make.at(tree);
+
+                LambdaTranslationContext lambdaContext = (LambdaTranslationContext) context;
+                JCTree ltree = lambdaContext.translate(tree);
+                if (ltree != null) {
+                    result = ltree;
+                } else {
+                    //access to untranslated symbols (i.e. compile-time constants,
+                    //members defined inside the lambda body, etc.) )
+                    super.visitIdent(tree);
+                }
+            } finally {
+                make.at(prevPos);
+            }
+        }
+    }
+
+    /**
+     * Translate qualified `this' references within a lambda to the mapped identifier
+     * @param tree
+     */
+    @Override
+    public void visitSelect(JCFieldAccess tree) {
+        if (context == null || !analyzer.lambdaFieldAccessFilter(tree)) {
+            super.visitSelect(tree);
+        } else {
+            int prevPos = make.pos;
+            try {
+                make.at(tree);
+
+                LambdaTranslationContext lambdaContext = (LambdaTranslationContext) context;
+                JCTree ltree = lambdaContext.translate(tree);
+                if (ltree != null) {
+                    result = ltree;
+                } else {
+                    super.visitSelect(tree);
+                }
+            } finally {
+                make.at(prevPos);
+            }
+        }
+    }
+
+    @Override
+    public void visitVarDef(JCVariableDecl tree) {
+        LambdaTranslationContext lambdaContext = (LambdaTranslationContext)context;
+        if (context != null && lambdaContext.getSymbolMap(LOCAL_VAR).containsKey(tree.sym)) {
+            tree.init = translate(tree.init);
+            tree.sym = (VarSymbol) lambdaContext.getSymbolMap(LOCAL_VAR).get(tree.sym);
+            result = tree;
+        } else if (context != null && lambdaContext.getSymbolMap(TYPE_VAR).containsKey(tree.sym)) {
+            JCExpression init = translate(tree.init);
+            VarSymbol xsym = (VarSymbol)lambdaContext.getSymbolMap(TYPE_VAR).get(tree.sym);
+            int prevPos = make.pos;
+            try {
+                result = make.at(tree).VarDef(xsym, init);
+            } finally {
+                make.at(prevPos);
+            }
+            // Replace the entered symbol for this variable
+            Scope sc = tree.sym.owner.members();
+            if (sc != null) {
+                sc.remove(tree.sym);
+                sc.enter(xsym);
+            }
+        } else {
+            super.visitVarDef(tree);
+        }
+    }
+
+    // </editor-fold>
+
+    // <editor-fold defaultstate="collapsed" desc="Translation helper methods">
+
+    private JCBlock makeLambdaBody(JCLambda tree, JCMethodDecl lambdaMethodDecl) {
+        return tree.getBodyKind() == JCLambda.BodyKind.EXPRESSION ?
+                makeLambdaExpressionBody((JCExpression)tree.body, lambdaMethodDecl) :
+                makeLambdaStatementBody((JCBlock)tree.body, lambdaMethodDecl, tree.canCompleteNormally);
+    }
+
+    private JCBlock makeLambdaExpressionBody(JCExpression expr, JCMethodDecl lambdaMethodDecl) {
+        Type restype = lambdaMethodDecl.type.getReturnType();
+        boolean isLambda_void = expr.type.hasTag(VOID);
+        boolean isTarget_void = restype.hasTag(VOID);
+        boolean isTarget_Void = types.isSameType(restype, types.boxedClass(syms.voidType).type);
+        int prevPos = make.pos;
+        try {
+            if (isTarget_void) {
+                //target is void:
+                // BODY;
+                JCStatement stat = make.at(expr).Exec(expr);
+                return make.Block(0, List.<JCStatement>of(stat));
+            } else if (isLambda_void && isTarget_Void) {
+                //void to Void conversion:
+                // BODY; return null;
+                ListBuffer<JCStatement> stats = new ListBuffer<>();
+                stats.append(make.at(expr).Exec(expr));
+                stats.append(make.Return(make.Literal(BOT, null).setType(syms.botType)));
+                return make.Block(0, stats.toList());
+            } else {
+                //non-void to non-void conversion:
+                // return (TYPE)BODY;
+                JCExpression retExpr = transTypes.coerce(attrEnv, expr, restype);
+                return make.at(retExpr).Block(0, List.<JCStatement>of(make.Return(retExpr)));
+            }
+        } finally {
+            make.at(prevPos);
+        }
+    }
+
+    private JCBlock makeLambdaStatementBody(JCBlock block, final JCMethodDecl lambdaMethodDecl, boolean completeNormally) {
+        final Type restype = lambdaMethodDecl.type.getReturnType();
+        final boolean isTarget_void = restype.hasTag(VOID);
+        boolean isTarget_Void = types.isSameType(restype, types.boxedClass(syms.voidType).type);
+
+        class LambdaBodyTranslator extends TreeTranslator {
+
+            @Override
+            public void visitClassDef(JCClassDecl tree) {
+                //do NOT recurse on any inner classes
+                result = tree;
+            }
+
+            @Override
+            public void visitLambda(JCLambda tree) {
+                //do NOT recurse on any nested lambdas
+                result = tree;
+            }
+
+            @Override
+            public void visitReturn(JCReturn tree) {
+                boolean isLambda_void = tree.expr == null;
+                if (isTarget_void && !isLambda_void) {
+                    //Void to void conversion:
+                    // { TYPE $loc = RET-EXPR; return; }
+                    VarSymbol loc = makeSyntheticVar(0, names.fromString("$loc"), tree.expr.type, lambdaMethodDecl.sym);
+                    JCVariableDecl varDef = make.VarDef(loc, tree.expr);
+                    result = make.Block(0, List.<JCStatement>of(varDef, make.Return(null)));
+                } else if (!isTarget_void || !isLambda_void) {
+                    //non-void to non-void conversion:
+                    // return (TYPE)RET-EXPR;
+                    tree.expr = transTypes.coerce(attrEnv, tree.expr, restype);
+                    result = tree;
+                } else {
+                    result = tree;
+                }
+
+            }
+        }
+
+        JCBlock trans_block = new LambdaBodyTranslator().translate(block);
+        if (completeNormally && isTarget_Void) {
+            //there's no return statement and the lambda (possibly inferred)
+            //return type is java.lang.Void; emit a synthetic return statement
+            trans_block.stats = trans_block.stats.append(make.Return(make.Literal(BOT, null).setType(syms.botType)));
+        }
+        return trans_block;
+    }
+
+    private JCMethodDecl makeDeserializeMethod(Symbol kSym) {
+        ListBuffer<JCCase> cases = new ListBuffer<>();
+        ListBuffer<JCBreak> breaks = new ListBuffer<>();
+        for (Map.Entry<String, ListBuffer<JCStatement>> entry : kInfo.deserializeCases.entrySet()) {
+            JCBreak br = make.Break(null);
+            breaks.add(br);
+            List<JCStatement> stmts = entry.getValue().append(br).toList();
+            cases.add(make.Case(make.Literal(entry.getKey()), stmts));
+        }
+        JCSwitch sw = make.Switch(deserGetter("getImplMethodName", syms.stringType), cases.toList());
+        for (JCBreak br : breaks) {
+            br.target = sw;
+        }
+        JCBlock body = make.Block(0L, List.<JCStatement>of(
+                sw,
+                make.Throw(makeNewClass(
+                    syms.illegalArgumentExceptionType,
+                    List.<JCExpression>of(make.Literal("Invalid lambda deserialization"))))));
+        JCMethodDecl deser = make.MethodDef(make.Modifiers(kInfo.deserMethodSym.flags()),
+                        names.deserializeLambda,
+                        make.QualIdent(kInfo.deserMethodSym.getReturnType().tsym),
+                        List.<JCTypeParameter>nil(),
+                        List.of(make.VarDef(kInfo.deserParamSym, null)),
+                        List.<JCExpression>nil(),
+                        body,
+                        null);
+        deser.sym = kInfo.deserMethodSym;
+        deser.type = kInfo.deserMethodSym.type;
+        //System.err.printf("DESER: '%s'\n", deser);
+        return deser;
+    }
+
+    /** Make an attributed class instance creation expression.
+     *  @param ctype    The class type.
+     *  @param args     The constructor arguments.
+     *  @param cons     The constructor symbol
+     */
+    JCNewClass makeNewClass(Type ctype, List<JCExpression> args, Symbol cons) {
+        JCNewClass tree = make.NewClass(null,
+            null, make.QualIdent(ctype.tsym), args, null);
+        tree.constructor = cons;
+        tree.type = ctype;
+        return tree;
+    }
+
+    /** Make an attributed class instance creation expression.
+     *  @param ctype    The class type.
+     *  @param args     The constructor arguments.
+     */
+    JCNewClass makeNewClass(Type ctype, List<JCExpression> args) {
+        return makeNewClass(ctype, args,
+                rs.resolveConstructor(null, attrEnv, ctype, TreeInfo.types(args), List.<Type>nil()));
+     }
+
+    private void addDeserializationCase(int implMethodKind, Symbol refSym, Type targetType, MethodSymbol samSym,
+            DiagnosticPosition pos, List<Object> staticArgs, MethodType indyType) {
+        String functionalInterfaceClass = classSig(targetType);
+        String functionalInterfaceMethodName = samSym.getSimpleName().toString();
+        String functionalInterfaceMethodSignature = typeSig(types.erasure(samSym.type));
+        String implClass = classSig(types.erasure(refSym.owner.type));
+        String implMethodName = refSym.getQualifiedName().toString();
+        String implMethodSignature = typeSig(types.erasure(refSym.type));
+
+        JCExpression kindTest = eqTest(syms.intType, deserGetter("getImplMethodKind", syms.intType), make.Literal(implMethodKind));
+        ListBuffer<JCExpression> serArgs = new ListBuffer<>();
+        int i = 0;
+        for (Type t : indyType.getParameterTypes()) {
+            List<JCExpression> indexAsArg = new ListBuffer<JCExpression>().append(make.Literal(i)).toList();
+            List<Type> argTypes = new ListBuffer<Type>().append(syms.intType).toList();
+            serArgs.add(make.TypeCast(types.erasure(t), deserGetter("getCapturedArg", syms.objectType, argTypes, indexAsArg)));
+            ++i;
+        }
+        JCStatement stmt = make.If(
+                deserTest(deserTest(deserTest(deserTest(deserTest(
+                    kindTest,
+                    "getFunctionalInterfaceClass", functionalInterfaceClass),
+                    "getFunctionalInterfaceMethodName", functionalInterfaceMethodName),
+                    "getFunctionalInterfaceMethodSignature", functionalInterfaceMethodSignature),
+                    "getImplClass", implClass),
+                    "getImplMethodSignature", implMethodSignature),
+                make.Return(makeIndyCall(
+                    pos,
+                    syms.lambdaMetafactory,
+                    names.altMetafactory,
+                    staticArgs, indyType, serArgs.toList(), samSym.name)),
+                null);
+        ListBuffer<JCStatement> stmts = kInfo.deserializeCases.get(implMethodName);
+        if (stmts == null) {
+            stmts = new ListBuffer<>();
+            kInfo.deserializeCases.put(implMethodName, stmts);
+        }
+        /****
+        System.err.printf("+++++++++++++++++\n");
+        System.err.printf("*functionalInterfaceClass: '%s'\n", functionalInterfaceClass);
+        System.err.printf("*functionalInterfaceMethodName: '%s'\n", functionalInterfaceMethodName);
+        System.err.printf("*functionalInterfaceMethodSignature: '%s'\n", functionalInterfaceMethodSignature);
+        System.err.printf("*implMethodKind: %d\n", implMethodKind);
+        System.err.printf("*implClass: '%s'\n", implClass);
+        System.err.printf("*implMethodName: '%s'\n", implMethodName);
+        System.err.printf("*implMethodSignature: '%s'\n", implMethodSignature);
+        ****/
+        stmts.append(stmt);
+    }
+
+    private JCExpression eqTest(Type argType, JCExpression arg1, JCExpression arg2) {
+        JCBinary testExpr = make.Binary(Tag.EQ, arg1, arg2);
+        testExpr.operator = rs.resolveBinaryOperator(null, Tag.EQ, attrEnv, argType, argType);
+        testExpr.setType(syms.booleanType);
+        return testExpr;
+    }
+
+    private JCExpression deserTest(JCExpression prev, String func, String lit) {
+        MethodType eqmt = new MethodType(List.of(syms.objectType), syms.booleanType, List.<Type>nil(), syms.methodClass);
+        Symbol eqsym = rs.resolveQualifiedMethod(null, attrEnv, syms.objectType, names.equals, List.of(syms.objectType), List.<Type>nil());
+        JCMethodInvocation eqtest = make.Apply(
+                List.<JCExpression>nil(),
+                make.Select(deserGetter(func, syms.stringType), eqsym).setType(eqmt),
+                List.<JCExpression>of(make.Literal(lit)));
+        eqtest.setType(syms.booleanType);
+        JCBinary compound = make.Binary(Tag.AND, prev, eqtest);
+        compound.operator = rs.resolveBinaryOperator(null, Tag.AND, attrEnv, syms.booleanType, syms.booleanType);
+        compound.setType(syms.booleanType);
+        return compound;
+    }
+
+    private JCExpression deserGetter(String func, Type type) {
+        return deserGetter(func, type, List.<Type>nil(), List.<JCExpression>nil());
+    }
+
+    private JCExpression deserGetter(String func, Type type, List<Type> argTypes, List<JCExpression> args) {
+        MethodType getmt = new MethodType(argTypes, type, List.<Type>nil(), syms.methodClass);
+        Symbol getsym = rs.resolveQualifiedMethod(null, attrEnv, syms.serializedLambdaType, names.fromString(func), argTypes, List.<Type>nil());
+        return make.Apply(
+                    List.<JCExpression>nil(),
+                    make.Select(make.Ident(kInfo.deserParamSym).setType(syms.serializedLambdaType), getsym).setType(getmt),
+                    args).setType(type);
+    }
+
+    /**
+     * Create new synthetic method with given flags, name, type, owner
+     */
+    private MethodSymbol makePrivateSyntheticMethod(long flags, Name name, Type type, Symbol owner) {
+        return new MethodSymbol(flags | SYNTHETIC | PRIVATE, name, type, owner);
+    }
+
+    /**
+     * Create new synthetic variable with given flags, name, type, owner
+     */
+    private VarSymbol makeSyntheticVar(long flags, String name, Type type, Symbol owner) {
+        return makeSyntheticVar(flags, names.fromString(name), type, owner);
+    }
+
+    /**
+     * Create new synthetic variable with given flags, name, type, owner
+     */
+    private VarSymbol makeSyntheticVar(long flags, Name name, Type type, Symbol owner) {
+        return new VarSymbol(flags | SYNTHETIC, name, type, owner);
+    }
+
+    /**
+     * Set varargsElement field on a given tree (must be either a new class tree
+     * or a method call tree)
+     */
+    private void setVarargsIfNeeded(JCTree tree, Type varargsElement) {
+        if (varargsElement != null) {
+            switch (tree.getTag()) {
+                case APPLY: ((JCMethodInvocation)tree).varargsElement = varargsElement; break;
+                case NEWCLASS: ((JCNewClass)tree).varargsElement = varargsElement; break;
+                default: throw new AssertionError();
+            }
+        }
+    }
+
+    /**
+     * Convert method/constructor arguments by inserting appropriate cast
+     * as required by type-erasure - this is needed when bridging a lambda/method
+     * reference, as the bridged signature might require downcast to be compatible
+     * with the generated signature.
+     */
+    private List<JCExpression> convertArgs(Symbol meth, List<JCExpression> args, Type varargsElement) {
+       Assert.check(meth.kind == Kinds.MTH);
+       List<Type> formals = types.erasure(meth.type).getParameterTypes();
+       if (varargsElement != null) {
+           Assert.check((meth.flags() & VARARGS) != 0);
+       }
+       return transTypes.translateArgs(args, formals, varargsElement, attrEnv);
+    }
+
+    // </editor-fold>
+
+    /**
+     * Converts a method reference which cannot be used directly into a lambda
+     */
+    private class MemberReferenceToLambda {
+
+        private final JCMemberReference tree;
+        private final ReferenceTranslationContext localContext;
+        private final Symbol owner;
+        private final ListBuffer<JCExpression> args = new ListBuffer<>();
+        private final ListBuffer<JCVariableDecl> params = new ListBuffer<>();
+
+        private JCExpression receiverExpression = null;
+
+        MemberReferenceToLambda(JCMemberReference tree, ReferenceTranslationContext localContext, Symbol owner) {
+            this.tree = tree;
+            this.localContext = localContext;
+            this.owner = owner;
+        }
+
+        JCLambda lambda() {
+            int prevPos = make.pos;
+            try {
+                make.at(tree);
+
+                //body generation - this can be either a method call or a
+                //new instance creation expression, depending on the member reference kind
+                VarSymbol rcvr = addParametersReturnReceiver();
+                JCExpression expr = (tree.getMode() == ReferenceMode.INVOKE)
+                        ? expressionInvoke(rcvr)
+                        : expressionNew();
+
+                JCLambda slam = make.Lambda(params.toList(), expr);
+                slam.targets = tree.targets;
+                slam.type = tree.type;
+                slam.pos = tree.pos;
+                return slam;
+            } finally {
+                make.at(prevPos);
+            }
+        }
+
+        /**
+         * Generate the parameter list for the converted member reference.
+         *
+         * @return The receiver variable symbol, if any
+         */
+        VarSymbol addParametersReturnReceiver() {
+            Type samDesc = localContext.bridgedRefSig();
+            List<Type> samPTypes = samDesc.getParameterTypes();
+            List<Type> descPTypes = tree.getDescriptorType(types).getParameterTypes();
+
+            // Determine the receiver, if any
+            VarSymbol rcvr;
+            switch (tree.kind) {
+                case BOUND:
+                    // The receiver is explicit in the method reference
+                    rcvr = addParameter("rec$", tree.getQualifierExpression().type, false);
+                    receiverExpression = attr.makeNullCheck(tree.getQualifierExpression());
+                    break;
+                case UNBOUND:
+                    // The receiver is the first parameter, extract it and
+                    // adjust the SAM and unerased type lists accordingly
+                    rcvr = addParameter("rec$", samDesc.getParameterTypes().head, false);
+                    samPTypes = samPTypes.tail;
+                    descPTypes = descPTypes.tail;
+                    break;
+                default:
+                    rcvr = null;
+                    break;
+            }
+            List<Type> implPTypes = tree.sym.type.getParameterTypes();
+            int implSize = implPTypes.size();
+            int samSize = samPTypes.size();
+            // Last parameter to copy from referenced method, exclude final var args
+            int last = localContext.needsVarArgsConversion() ? implSize - 1 : implSize;
+
+            // Failsafe -- assure match-up
+            boolean checkForIntersection = tree.varargsElement != null || implSize == descPTypes.size();
+
+            // Use parameter types of the implementation method unless the unerased
+            // SAM parameter type is an intersection type, in that case use the
+            // erased SAM parameter type so that the supertype relationship
+            // the implementation method parameters is not obscured.
+            // Note: in this loop, the lists implPTypes, samPTypes, and descPTypes
+            // are used as pointers to the current parameter type information
+            // and are thus not usable afterwards.
+            for (int i = 0; implPTypes.nonEmpty() && i < last; ++i) {
+                // By default use the implementation method parmeter type
+                Type parmType = implPTypes.head;
+                // If the unerased parameter type is a type variable whose
+                // bound is an intersection (eg. <T extends A & B>) then
+                // use the SAM parameter type
+                if (checkForIntersection && descPTypes.head.getKind() == TypeKind.TYPEVAR) {
+                    TypeVar tv = (TypeVar) descPTypes.head;
+                    if (tv.bound.getKind() == TypeKind.INTERSECTION) {
+                        parmType = samPTypes.head;
+                    }
+                }
+                addParameter("x$" + i, parmType, true);
+
+                // Advance to the next parameter
+                implPTypes = implPTypes.tail;
+                samPTypes = samPTypes.tail;
+                descPTypes = descPTypes.tail;
+            }
+            // Flatten out the var args
+            for (int i = last; i < samSize; ++i) {
+                addParameter("xva$" + i, tree.varargsElement, true);
+            }
+
+            return rcvr;
+        }
+
+        JCExpression getReceiverExpression() {
+            return receiverExpression;
+        }
+
+        private JCExpression makeReceiver(VarSymbol rcvr) {
+            if (rcvr == null) return null;
+            JCExpression rcvrExpr = make.Ident(rcvr);
+            Type rcvrType = tree.ownerAccessible ? tree.sym.enclClass().type : tree.expr.type;
+            if (rcvrType == syms.arrayClass.type) {
+                // Map the receiver type to the actually type, not just "array"
+                rcvrType = tree.getQualifierExpression().type;
+            }
+            if (!rcvr.type.tsym.isSubClass(rcvrType.tsym, types)) {
+                rcvrExpr = make.TypeCast(make.Type(rcvrType), rcvrExpr).setType(rcvrType);
+            }
+            return rcvrExpr;
+        }
+
+        /**
+         * determine the receiver of the method call - the receiver can
+         * be a type qualifier, the synthetic receiver parameter or 'super'.
+         */
+        private JCExpression expressionInvoke(VarSymbol rcvr) {
+            JCExpression qualifier =
+                    (rcvr != null) ?
+                        makeReceiver(rcvr) :
+                        tree.getQualifierExpression();
+
+            //create the qualifier expression
+            JCFieldAccess select = make.Select(qualifier, tree.sym.name);
+            select.sym = tree.sym;
+            select.type = tree.sym.erasure(types);
+
+            //create the method call expression
+            JCExpression apply = make.Apply(List.<JCExpression>nil(), select,
+                    convertArgs(tree.sym, args.toList(), tree.varargsElement)).
+                    setType(tree.sym.erasure(types).getReturnType());
+
+            apply = transTypes.coerce(apply, localContext.generatedRefSig().getReturnType());
+            setVarargsIfNeeded(apply, tree.varargsElement);
+            return apply;
+        }
+
+        /**
+         * Lambda body to use for a 'new'.
+         */
+        private JCExpression expressionNew() {
+            if (tree.kind == ReferenceKind.ARRAY_CTOR) {
+                //create the array creation expression
+                JCNewArray newArr = make.NewArray(
+                        make.Type(types.elemtype(tree.getQualifierExpression().type)),
+                        List.of(make.Ident(params.first())),
+                        null);
+                newArr.type = tree.getQualifierExpression().type;
+                return newArr;
+            } else {
+                //create the instance creation expression
+                //note that method reference syntax does not allow an explicit
+                //enclosing class (so the enclosing class is null)
+                JCNewClass newClass = make.NewClass(null,
+                        List.<JCExpression>nil(),
+                        make.Type(tree.getQualifierExpression().type),
+                        convertArgs(tree.sym, args.toList(), tree.varargsElement),
+                        null);
+                newClass.constructor = tree.sym;
+                newClass.constructorType = tree.sym.erasure(types);
+                newClass.type = tree.getQualifierExpression().type;
+                setVarargsIfNeeded(newClass, tree.varargsElement);
+                return newClass;
+            }
+        }
+
+        private VarSymbol addParameter(String name, Type p, boolean genArg) {
+            VarSymbol vsym = new VarSymbol(PARAMETER | SYNTHETIC, names.fromString(name), p, owner);
+            vsym.pos = tree.pos;
+            params.append(make.VarDef(vsym, null));
+            if (genArg) {
+                args.append(make.Ident(vsym));
+            }
+            return vsym;
+        }
+    }
+
+    private MethodType typeToMethodType(Type mt) {
+        Type type = types.erasure(mt);
+        return new MethodType(type.getParameterTypes(),
+                        type.getReturnType(),
+                        type.getThrownTypes(),
+                        syms.methodClass);
+    }
+
+    /**
+     * Generate an indy method call to the meta factory
+     */
+    private JCExpression makeMetafactoryIndyCall(TranslationContext<?> context,
+            int refKind, Symbol refSym, List<JCExpression> indy_args) {
+        JCFunctionalExpression tree = context.tree;
+        //determine the static bsm args
+        MethodSymbol samSym = (MethodSymbol) types.findDescriptorSymbol(tree.type.tsym);
+        List<Object> staticArgs = List.<Object>of(
+                typeToMethodType(samSym.type),
+                new Pool.MethodHandle(refKind, refSym, types),
+                typeToMethodType(tree.getDescriptorType(types)));
+
+        //computed indy arg types
+        ListBuffer<Type> indy_args_types = new ListBuffer<>();
+        for (JCExpression arg : indy_args) {
+            indy_args_types.append(arg.type);
+        }
+
+        //finally, compute the type of the indy call
+        MethodType indyType = new MethodType(indy_args_types.toList(),
+                tree.type,
+                List.<Type>nil(),
+                syms.methodClass);
+
+        Name metafactoryName = context.needsAltMetafactory() ?
+                names.altMetafactory : names.metafactory;
+
+        if (context.needsAltMetafactory()) {
+            ListBuffer<Object> markers = new ListBuffer<>();
+            for (Type t : tree.targets.tail) {
+                if (t.tsym != syms.serializableType.tsym) {
+                    markers.append(t.tsym);
+                }
+            }
+            int flags = context.isSerializable() ? FLAG_SERIALIZABLE : 0;
+            boolean hasMarkers = markers.nonEmpty();
+            boolean hasBridges = context.bridges.nonEmpty();
+            if (hasMarkers) {
+                flags |= FLAG_MARKERS;
+            }
+            if (hasBridges) {
+                flags |= FLAG_BRIDGES;
+            }
+            staticArgs = staticArgs.append(flags);
+            if (hasMarkers) {
+                staticArgs = staticArgs.append(markers.length());
+                staticArgs = staticArgs.appendList(markers.toList());
+            }
+            if (hasBridges) {
+                staticArgs = staticArgs.append(context.bridges.length() - 1);
+                for (Symbol s : context.bridges) {
+                    Type s_erasure = s.erasure(types);
+                    if (!types.isSameType(s_erasure, samSym.erasure(types))) {
+                        staticArgs = staticArgs.append(s.erasure(types));
+                    }
+                }
+            }
+            if (context.isSerializable()) {
+                int prevPos = make.pos;
+                try {
+                    make.at(kInfo.clazz);
+                    addDeserializationCase(refKind, refSym, tree.type, samSym,
+                            tree, staticArgs, indyType);
+                } finally {
+                    make.at(prevPos);
+                }
+            }
+        }
+
+        return makeIndyCall(tree, syms.lambdaMetafactory, metafactoryName, staticArgs, indyType, indy_args, samSym.name);
+    }
+
+    /**
+     * Generate an indy method call with given name, type and static bootstrap
+     * arguments types
+     */
+    private JCExpression makeIndyCall(DiagnosticPosition pos, Type site, Name bsmName,
+            List<Object> staticArgs, MethodType indyType, List<JCExpression> indyArgs,
+            Name methName) {
+        int prevPos = make.pos;
+        try {
+            make.at(pos);
+            List<Type> bsm_staticArgs = List.of(syms.methodHandleLookupType,
+                    syms.stringType,
+                    syms.methodTypeType).appendList(bsmStaticArgToTypes(staticArgs));
+
+            Symbol bsm = rs.resolveInternalMethod(pos, attrEnv, site,
+                    bsmName, bsm_staticArgs, List.<Type>nil());
+
+            DynamicMethodSymbol dynSym =
+                    new DynamicMethodSymbol(methName,
+                                            syms.noSymbol,
+                                            bsm.isStatic() ?
+                                                ClassFile.REF_invokeStatic :
+                                                ClassFile.REF_invokeVirtual,
+                                            (MethodSymbol)bsm,
+                                            indyType,
+                                            staticArgs.toArray());
+
+            JCFieldAccess qualifier = make.Select(make.QualIdent(site.tsym), bsmName);
+            qualifier.sym = dynSym;
+            qualifier.type = indyType.getReturnType();
+
+            JCMethodInvocation proxyCall = make.Apply(List.<JCExpression>nil(), qualifier, indyArgs);
+            proxyCall.type = indyType.getReturnType();
+            return proxyCall;
+        } finally {
+            make.at(prevPos);
+        }
+    }
+    //where
+    private List<Type> bsmStaticArgToTypes(List<Object> args) {
+        ListBuffer<Type> argtypes = new ListBuffer<>();
+        for (Object arg : args) {
+            argtypes.append(bsmStaticArgToType(arg));
+        }
+        return argtypes.toList();
+    }
+
+    private Type bsmStaticArgToType(Object arg) {
+        Assert.checkNonNull(arg);
+        if (arg instanceof ClassSymbol) {
+            return syms.classType;
+        } else if (arg instanceof Integer) {
+            return syms.intType;
+        } else if (arg instanceof Long) {
+            return syms.longType;
+        } else if (arg instanceof Float) {
+            return syms.floatType;
+        } else if (arg instanceof Double) {
+            return syms.doubleType;
+        } else if (arg instanceof String) {
+            return syms.stringType;
+        } else if (arg instanceof Pool.MethodHandle) {
+            return syms.methodHandleType;
+        } else if (arg instanceof MethodType) {
+            return syms.methodTypeType;
+        } else {
+            Assert.error("bad static arg " + arg.getClass());
+            return null;
+        }
+    }
+
+    /**
+     * Get the opcode associated with this method reference
+     */
+    private int referenceKind(Symbol refSym) {
+        if (refSym.isConstructor()) {
+            return ClassFile.REF_newInvokeSpecial;
+        } else {
+            if (refSym.isStatic()) {
+                return ClassFile.REF_invokeStatic;
+            } else if ((refSym.flags() & PRIVATE) != 0) {
+                return ClassFile.REF_invokeSpecial;
+            } else if (refSym.enclClass().isInterface()) {
+                return ClassFile.REF_invokeInterface;
+            } else {
+                return ClassFile.REF_invokeVirtual;
+            }
+        }
+    }
+
+    // <editor-fold defaultstate="collapsed" desc="Lambda/reference analyzer">
+    /**
+     * This visitor collects information about translation of a lambda expression.
+     * More specifically, it keeps track of the enclosing contexts and captured locals
+     * accessed by the lambda being translated (as well as other useful info).
+     * It also translates away problems for LambdaToMethod.
+     */
+    class LambdaAnalyzerPreprocessor extends TreeTranslator {
+
+        /** the frame stack - used to reconstruct translation info about enclosing scopes */
+        private List<Frame> frameStack;
+
+        /**
+         * keep the count of lambda expression (used to generate unambiguous
+         * names)
+         */
+        private int lambdaCount = 0;
+
+        /**
+         * List of types undergoing construction via explicit constructor chaining.
+         */
+        private List<ClassSymbol> typesUnderConstruction;
+
+        /**
+         * keep the count of lambda expression defined in given context (used to
+         * generate unambiguous names for serializable lambdas)
+         */
+        private class SyntheticMethodNameCounter {
+            private Map<String, Integer> map = new HashMap<>();
+            int getIndex(StringBuilder buf) {
+                String temp = buf.toString();
+                Integer count = map.get(temp);
+                if (count == null) {
+                    count = 0;
+                }
+                ++count;
+                map.put(temp, count);
+                return count;
+            }
+        }
+        private SyntheticMethodNameCounter syntheticMethodNameCounts =
+                new SyntheticMethodNameCounter();
+
+        private Map<Symbol, JCClassDecl> localClassDefs;
+
+        /**
+         * maps for fake clinit symbols to be used as owners of lambda occurring in
+         * a static var init context
+         */
+        private Map<ClassSymbol, Symbol> clinits =
+                new HashMap<ClassSymbol, Symbol>();
+
+        private JCClassDecl analyzeAndPreprocessClass(JCClassDecl tree) {
+            frameStack = List.nil();
+            typesUnderConstruction = List.nil();
+            localClassDefs = new HashMap<Symbol, JCClassDecl>();
+            return translate(tree);
+        }
+
+        @Override
+        public void visitApply(JCMethodInvocation tree) {
+            List<ClassSymbol> previousNascentTypes = typesUnderConstruction;
+            try {
+                Name methName = TreeInfo.name(tree.meth);
+                if (methName == names._this || methName == names._super) {
+                    typesUnderConstruction = typesUnderConstruction.prepend(currentClass());
+                }
+                super.visitApply(tree);
+            } finally {
+                typesUnderConstruction = previousNascentTypes;
+            }
+        }
+            // where
+            private ClassSymbol currentClass() {
+                for (Frame frame : frameStack) {
+                    if (frame.tree.hasTag(Tag.CLASSDEF)) {
+                        JCClassDecl cdef = (JCClassDecl) frame.tree;
+                        return cdef.sym;
+                    }
+                }
+                return null;
+            }
+
+        @Override
+        public void visitBlock(JCBlock tree) {
+            List<Frame> prevStack = frameStack;
+            try {
+                if (frameStack.nonEmpty() && frameStack.head.tree.hasTag(CLASSDEF)) {
+                    frameStack = frameStack.prepend(new Frame(tree));
+                }
+                super.visitBlock(tree);
+            }
+            finally {
+                frameStack = prevStack;
+            }
+        }
+
+        @Override
+        public void visitClassDef(JCClassDecl tree) {
+            List<Frame> prevStack = frameStack;
+            int prevLambdaCount = lambdaCount;
+            SyntheticMethodNameCounter prevSyntheticMethodNameCounts =
+                    syntheticMethodNameCounts;
+            Map<ClassSymbol, Symbol> prevClinits = clinits;
+            DiagnosticSource prevSource = log.currentSource();
+            try {
+                log.useSource(tree.sym.sourcefile);
+                lambdaCount = 0;
+                syntheticMethodNameCounts = new SyntheticMethodNameCounter();
+                prevClinits = new HashMap<ClassSymbol, Symbol>();
+                if (tree.sym.owner.kind == MTH) {
+                    localClassDefs.put(tree.sym, tree);
+                }
+                if (directlyEnclosingLambda() != null) {
+                    tree.sym.owner = owner();
+                    if (tree.sym.hasOuterInstance()) {
+                        //if a class is defined within a lambda, the lambda must capture
+                        //its enclosing instance (if any)
+                        TranslationContext<?> localContext = context();
+                        while (localContext != null) {
+                            if (localContext.tree.getTag() == LAMBDA) {
+                                ((LambdaTranslationContext)localContext)
+                                        .addSymbol(tree.sym.type.getEnclosingType().tsym, CAPTURED_THIS);
+                            }
+                            localContext = localContext.prev;
+                        }
+                    }
+                }
+                frameStack = frameStack.prepend(new Frame(tree));
+                super.visitClassDef(tree);
+            }
+            finally {
+                log.useSource(prevSource.getFile());
+                frameStack = prevStack;
+                lambdaCount = prevLambdaCount;
+                syntheticMethodNameCounts = prevSyntheticMethodNameCounts;
+                clinits = prevClinits;
+            }
+        }
+
+        @Override
+        public void visitIdent(JCIdent tree) {
+            if (context() != null && lambdaIdentSymbolFilter(tree.sym)) {
+                if (tree.sym.kind == VAR &&
+                        tree.sym.owner.kind == MTH &&
+                        tree.type.constValue() == null) {
+                    TranslationContext<?> localContext = context();
+                    while (localContext != null) {
+                        if (localContext.tree.getTag() == LAMBDA) {
+                            JCTree block = capturedDecl(localContext.depth, tree.sym);
+                            if (block == null) break;
+                            ((LambdaTranslationContext)localContext)
+                                    .addSymbol(tree.sym, CAPTURED_VAR);
+                        }
+                        localContext = localContext.prev;
+                    }
+                } else if (tree.sym.owner.kind == TYP) {
+                    TranslationContext<?> localContext = context();
+                    while (localContext != null) {
+                        if (localContext.tree.hasTag(LAMBDA)) {
+                            JCTree block = capturedDecl(localContext.depth, tree.sym);
+                            if (block == null) break;
+                            switch (block.getTag()) {
+                                case CLASSDEF:
+                                    JCClassDecl cdecl = (JCClassDecl)block;
+                                    ((LambdaTranslationContext)localContext)
+                                            .addSymbol(cdecl.sym, CAPTURED_THIS);
+                                    break;
+                                default:
+                                    Assert.error("bad block kind");
+                            }
+                        }
+                        localContext = localContext.prev;
+                    }
+                }
+            }
+            super.visitIdent(tree);
+        }
+
+        @Override
+        public void visitLambda(JCLambda tree) {
+            analyzeLambda(tree, "lambda.stat");
+        }
+
+        private void analyzeLambda(JCLambda tree, JCExpression methodReferenceReceiver) {
+            // Translation of the receiver expression must occur first
+            JCExpression rcvr = translate(methodReferenceReceiver);
+            LambdaTranslationContext context = analyzeLambda(tree, "mref.stat.1");
+            if (rcvr != null) {
+                context.methodReferenceReceiver = rcvr;
+            }
+        }
+
+        private LambdaTranslationContext analyzeLambda(JCLambda tree, String statKey) {
+            List<Frame> prevStack = frameStack;
+            try {
+                LambdaTranslationContext context = new LambdaTranslationContext(tree);
+                if (dumpLambdaToMethodStats) {
+                    log.note(tree, statKey, context.needsAltMetafactory(), context.translatedSym);
+                }
+                frameStack = frameStack.prepend(new Frame(tree));
+                for (JCVariableDecl param : tree.params) {
+                    context.addSymbol(param.sym, PARAM);
+                    frameStack.head.addLocal(param.sym);
+                }
+                contextMap.put(tree, context);
+                super.visitLambda(tree);
+                context.complete();
+                return context;
+            }
+            finally {
+                frameStack = prevStack;
+            }
+        }
+
+        @Override
+        public void visitMethodDef(JCMethodDecl tree) {
+            List<Frame> prevStack = frameStack;
+            try {
+                frameStack = frameStack.prepend(new Frame(tree));
+                super.visitMethodDef(tree);
+            }
+            finally {
+                frameStack = prevStack;
+            }
+        }
+
+        @Override
+        public void visitNewClass(JCNewClass tree) {
+            TypeSymbol def = tree.type.tsym;
+            boolean inReferencedClass = currentlyInClass(def);
+            boolean isLocal = def.isLocal();
+            if ((inReferencedClass && isLocal || lambdaNewClassFilter(context(), tree))) {
+                TranslationContext<?> localContext = context();
+                while (localContext != null) {
+                    if (localContext.tree.getTag() == LAMBDA) {
+                        ((LambdaTranslationContext)localContext)
+                                .addSymbol(tree.type.getEnclosingType().tsym, CAPTURED_THIS);
+                    }
+                    localContext = localContext.prev;
+                }
+            }
+            if (context() != null && !inReferencedClass && isLocal) {
+                LambdaTranslationContext lambdaContext = (LambdaTranslationContext)context();
+                captureLocalClassDefs(def, lambdaContext);
+            }
+            super.visitNewClass(tree);
+        }
+        //where
+            void captureLocalClassDefs(Symbol csym, final LambdaTranslationContext lambdaContext) {
+                JCClassDecl localCDef = localClassDefs.get(csym);
+                if (localCDef != null && lambdaContext.freeVarProcessedLocalClasses.add(csym)) {
+                    BasicFreeVarCollector fvc = lower.new BasicFreeVarCollector() {
+                        @Override
+                        void addFreeVars(ClassSymbol c) {
+                            captureLocalClassDefs(c, lambdaContext);
+                        }
+                        @Override
+                        void visitSymbol(Symbol sym) {
+                            if (sym.kind == VAR &&
+                                    sym.owner.kind == MTH &&
+                                    ((VarSymbol)sym).getConstValue() == null) {
+                                TranslationContext<?> localContext = context();
+                                while (localContext != null) {
+                                    if (localContext.tree.getTag() == LAMBDA) {
+                                        JCTree block = capturedDecl(localContext.depth, sym);
+                                        if (block == null) break;
+                                        ((LambdaTranslationContext)localContext).addSymbol(sym, CAPTURED_VAR);
+                                    }
+                                    localContext = localContext.prev;
+                                }
+                            }
+                        }
+                    };
+                    fvc.scan(localCDef);
+                }
+        }
+        //where
+        boolean currentlyInClass(Symbol csym) {
+            for (Frame frame : frameStack) {
+                if (frame.tree.hasTag(Tag.CLASSDEF)) {
+                    JCClassDecl cdef = (JCClassDecl) frame.tree;
+                    if (cdef.sym == csym) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Method references to local class constructors, may, if the local
+         * class references local variables, have implicit constructor
+         * parameters added in Lower; As a result, the invokedynamic bootstrap
+         * information added in the LambdaToMethod pass will have the wrong
+         * signature. Hooks between Lower and LambdaToMethod have been added to
+         * handle normal "new" in this case. This visitor converts potentially
+         * affected method references into a lambda containing a normal
+         * expression.
+         *
+         * @param tree
+         */
+        @Override
+        public void visitReference(JCMemberReference tree) {
+            ReferenceTranslationContext rcontext = new ReferenceTranslationContext(tree);
+            contextMap.put(tree, rcontext);
+            if (rcontext.needsConversionToLambda()) {
+                 // Convert to a lambda, and process as such
+                MemberReferenceToLambda conv = new MemberReferenceToLambda(tree, rcontext, owner());
+                analyzeLambda(conv.lambda(), conv.getReceiverExpression());
+            } else {
+                super.visitReference(tree);
+                if (dumpLambdaToMethodStats) {
+                    log.note(tree, "mref.stat", rcontext.needsAltMetafactory(), null);
+                }
+            }
+        }
+
+        @Override
+        public void visitSelect(JCFieldAccess tree) {
+            if (context() != null && tree.sym.kind == VAR &&
+                        (tree.sym.name == names._this ||
+                         tree.sym.name == names._super)) {
+                // A select of this or super means, if we are in a lambda,
+                // we much have an instance context
+                TranslationContext<?> localContext = context();
+                while (localContext != null) {
+                    if (localContext.tree.hasTag(LAMBDA)) {
+                        JCClassDecl clazz = (JCClassDecl)capturedDecl(localContext.depth, tree.sym);
+                        if (clazz == null) break;
+                        ((LambdaTranslationContext)localContext).addSymbol(clazz.sym, CAPTURED_THIS);
+                    }
+                    localContext = localContext.prev;
+                }
+            }
+            super.visitSelect(tree);
+        }
+
+        @Override
+        public void visitVarDef(JCVariableDecl tree) {
+            TranslationContext<?> context = context();
+            LambdaTranslationContext ltc = (context != null && context instanceof LambdaTranslationContext)?
+                    (LambdaTranslationContext)context :
+                    null;
+            if (ltc != null) {
+                if (frameStack.head.tree.hasTag(LAMBDA)) {
+                    ltc.addSymbol(tree.sym, LOCAL_VAR);
+                }
+                // Check for type variables (including as type arguments).
+                // If they occur within class nested in a lambda, mark for erasure
+                Type type = tree.sym.asType();
+                if (inClassWithinLambda() && !types.isSameType(types.erasure(type), type)) {
+                    ltc.addSymbol(tree.sym, TYPE_VAR);
+                }
+            }
+
+            List<Frame> prevStack = frameStack;
+            try {
+                if (tree.sym.owner.kind == MTH) {
+                    frameStack.head.addLocal(tree.sym);
+                }
+                frameStack = frameStack.prepend(new Frame(tree));
+                super.visitVarDef(tree);
+            }
+            finally {
+                frameStack = prevStack;
+            }
+        }
+
+        /**
+         * Return a valid owner given the current declaration stack
+         * (required to skip synthetic lambda symbols)
+         */
+        private Symbol owner() {
+            return owner(false);
+        }
+
+        @SuppressWarnings("fallthrough")
+        private Symbol owner(boolean skipLambda) {
+            List<Frame> frameStack2 = frameStack;
+            while (frameStack2.nonEmpty()) {
+                switch (frameStack2.head.tree.getTag()) {
+                    case VARDEF:
+                        if (((JCVariableDecl)frameStack2.head.tree).sym.isLocal()) {
+                            frameStack2 = frameStack2.tail;
+                            break;
+                        }
+                        JCClassDecl cdecl = (JCClassDecl)frameStack2.tail.head.tree;
+                        return initSym(cdecl.sym,
+                                ((JCVariableDecl)frameStack2.head.tree).sym.flags() & STATIC);
+                    case BLOCK:
+                        JCClassDecl cdecl2 = (JCClassDecl)frameStack2.tail.head.tree;
+                        return initSym(cdecl2.sym,
+                                ((JCBlock)frameStack2.head.tree).flags & STATIC);
+                    case CLASSDEF:
+                        return ((JCClassDecl)frameStack2.head.tree).sym;
+                    case METHODDEF:
+                        return ((JCMethodDecl)frameStack2.head.tree).sym;
+                    case LAMBDA:
+                        if (!skipLambda)
+                            return ((LambdaTranslationContext)contextMap
+                                    .get(frameStack2.head.tree)).translatedSym;
+                    default:
+                        frameStack2 = frameStack2.tail;
+                }
+            }
+            Assert.error();
+            return null;
+        }
+
+        private Symbol initSym(ClassSymbol csym, long flags) {
+            boolean isStatic = (flags & STATIC) != 0;
+            if (isStatic) {
+                /* static clinits are generated in Gen, so we need to use a fake
+                 * one. Attr creates a fake clinit method while attributing
+                 * lambda expressions used as initializers of static fields, so
+                 * let's use that one.
+                 */
+                MethodSymbol clinit = attr.removeClinit(csym);
+                if (clinit != null) {
+                    clinits.put(csym, clinit);
+                    return clinit;
+                }
+
+                /* if no clinit is found at Attr, then let's try at clinits.
+                 */
+                clinit = (MethodSymbol)clinits.get(csym);
+                if (clinit == null) {
+                    /* no luck, let's create a new one
+                     */
+                    clinit = makePrivateSyntheticMethod(STATIC,
+                            names.clinit,
+                            new MethodType(List.<Type>nil(), syms.voidType,
+                                List.<Type>nil(), syms.methodClass),
+                            csym);
+                    clinits.put(csym, clinit);
+                }
+                return clinit;
+            } else {
+                //get the first constructor and treat it as the instance init sym
+                for (Symbol s : csym.members_field.getElementsByName(names.init)) {
+                    return s;
+                }
+            }
+            Assert.error("init not found");
+            return null;
+        }
+
+        private JCTree directlyEnclosingLambda() {
+            if (frameStack.isEmpty()) {
+                return null;
+            }
+            List<Frame> frameStack2 = frameStack;
+            while (frameStack2.nonEmpty()) {
+                switch (frameStack2.head.tree.getTag()) {
+                    case CLASSDEF:
+                    case METHODDEF:
+                        return null;
+                    case LAMBDA:
+                        return frameStack2.head.tree;
+                    default:
+                        frameStack2 = frameStack2.tail;
+                }
+            }
+            Assert.error();
+            return null;
+        }
+
+        private boolean inClassWithinLambda() {
+            if (frameStack.isEmpty()) {
+                return false;
+            }
+            List<Frame> frameStack2 = frameStack;
+            boolean classFound = false;
+            while (frameStack2.nonEmpty()) {
+                switch (frameStack2.head.tree.getTag()) {
+                    case LAMBDA:
+                        return classFound;
+                    case CLASSDEF:
+                        classFound = true;
+                        frameStack2 = frameStack2.tail;
+                        break;
+                    default:
+                        frameStack2 = frameStack2.tail;
+                }
+            }
+            // No lambda
+            return false;
+        }
+
+        /**
+         * Return the declaration corresponding to a symbol in the enclosing
+         * scope; the depth parameter is used to filter out symbols defined
+         * in nested scopes (which do not need to undergo capture).
+         */
+        private JCTree capturedDecl(int depth, Symbol sym) {
+            int currentDepth = frameStack.size() - 1;
+            for (Frame block : frameStack) {
+                switch (block.tree.getTag()) {
+                    case CLASSDEF:
+                        ClassSymbol clazz = ((JCClassDecl)block.tree).sym;
+                        if (sym.isMemberOf(clazz, types)) {
+                            return currentDepth > depth ? null : block.tree;
+                        }
+                        break;
+                    case VARDEF:
+                        if (((JCVariableDecl)block.tree).sym == sym &&
+                                sym.owner.kind == MTH) { //only locals are captured
+                            return currentDepth > depth ? null : block.tree;
+                        }
+                        break;
+                    case BLOCK:
+                    case METHODDEF:
+                    case LAMBDA:
+                        if (block.locals != null && block.locals.contains(sym)) {
+                            return currentDepth > depth ? null : block.tree;
+                        }
+                        break;
+                    default:
+                        Assert.error("bad decl kind " + block.tree.getTag());
+                }
+                currentDepth--;
+            }
+            return null;
+        }
+
+        private TranslationContext<?> context() {
+            for (Frame frame : frameStack) {
+                TranslationContext<?> context = contextMap.get(frame.tree);
+                if (context != null) {
+                    return context;
+                }
+            }
+            return null;
+        }
+
+        /**
+         *  This is used to filter out those identifiers that needs to be adjusted
+         *  when translating away lambda expressions
+         */
+        private boolean lambdaIdentSymbolFilter(Symbol sym) {
+            return (sym.kind == VAR || sym.kind == MTH)
+                    && !sym.isStatic()
+                    && sym.name != names.init;
+        }
+
+        /**
+         *  This is used to filter out those select nodes that need to be adjusted
+         *  when translating away lambda expressions - at the moment, this is the
+         *  set of nodes that select `this' (qualified this)
+         */
+        private boolean lambdaFieldAccessFilter(JCFieldAccess fAccess) {
+            LambdaTranslationContext lambdaContext =
+                    context instanceof LambdaTranslationContext ?
+                            (LambdaTranslationContext) context : null;
+            return lambdaContext != null
+                    && !fAccess.sym.isStatic()
+                    && fAccess.name == names._this
+                    && (fAccess.sym.owner.kind == TYP)
+                    && !lambdaContext.translatedSymbols.get(CAPTURED_OUTER_THIS).isEmpty();
+        }
+
+        /**
+         * This is used to filter out those new class expressions that need to
+         * be qualified with an enclosing tree
+         */
+        private boolean lambdaNewClassFilter(TranslationContext<?> context, JCNewClass tree) {
+            if (context != null
+                    && tree.encl == null
+                    && tree.def == null
+                    && !tree.type.getEnclosingType().hasTag(NONE)) {
+                Type encl = tree.type.getEnclosingType();
+                Type current = context.owner.enclClass().type;
+                while (!current.hasTag(NONE)) {
+                    if (current.tsym.isSubClass(encl.tsym, types)) {
+                        return true;
+                    }
+                    current = current.getEnclosingType();
+                }
+                return false;
+            } else {
+                return false;
+            }
+        }
+
+        private class Frame {
+            final JCTree tree;
+            List<Symbol> locals;
+
+            public Frame(JCTree tree) {
+                this.tree = tree;
+            }
+
+            void addLocal(Symbol sym) {
+                if (locals == null) {
+                    locals = List.nil();
+                }
+                locals = locals.prepend(sym);
+            }
+        }
+
+        /**
+         * This class is used to store important information regarding translation of
+         * lambda expression/method references (see subclasses).
+         */
+        private abstract class TranslationContext<T extends JCFunctionalExpression> {
+
+            /** the underlying (untranslated) tree */
+            final T tree;
+
+            /** points to the adjusted enclosing scope in which this lambda/mref expression occurs */
+            final Symbol owner;
+
+            /** the depth of this lambda expression in the frame stack */
+            final int depth;
+
+            /** the enclosing translation context (set for nested lambdas/mref) */
+            final TranslationContext<?> prev;
+
+            /** list of methods to be bridged by the meta-factory */
+            final List<Symbol> bridges;
+
+            TranslationContext(T tree) {
+                this.tree = tree;
+                this.owner = owner();
+                this.depth = frameStack.size() - 1;
+                this.prev = context();
+                ClassSymbol csym =
+                        types.makeFunctionalInterfaceClass(attrEnv, names.empty, tree.targets, ABSTRACT | INTERFACE);
+                this.bridges = types.functionalInterfaceBridges(csym);
+            }
+
+            /** does this functional expression need to be created using alternate metafactory? */
+            boolean needsAltMetafactory() {
+                return tree.targets.length() > 1 ||
+                        isSerializable() ||
+                        bridges.length() > 1;
+            }
+
+            /** does this functional expression require serialization support? */
+            boolean isSerializable() {
+                if (forceSerializable) {
+                    return true;
+                }
+                for (Type target : tree.targets) {
+                    if (types.asSuper(target, syms.serializableType.tsym) != null) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            /**
+             * @return Name of the enclosing method to be folded into synthetic
+             * method name
+             */
+            String enclosingMethodName() {
+                return syntheticMethodNameComponent(owner.name);
+            }
+
+            /**
+             * @return Method name in a form that can be folded into a
+             * component of a synthetic method name
+             */
+            String syntheticMethodNameComponent(Name name) {
+                if (name == null) {
+                    return "null";
+                }
+                String methodName = name.toString();
+                if (methodName.equals("<clinit>")) {
+                    methodName = "static";
+                } else if (methodName.equals("<init>")) {
+                    methodName = "new";
+                }
+                return methodName;
+            }
+        }
+
+        /**
+         * This class retains all the useful information about a lambda expression;
+         * the contents of this class are filled by the LambdaAnalyzer visitor,
+         * and the used by the main translation routines in order to adjust references
+         * to captured locals/members, etc.
+         */
+        private class LambdaTranslationContext extends TranslationContext<JCLambda> {
+
+            /** variable in the enclosing context to which this lambda is assigned */
+            final Symbol self;
+
+            /** variable in the enclosing context to which this lambda is assigned */
+            final Symbol assignedTo;
+
+            Map<LambdaSymbolKind, Map<Symbol, Symbol>> translatedSymbols;
+
+            /** the synthetic symbol for the method hoisting the translated lambda */
+            MethodSymbol translatedSym;
+
+            List<JCVariableDecl> syntheticParams;
+
+            /**
+             * to prevent recursion, track local classes processed
+             */
+            final Set<Symbol> freeVarProcessedLocalClasses;
+
+            /**
+             * For method references converted to lambdas.  The method
+             * reference receiver expression. Must be treated like a captured
+             * variable.
+             */
+            JCExpression methodReferenceReceiver;
+
+            LambdaTranslationContext(JCLambda tree) {
+                super(tree);
+                Frame frame = frameStack.head;
+                switch (frame.tree.getTag()) {
+                    case VARDEF:
+                        assignedTo = self = ((JCVariableDecl) frame.tree).sym;
+                        break;
+                    case ASSIGN:
+                        self = null;
+                        assignedTo = TreeInfo.symbol(((JCAssign) frame.tree).getVariable());
+                        break;
+                    default:
+                        assignedTo = self = null;
+                        break;
+                 }
+
+                // This symbol will be filled-in in complete
+                this.translatedSym = makePrivateSyntheticMethod(0, null, null, owner.enclClass());
+
+                translatedSymbols = new EnumMap<>(LambdaSymbolKind.class);
+
+                translatedSymbols.put(PARAM, new LinkedHashMap<Symbol, Symbol>());
+                translatedSymbols.put(LOCAL_VAR, new LinkedHashMap<Symbol, Symbol>());
+                translatedSymbols.put(CAPTURED_VAR, new LinkedHashMap<Symbol, Symbol>());
+                translatedSymbols.put(CAPTURED_THIS, new LinkedHashMap<Symbol, Symbol>());
+                translatedSymbols.put(CAPTURED_OUTER_THIS, new LinkedHashMap<Symbol, Symbol>());
+                translatedSymbols.put(TYPE_VAR, new LinkedHashMap<Symbol, Symbol>());
+
+                freeVarProcessedLocalClasses = new HashSet<>();
+            }
+
+             /**
+             * For a serializable lambda, generate a disambiguating string
+             * which maximizes stability across deserialization.
+             *
+             * @return String to differentiate synthetic lambda method names
+             */
+            private String serializedLambdaDisambiguation() {
+                StringBuilder buf = new StringBuilder();
+                // Append the enclosing method signature to differentiate
+                // overloaded enclosing methods.  For lambdas enclosed in
+                // lambdas, the generated lambda method will not have type yet,
+                // but the enclosing method's name will have been generated
+                // with this same method, so it will be unique and never be
+                // overloaded.
+                Assert.check(
+                        owner.type != null ||
+                        directlyEnclosingLambda() != null);
+                if (owner.type != null) {
+                    buf.append(typeSig(owner.type));
+                    buf.append(":");
+                }
+
+                // Add target type info
+                buf.append(types.findDescriptorSymbol(tree.type.tsym).owner.flatName());
+                buf.append(" ");
+
+                // Add variable assigned to
+                if (assignedTo != null) {
+                    buf.append(assignedTo.flatName());
+                    buf.append("=");
+                }
+                //add captured locals info: type, name, order
+                for (Symbol fv : getSymbolMap(CAPTURED_VAR).keySet()) {
+                    if (fv != self) {
+                        buf.append(typeSig(fv.type));
+                        buf.append(" ");
+                        buf.append(fv.flatName());
+                        buf.append(",");
+                    }
+                }
+
+                return buf.toString();
+            }
+
+            /**
+             * For a non-serializable lambda, generate a simple method.
+             *
+             * @return Name to use for the synthetic lambda method name
+             */
+            private Name lambdaName() {
+                return names.lambda.append(names.fromString(enclosingMethodName() + "$" + lambdaCount++));
+            }
+
+            /**
+             * For a serializable lambda, generate a method name which maximizes
+             * name stability across deserialization.
+             *
+             * @return Name to use for the synthetic lambda method name
+             */
+            private Name serializedLambdaName() {
+                StringBuilder buf = new StringBuilder();
+                buf.append(names.lambda);
+                // Append the name of the method enclosing the lambda.
+                buf.append(enclosingMethodName());
+                buf.append('$');
+                // Append a hash of the disambiguating string : enclosing method
+                // signature, etc.
+                String disam = serializedLambdaDisambiguation();
+                buf.append(Integer.toHexString(disam.hashCode()));
+                buf.append('$');
+                // The above appended name components may not be unique, append
+                // a count based on the above name components.
+                buf.append(syntheticMethodNameCounts.getIndex(buf));
+                String result = buf.toString();
+                //System.err.printf("serializedLambdaName: %s -- %s\n", result, disam);
+                return names.fromString(result);
+            }
+
+            /**
+             * Translate a symbol of a given kind into something suitable for the
+             * synthetic lambda body
+             */
+            Symbol translate(final Symbol sym, LambdaSymbolKind skind) {
+                Symbol ret;
+                switch (skind) {
+                    case CAPTURED_THIS:
+                        ret = sym;  // self represented
+                        break;
+                    case TYPE_VAR:
+                        // Just erase the type var
+                        ret = new VarSymbol(sym.flags(), sym.name,
+                                types.erasure(sym.type), sym.owner);
+
+                        /* this information should also be kept for LVT generation at Gen
+                         * a Symbol with pos < startPos won't be tracked.
+                         */
+                        ((VarSymbol)ret).pos = ((VarSymbol)sym).pos;
+                        break;
+                    case CAPTURED_VAR:
+                        ret = new VarSymbol(SYNTHETIC | FINAL | PARAMETER, sym.name, types.erasure(sym.type), translatedSym) {
+                            @Override
+                            public Symbol baseSymbol() {
+                                //keep mapping with original captured symbol
+                                return sym;
+                            }
+                        };
+                        break;
+                    case CAPTURED_OUTER_THIS:
+                        Name name = names.fromString(new String(sym.flatName().toString().replace('.', '$') + names.dollarThis));
+                        ret = new VarSymbol(SYNTHETIC | FINAL | PARAMETER, name, types.erasure(sym.type), translatedSym) {
+                            @Override
+                            public Symbol baseSymbol() {
+                                //keep mapping with original captured symbol
+                                return sym;
+                            }
+                        };
+                        break;
+                    case LOCAL_VAR:
+                        ret = new VarSymbol(sym.flags() & FINAL, sym.name, sym.type, translatedSym);
+                        ((VarSymbol) ret).pos = ((VarSymbol) sym).pos;
+                        break;
+                    case PARAM:
+                        ret = new VarSymbol((sym.flags() & FINAL) | PARAMETER, sym.name, types.erasure(sym.type), translatedSym);
+                        ((VarSymbol) ret).pos = ((VarSymbol) sym).pos;
+                        break;
+                    default:
+                        Assert.error(skind.name());
+                        throw new AssertionError();
+                }
+                if (ret != sym && skind.propagateAnnotations()) {
+                    ret.setDeclarationAttributes(sym.getRawAttributes());
+                    ret.setTypeAttributes(sym.getRawTypeAttributes());
+                }
+                return ret;
+            }
+
+            void addSymbol(Symbol sym, LambdaSymbolKind skind) {
+                if (skind == CAPTURED_THIS && sym != null && sym.kind == TYP && !typesUnderConstruction.isEmpty()) {
+                    ClassSymbol currentClass = currentClass();
+                    if (currentClass != null && typesUnderConstruction.contains(currentClass)) {
+                        // reference must be to enclosing outer instance, mutate capture kind.
+                        Assert.check(sym != currentClass); // should have been caught right in Attr
+                        skind = CAPTURED_OUTER_THIS;
+                    }
+                }
+                Map<Symbol, Symbol> transMap = getSymbolMap(skind);
+                if (!transMap.containsKey(sym)) {
+                    transMap.put(sym, translate(sym, skind));
+                }
+            }
+
+            Map<Symbol, Symbol> getSymbolMap(LambdaSymbolKind skind) {
+                Map<Symbol, Symbol> m = translatedSymbols.get(skind);
+                Assert.checkNonNull(m);
+                return m;
+            }
+
+            JCTree translate(JCIdent lambdaIdent) {
+                for (LambdaSymbolKind kind : LambdaSymbolKind.values()) {
+                    Map<Symbol, Symbol> m = getSymbolMap(kind);
+                    switch(kind) {
+                        default:
+                            if (m.containsKey(lambdaIdent.sym)) {
+                                Symbol tSym = m.get(lambdaIdent.sym);
+                                JCTree t = make.Ident(tSym).setType(lambdaIdent.type);
+                                return t;
+                            }
+                            break;
+                        case CAPTURED_OUTER_THIS:
+                            if (lambdaIdent.sym.owner.kind == TYP && m.containsKey(lambdaIdent.sym.owner)) {
+                                // Transform outer instance variable references anchoring them to the captured synthetic.
+                                Symbol tSym = m.get(lambdaIdent.sym.owner);
+                                JCExpression t = make.Ident(tSym).setType(lambdaIdent.sym.owner.type);
+                                t = make.Select(t, lambdaIdent.name);
+                                t.setType(lambdaIdent.type);
+                                TreeInfo.setSymbol(t, lambdaIdent.sym);
+                                return t;
+                            }
+                            break;
+                    }
+                }
+                return null;
+            }
+
+            /* Translate away qualified this expressions, anchoring them to synthetic parameters that
+               capture the qualified this handle. `fieldAccess' is guaranteed to one such.
+            */
+            public JCTree translate(JCFieldAccess fieldAccess) {
+                Assert.check(fieldAccess.name == names._this);
+                Map<Symbol, Symbol> m = translatedSymbols.get(LambdaSymbolKind.CAPTURED_OUTER_THIS);
+                if (m.containsKey(fieldAccess.sym.owner)) {
+                    Symbol tSym = m.get(fieldAccess.sym.owner);
+                    JCExpression t = make.Ident(tSym).setType(fieldAccess.sym.owner.type);
+                    return t;
+                }
+                return null;
+            }
+
+            /**
+             * The translatedSym is not complete/accurate until the analysis is
+             * finished.  Once the analysis is finished, the translatedSym is
+             * "completed" -- updated with type information, access modifiers,
+             * and full parameter list.
+             */
+            void complete() {
+                if (syntheticParams != null) {
+                    return;
+                }
+                boolean inInterface = translatedSym.owner.isInterface();
+                boolean thisReferenced = !getSymbolMap(CAPTURED_THIS).isEmpty();
+
+                // If instance access isn't needed, make it static.
+                // Interface instance methods must be default methods.
+                // Lambda methods are private synthetic.
+                // Inherit ACC_STRICT from the enclosing method, or, for clinit,
+                // from the class.
+                translatedSym.flags_field = SYNTHETIC | LAMBDA_METHOD |
+                        owner.flags_field & STRICTFP |
+                        owner.owner.flags_field & STRICTFP |
+                        PRIVATE |
+                        (thisReferenced? (inInterface? DEFAULT : 0) : STATIC);
+
+                //compute synthetic params
+                ListBuffer<JCVariableDecl> params = new ListBuffer<>();
+                ListBuffer<VarSymbol> parameterSymbols = new ListBuffer<>();
+
+                // The signature of the method is augmented with the following
+                // synthetic parameters:
+                //
+                // 1) reference to enclosing contexts captured by the lambda expression
+                // 2) enclosing locals captured by the lambda expression
+                for (Symbol thisSym : getSymbolMap(CAPTURED_VAR).values()) {
+                    params.append(make.VarDef((VarSymbol) thisSym, null));
+                    parameterSymbols.append((VarSymbol) thisSym);
+                }
+                for (Symbol thisSym : getSymbolMap(CAPTURED_OUTER_THIS).values()) {
+                    params.append(make.VarDef((VarSymbol) thisSym, null));
+                    parameterSymbols.append((VarSymbol) thisSym);
+                }
+                for (Symbol thisSym : getSymbolMap(PARAM).values()) {
+                    params.append(make.VarDef((VarSymbol) thisSym, null));
+                    parameterSymbols.append((VarSymbol) thisSym);
+                }
+                syntheticParams = params.toList();
+
+                translatedSym.params = parameterSymbols.toList();
+
+                // Compute and set the lambda name
+                translatedSym.name = isSerializable()
+                        ? serializedLambdaName()
+                        : lambdaName();
+
+                //prepend synthetic args to translated lambda method signature
+                translatedSym.type = types.createMethodTypeWithParameters(
+                        generatedLambdaSig(),
+                        TreeInfo.types(syntheticParams));
+            }
+
+            Type generatedLambdaSig() {
+                return types.erasure(tree.getDescriptorType(types));
+            }
+        }
+
+        /**
+         * This class retains all the useful information about a method reference;
+         * the contents of this class are filled by the LambdaAnalyzer visitor,
+         * and the used by the main translation routines in order to adjust method
+         * references (i.e. in case a bridge is needed)
+         */
+        private final class ReferenceTranslationContext extends TranslationContext<JCMemberReference> {
+
+            final boolean isSuper;
+            final Symbol sigPolySym;
+
+            ReferenceTranslationContext(JCMemberReference tree) {
+                super(tree);
+                this.isSuper = tree.hasKind(ReferenceKind.SUPER);
+                this.sigPolySym = isSignaturePolymorphic()
+                        ? makePrivateSyntheticMethod(tree.sym.flags(),
+                                              tree.sym.name,
+                                              bridgedRefSig(),
+                                              tree.sym.enclClass())
+                        : null;
+            }
+
+            /**
+             * Get the opcode associated with this method reference
+             */
+            int referenceKind() {
+                return LambdaToMethod.this.referenceKind(tree.sym);
+            }
+
+            boolean needsVarArgsConversion() {
+                return tree.varargsElement != null;
+            }
+
+            /**
+             * @return Is this an array operation like clone()
+             */
+            boolean isArrayOp() {
+                return tree.sym.owner == syms.arrayClass;
+            }
+
+            boolean receiverAccessible() {
+                //hack needed to workaround 292 bug (7087658)
+                //when 292 issue is fixed we should remove this and change the backend
+                //code to always generate a method handle to an accessible method
+                return tree.ownerAccessible;
+            }
+
+            /**
+             * The VM does not support access across nested classes (8010319).
+             * Were that ever to change, this should be removed.
+             */
+            boolean isPrivateInOtherClass() {
+                return  (tree.sym.flags() & PRIVATE) != 0 &&
+                        !types.isSameType(
+                              types.erasure(tree.sym.enclClass().asType()),
+                              types.erasure(owner.enclClass().asType()));
+            }
+
+            /**
+             * Signature polymorphic methods need special handling.
+             * e.g. MethodHandle.invoke() MethodHandle.invokeExact()
+             */
+            final boolean isSignaturePolymorphic() {
+                return  tree.sym.kind == MTH &&
+                        types.isSignaturePolymorphic((MethodSymbol)tree.sym);
+            }
+
+            /**
+             * Erasure destroys the implementation parameter subtype
+             * relationship for intersection types
+             */
+            boolean interfaceParameterIsIntersectionType() {
+                List<Type> tl = tree.getDescriptorType(types).getParameterTypes();
+                if (tree.kind == ReferenceKind.UNBOUND) {
+                    tl = tl.tail;
+                }
+                for (; tl.nonEmpty(); tl = tl.tail) {
+                    Type pt = tl.head;
+                    if (pt.getKind() == TypeKind.TYPEVAR) {
+                        TypeVar tv = (TypeVar) pt;
+                        if (tv.bound.getKind() == TypeKind.INTERSECTION) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            /**
+             * Does this reference need to be converted to a lambda
+             * (i.e. var args need to be expanded or "super" is used)
+             */
+            final boolean needsConversionToLambda() {
+                return interfaceParameterIsIntersectionType() ||
+                        isSuper ||
+                        needsVarArgsConversion() ||
+                        isArrayOp() ||
+                        isPrivateInOtherClass() ||
+                        !receiverAccessible() ||
+                        (tree.getMode() == ReferenceMode.NEW &&
+                          tree.kind != ReferenceKind.ARRAY_CTOR &&
+                          (tree.sym.owner.isLocal() || tree.sym.owner.isInner()));
+            }
+
+            Type generatedRefSig() {
+                return types.erasure(tree.sym.type);
+            }
+
+            Type bridgedRefSig() {
+                return types.erasure(types.findDescriptorSymbol(tree.targets.head.tsym).type);
+            }
+        }
+    }
+    // </editor-fold>
+
+    /*
+     * These keys provide mappings for various translated lambda symbols
+     * and the prevailing order must be maintained.
+     */
+    enum LambdaSymbolKind {
+        PARAM,          // original to translated lambda parameters
+        LOCAL_VAR,      // original to translated lambda locals
+        CAPTURED_VAR,   // variables in enclosing scope to translated synthetic parameters
+        CAPTURED_THIS,  // class symbols to translated synthetic parameters (for captured member access)
+        CAPTURED_OUTER_THIS, // used when `this' capture is illegal, but outer this capture is legit (JDK-8129740)
+        TYPE_VAR;       // original to translated lambda type variables
+
+        boolean propagateAnnotations() {
+            switch (this) {
+                case CAPTURED_VAR:
+                case CAPTURED_THIS:
+                case CAPTURED_OUTER_THIS:
+                    return false;
+                default:
+                    return true;
+           }
+        }
+    }
+
+    /**
+     * ****************************************************************
+     * Signature Generation
+     * ****************************************************************
+     */
+
+    private String typeSig(Type type) {
+        L2MSignatureGenerator sg = new L2MSignatureGenerator();
+        sg.assembleSig(type);
+        return sg.toString();
+    }
+
+    private String classSig(Type type) {
+        L2MSignatureGenerator sg = new L2MSignatureGenerator();
+        sg.assembleClassSig(type);
+        return sg.toString();
+    }
+
+    /**
+     * Signature Generation
+     */
+    private class L2MSignatureGenerator extends Types.SignatureGenerator {
+
+        /**
+         * An output buffer for type signatures.
+         */
+        StringBuilder sb = new StringBuilder();
+
+        L2MSignatureGenerator() {
+            super(types);
+        }
+
+        @Override
+        protected void append(char ch) {
+            sb.append(ch);
+        }
+
+        @Override
+        protected void append(byte[] ba) {
+            sb.append(new String(ba));
+        }
+
+        @Override
+        protected void append(Name name) {
+            sb.append(name.toString());
+        }
+
+        @Override
+        public String toString() {
+            return sb.toString();
+        }
+    }
+}

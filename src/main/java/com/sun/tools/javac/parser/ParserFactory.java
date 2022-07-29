@@ -1,93 +1,87 @@
-/*    */ package com.sun.tools.javac.parser;
-/*    */ 
-/*    */ import com.sun.tools.javac.code.Source;
-/*    */ import com.sun.tools.javac.tree.DocTreeMaker;
-/*    */ import com.sun.tools.javac.tree.TreeMaker;
-/*    */ import com.sun.tools.javac.util.Context;
-/*    */ import com.sun.tools.javac.util.Log;
-/*    */ import com.sun.tools.javac.util.Names;
-/*    */ import com.sun.tools.javac.util.Options;
-/*    */ import java.util.Locale;
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ public class ParserFactory
-/*    */ {
-/* 49 */   protected static final Context.Key<ParserFactory> parserFactoryKey = new Context.Key();
-/*    */   
-/*    */   public static ParserFactory instance(Context paramContext) {
-/* 52 */     ParserFactory parserFactory = (ParserFactory)paramContext.get(parserFactoryKey);
-/* 53 */     if (parserFactory == null) {
-/* 54 */       parserFactory = new ParserFactory(paramContext);
-/*    */     }
-/* 56 */     return parserFactory;
-/*    */   }
-/*    */ 
-/*    */   
-/*    */   final TreeMaker F;
-/*    */   final DocTreeMaker docTreeMaker;
-/*    */   final Log log;
-/*    */   final Tokens tokens;
-/*    */   final Source source;
-/*    */   final Names names;
-/*    */   final Options options;
-/*    */   final ScannerFactory scannerFactory;
-/*    */   final Locale locale;
-/*    */   
-/*    */   protected ParserFactory(Context paramContext) {
-/* 71 */     paramContext.put(parserFactoryKey, this);
-/* 72 */     this.F = TreeMaker.instance(paramContext);
-/* 73 */     this.docTreeMaker = DocTreeMaker.instance(paramContext);
-/* 74 */     this.log = Log.instance(paramContext);
-/* 75 */     this.names = Names.instance(paramContext);
-/* 76 */     this.tokens = Tokens.instance(paramContext);
-/* 77 */     this.source = Source.instance(paramContext);
-/* 78 */     this.options = Options.instance(paramContext);
-/* 79 */     this.scannerFactory = ScannerFactory.instance(paramContext);
-/* 80 */     this.locale = (Locale)paramContext.get(Locale.class);
-/*    */   }
-/*    */   
-/*    */   public JavacParser newParser(CharSequence paramCharSequence, boolean paramBoolean1, boolean paramBoolean2, boolean paramBoolean3) {
-/* 84 */     Scanner scanner = this.scannerFactory.newScanner(paramCharSequence, paramBoolean1);
-/* 85 */     return new JavacParser(this, scanner, paramBoolean1, paramBoolean3, paramBoolean2);
-/*    */   }
-/*    */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\parser\ParserFactory.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.parser;
+
+import java.util.Locale;
+
+import com.sun.tools.javac.code.Source;
+import com.sun.tools.javac.tree.DocTreeMaker;
+import com.sun.tools.javac.tree.TreeMaker;
+import com.sun.tools.javac.util.Context;
+import com.sun.tools.javac.util.Log;
+import com.sun.tools.javac.util.Names;
+import com.sun.tools.javac.util.Options;
+
+/**
+ * A factory for creating parsers.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own risk.
+ * This code and its internal interfaces are subject to change or
+ * deletion without notice.</b>
+ */
+public class ParserFactory {
+
+    /** The context key for the parser factory. */
+    protected static final Context.Key<ParserFactory> parserFactoryKey = new Context.Key<ParserFactory>();
+
+    public static ParserFactory instance(Context context) {
+        ParserFactory instance = context.get(parserFactoryKey);
+        if (instance == null) {
+            instance = new ParserFactory(context);
+        }
+        return instance;
+    }
+
+    final TreeMaker F;
+    final DocTreeMaker docTreeMaker;
+    final Log log;
+    final Tokens tokens;
+    final Source source;
+    final Names names;
+    final Options options;
+    final ScannerFactory scannerFactory;
+    final Locale locale;
+
+    protected ParserFactory(Context context) {
+        super();
+        context.put(parserFactoryKey, this);
+        this.F = TreeMaker.instance(context);
+        this.docTreeMaker = DocTreeMaker.instance(context);
+        this.log = Log.instance(context);
+        this.names = Names.instance(context);
+        this.tokens = Tokens.instance(context);
+        this.source = Source.instance(context);
+        this.options = Options.instance(context);
+        this.scannerFactory = ScannerFactory.instance(context);
+        this.locale = context.get(Locale.class);
+    }
+
+    public JavacParser newParser(CharSequence input, boolean keepDocComments, boolean keepEndPos, boolean keepLineMap) {
+        Lexer lexer = scannerFactory.newScanner(input, keepDocComments);
+        return new JavacParser(this, lexer, keepDocComments, keepLineMap, keepEndPos);
+    }
+}

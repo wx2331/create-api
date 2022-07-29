@@ -1,227 +1,226 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlConstants;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.formats.html.markup.StringContent;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.MemberSummaryWriter;
-/*     */ import java.io.IOException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class NestedClassWriterImpl
-/*     */   extends AbstractMemberWriter
-/*     */   implements MemberSummaryWriter
-/*     */ {
-/*     */   public NestedClassWriterImpl(SubWriterHolderWriter paramSubWriterHolderWriter, ClassDoc paramClassDoc) {
-/*  53 */     super(paramSubWriterHolderWriter, paramClassDoc);
-/*     */   }
-/*     */   
-/*     */   public NestedClassWriterImpl(SubWriterHolderWriter paramSubWriterHolderWriter) {
-/*  57 */     super(paramSubWriterHolderWriter);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMemberSummaryHeader(ClassDoc paramClassDoc, Content paramContent) {
-/*  65 */     paramContent.addContent(HtmlConstants.START_OF_NESTED_CLASS_SUMMARY);
-/*  66 */     Content content = this.writer.getMemberTreeHeader();
-/*  67 */     this.writer.addSummaryHeader(this, paramClassDoc, content);
-/*  68 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void close() throws IOException {
-/*  75 */     this.writer.close();
-/*     */   }
-/*     */   
-/*     */   public int getMemberKind() {
-/*  79 */     return 0;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryLabel(Content paramContent) {
-/*  86 */     HtmlTree htmlTree = HtmlTree.HEADING(HtmlConstants.SUMMARY_HEADING, this.writer
-/*  87 */         .getResource("doclet.Nested_Class_Summary"));
-/*  88 */     paramContent.addContent((Content)htmlTree);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getTableSummary() {
-/*  95 */     return this.configuration.getText("doclet.Member_Table_Summary", this.configuration
-/*  96 */         .getText("doclet.Nested_Class_Summary"), this.configuration
-/*  97 */         .getText("doclet.nested_classes"));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getCaption() {
-/* 104 */     return this.configuration.getResource("doclet.Nested_Classes");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String[] getSummaryTableHeader(ProgramElementDoc paramProgramElementDoc) {
-/*     */     String[] arrayOfString;
-/* 112 */     if (paramProgramElementDoc.isInterface()) {
-/*     */ 
-/*     */       
-/* 115 */       arrayOfString = new String[] { this.writer.getModifierTypeHeader(), this.configuration.getText("doclet.0_and_1", this.configuration
-/* 116 */             .getText("doclet.Interface"), this.configuration
-/* 117 */             .getText("doclet.Description")) };
-/*     */     
-/*     */     }
-/*     */     else {
-/*     */ 
-/*     */       
-/* 123 */       arrayOfString = new String[] { this.writer.getModifierTypeHeader(), this.configuration.getText("doclet.0_and_1", this.configuration
-/* 124 */             .getText("doclet.Class"), this.configuration
-/* 125 */             .getText("doclet.Description")) };
-/*     */     } 
-/*     */     
-/* 128 */     return arrayOfString;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryAnchor(ClassDoc paramClassDoc, Content paramContent) {
-/* 135 */     paramContent.addContent(this.writer.getMarkerAnchor(SectionName.NESTED_CLASS_SUMMARY));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addInheritedSummaryAnchor(ClassDoc paramClassDoc, Content paramContent) {
-/* 143 */     paramContent.addContent(this.writer.getMarkerAnchor(SectionName.NESTED_CLASSES_INHERITANCE, paramClassDoc
-/*     */           
-/* 145 */           .qualifiedName()));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addInheritedSummaryLabel(ClassDoc paramClassDoc, Content paramContent) {
-/* 152 */     Content content = this.writer.getPreQualifiedClassLink(LinkInfoImpl.Kind.MEMBER, paramClassDoc, false);
-/*     */ 
-/*     */ 
-/*     */     
-/* 156 */     StringContent stringContent = new StringContent(paramClassDoc.isInterface() ? this.configuration.getText("doclet.Nested_Classes_Interface_Inherited_From_Interface") : this.configuration.getText("doclet.Nested_Classes_Interfaces_Inherited_From_Class"));
-/* 157 */     HtmlTree htmlTree = HtmlTree.HEADING(HtmlConstants.INHERITED_SUMMARY_HEADING, (Content)stringContent);
-/*     */     
-/* 159 */     htmlTree.addContent(this.writer.getSpace());
-/* 160 */     htmlTree.addContent(content);
-/* 161 */     paramContent.addContent((Content)htmlTree);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addSummaryLink(LinkInfoImpl.Kind paramKind, ClassDoc paramClassDoc, ProgramElementDoc paramProgramElementDoc, Content paramContent) {
-/* 169 */     HtmlTree htmlTree1 = HtmlTree.SPAN(HtmlStyle.memberNameLink, this.writer
-/* 170 */         .getLink(new LinkInfoImpl(this.configuration, paramKind, (ClassDoc)paramProgramElementDoc)));
-/* 171 */     HtmlTree htmlTree2 = HtmlTree.CODE((Content)htmlTree1);
-/* 172 */     paramContent.addContent((Content)htmlTree2);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addInheritedSummaryLink(ClassDoc paramClassDoc, ProgramElementDoc paramProgramElementDoc, Content paramContent) {
-/* 180 */     paramContent.addContent(this.writer
-/* 181 */         .getLink(new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.MEMBER, (ClassDoc)paramProgramElementDoc)));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addSummaryType(ProgramElementDoc paramProgramElementDoc, Content paramContent) {
-/* 190 */     ClassDoc classDoc = (ClassDoc)paramProgramElementDoc;
-/* 191 */     addModifierAndType((ProgramElementDoc)classDoc, null, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getDeprecatedLink(ProgramElementDoc paramProgramElementDoc) {
-/* 198 */     return this.writer.getQualifiedClassLink(LinkInfoImpl.Kind.MEMBER, (ClassDoc)paramProgramElementDoc);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getNavSummaryLink(ClassDoc paramClassDoc, boolean paramBoolean) {
-/* 206 */     if (paramBoolean) {
-/* 207 */       if (paramClassDoc == null) {
-/* 208 */         return this.writer.getHyperLink(SectionName.NESTED_CLASS_SUMMARY, this.writer
-/*     */             
-/* 210 */             .getResource("doclet.navNested"));
-/*     */       }
-/* 212 */       return this.writer.getHyperLink(SectionName.NESTED_CLASSES_INHERITANCE, paramClassDoc
-/*     */           
-/* 214 */           .qualifiedName(), this.writer.getResource("doclet.navNested"));
-/*     */     } 
-/*     */     
-/* 217 */     return this.writer.getResource("doclet.navNested");
-/*     */   }
-/*     */   
-/*     */   protected void addNavDetailLink(boolean paramBoolean, Content paramContent) {}
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\NestedClassWriterImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Writes nested class documentation in HTML format.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Robert Field
+ * @author Atul M Dambalkar
+ * @author Jamie Ho (rewrite)
+ * @author Bhavesh Patel (Modified)
+ */
+public class NestedClassWriterImpl extends AbstractMemberWriter
+    implements MemberSummaryWriter {
+
+    public NestedClassWriterImpl(SubWriterHolderWriter writer,
+            ClassDoc classdoc) {
+        super(writer, classdoc);
+    }
+
+    public NestedClassWriterImpl(SubWriterHolderWriter writer) {
+        super(writer);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getMemberSummaryHeader(ClassDoc classDoc,
+            Content memberSummaryTree) {
+        memberSummaryTree.addContent(HtmlConstants.START_OF_NESTED_CLASS_SUMMARY);
+        Content memberTree = writer.getMemberTreeHeader();
+        writer.addSummaryHeader(this, classDoc, memberTree);
+        return memberTree;
+    }
+
+    /**
+     * Close the writer.
+     */
+    public void close() throws IOException {
+        writer.close();
+    }
+
+    public int getMemberKind() {
+        return VisibleMemberMap.INNERCLASSES;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addSummaryLabel(Content memberTree) {
+        Content label = HtmlTree.HEADING(HtmlConstants.SUMMARY_HEADING,
+                writer.getResource("doclet.Nested_Class_Summary"));
+        memberTree.addContent(label);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String getTableSummary() {
+        return configuration.getText("doclet.Member_Table_Summary",
+                configuration.getText("doclet.Nested_Class_Summary"),
+                configuration.getText("doclet.nested_classes"));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getCaption() {
+        return configuration.getResource("doclet.Nested_Classes");
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String[] getSummaryTableHeader(ProgramElementDoc member) {
+        String[] header;
+        if (member.isInterface()) {
+            header = new String[] {
+                writer.getModifierTypeHeader(),
+                configuration.getText("doclet.0_and_1",
+                        configuration.getText("doclet.Interface"),
+                        configuration.getText("doclet.Description"))
+            };
+        }
+        else {
+            header = new String[] {
+                writer.getModifierTypeHeader(),
+                configuration.getText("doclet.0_and_1",
+                        configuration.getText("doclet.Class"),
+                        configuration.getText("doclet.Description"))
+            };
+        }
+        return header;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addSummaryAnchor(ClassDoc cd, Content memberTree) {
+        memberTree.addContent(writer.getMarkerAnchor(
+                SectionName.NESTED_CLASS_SUMMARY));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addInheritedSummaryAnchor(ClassDoc cd, Content inheritedTree) {
+        inheritedTree.addContent(writer.getMarkerAnchor(
+                SectionName.NESTED_CLASSES_INHERITANCE,
+                cd.qualifiedName()));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addInheritedSummaryLabel(ClassDoc cd, Content inheritedTree) {
+        Content classLink = writer.getPreQualifiedClassLink(
+                LinkInfoImpl.Kind.MEMBER, cd, false);
+        Content label = new StringContent(cd.isInterface() ?
+            configuration.getText("doclet.Nested_Classes_Interface_Inherited_From_Interface") :
+            configuration.getText("doclet.Nested_Classes_Interfaces_Inherited_From_Class"));
+        Content labelHeading = HtmlTree.HEADING(HtmlConstants.INHERITED_SUMMARY_HEADING,
+                label);
+        labelHeading.addContent(writer.getSpace());
+        labelHeading.addContent(classLink);
+        inheritedTree.addContent(labelHeading);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected void addSummaryLink(LinkInfoImpl.Kind context, ClassDoc cd, ProgramElementDoc member,
+            Content tdSummary) {
+        Content memberLink = HtmlTree.SPAN(HtmlStyle.memberNameLink,
+                writer.getLink(new LinkInfoImpl(configuration, context, (ClassDoc)member)));
+        Content code = HtmlTree.CODE(memberLink);
+        tdSummary.addContent(code);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected void addInheritedSummaryLink(ClassDoc cd,
+            ProgramElementDoc member, Content linksTree) {
+        linksTree.addContent(
+                writer.getLink(new LinkInfoImpl(configuration, LinkInfoImpl.Kind.MEMBER,
+                (ClassDoc)member)));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected void addSummaryType(ProgramElementDoc member,
+            Content tdSummaryType) {
+        ClassDoc cd = (ClassDoc)member;
+        addModifierAndType(cd, null, tdSummaryType);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected Content getDeprecatedLink(ProgramElementDoc member) {
+        return writer.getQualifiedClassLink(LinkInfoImpl.Kind.MEMBER,
+                (ClassDoc)member);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected Content getNavSummaryLink(ClassDoc cd, boolean link) {
+        if (link) {
+            if (cd == null) {
+                return writer.getHyperLink(
+                        SectionName.NESTED_CLASS_SUMMARY,
+                        writer.getResource("doclet.navNested"));
+            } else {
+                return writer.getHyperLink(
+                        SectionName.NESTED_CLASSES_INHERITANCE,
+                        cd.qualifiedName(), writer.getResource("doclet.navNested"));
+            }
+        } else {
+            return writer.getResource("doclet.navNested");
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected void addNavDetailLink(boolean link, Content liNav) {
+    }
+}

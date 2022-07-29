@@ -1,715 +1,710 @@
-/*     */ package com.sun.tools.javac.util;
-/*     */
-/*     */ import com.sun.tools.javac.api.DiagnosticFormatter;
-/*     */ import com.sun.tools.javac.code.Kinds;
-/*     */ import com.sun.tools.javac.code.Printer;
-/*     */ import com.sun.tools.javac.code.Symbol;
-/*     */ import com.sun.tools.javac.code.Symtab;
-/*     */ import com.sun.tools.javac.code.Type;
-/*     */ import com.sun.tools.javac.code.TypeTag;
-/*     */ import com.sun.tools.javac.code.Types;
-/*     */ import java.util.EnumMap;
-/*     */ import java.util.EnumSet;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.LinkedHashMap;
-/*     */ import java.util.Locale;
-/*     */ import java.util.Map;
-/*     */ import javax.tools.Diagnostic;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class RichDiagnosticFormatter
-/*     */   extends ForwardingDiagnosticFormatter<JCDiagnostic, AbstractDiagnosticFormatter>
-/*     */ {
-/*     */   final Symtab syms;
-/*     */   final Types types;
-/*     */   final JCDiagnostic.Factory diags;
-/*     */   final JavacMessages messages;
-/*     */   protected ClassNameSimplifier nameSimplifier;
-/*     */   private RichPrinter printer;
-/*     */   Map<WhereClauseKind, Map<Type, JCDiagnostic>> whereClauses;
-/*     */   protected Types.UnaryVisitor<Void> typePreprocessor;
-/*     */   protected Types.DefaultSymbolVisitor<Void, Void> symbolPreprocessor;
-/*     */
-/*     */   public static RichDiagnosticFormatter instance(Context paramContext) {
-/*  87 */     RichDiagnosticFormatter richDiagnosticFormatter = paramContext.<RichDiagnosticFormatter>get(RichDiagnosticFormatter.class);
-/*  88 */     if (richDiagnosticFormatter == null)
-/*  89 */       richDiagnosticFormatter = new RichDiagnosticFormatter(paramContext);
-/*  90 */     return richDiagnosticFormatter;
-/*     */   }
-/*     */
-/*     */   protected RichDiagnosticFormatter(Context paramContext) {
-/*  94 */     super((AbstractDiagnosticFormatter)Log.instance(paramContext).getDiagnosticFormatter());
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 452 */     this.typePreprocessor = new Types.UnaryVisitor<Void>()
-/*     */       {
-/*     */         public Void visit(List<Type> param1List)
-/*     */         {
-/* 456 */           for (Type type : param1List)
-/* 457 */             visit(type);
-/* 458 */           return null;
-/*     */         }
-/*     */
-/*     */
-/*     */         public Void visitForAll(Type.ForAll param1ForAll, Void param1Void) {
-/* 463 */           visit(param1ForAll.tvars);
-/* 464 */           visit(param1ForAll.qtype);
-/* 465 */           return null;
-/*     */         }
-/*     */
-/*     */
-/*     */         public Void visitMethodType(Type.MethodType param1MethodType, Void param1Void) {
-/* 470 */           visit(param1MethodType.argtypes);
-/* 471 */           visit(param1MethodType.restype);
-/* 472 */           return null;
-/*     */         }
-/*     */
-/*     */
-/*     */         public Void visitErrorType(Type.ErrorType param1ErrorType, Void param1Void) {
-/* 477 */           Type type = param1ErrorType.getOriginalType();
-/* 478 */           if (type != null)
-/* 479 */             visit(type);
-/* 480 */           return null;
-/*     */         }
-/*     */
-/*     */
-/*     */         public Void visitArrayType(Type.ArrayType param1ArrayType, Void param1Void) {
-/* 485 */           visit(param1ArrayType.elemtype);
-/* 486 */           return null;
-/*     */         }
-/*     */
-/*     */
-/*     */         public Void visitWildcardType(Type.WildcardType param1WildcardType, Void param1Void) {
-/* 491 */           visit(param1WildcardType.type);
-/* 492 */           return null;
-/*     */         }
-/*     */
-/*     */         public Void visitType(Type param1Type, Void param1Void) {
-/* 496 */           return null;
-/*     */         }
-/*     */
-/*     */
-/*     */         public Void visitCapturedType(Type.CapturedType param1CapturedType, Void param1Void) {
-/* 501 */           if (RichDiagnosticFormatter.this.indexOf((Type)param1CapturedType, WhereClauseKind.CAPTURED) == -1) {
-/* 502 */             String str = (param1CapturedType.lower == RichDiagnosticFormatter.this.syms.botType) ? ".1" : "";
-/* 503 */             JCDiagnostic jCDiagnostic = RichDiagnosticFormatter.this.diags.fragment("where.captured" + str, new Object[] { param1CapturedType, param1CapturedType.bound, param1CapturedType.lower, param1CapturedType.wildcard });
-/* 504 */             ((Map<Type.CapturedType, JCDiagnostic>)RichDiagnosticFormatter.this.whereClauses.get(WhereClauseKind.CAPTURED)).put(param1CapturedType, jCDiagnostic);
-/* 505 */             visit((Type)param1CapturedType.wildcard);
-/* 506 */             visit(param1CapturedType.lower);
-/* 507 */             visit(param1CapturedType.bound);
-/*     */           }
-/* 509 */           return null;
-/*     */         }
-/*     */
-/*     */
-/*     */         public Void visitClassType(Type.ClassType param1ClassType, Void param1Void) {
-/* 514 */           if (param1ClassType.isCompound()) {
-/* 515 */             if (RichDiagnosticFormatter.this.indexOf((Type)param1ClassType, WhereClauseKind.INTERSECTION) == -1) {
-/* 516 */               Type type = RichDiagnosticFormatter.this.types.supertype((Type)param1ClassType);
-/* 517 */               List<Type> list = RichDiagnosticFormatter.this.types.interfaces((Type)param1ClassType);
-/* 518 */               JCDiagnostic jCDiagnostic = RichDiagnosticFormatter.this.diags.fragment("where.intersection", new Object[] { param1ClassType, list.prepend(type) });
-/* 519 */               ((Map<Type.ClassType, JCDiagnostic>)RichDiagnosticFormatter.this.whereClauses.get(WhereClauseKind.INTERSECTION)).put(param1ClassType, jCDiagnostic);
-/* 520 */               visit(type);
-/* 521 */               visit(list);
-/*     */             }
-/* 523 */           } else if (param1ClassType.tsym.name.isEmpty()) {
-/*     */
-/* 525 */             Type.ClassType classType = (Type.ClassType)param1ClassType.tsym.type;
-/* 526 */             if (classType != null) {
-/* 527 */               if (classType.interfaces_field != null && classType.interfaces_field.nonEmpty()) {
-/* 528 */                 visit((Type)classType.interfaces_field.head);
-/*     */               } else {
-/* 530 */                 visit(classType.supertype_field);
-/*     */               }
-/*     */             }
-/*     */           }
-/* 534 */           RichDiagnosticFormatter.this.nameSimplifier.addUsage((Symbol)param1ClassType.tsym);
-/* 535 */           visit(param1ClassType.getTypeArguments());
-/* 536 */           if (param1ClassType.getEnclosingType() != Type.noType)
-/* 537 */             visit(param1ClassType.getEnclosingType());
-/* 538 */           return null;
-/*     */         }
-/*     */
-/*     */
-/*     */         public Void visitTypeVar(Type.TypeVar param1TypeVar, Void param1Void) {
-/* 543 */           if (RichDiagnosticFormatter.this.indexOf((Type)param1TypeVar, WhereClauseKind.TYPEVAR) == -1) {
-/*     */
-/* 545 */             Type type = param1TypeVar.bound;
-/* 546 */             while (type instanceof Type.ErrorType) {
-/* 547 */               type = ((Type.ErrorType)type).getOriginalType();
-/*     */             }
-/*     */
-/*     */
-/*     */
-/*     */
-/* 553 */             List<Type> list = (type != null && (type.hasTag(TypeTag.CLASS) || type.hasTag(TypeTag.TYPEVAR))) ? RichDiagnosticFormatter.this.types.getBounds(param1TypeVar) : List.nil();
-/*     */
-/* 555 */             RichDiagnosticFormatter.this.nameSimplifier.addUsage((Symbol)param1TypeVar.tsym);
-/*     */
-/*     */
-/*     */
-/* 559 */             boolean bool = (list.head == null || ((Type)list.head).hasTag(TypeTag.NONE) || ((Type)list.head).hasTag(TypeTag.ERROR)) ? true : false;
-/*     */
-/* 561 */             if ((param1TypeVar.tsym.flags() & 0x1000L) == 0L) {
-/*     */
-/* 563 */               JCDiagnostic jCDiagnostic = RichDiagnosticFormatter.this.diags.fragment("where.typevar" + (bool ? ".1" : ""), new Object[] { param1TypeVar, list,
-/*     */
-/* 565 */                     Kinds.kindName(param1TypeVar.tsym.location()), param1TypeVar.tsym.location() });
-/* 566 */               ((Map<Type.TypeVar, JCDiagnostic>)RichDiagnosticFormatter.this.whereClauses.get(WhereClauseKind.TYPEVAR)).put(param1TypeVar, jCDiagnostic);
-/* 567 */               RichDiagnosticFormatter.this.symbolPreprocessor.visit(param1TypeVar.tsym.location(), null);
-/* 568 */               visit(list);
-/*     */             } else {
-/* 570 */               Assert.check(!bool);
-/*     */
-/* 572 */               JCDiagnostic jCDiagnostic = RichDiagnosticFormatter.this.diags.fragment("where.fresh.typevar", new Object[] { param1TypeVar, list });
-/* 573 */               ((Map<Type.TypeVar, JCDiagnostic>)RichDiagnosticFormatter.this.whereClauses.get(WhereClauseKind.TYPEVAR)).put(param1TypeVar, jCDiagnostic);
-/* 574 */               visit(list);
-/*     */             }
-/*     */           }
-/*     */
-/* 578 */           return null;
-/*     */         }
-/*     */       };
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 592 */     this.symbolPreprocessor = new Types.DefaultSymbolVisitor<Void, Void>()
-/*     */       {
-/*     */
-/*     */         public Void visitClassSymbol(Symbol.ClassSymbol param1ClassSymbol, Void param1Void)
-/*     */         {
-/* 597 */           if (param1ClassSymbol.type.isCompound()) {
-/* 598 */             RichDiagnosticFormatter.this.typePreprocessor.visit(param1ClassSymbol.type);
-/*     */           } else {
-/* 600 */             RichDiagnosticFormatter.this.nameSimplifier.addUsage((Symbol)param1ClassSymbol);
-/*     */           }
-/* 602 */           return null;
-/*     */         }
-/*     */
-/*     */
-/*     */         public Void visitSymbol(Symbol param1Symbol, Void param1Void) {
-/* 607 */           return null;
-/*     */         }
-/*     */
-/*     */         public Void visitMethodSymbol(Symbol.MethodSymbol param1MethodSymbol, Void param1Void)
-/*     */         {
-/* 612 */           visit(param1MethodSymbol.owner, null);
-/* 613 */           if (param1MethodSymbol.type != null)
-/* 614 */             RichDiagnosticFormatter.this.typePreprocessor.visit(param1MethodSymbol.type);
-/* 615 */           return null; }
-/*     */       }; setRichPrinter(new RichPrinter()); this.syms = Symtab.instance(paramContext); this.diags = JCDiagnostic.Factory.instance(paramContext); this.types = Types.instance(paramContext); this.messages = JavacMessages.instance(paramContext); this.whereClauses = new EnumMap<>(WhereClauseKind.class); this.configuration = new RichConfiguration(Options.instance(paramContext), this.formatter); for (WhereClauseKind whereClauseKind : WhereClauseKind.values()) this.whereClauses.put(whereClauseKind, new LinkedHashMap<>());
-/*     */   }
-/*     */   public String format(JCDiagnostic paramJCDiagnostic, Locale paramLocale) { StringBuilder stringBuilder = new StringBuilder(); this.nameSimplifier = new ClassNameSimplifier(); for (WhereClauseKind whereClauseKind : WhereClauseKind.values()) ((Map)this.whereClauses.get(whereClauseKind)).clear();  preprocessDiagnostic(paramJCDiagnostic); stringBuilder.append(this.formatter.format(paramJCDiagnostic, paramLocale)); if (getConfiguration().isEnabled(RichConfiguration.RichFormatterFeature.WHERE_CLAUSES)) { List<JCDiagnostic> list = getWhereClauses(); String str = this.formatter.isRaw() ? "" : this.formatter.indentString(2); for (JCDiagnostic jCDiagnostic : list) { String str1 = this.formatter.format(jCDiagnostic, paramLocale); if (str1.length() > 0) stringBuilder.append('\n' + str + str1);  }  }  return stringBuilder.toString(); }
-/*     */   public String formatMessage(JCDiagnostic paramJCDiagnostic, Locale paramLocale) { this.nameSimplifier = new ClassNameSimplifier(); preprocessDiagnostic(paramJCDiagnostic); return super.formatMessage(paramJCDiagnostic, paramLocale); }
-/*     */   protected void setRichPrinter(RichPrinter paramRichPrinter) { this.printer = paramRichPrinter; this.formatter.setPrinter(paramRichPrinter); }
-/*     */   protected RichPrinter getRichPrinter() { return this.printer; } protected void preprocessDiagnostic(JCDiagnostic paramJCDiagnostic) { for (Object object : paramJCDiagnostic.getArgs()) { if (object != null) preprocessArgument(object);  }  if (paramJCDiagnostic.isMultiline()) for (JCDiagnostic jCDiagnostic : paramJCDiagnostic.getSubdiagnostics()) preprocessDiagnostic(jCDiagnostic);   } protected void preprocessArgument(Object paramObject) { if (paramObject instanceof Type) { preprocessType((Type)paramObject); } else if (paramObject instanceof Symbol) { preprocessSymbol((Symbol)paramObject); } else if (paramObject instanceof JCDiagnostic) { preprocessDiagnostic((JCDiagnostic)paramObject); } else if (paramObject instanceof Iterable) { for (Object object : paramObject) preprocessArgument(object);  }  } protected List<JCDiagnostic> getWhereClauses() { List<?> list = List.nil(); for (WhereClauseKind whereClauseKind : WhereClauseKind.values()) { List<?> list1 = List.nil(); for (Map.Entry entry : ((Map)this.whereClauses.get(whereClauseKind)).entrySet()) list1 = list1.prepend(entry.getValue());  if (!list1.isEmpty()) { String str = whereClauseKind.key(); if (list1.size() > 1) str = str + ".1";  JCDiagnostic jCDiagnostic = this.diags.fragment(str, new Object[] { ((Map)this.whereClauses.get(whereClauseKind)).keySet() }); jCDiagnostic = new JCDiagnostic.MultilineDiagnostic(jCDiagnostic, (List)list1.reverse()); list = list.prepend(jCDiagnostic); }  }  return (List)list.reverse(); } private int indexOf(Type paramType, WhereClauseKind paramWhereClauseKind) { byte b = 1; for (Type type : ((Map)this.whereClauses.get(paramWhereClauseKind)).keySet()) { if (type.tsym == paramType.tsym) return b;  if (paramWhereClauseKind != WhereClauseKind.TYPEVAR || type.toString().equals(paramType.toString())) b++;  }  return -1; } private boolean unique(Type.TypeVar paramTypeVar) { byte b = 0; for (Type type : ((Map)this.whereClauses.get(WhereClauseKind.TYPEVAR)).keySet()) { if (type.toString().equals(paramTypeVar.toString())) b++;  }  if (b < 1) throw new AssertionError("Missing type variable in where clause " + paramTypeVar);  return (b == 1); } enum WhereClauseKind {
-/*     */     TYPEVAR("where.description.typevar"), CAPTURED("where.description.captured"), INTERSECTION("where.description.intersection"); private final String key; WhereClauseKind(String param1String1) { this.key = param1String1; } String key() { return this.key; } } protected class ClassNameSimplifier {
-/* 623 */     Map<Name, List<Symbol>> nameClashes = new HashMap<>(); protected void addUsage(Symbol param1Symbol) { Name name = param1Symbol.getSimpleName(); List<?> list = this.nameClashes.get(name); if (list == null) list = List.nil();  if (!list.contains(param1Symbol)) this.nameClashes.put(name, (List)list.append(param1Symbol));  } public String simplify(Symbol param1Symbol) { String str = param1Symbol.getQualifiedName().toString(); if (!param1Symbol.type.isCompound() && !param1Symbol.type.isPrimitive()) { List list = this.nameClashes.get(param1Symbol.getSimpleName()); if (list == null || (list.size() == 1 && list.contains(param1Symbol))) { List<?> list1 = List.nil(); Symbol symbol = param1Symbol; while (symbol.type.hasTag(TypeTag.CLASS) && symbol.type.getEnclosingType().hasTag(TypeTag.CLASS) && symbol.owner.kind == 2) { list1 = list1.prepend(symbol.getSimpleName()); symbol = symbol.owner; }  list1 = list1.prepend(symbol.getSimpleName()); StringBuilder stringBuilder = new StringBuilder(); String str1 = ""; for (Name name : list1) { stringBuilder.append(str1); stringBuilder.append(name); str1 = "."; }  str = stringBuilder.toString(); }  }  return str; } } public RichConfiguration getConfiguration() { return (RichConfiguration)this.configuration; }
-/*     */   protected class RichPrinter extends Printer {
-/*     */     public String localize(Locale param1Locale, String param1String, Object... param1VarArgs) { return RichDiagnosticFormatter.this.formatter.localize(param1Locale, param1String, param1VarArgs); }
-/*     */     public String capturedVarId(Type.CapturedType param1CapturedType, Locale param1Locale) { return RichDiagnosticFormatter.this.indexOf((Type)param1CapturedType, WhereClauseKind.CAPTURED) + ""; }
-/*     */     public String visitType(Type param1Type, Locale param1Locale) { String str = super.visitType(param1Type, param1Locale); if (param1Type == RichDiagnosticFormatter.this.syms.botType) str = localize(param1Locale, "compiler.misc.type.null", new Object[0]);  return str; }
-/*     */     public String visitCapturedType(Type.CapturedType param1CapturedType, Locale param1Locale) { if (RichDiagnosticFormatter.this.getConfiguration().isEnabled(RichConfiguration.RichFormatterFeature.WHERE_CLAUSES)) return localize(param1Locale, "compiler.misc.captured.type", new Object[] { Integer.valueOf(RichDiagnosticFormatter.access$000(this.this$0, (Type)param1CapturedType, WhereClauseKind.CAPTURED)) });  return super.visitCapturedType(param1CapturedType, param1Locale); }
-/*     */     public String visitClassType(Type.ClassType param1ClassType, Locale param1Locale) { if (param1ClassType.isCompound() && RichDiagnosticFormatter.this.getConfiguration().isEnabled(RichConfiguration.RichFormatterFeature.WHERE_CLAUSES)) return localize(param1Locale, "compiler.misc.intersection.type", new Object[] { Integer.valueOf(RichDiagnosticFormatter.access$000(this.this$0, (Type)param1ClassType, WhereClauseKind.INTERSECTION)) });  return super.visitClassType(param1ClassType, param1Locale); }
-/*     */     protected String className(Type.ClassType param1ClassType, boolean param1Boolean, Locale param1Locale) { Symbol.TypeSymbol typeSymbol = param1ClassType.tsym; if (((Symbol)typeSymbol).name.length() == 0 || !RichDiagnosticFormatter.this.getConfiguration().isEnabled(RichConfiguration.RichFormatterFeature.SIMPLE_NAMES)) return super.className(param1ClassType, param1Boolean, param1Locale);  if (param1Boolean) return RichDiagnosticFormatter.this.nameSimplifier.simplify((Symbol)typeSymbol).toString();  return ((Symbol)typeSymbol).name.toString(); }
-/*     */     public String visitTypeVar(Type.TypeVar param1TypeVar, Locale param1Locale) { if (RichDiagnosticFormatter.this.unique(param1TypeVar) || !RichDiagnosticFormatter.this.getConfiguration().isEnabled(RichConfiguration.RichFormatterFeature.UNIQUE_TYPEVAR_NAMES)) return param1TypeVar.toString();  return localize(param1Locale, "compiler.misc.type.var", new Object[] { param1TypeVar.toString(), Integer.valueOf(RichDiagnosticFormatter.access$000(this.this$0, (Type)param1TypeVar, WhereClauseKind.TYPEVAR)) }); }
-/*     */     public String visitClassSymbol(Symbol.ClassSymbol param1ClassSymbol, Locale param1Locale) { if (param1ClassSymbol.type.isCompound()) return visit(param1ClassSymbol.type, param1Locale);  String str = RichDiagnosticFormatter.this.nameSimplifier.simplify((Symbol)param1ClassSymbol); if (str.length() == 0 || !RichDiagnosticFormatter.this.getConfiguration().isEnabled(RichConfiguration.RichFormatterFeature.SIMPLE_NAMES)) return super.visitClassSymbol(param1ClassSymbol, param1Locale);  return str; }
-/*     */     public String visitMethodSymbol(Symbol.MethodSymbol param1MethodSymbol, Locale param1Locale) { String str1 = visit(param1MethodSymbol.owner, param1Locale); if (param1MethodSymbol.isStaticOrInstanceInit()) return str1;  String str2 = (param1MethodSymbol.name == param1MethodSymbol.name.table.names.init) ? str1 : param1MethodSymbol.name.toString(); if (param1MethodSymbol.type != null) { if (param1MethodSymbol.type.hasTag(TypeTag.FORALL))
-/*     */           str2 = "<" + visitTypes(param1MethodSymbol.type.getTypeArguments(), param1Locale) + ">" + str2;  str2 = str2 + "(" + printMethodArgs(param1MethodSymbol.type.getParameterTypes(), ((param1MethodSymbol.flags() & 0x400000000L) != 0L), param1Locale) + ")"; }  return str2; }
-/*     */   } protected void preprocessType(Type paramType) { this.typePreprocessor.visit(paramType); } protected void preprocessSymbol(Symbol paramSymbol) { this.symbolPreprocessor.visit(paramSymbol, null); } public static class RichConfiguration extends ForwardingConfiguration {
-/* 636 */     public RichConfiguration(Options param1Options, AbstractDiagnosticFormatter param1AbstractDiagnosticFormatter) { super(param1AbstractDiagnosticFormatter.getConfiguration());
-/* 637 */       this
-/* 638 */         .features = param1AbstractDiagnosticFormatter.isRaw() ? EnumSet.<RichFormatterFeature>noneOf(RichFormatterFeature.class) : EnumSet.<RichFormatterFeature>of(RichFormatterFeature.SIMPLE_NAMES, RichFormatterFeature.WHERE_CLAUSES, RichFormatterFeature.UNIQUE_TYPEVAR_NAMES);
-/*     */
-/*     */
-/* 641 */       String str = param1Options.get("diags");
-/* 642 */       if (str != null) {
-/* 643 */         for (String str1 : str.split(",")) {
-/* 644 */           if (str1.equals("-where")) {
-/* 645 */             this.features.remove(RichFormatterFeature.WHERE_CLAUSES);
-/*     */           }
-/* 647 */           else if (str1.equals("where")) {
-/* 648 */             this.features.add(RichFormatterFeature.WHERE_CLAUSES);
-/*     */           }
-/* 650 */           if (str1.equals("-simpleNames")) {
-/* 651 */             this.features.remove(RichFormatterFeature.SIMPLE_NAMES);
-/*     */           }
-/* 653 */           else if (str1.equals("simpleNames")) {
-/* 654 */             this.features.add(RichFormatterFeature.SIMPLE_NAMES);
-/*     */           }
-/* 656 */           if (str1.equals("-disambiguateTvars")) {
-/* 657 */             this.features.remove(RichFormatterFeature.UNIQUE_TYPEVAR_NAMES);
-/*     */           }
-/* 659 */           else if (str1.equals("disambiguateTvars")) {
-/* 660 */             this.features.add(RichFormatterFeature.UNIQUE_TYPEVAR_NAMES);
-/*     */           }
-/*     */         }
-/*     */       } }
-/*     */
-/*     */
-/*     */
-/*     */     protected EnumSet<RichFormatterFeature> features;
-/*     */
-/*     */
-/*     */     public RichFormatterFeature[] getAvailableFeatures() {
-/* 671 */       return RichFormatterFeature.values();
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public void enable(RichFormatterFeature param1RichFormatterFeature) {
-/* 679 */       this.features.add(param1RichFormatterFeature);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public void disable(RichFormatterFeature param1RichFormatterFeature) {
-/* 687 */       this.features.remove(param1RichFormatterFeature);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public boolean isEnabled(RichFormatterFeature param1RichFormatterFeature) {
-/* 695 */       return this.features.contains(param1RichFormatterFeature);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public enum RichFormatterFeature
-/*     */     {
-/* 703 */       WHERE_CLAUSES,
-/*     */
-/* 705 */       SIMPLE_NAMES,
-/*     */
-/* 707 */       UNIQUE_TYPEVAR_NAMES; } } public enum RichFormatterFeature { WHERE_CLAUSES, SIMPLE_NAMES, UNIQUE_TYPEVAR_NAMES; }
-/*     */
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\java\\util\RichDiagnosticFormatter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2009, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+package com.sun.tools.javac.util;
+
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
+
+import com.sun.tools.javac.code.Kinds;
+import com.sun.tools.javac.code.Printer;
+import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.code.Symtab;
+import com.sun.tools.javac.code.Type;
+import com.sun.tools.javac.code.Type.*;
+import com.sun.tools.javac.code.Types;
+
+import static com.sun.tools.javac.code.TypeTag.*;
+import static com.sun.tools.javac.code.Flags.*;
+import static com.sun.tools.javac.util.LayoutCharacters.*;
+import static com.sun.tools.javac.util.RichDiagnosticFormatter.RichConfiguration.*;
+
+/**
+ * A rich diagnostic formatter is a formatter that provides better integration
+ * with javac's type system. A diagostic is first preprocessed in order to keep
+ * track of each types/symbols in it; after these informations are collected,
+ * the diagnostic is rendered using a standard formatter, whose type/symbol printer
+ * has been replaced by a more refined version provided by this rich formatter.
+ * The rich formatter currently enables three different features: (i) simple class
+ * names - that is class names are displayed used a non qualified name (thus
+ * omitting package info) whenever possible - (ii) where clause list - a list of
+ * additional subdiagnostics that provide specific info about type-variables,
+ * captured types, intersection types that occur in the diagnostic that is to be
+ * formatted and (iii) type-variable disambiguation - when the diagnostic refers
+ * to two different type-variables with the same name, their representation is
+ * disambiguated by appending an index to the type variable name.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own risk.
+ * This code and its internal interfaces are subject to change or
+ * deletion without notice.</b>
+ */
+public class RichDiagnosticFormatter extends
+        ForwardingDiagnosticFormatter<JCDiagnostic, AbstractDiagnosticFormatter> {
+
+    final Symtab syms;
+    final Types types;
+    final JCDiagnostic.Factory diags;
+    final JavacMessages messages;
+
+    /* name simplifier used by this formatter */
+    protected ClassNameSimplifier nameSimplifier;
+
+    /* type/symbol printer used by this formatter */
+    private RichPrinter printer;
+
+    /* map for keeping track of a where clause associated to a given type */
+    Map<WhereClauseKind, Map<Type, JCDiagnostic>> whereClauses;
+
+    /** Get the DiagnosticFormatter instance for this context. */
+    public static RichDiagnosticFormatter instance(Context context) {
+        RichDiagnosticFormatter instance = context.get(RichDiagnosticFormatter.class);
+        if (instance == null)
+            instance = new RichDiagnosticFormatter(context);
+        return instance;
+    }
+
+    protected RichDiagnosticFormatter(Context context) {
+        super((AbstractDiagnosticFormatter)Log.instance(context).getDiagnosticFormatter());
+        setRichPrinter(new RichPrinter());
+        this.syms = Symtab.instance(context);
+        this.diags = JCDiagnostic.Factory.instance(context);
+        this.types = Types.instance(context);
+        this.messages = JavacMessages.instance(context);
+        whereClauses = new EnumMap<WhereClauseKind, Map<Type, JCDiagnostic>>(WhereClauseKind.class);
+        configuration = new RichConfiguration(Options.instance(context), formatter);
+        for (WhereClauseKind kind : WhereClauseKind.values())
+            whereClauses.put(kind, new LinkedHashMap<Type, JCDiagnostic>());
+    }
+
+    @Override
+    public String format(JCDiagnostic diag, Locale l) {
+        StringBuilder sb = new StringBuilder();
+        nameSimplifier = new ClassNameSimplifier();
+        for (WhereClauseKind kind : WhereClauseKind.values())
+            whereClauses.get(kind).clear();
+        preprocessDiagnostic(diag);
+        sb.append(formatter.format(diag, l));
+        if (getConfiguration().isEnabled(RichFormatterFeature.WHERE_CLAUSES)) {
+            List<JCDiagnostic> clauses = getWhereClauses();
+            String indent = formatter.isRaw() ? "" :
+                formatter.indentString(DetailsInc);
+            for (JCDiagnostic d : clauses) {
+                String whereClause = formatter.format(d, l);
+                if (whereClause.length() > 0) {
+                    sb.append('\n' + indent + whereClause);
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    @Override
+    public String formatMessage(JCDiagnostic diag, Locale l) {
+        nameSimplifier = new ClassNameSimplifier();
+        preprocessDiagnostic(diag);
+        return super.formatMessage(diag, l);
+    }
+
+    /**
+     * Sets the type/symbol printer used by this formatter.
+     * @param printer the rich printer to be set
+     */
+    protected void setRichPrinter(RichPrinter printer) {
+        this.printer = printer;
+        formatter.setPrinter(printer);
+    }
+
+    /**
+     * Gets the type/symbol printer used by this formatter.
+     * @return type/symbol rich printer
+     */
+    protected RichPrinter getRichPrinter() {
+        return printer;
+    }
+
+    /**
+     * Preprocess a given diagnostic by looking both into its arguments and into
+     * its subdiagnostics (if any). This preprocessing is responsible for
+     * generating info corresponding to features like where clauses, name
+     * simplification, etc.
+     *
+     * @param diag the diagnostic to be preprocessed
+     */
+    protected void preprocessDiagnostic(JCDiagnostic diag) {
+        for (Object o : diag.getArgs()) {
+            if (o != null) {
+                preprocessArgument(o);
+            }
+        }
+        if (diag.isMultiline()) {
+            for (JCDiagnostic d : diag.getSubdiagnostics())
+                preprocessDiagnostic(d);
+        }
+    }
+
+    /**
+     * Preprocess a diagnostic argument. A type/symbol argument is
+     * preprocessed by specialized type/symbol preprocessors.
+     *
+     * @param arg the argument to be translated
+     */
+    protected void preprocessArgument(Object arg) {
+        if (arg instanceof Type) {
+            preprocessType((Type)arg);
+        }
+        else if (arg instanceof Symbol) {
+            preprocessSymbol((Symbol)arg);
+        }
+        else if (arg instanceof JCDiagnostic) {
+            preprocessDiagnostic((JCDiagnostic)arg);
+        }
+        else if (arg instanceof Iterable<?>) {
+            for (Object o : (Iterable<?>)arg) {
+                preprocessArgument(o);
+            }
+        }
+    }
+
+    /**
+     * Build a list of multiline diagnostics containing detailed info about
+     * type-variables, captured types, and intersection types
+     *
+     * @return where clause list
+     */
+    protected List<JCDiagnostic> getWhereClauses() {
+        List<JCDiagnostic> clauses = List.nil();
+        for (WhereClauseKind kind : WhereClauseKind.values()) {
+            List<JCDiagnostic> lines = List.nil();
+            for (Map.Entry<Type, JCDiagnostic> entry : whereClauses.get(kind).entrySet()) {
+                lines = lines.prepend(entry.getValue());
+            }
+            if (!lines.isEmpty()) {
+                String key = kind.key();
+                if (lines.size() > 1)
+                    key += ".1";
+                JCDiagnostic d = diags.fragment(key, whereClauses.get(kind).keySet());
+                d = new JCDiagnostic.MultilineDiagnostic(d, lines.reverse());
+                clauses = clauses.prepend(d);
+            }
+        }
+        return clauses.reverse();
+    }
+
+    private int indexOf(Type type, WhereClauseKind kind) {
+        int index = 1;
+        for (Type t : whereClauses.get(kind).keySet()) {
+            if (t.tsym == type.tsym) {
+                return index;
+            }
+            if (kind != WhereClauseKind.TYPEVAR ||
+                    t.toString().equals(type.toString())) {
+                index++;
+            }
+        }
+        return -1;
+    }
+
+    private boolean unique(TypeVar typevar) {
+        int found = 0;
+        for (Type t : whereClauses.get(WhereClauseKind.TYPEVAR).keySet()) {
+            if (t.toString().equals(typevar.toString())) {
+                found++;
+            }
+        }
+        if (found < 1)
+            throw new AssertionError("Missing type variable in where clause " + typevar);
+        return found == 1;
+    }
+    //where
+    /**
+     * This enum defines all posssible kinds of where clauses that can be
+     * attached by a rich diagnostic formatter to a given diagnostic
+     */
+    enum WhereClauseKind {
+
+        /** where clause regarding a type variable */
+        TYPEVAR("where.description.typevar"),
+        /** where clause regarding a captured type */
+        CAPTURED("where.description.captured"),
+        /** where clause regarding an intersection type */
+        INTERSECTION("where.description.intersection");
+
+        /** resource key for this where clause kind */
+        private final String key;
+
+        WhereClauseKind(String key) {
+            this.key = key;
+        }
+
+        String key() {
+            return key;
+        }
+    }
+
+    // <editor-fold defaultstate="collapsed" desc="name simplifier">
+    /**
+     * A name simplifier keeps track of class names usages in order to determine
+     * whether a class name can be compacted or not. Short names are not used
+     * if a conflict is detected, e.g. when two classes with the same simple
+     * name belong to different packages - in this case the formatter reverts
+     * to fullnames as compact names might lead to a confusing diagnostic.
+     */
+    protected class ClassNameSimplifier {
+
+        /* table for keeping track of all short name usages */
+        Map<Name, List<Symbol>> nameClashes = new HashMap<Name, List<Symbol>>();
+
+        /**
+         * Add a name usage to the simplifier's internal cache
+         */
+        protected void addUsage(Symbol sym) {
+            Name n = sym.getSimpleName();
+            List<Symbol> conflicts = nameClashes.get(n);
+            if (conflicts == null) {
+                conflicts = List.nil();
+            }
+            if (!conflicts.contains(sym))
+                nameClashes.put(n, conflicts.append(sym));
+        }
+
+        public String simplify(Symbol s) {
+            String name = s.getQualifiedName().toString();
+            if (!s.type.isCompound() && !s.type.isPrimitive()) {
+                List<Symbol> conflicts = nameClashes.get(s.getSimpleName());
+                if (conflicts == null ||
+                    (conflicts.size() == 1 &&
+                    conflicts.contains(s))) {
+                    List<Name> l = List.nil();
+                    Symbol s2 = s;
+                    while (s2.type.hasTag(CLASS) &&
+                            s2.type.getEnclosingType().hasTag(CLASS) &&
+                            s2.owner.kind == Kinds.TYP) {
+                        l = l.prepend(s2.getSimpleName());
+                        s2 = s2.owner;
+                    }
+                    l = l.prepend(s2.getSimpleName());
+                    StringBuilder buf = new StringBuilder();
+                    String sep = "";
+                    for (Name n2 : l) {
+                        buf.append(sep);
+                        buf.append(n2);
+                        sep = ".";
+                    }
+                    name = buf.toString();
+                }
+            }
+            return name;
+        }
+    };
+    // </editor-fold>
+
+    // <editor-fold defaultstate="collapsed" desc="rich printer">
+    /**
+     * Enhanced type/symbol printer that provides support for features like simple names
+     * and type variable disambiguation. This enriched printer exploits the info
+     * discovered during type/symbol preprocessing. This printer is set on the delegate
+     * formatter so that rich type/symbol info can be properly rendered.
+     */
+    protected class RichPrinter extends Printer {
+
+        @Override
+        public String localize(Locale locale, String key, Object... args) {
+            return formatter.localize(locale, key, args);
+        }
+
+        @Override
+        public String capturedVarId(CapturedType t, Locale locale) {
+            return indexOf(t, WhereClauseKind.CAPTURED) + "";
+        }
+
+        @Override
+        public String visitType(Type t, Locale locale) {
+            String s = super.visitType(t, locale);
+            if (t == syms.botType)
+                s = localize(locale, "compiler.misc.type.null");
+            return s;
+        }
+
+        @Override
+        public String visitCapturedType(CapturedType t, Locale locale) {
+            if (getConfiguration().isEnabled(RichFormatterFeature.WHERE_CLAUSES)) {
+                return localize(locale,
+                    "compiler.misc.captured.type",
+                    indexOf(t, WhereClauseKind.CAPTURED));
+            }
+            else
+                return super.visitCapturedType(t, locale);
+        }
+
+        @Override
+        public String visitClassType(ClassType t, Locale locale) {
+            if (t.isCompound() &&
+                    getConfiguration().isEnabled(RichFormatterFeature.WHERE_CLAUSES)) {
+                return localize(locale,
+                        "compiler.misc.intersection.type",
+                        indexOf(t, WhereClauseKind.INTERSECTION));
+            }
+            else
+                return super.visitClassType(t, locale);
+        }
+
+        @Override
+        protected String className(ClassType t, boolean longform, Locale locale) {
+            Symbol sym = t.tsym;
+            if (sym.name.length() == 0 ||
+                    !getConfiguration().isEnabled(RichFormatterFeature.SIMPLE_NAMES)) {
+                return super.className(t, longform, locale);
+            }
+            else if (longform)
+                return nameSimplifier.simplify(sym).toString();
+            else
+                return sym.name.toString();
+        }
+
+        @Override
+        public String visitTypeVar(TypeVar t, Locale locale) {
+            if (unique(t) ||
+                    !getConfiguration().isEnabled(RichFormatterFeature.UNIQUE_TYPEVAR_NAMES)) {
+                return t.toString();
+            }
+            else {
+                return localize(locale,
+                        "compiler.misc.type.var",
+                        t.toString(), indexOf(t, WhereClauseKind.TYPEVAR));
+            }
+        }
+
+        @Override
+        public String visitClassSymbol(ClassSymbol s, Locale locale) {
+            if (s.type.isCompound()) {
+                return visit(s.type, locale);
+            }
+            String name = nameSimplifier.simplify(s);
+            if (name.length() == 0 ||
+                    !getConfiguration().isEnabled(RichFormatterFeature.SIMPLE_NAMES)) {
+                return super.visitClassSymbol(s, locale);
+            }
+            else {
+                return name;
+            }
+        }
+
+        @Override
+        public String visitMethodSymbol(MethodSymbol s, Locale locale) {
+            String ownerName = visit(s.owner, locale);
+            if (s.isStaticOrInstanceInit()) {
+               return ownerName;
+            } else {
+                String ms = (s.name == s.name.table.names.init)
+                    ? ownerName
+                    : s.name.toString();
+                if (s.type != null) {
+                    if (s.type.hasTag(FORALL)) {
+                        ms = "<" + visitTypes(s.type.getTypeArguments(), locale) + ">" + ms;
+                    }
+                    ms += "(" + printMethodArgs(
+                            s.type.getParameterTypes(),
+                            (s.flags() & VARARGS) != 0,
+                            locale) + ")";
+                }
+                return ms;
+            }
+        }
+    };
+    // </editor-fold>
+
+    // <editor-fold defaultstate="collapsed" desc="type scanner">
+    /**
+     * Preprocess a given type looking for (i) additional info (where clauses) to be
+     * added to the main diagnostic (ii) names to be compacted.
+     */
+    protected void preprocessType(Type t) {
+        typePreprocessor.visit(t);
+    }
+    //where
+    protected Types.UnaryVisitor<Void> typePreprocessor =
+            new Types.UnaryVisitor<Void>() {
+
+        public Void visit(List<Type> ts) {
+            for (Type t : ts)
+                visit(t);
+            return null;
+        }
+
+        @Override
+        public Void visitForAll(ForAll t, Void ignored) {
+            visit(t.tvars);
+            visit(t.qtype);
+            return null;
+        }
+
+        @Override
+        public Void visitMethodType(MethodType t, Void ignored) {
+            visit(t.argtypes);
+            visit(t.restype);
+            return null;
+        }
+
+        @Override
+        public Void visitErrorType(ErrorType t, Void ignored) {
+            Type ot = t.getOriginalType();
+            if (ot != null)
+                visit(ot);
+            return null;
+        }
+
+        @Override
+        public Void visitArrayType(ArrayType t, Void ignored) {
+            visit(t.elemtype);
+            return null;
+        }
+
+        @Override
+        public Void visitWildcardType(WildcardType t, Void ignored) {
+            visit(t.type);
+            return null;
+        }
+
+        public Void visitType(Type t, Void ignored) {
+            return null;
+        }
+
+        @Override
+        public Void visitCapturedType(CapturedType t, Void ignored) {
+            if (indexOf(t, WhereClauseKind.CAPTURED) == -1) {
+                String suffix = t.lower == syms.botType ? ".1" : "";
+                JCDiagnostic d = diags.fragment("where.captured"+ suffix, t, t.bound, t.lower, t.wildcard);
+                whereClauses.get(WhereClauseKind.CAPTURED).put(t, d);
+                visit(t.wildcard);
+                visit(t.lower);
+                visit(t.bound);
+            }
+            return null;
+        }
+
+        @Override
+        public Void visitClassType(ClassType t, Void ignored) {
+            if (t.isCompound()) {
+                if (indexOf(t, WhereClauseKind.INTERSECTION) == -1) {
+                    Type supertype = types.supertype(t);
+                    List<Type> interfaces = types.interfaces(t);
+                    JCDiagnostic d = diags.fragment("where.intersection", t, interfaces.prepend(supertype));
+                    whereClauses.get(WhereClauseKind.INTERSECTION).put(t, d);
+                    visit(supertype);
+                    visit(interfaces);
+                }
+            } else if (t.tsym.name.isEmpty()) {
+                //anon class
+                ClassType norm = (ClassType) t.tsym.type;
+                if (norm != null) {
+                    if (norm.interfaces_field != null && norm.interfaces_field.nonEmpty()) {
+                        visit(norm.interfaces_field.head);
+                    } else {
+                        visit(norm.supertype_field);
+                    }
+                }
+            }
+            nameSimplifier.addUsage(t.tsym);
+            visit(t.getTypeArguments());
+            if (t.getEnclosingType() != Type.noType)
+                visit(t.getEnclosingType());
+            return null;
+        }
+
+        @Override
+        public Void visitTypeVar(TypeVar t, Void ignored) {
+            if (indexOf(t, WhereClauseKind.TYPEVAR) == -1) {
+                //access the bound type and skip error types
+                Type bound = t.bound;
+                while ((bound instanceof ErrorType))
+                    bound = ((ErrorType)bound).getOriginalType();
+                //retrieve the bound list - if the type variable
+                //has not been attributed the bound is not set
+                List<Type> bounds = (bound != null) &&
+                        (bound.hasTag(CLASS) || bound.hasTag(TYPEVAR)) ?
+                    types.getBounds(t) :
+                    List.<Type>nil();
+
+                nameSimplifier.addUsage(t.tsym);
+
+                boolean boundErroneous = bounds.head == null ||
+                                         bounds.head.hasTag(NONE) ||
+                                         bounds.head.hasTag(ERROR);
+
+                if ((t.tsym.flags() & SYNTHETIC) == 0) {
+                    //this is a true typevar
+                    JCDiagnostic d = diags.fragment("where.typevar" +
+                        (boundErroneous ? ".1" : ""), t, bounds,
+                        Kinds.kindName(t.tsym.location()), t.tsym.location());
+                    whereClauses.get(WhereClauseKind.TYPEVAR).put(t, d);
+                    symbolPreprocessor.visit(t.tsym.location(), null);
+                    visit(bounds);
+                } else {
+                    Assert.check(!boundErroneous);
+                    //this is a fresh (synthetic) tvar
+                    JCDiagnostic d = diags.fragment("where.fresh.typevar", t, bounds);
+                    whereClauses.get(WhereClauseKind.TYPEVAR).put(t, d);
+                    visit(bounds);
+                }
+
+            }
+            return null;
+        }
+    };
+    // </editor-fold>
+
+    // <editor-fold defaultstate="collapsed" desc="symbol scanner">
+    /**
+     * Preprocess a given symbol looking for (i) additional info (where clauses) to be
+     * added to the main diagnostic (ii) names to be compacted
+     */
+    protected void preprocessSymbol(Symbol s) {
+        symbolPreprocessor.visit(s, null);
+    }
+    //where
+    protected Types.DefaultSymbolVisitor<Void, Void> symbolPreprocessor =
+            new Types.DefaultSymbolVisitor<Void, Void>() {
+
+        @Override
+        public Void visitClassSymbol(ClassSymbol s, Void ignored) {
+            if (s.type.isCompound()) {
+                typePreprocessor.visit(s.type);
+            } else {
+                nameSimplifier.addUsage(s);
+            }
+            return null;
+        }
+
+        @Override
+        public Void visitSymbol(Symbol s, Void ignored) {
+            return null;
+        }
+
+        @Override
+        public Void visitMethodSymbol(MethodSymbol s, Void ignored) {
+            visit(s.owner, null);
+            if (s.type != null)
+                typePreprocessor.visit(s.type);
+            return null;
+        }
+    };
+    // </editor-fold>
+
+    @Override
+    public RichConfiguration getConfiguration() {
+        //the following cast is always safe - see init
+        return (RichConfiguration)configuration;
+    }
+
+    /**
+     * Configuration object provided by the rich formatter.
+     */
+    public static class RichConfiguration extends ForwardingDiagnosticFormatter.ForwardingConfiguration {
+
+        /** set of enabled rich formatter's features */
+        protected EnumSet<RichFormatterFeature> features;
+
+        @SuppressWarnings("fallthrough")
+        public RichConfiguration(Options options, AbstractDiagnosticFormatter formatter) {
+            super(formatter.getConfiguration());
+            features = formatter.isRaw() ? EnumSet.noneOf(RichFormatterFeature.class) :
+                EnumSet.of(RichFormatterFeature.SIMPLE_NAMES,
+                    RichFormatterFeature.WHERE_CLAUSES,
+                    RichFormatterFeature.UNIQUE_TYPEVAR_NAMES);
+            String diagOpts = options.get("diags");
+            if (diagOpts != null) {
+                for (String args: diagOpts.split(",")) {
+                    if (args.equals("-where")) {
+                        features.remove(RichFormatterFeature.WHERE_CLAUSES);
+                    }
+                    else if (args.equals("where")) {
+                        features.add(RichFormatterFeature.WHERE_CLAUSES);
+                    }
+                    if (args.equals("-simpleNames")) {
+                        features.remove(RichFormatterFeature.SIMPLE_NAMES);
+                    }
+                    else if (args.equals("simpleNames")) {
+                        features.add(RichFormatterFeature.SIMPLE_NAMES);
+                    }
+                    if (args.equals("-disambiguateTvars")) {
+                        features.remove(RichFormatterFeature.UNIQUE_TYPEVAR_NAMES);
+                    }
+                    else if (args.equals("disambiguateTvars")) {
+                        features.add(RichFormatterFeature.UNIQUE_TYPEVAR_NAMES);
+                    }
+                }
+            }
+        }
+
+        /**
+         * Returns a list of all the features supported by the rich formatter.
+         * @return list of supported features
+         */
+        public RichFormatterFeature[] getAvailableFeatures() {
+            return RichFormatterFeature.values();
+        }
+
+        /**
+         * Enable a specific feature on this rich formatter.
+         * @param feature feature to be enabled
+         */
+        public void enable(RichFormatterFeature feature) {
+            features.add(feature);
+        }
+
+        /**
+         * Disable a specific feature on this rich formatter.
+         * @param feature feature to be disabled
+         */
+        public void disable(RichFormatterFeature feature) {
+            features.remove(feature);
+        }
+
+        /**
+         * Is a given feature enabled on this formatter?
+         * @param feature feature to be tested
+         */
+        public boolean isEnabled(RichFormatterFeature feature) {
+            return features.contains(feature);
+        }
+
+        /**
+         * The advanced formatting features provided by the rich formatter
+         */
+        public enum RichFormatterFeature {
+            /** a list of additional info regarding a given type/symbol */
+            WHERE_CLAUSES,
+            /** full class names simplification (where possible) */
+            SIMPLE_NAMES,
+            /** type-variable names disambiguation */
+            UNIQUE_TYPEVAR_NAMES;
+        }
+    }
+}

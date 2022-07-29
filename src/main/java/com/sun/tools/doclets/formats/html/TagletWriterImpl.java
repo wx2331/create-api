@@ -1,359 +1,353 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.FieldDoc;
-/*     */ import com.sun.javadoc.MemberDoc;
-/*     */ import com.sun.javadoc.ParamTag;
-/*     */ import com.sun.javadoc.SeeTag;
-/*     */ import com.sun.javadoc.Tag;
-/*     */ import com.sun.javadoc.ThrowsTag;
-/*     */ import com.sun.javadoc.Type;
-/*     */ import com.sun.tools.doclets.formats.html.markup.ContentBuilder;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.formats.html.markup.RawHtml;
-/*     */ import com.sun.tools.doclets.formats.html.markup.StringContent;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.builders.SerializedFormBuilder;
-/*     */ import com.sun.tools.doclets.internal.toolkit.taglets.TagletWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocLink;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPath;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPaths;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocletConstants;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.MessageRetriever;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.Util;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class TagletWriterImpl
-/*     */   extends TagletWriter
-/*     */ {
-/*     */   private final HtmlDocletWriter htmlWriter;
-/*     */   private final ConfigurationImpl configuration;
-/*     */   
-/*     */   public TagletWriterImpl(HtmlDocletWriter paramHtmlDocletWriter, boolean paramBoolean) {
-/*  58 */     super(paramBoolean);
-/*  59 */     this.htmlWriter = paramHtmlDocletWriter;
-/*  60 */     this.configuration = paramHtmlDocletWriter.configuration;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getOutputInstance() {
-/*  67 */     return (Content)new ContentBuilder();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content codeTagOutput(Tag paramTag) {
-/*  74 */     return (Content)HtmlTree.CODE((Content)new StringContent(Util.normalizeNewlines(paramTag.text())));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getDocRootOutput() {
-/*     */     String str;
-/*  83 */     if (this.htmlWriter.pathToRoot.isEmpty()) {
-/*  84 */       str = ".";
-/*     */     } else {
-/*  86 */       str = this.htmlWriter.pathToRoot.getPath();
-/*  87 */     }  return (Content)new StringContent(str);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content deprecatedTagOutput(Doc paramDoc) {
-/*  94 */     ContentBuilder contentBuilder = new ContentBuilder();
-/*  95 */     Tag[] arrayOfTag = paramDoc.tags("deprecated");
-/*  96 */     if (paramDoc instanceof ClassDoc) {
-/*  97 */       if (Util.isDeprecated(paramDoc)) {
-/*  98 */         contentBuilder.addContent((Content)HtmlTree.SPAN(HtmlStyle.deprecatedLabel, (Content)new StringContent(this.configuration
-/*  99 */                 .getText("doclet.Deprecated"))));
-/* 100 */         contentBuilder.addContent(RawHtml.nbsp);
-/* 101 */         if (arrayOfTag.length > 0) {
-/* 102 */           Tag[] arrayOfTag1 = arrayOfTag[0].inlineTags();
-/* 103 */           if (arrayOfTag1.length > 0) {
-/* 104 */             contentBuilder.addContent(commentTagsToOutput(null, paramDoc, arrayOfTag[0]
-/* 105 */                   .inlineTags(), false));
-/*     */           }
-/*     */         } 
-/*     */       } 
-/*     */     } else {
-/*     */       
-/* 111 */       MemberDoc memberDoc = (MemberDoc)paramDoc;
-/* 112 */       if (Util.isDeprecated(paramDoc)) {
-/* 113 */         contentBuilder.addContent((Content)HtmlTree.SPAN(HtmlStyle.deprecatedLabel, (Content)new StringContent(this.configuration
-/* 114 */                 .getText("doclet.Deprecated"))));
-/* 115 */         contentBuilder.addContent(RawHtml.nbsp);
-/* 116 */         if (arrayOfTag.length > 0) {
-/* 117 */           Content content = commentTagsToOutput(null, paramDoc, arrayOfTag[0]
-/* 118 */               .inlineTags(), false);
-/* 119 */           if (!content.isEmpty()) {
-/* 120 */             contentBuilder.addContent((Content)HtmlTree.SPAN(HtmlStyle.deprecationComment, content));
-/*     */           }
-/*     */         } 
-/* 123 */       } else if (Util.isDeprecated((Doc)memberDoc.containingClass())) {
-/* 124 */         contentBuilder.addContent((Content)HtmlTree.SPAN(HtmlStyle.deprecatedLabel, (Content)new StringContent(this.configuration
-/* 125 */                 .getText("doclet.Deprecated"))));
-/* 126 */         contentBuilder.addContent(RawHtml.nbsp);
-/*     */       } 
-/*     */     } 
-/*     */     
-/* 130 */     return (Content)contentBuilder;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content literalTagOutput(Tag paramTag) {
-/* 137 */     return (Content)new StringContent(Util.normalizeNewlines(paramTag.text()));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public MessageRetriever getMsgRetriever() {
-/* 145 */     return this.configuration.message;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getParamHeader(String paramString) {
-/* 152 */     return (Content)HtmlTree.DT((Content)HtmlTree.SPAN(HtmlStyle.paramLabel, (Content)new StringContent(paramString)));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content paramTagOutput(ParamTag paramParamTag, String paramString) {
-/* 161 */     ContentBuilder contentBuilder = new ContentBuilder();
-/* 162 */     contentBuilder.addContent((Content)HtmlTree.CODE((Content)new RawHtml(paramString)));
-/* 163 */     contentBuilder.addContent(" - ");
-/* 164 */     contentBuilder.addContent(this.htmlWriter.commentTagsToContent((Tag)paramParamTag, (Doc)null, paramParamTag.inlineTags(), false));
-/* 165 */     return (Content)HtmlTree.DD((Content)contentBuilder);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content propertyTagOutput(Tag paramTag, String paramString) {
-/* 173 */     ContentBuilder contentBuilder = new ContentBuilder();
-/* 174 */     contentBuilder.addContent((Content)new RawHtml(paramString));
-/* 175 */     contentBuilder.addContent(" ");
-/* 176 */     contentBuilder.addContent((Content)HtmlTree.CODE((Content)new RawHtml(paramTag.text())));
-/* 177 */     contentBuilder.addContent(".");
-/* 178 */     return (Content)HtmlTree.P((Content)contentBuilder);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content returnTagOutput(Tag paramTag) {
-/* 186 */     ContentBuilder contentBuilder = new ContentBuilder();
-/* 187 */     contentBuilder.addContent((Content)HtmlTree.DT((Content)HtmlTree.SPAN(HtmlStyle.returnLabel, (Content)new StringContent(this.configuration
-/* 188 */               .getText("doclet.Returns")))));
-/* 189 */     contentBuilder.addContent((Content)HtmlTree.DD(this.htmlWriter.commentTagsToContent(paramTag, (Doc)null, paramTag
-/* 190 */             .inlineTags(), false)));
-/* 191 */     return (Content)contentBuilder;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content seeTagOutput(Doc paramDoc, SeeTag[] paramArrayOfSeeTag) {
-/* 198 */     ContentBuilder contentBuilder1 = new ContentBuilder();
-/* 199 */     if (paramArrayOfSeeTag.length > 0) {
-/* 200 */       for (byte b = 0; b < paramArrayOfSeeTag.length; b++) {
-/* 201 */         appendSeparatorIfNotEmpty(contentBuilder1);
-/* 202 */         contentBuilder1.addContent(this.htmlWriter.seeTagToContent(paramArrayOfSeeTag[b]));
-/*     */       } 
-/*     */     }
-/* 205 */     if (paramDoc.isField() && ((FieldDoc)paramDoc).constantValue() != null && this.htmlWriter instanceof ClassWriterImpl) {
-/*     */ 
-/*     */       
-/* 208 */       appendSeparatorIfNotEmpty(contentBuilder1);
-/*     */       
-/* 210 */       DocPath docPath = this.htmlWriter.pathToRoot.resolve(DocPaths.CONSTANT_VALUES);
-/*     */       
-/* 212 */       String str = ((ClassWriterImpl)this.htmlWriter).getClassDoc().qualifiedName() + "." + ((FieldDoc)paramDoc).name();
-/* 213 */       DocLink docLink = docPath.fragment(str);
-/* 214 */       contentBuilder1.addContent(this.htmlWriter.getHyperLink(docLink, (Content)new StringContent(this.configuration
-/* 215 */               .getText("doclet.Constants_Summary"))));
-/*     */     } 
-/* 217 */     if (paramDoc.isClass() && ((ClassDoc)paramDoc).isSerializable())
-/*     */     {
-/* 219 */       if (SerializedFormBuilder.serialInclude(paramDoc) && 
-/* 220 */         SerializedFormBuilder.serialInclude((Doc)((ClassDoc)paramDoc).containingPackage())) {
-/* 221 */         appendSeparatorIfNotEmpty(contentBuilder1);
-/* 222 */         DocPath docPath = this.htmlWriter.pathToRoot.resolve(DocPaths.SERIALIZED_FORM);
-/* 223 */         DocLink docLink = docPath.fragment(((ClassDoc)paramDoc).qualifiedName());
-/* 224 */         contentBuilder1.addContent(this.htmlWriter.getHyperLink(docLink, (Content)new StringContent(this.configuration
-/* 225 */                 .getText("doclet.Serialized_Form"))));
-/*     */       } 
-/*     */     }
-/* 228 */     if (contentBuilder1.isEmpty()) {
-/* 229 */       return (Content)contentBuilder1;
-/*     */     }
-/* 231 */     ContentBuilder contentBuilder2 = new ContentBuilder();
-/* 232 */     contentBuilder2.addContent((Content)HtmlTree.DT((Content)HtmlTree.SPAN(HtmlStyle.seeLabel, (Content)new StringContent(this.configuration
-/* 233 */               .getText("doclet.See_Also")))));
-/* 234 */     contentBuilder2.addContent((Content)HtmlTree.DD((Content)contentBuilder1));
-/* 235 */     return (Content)contentBuilder2;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   private void appendSeparatorIfNotEmpty(ContentBuilder paramContentBuilder) {
-/* 240 */     if (!paramContentBuilder.isEmpty()) {
-/* 241 */       paramContentBuilder.addContent(", ");
-/* 242 */       paramContentBuilder.addContent(DocletConstants.NL);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content simpleTagOutput(Tag[] paramArrayOfTag, String paramString) {
-/* 250 */     ContentBuilder contentBuilder1 = new ContentBuilder();
-/* 251 */     contentBuilder1.addContent((Content)HtmlTree.DT((Content)HtmlTree.SPAN(HtmlStyle.simpleTagLabel, (Content)new RawHtml(paramString))));
-/* 252 */     ContentBuilder contentBuilder2 = new ContentBuilder();
-/* 253 */     for (byte b = 0; b < paramArrayOfTag.length; b++) {
-/* 254 */       if (b > 0) {
-/* 255 */         contentBuilder2.addContent(", ");
-/*     */       }
-/* 257 */       contentBuilder2.addContent(this.htmlWriter.commentTagsToContent(paramArrayOfTag[b], (Doc)null, paramArrayOfTag[b]
-/* 258 */             .inlineTags(), false));
-/*     */     } 
-/* 260 */     contentBuilder1.addContent((Content)HtmlTree.DD((Content)contentBuilder2));
-/* 261 */     return (Content)contentBuilder1;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content simpleTagOutput(Tag paramTag, String paramString) {
-/* 268 */     ContentBuilder contentBuilder = new ContentBuilder();
-/* 269 */     contentBuilder.addContent((Content)HtmlTree.DT((Content)HtmlTree.SPAN(HtmlStyle.simpleTagLabel, (Content)new RawHtml(paramString))));
-/* 270 */     Content content = this.htmlWriter.commentTagsToContent(paramTag, (Doc)null, paramTag
-/* 271 */         .inlineTags(), false);
-/* 272 */     contentBuilder.addContent((Content)HtmlTree.DD(content));
-/* 273 */     return (Content)contentBuilder;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getThrowsHeader() {
-/* 280 */     return (Content)HtmlTree.DT((Content)HtmlTree.SPAN(HtmlStyle.throwsLabel, (Content)new StringContent(this.configuration
-/* 281 */             .getText("doclet.Throws"))));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content throwsTagOutput(ThrowsTag paramThrowsTag) {
-/* 289 */     ContentBuilder contentBuilder = new ContentBuilder();
-/*     */ 
-/*     */     
-/* 292 */     Content content1 = (Content)((paramThrowsTag.exceptionType() == null) ? new RawHtml(paramThrowsTag.exceptionName()) : this.htmlWriter.getLink(new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.MEMBER, paramThrowsTag
-/* 293 */           .exceptionType())));
-/* 294 */     contentBuilder.addContent((Content)HtmlTree.CODE(content1));
-/* 295 */     Content content2 = this.htmlWriter.commentTagsToContent((Tag)paramThrowsTag, (Doc)null, paramThrowsTag
-/* 296 */         .inlineTags(), false);
-/* 297 */     if (content2 != null && !content2.isEmpty()) {
-/* 298 */       contentBuilder.addContent(" - ");
-/* 299 */       contentBuilder.addContent(content2);
-/*     */     } 
-/* 301 */     return (Content)HtmlTree.DD((Content)contentBuilder);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content throwsTagOutput(Type paramType) {
-/* 309 */     return (Content)HtmlTree.DD((Content)HtmlTree.CODE(this.htmlWriter.getLink(new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.MEMBER, paramType))));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content valueTagOutput(FieldDoc paramFieldDoc, String paramString, boolean paramBoolean) {
-/* 319 */     return paramBoolean ? this.htmlWriter
-/* 320 */       .getDocLink(LinkInfoImpl.Kind.VALUE_TAG, (MemberDoc)paramFieldDoc, paramString, false) : (Content)new RawHtml(paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content commentTagsToOutput(Tag paramTag, Tag[] paramArrayOfTag) {
-/* 328 */     return commentTagsToOutput(paramTag, null, paramArrayOfTag, false);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content commentTagsToOutput(Doc paramDoc, Tag[] paramArrayOfTag) {
-/* 335 */     return commentTagsToOutput(null, paramDoc, paramArrayOfTag, false);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content commentTagsToOutput(Tag paramTag, Doc paramDoc, Tag[] paramArrayOfTag, boolean paramBoolean) {
-/* 343 */     return this.htmlWriter.commentTagsToContent(paramTag, paramDoc, paramArrayOfTag, paramBoolean);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Configuration configuration() {
-/* 351 */     return this.configuration;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\TagletWriterImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.markup.ContentBuilder;
+import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
+import com.sun.tools.doclets.formats.html.markup.HtmlTree;
+import com.sun.tools.doclets.formats.html.markup.RawHtml;
+import com.sun.tools.doclets.formats.html.markup.StringContent;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.builders.SerializedFormBuilder;
+import com.sun.tools.doclets.internal.toolkit.taglets.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * The taglet writer that writes HTML.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @since 1.5
+ * @author Jamie Ho
+ * @author Bhavesh Patel (Modified)
+ */
+
+public class TagletWriterImpl extends TagletWriter {
+
+    private final HtmlDocletWriter htmlWriter;
+    private final ConfigurationImpl configuration;
+
+    public TagletWriterImpl(HtmlDocletWriter htmlWriter, boolean isFirstSentence) {
+        super(isFirstSentence);
+        this.htmlWriter = htmlWriter;
+        configuration = htmlWriter.configuration;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getOutputInstance() {
+        return new ContentBuilder();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected Content codeTagOutput(Tag tag) {
+        Content result = HtmlTree.CODE(new StringContent(Util.normalizeNewlines(tag.text())));
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getDocRootOutput() {
+        String path;
+        if (htmlWriter.pathToRoot.isEmpty())
+            path = ".";
+        else
+            path = htmlWriter.pathToRoot.getPath();
+        return new StringContent(path);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content deprecatedTagOutput(Doc doc) {
+        ContentBuilder result = new ContentBuilder();
+        Tag[] deprs = doc.tags("deprecated");
+        if (doc instanceof ClassDoc) {
+            if (Util.isDeprecated((ProgramElementDoc) doc)) {
+                result.addContent(HtmlTree.SPAN(HtmlStyle.deprecatedLabel,
+                        new StringContent(configuration.getText("doclet.Deprecated"))));
+                result.addContent(RawHtml.nbsp);
+                if (deprs.length > 0) {
+                    Tag[] commentTags = deprs[0].inlineTags();
+                    if (commentTags.length > 0) {
+                        result.addContent(commentTagsToOutput(null, doc,
+                            deprs[0].inlineTags(), false)
+                        );
+                    }
+                }
+            }
+        } else {
+            MemberDoc member = (MemberDoc) doc;
+            if (Util.isDeprecated((ProgramElementDoc) doc)) {
+                result.addContent(HtmlTree.SPAN(HtmlStyle.deprecatedLabel,
+                        new StringContent(configuration.getText("doclet.Deprecated"))));
+                result.addContent(RawHtml.nbsp);
+                if (deprs.length > 0) {
+                    Content body = commentTagsToOutput(null, doc,
+                        deprs[0].inlineTags(), false);
+                    if (!body.isEmpty())
+                        result.addContent(HtmlTree.SPAN(HtmlStyle.deprecationComment, body));
+                }
+            } else {
+                if (Util.isDeprecated(member.containingClass())) {
+                    result.addContent(HtmlTree.SPAN(HtmlStyle.deprecatedLabel,
+                            new StringContent(configuration.getText("doclet.Deprecated"))));
+                    result.addContent(RawHtml.nbsp);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected Content literalTagOutput(Tag tag) {
+        Content result = new StringContent(Util.normalizeNewlines(tag.text()));
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public MessageRetriever getMsgRetriever() {
+        return configuration.message;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getParamHeader(String header) {
+        HtmlTree result = HtmlTree.DT(HtmlTree.SPAN(HtmlStyle.paramLabel,
+                new StringContent(header)));
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content paramTagOutput(ParamTag paramTag, String paramName) {
+        ContentBuilder body = new ContentBuilder();
+        body.addContent(HtmlTree.CODE(new RawHtml(paramName)));
+        body.addContent(" - ");
+        body.addContent(htmlWriter.commentTagsToContent(paramTag, null, paramTag.inlineTags(), false));
+        HtmlTree result = HtmlTree.DD(body);
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content propertyTagOutput(Tag tag, String prefix) {
+        Content body = new ContentBuilder();
+        body.addContent(new RawHtml(prefix));
+        body.addContent(" ");
+        body.addContent(HtmlTree.CODE(new RawHtml(tag.text())));
+        body.addContent(".");
+        Content result = HtmlTree.P(body);
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content returnTagOutput(Tag returnTag) {
+        ContentBuilder result = new ContentBuilder();
+        result.addContent(HtmlTree.DT(HtmlTree.SPAN(HtmlStyle.returnLabel,
+                new StringContent(configuration.getText("doclet.Returns")))));
+        result.addContent(HtmlTree.DD(htmlWriter.commentTagsToContent(
+                returnTag, null, returnTag.inlineTags(), false)));
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content seeTagOutput(Doc holder, SeeTag[] seeTags) {
+        ContentBuilder body = new ContentBuilder();
+        if (seeTags.length > 0) {
+            for (int i = 0; i < seeTags.length; ++i) {
+                appendSeparatorIfNotEmpty(body);
+                body.addContent(htmlWriter.seeTagToContent(seeTags[i]));
+            }
+        }
+        if (holder.isField() && ((FieldDoc)holder).constantValue() != null &&
+                htmlWriter instanceof ClassWriterImpl) {
+            //Automatically add link to constant values page for constant fields.
+            appendSeparatorIfNotEmpty(body);
+            DocPath constantsPath =
+                    htmlWriter.pathToRoot.resolve(DocPaths.CONSTANT_VALUES);
+            String whichConstant =
+                    ((ClassWriterImpl) htmlWriter).getClassDoc().qualifiedName() + "." + ((FieldDoc) holder).name();
+            DocLink link = constantsPath.fragment(whichConstant);
+            body.addContent(htmlWriter.getHyperLink(link,
+                    new StringContent(configuration.getText("doclet.Constants_Summary"))));
+        }
+        if (holder.isClass() && ((ClassDoc)holder).isSerializable()) {
+            //Automatically add link to serialized form page for serializable classes.
+            if ((SerializedFormBuilder.serialInclude(holder) &&
+                      SerializedFormBuilder.serialInclude(((ClassDoc)holder).containingPackage()))) {
+                appendSeparatorIfNotEmpty(body);
+                DocPath serialPath = htmlWriter.pathToRoot.resolve(DocPaths.SERIALIZED_FORM);
+                DocLink link = serialPath.fragment(((ClassDoc)holder).qualifiedName());
+                body.addContent(htmlWriter.getHyperLink(link,
+                        new StringContent(configuration.getText("doclet.Serialized_Form"))));
+            }
+        }
+        if (body.isEmpty())
+            return body;
+
+        ContentBuilder result = new ContentBuilder();
+        result.addContent(HtmlTree.DT(HtmlTree.SPAN(HtmlStyle.seeLabel,
+                new StringContent(configuration.getText("doclet.See_Also")))));
+        result.addContent(HtmlTree.DD(body));
+        return result;
+
+    }
+
+    private void appendSeparatorIfNotEmpty(ContentBuilder body) {
+        if (!body.isEmpty()) {
+            body.addContent(", ");
+            body.addContent(DocletConstants.NL);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content simpleTagOutput(Tag[] simpleTags, String header) {
+        ContentBuilder result = new ContentBuilder();
+        result.addContent(HtmlTree.DT(HtmlTree.SPAN(HtmlStyle.simpleTagLabel, new RawHtml(header))));
+        ContentBuilder body = new ContentBuilder();
+        for (int i = 0; i < simpleTags.length; i++) {
+            if (i > 0) {
+                body.addContent(", ");
+            }
+            body.addContent(htmlWriter.commentTagsToContent(
+                    simpleTags[i], null, simpleTags[i].inlineTags(), false));
+        }
+        result.addContent(HtmlTree.DD(body));
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content simpleTagOutput(Tag simpleTag, String header) {
+        ContentBuilder result = new ContentBuilder();
+        result.addContent(HtmlTree.DT(HtmlTree.SPAN(HtmlStyle.simpleTagLabel, new RawHtml(header))));
+        Content body = htmlWriter.commentTagsToContent(
+                simpleTag, null, simpleTag.inlineTags(), false);
+        result.addContent(HtmlTree.DD(body));
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getThrowsHeader() {
+        HtmlTree result = HtmlTree.DT(HtmlTree.SPAN(HtmlStyle.throwsLabel,
+                new StringContent(configuration.getText("doclet.Throws"))));
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content throwsTagOutput(ThrowsTag throwsTag) {
+        ContentBuilder body = new ContentBuilder();
+        Content excName = (throwsTag.exceptionType() == null) ?
+                new RawHtml(throwsTag.exceptionName()) :
+                htmlWriter.getLink(new LinkInfoImpl(configuration, LinkInfoImpl.Kind.MEMBER,
+                throwsTag.exceptionType()));
+        body.addContent(HtmlTree.CODE(excName));
+        Content desc = htmlWriter.commentTagsToContent(throwsTag, null,
+            throwsTag.inlineTags(), false);
+        if (desc != null && !desc.isEmpty()) {
+            body.addContent(" - ");
+            body.addContent(desc);
+        }
+        HtmlTree result = HtmlTree.DD(body);
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content throwsTagOutput(Type throwsType) {
+        HtmlTree result = HtmlTree.DD(HtmlTree.CODE(htmlWriter.getLink(
+                new LinkInfoImpl(configuration, LinkInfoImpl.Kind.MEMBER, throwsType))));
+        return result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content valueTagOutput(FieldDoc field, String constantVal,
+            boolean includeLink) {
+        return includeLink ?
+            htmlWriter.getDocLink(LinkInfoImpl.Kind.VALUE_TAG, field,
+                constantVal, false) : new RawHtml(constantVal);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content commentTagsToOutput(Tag holderTag, Tag[] tags) {
+        return commentTagsToOutput(holderTag, null, tags, false);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content commentTagsToOutput(Doc holderDoc, Tag[] tags) {
+        return commentTagsToOutput(null, holderDoc, tags, false);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content commentTagsToOutput(Tag holderTag,
+        Doc holderDoc, Tag[] tags, boolean isFirstSentence) {
+        return htmlWriter.commentTagsToContent(
+            holderTag, holderDoc, tags, isFirstSentence);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Configuration configuration() {
+        return configuration;
+    }
+}

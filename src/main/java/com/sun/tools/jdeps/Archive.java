@@ -1,119 +1,113 @@
-/*     */ package com.sun.tools.jdeps;
-/*     */ 
-/*     */ import com.sun.tools.classfile.Dependency;
-/*     */ import java.io.IOException;
-/*     */ import java.nio.file.Path;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.Map;
-/*     */ import java.util.Set;
-/*     */ import java.util.concurrent.ConcurrentHashMap;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class Archive
-/*     */ {
-/*     */   private final Path path;
-/*     */   private final String filename;
-/*     */   private final ClassFileReader reader;
-/*     */   
-/*     */   public static Archive getInstance(Path paramPath) throws IOException {
-/*  41 */     return new Archive(paramPath, ClassFileReader.newInstance(paramPath));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*  47 */   protected Map<Dependency.Location, Set<Dependency.Location>> deps = new ConcurrentHashMap<>();
-/*     */   
-/*     */   protected Archive(String paramString) {
-/*  50 */     this.path = null;
-/*  51 */     this.filename = paramString;
-/*  52 */     this.reader = null;
-/*     */   }
-/*     */   
-/*     */   protected Archive(Path paramPath, ClassFileReader paramClassFileReader) {
-/*  56 */     this.path = paramPath;
-/*  57 */     this.filename = this.path.getFileName().toString();
-/*  58 */     this.reader = paramClassFileReader;
-/*     */   }
-/*     */   
-/*     */   public ClassFileReader reader() {
-/*  62 */     return this.reader;
-/*     */   }
-/*     */   
-/*     */   public String getName() {
-/*  66 */     return this.filename;
-/*     */   }
-/*     */   
-/*     */   public void addClass(Dependency.Location paramLocation) {
-/*  70 */     Set<Dependency.Location> set = this.deps.get(paramLocation);
-/*  71 */     if (set == null) {
-/*  72 */       set = new HashSet();
-/*  73 */       this.deps.put(paramLocation, set);
-/*     */     } 
-/*     */   }
-/*     */   
-/*     */   public void addClass(Dependency.Location paramLocation1, Dependency.Location paramLocation2) {
-/*  78 */     Set<Dependency.Location> set = this.deps.get(paramLocation1);
-/*  79 */     if (set == null) {
-/*  80 */       set = new HashSet();
-/*  81 */       this.deps.put(paramLocation1, set);
-/*     */     } 
-/*  83 */     set.add(paramLocation2);
-/*     */   }
-/*     */   
-/*     */   public Set<Dependency.Location> getClasses() {
-/*  87 */     return this.deps.keySet();
-/*     */   }
-/*     */   
-/*     */   public void visitDependences(Visitor paramVisitor) {
-/*  91 */     for (Map.Entry<Dependency.Location, Set<Dependency.Location>> entry : this.deps.entrySet()) {
-/*  92 */       for (Dependency.Location location : entry.getValue()) {
-/*  93 */         paramVisitor.visit((Dependency.Location)entry.getKey(), location);
-/*     */       }
-/*     */     } 
-/*     */   }
-/*     */   
-/*     */   public boolean isEmpty() {
-/*  99 */     return getClasses().isEmpty();
-/*     */   }
-/*     */   
-/*     */   public String getPathName() {
-/* 103 */     return (this.path != null) ? this.path.toString() : this.filename;
-/*     */   }
-/*     */   
-/*     */   public String toString() {
-/* 107 */     return this.filename;
-/*     */   }
-/*     */   
-/*     */   static interface Visitor {
-/*     */     void visit(Dependency.Location param1Location1, Dependency.Location param1Location2);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\jdeps\Archive.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2012, 2014, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+package com.sun.tools.jdeps;
+
+import com.sun.tools.classfile.Dependency.Location;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Represents the source of the class files.
+ */
+public class Archive {
+    public static Archive getInstance(Path p) throws IOException {
+        return new Archive(p, ClassFileReader.newInstance(p));
+    }
+
+    private final Path path;
+    private final String filename;
+    private final ClassFileReader reader;
+    protected Map<Location, Set<Location>> deps = new ConcurrentHashMap<>();
+
+    protected Archive(String name) {
+        this.path = null;
+        this.filename = name;
+        this.reader = null;
+    }
+
+    protected Archive(Path p, ClassFileReader reader) {
+        this.path = p;
+        this.filename = path.getFileName().toString();
+        this.reader = reader;
+    }
+
+    public ClassFileReader reader() {
+        return reader;
+    }
+
+    public String getName() {
+        return filename;
+    }
+
+    public void addClass(Location origin) {
+        Set<Location> set = deps.get(origin);
+        if (set == null) {
+            set = new HashSet<>();
+            deps.put(origin, set);
+        }
+    }
+
+    public void addClass(Location origin, Location target) {
+        Set<Location> set = deps.get(origin);
+        if (set == null) {
+            set = new HashSet<>();
+            deps.put(origin, set);
+        }
+        set.add(target);
+    }
+
+    public Set<Location> getClasses() {
+        return deps.keySet();
+    }
+
+    public void visitDependences(Visitor v) {
+        for (Map.Entry<Location,Set<Location>> e: deps.entrySet()) {
+            for (Location target : e.getValue()) {
+                v.visit(e.getKey(), target);
+            }
+        }
+    }
+
+    public boolean isEmpty() {
+        return getClasses().isEmpty();
+    }
+
+    public String getPathName() {
+        return path != null ? path.toString() : filename;
+    }
+
+    public String toString() {
+        return filename;
+    }
+
+    interface Visitor {
+        void visit(Location origin, Location target);
+    }
+}

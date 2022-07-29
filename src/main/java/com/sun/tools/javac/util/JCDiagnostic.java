@@ -1,657 +1,641 @@
-/*     */ package com.sun.tools.javac.util;
-/*     */
-/*     */ import com.sun.tools.javac.api.DiagnosticFormatter;
-/*     */ import com.sun.tools.javac.code.Lint;
-/*     */ import com.sun.tools.javac.tree.EndPosTable;
-/*     */ import com.sun.tools.javac.tree.JCTree;
-/*     */ import java.util.EnumSet;
-/*     */ import java.util.Locale;
-/*     */ import java.util.Set;
-/*     */ import javax.tools.Diagnostic;
-/*     */ import javax.tools.JavaFileObject;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class JCDiagnostic
-/*     */   implements Diagnostic<JavaFileObject>
-/*     */ {
-/*     */   private final DiagnosticType type;
-/*     */   private final DiagnosticSource source;
-/*     */   private final DiagnosticPosition position;
-/*     */   private final String key;
-/*     */   protected final Object[] args;
-/*     */   private final Set<DiagnosticFlag> flags;
-/*     */   private final Lint.LintCategory lintCategory;
-/*     */   private SourcePosition sourcePosition;
-/*     */   private DiagnosticFormatter<JCDiagnostic> defaultFormatter;
-/*     */   @Deprecated
-/*     */   private static DiagnosticFormatter<JCDiagnostic> fragmentFormatter;
-/*     */
-/*     */   public static class Factory
-/*     */   {
-/*  53 */     protected static final Context.Key<Factory> diagnosticFactoryKey = new Context.Key<>();
-/*     */
-/*     */     DiagnosticFormatter<JCDiagnostic> formatter;
-/*     */
-/*     */     public static Factory instance(Context param1Context) {
-/*  58 */       Factory factory = param1Context.<Factory>get(diagnosticFactoryKey);
-/*  59 */       if (factory == null)
-/*  60 */         factory = new Factory(param1Context);
-/*  61 */       return factory;
-/*     */     }
-/*     */
-/*     */
-/*     */     final String prefix;
-/*     */
-/*     */     final Set<DiagnosticFlag> defaultErrorFlags;
-/*     */
-/*     */     protected Factory(Context param1Context) {
-/*  70 */       this(JavacMessages.instance(param1Context), "compiler");
-/*  71 */       param1Context.put(diagnosticFactoryKey, this);
-/*     */
-/*  73 */       final Options options = Options.instance(param1Context);
-/*  74 */       initOptions(options);
-/*  75 */       options.addListener(new Runnable() {
-/*     */             public void run() {
-/*  77 */               Factory.this.initOptions(options);
-/*     */             }
-/*     */           });
-/*     */     }
-/*     */
-/*     */     private void initOptions(Options param1Options) {
-/*  83 */       if (param1Options.isSet("onlySyntaxErrorsUnrecoverable")) {
-/*  84 */         this.defaultErrorFlags.add(DiagnosticFlag.RECOVERABLE);
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public Factory(JavacMessages param1JavacMessages, String param1String) {
-/*  89 */       this.prefix = param1String;
-/*  90 */       this.formatter = new BasicDiagnosticFormatter(param1JavacMessages);
-/*  91 */       this.defaultErrorFlags = EnumSet.of(DiagnosticFlag.MANDATORY);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic error(DiagnosticSource param1DiagnosticSource, DiagnosticPosition param1DiagnosticPosition, String param1String, Object... param1VarArgs) {
-/* 103 */       return create(DiagnosticType.ERROR, null, this.defaultErrorFlags, param1DiagnosticSource, param1DiagnosticPosition, param1String, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic mandatoryWarning(DiagnosticSource param1DiagnosticSource, DiagnosticPosition param1DiagnosticPosition, String param1String, Object... param1VarArgs) {
-/* 116 */       return create(DiagnosticType.WARNING, null, EnumSet.of(DiagnosticFlag.MANDATORY), param1DiagnosticSource, param1DiagnosticPosition, param1String, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic mandatoryWarning(Lint.LintCategory param1LintCategory, DiagnosticSource param1DiagnosticSource, DiagnosticPosition param1DiagnosticPosition, String param1String, Object... param1VarArgs) {
-/* 131 */       return create(DiagnosticType.WARNING, param1LintCategory, EnumSet.of(DiagnosticFlag.MANDATORY), param1DiagnosticSource, param1DiagnosticPosition, param1String, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic warning(Lint.LintCategory param1LintCategory, String param1String, Object... param1VarArgs) {
-/* 143 */       return create(DiagnosticType.WARNING, param1LintCategory, EnumSet.noneOf(DiagnosticFlag.class), null, null, param1String, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic warning(DiagnosticSource param1DiagnosticSource, DiagnosticPosition param1DiagnosticPosition, String param1String, Object... param1VarArgs) {
-/* 155 */       return create(DiagnosticType.WARNING, null, EnumSet.noneOf(DiagnosticFlag.class), param1DiagnosticSource, param1DiagnosticPosition, param1String, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic warning(Lint.LintCategory param1LintCategory, DiagnosticSource param1DiagnosticSource, DiagnosticPosition param1DiagnosticPosition, String param1String, Object... param1VarArgs) {
-/* 169 */       return create(DiagnosticType.WARNING, param1LintCategory, EnumSet.noneOf(DiagnosticFlag.class), param1DiagnosticSource, param1DiagnosticPosition, param1String, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic mandatoryNote(DiagnosticSource param1DiagnosticSource, String param1String, Object... param1VarArgs) {
-/* 179 */       return create(DiagnosticType.NOTE, null, EnumSet.of(DiagnosticFlag.MANDATORY), param1DiagnosticSource, null, param1String, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic note(String param1String, Object... param1VarArgs) {
-/* 188 */       return create(DiagnosticType.NOTE, null, EnumSet.noneOf(DiagnosticFlag.class), null, null, param1String, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic note(DiagnosticSource param1DiagnosticSource, DiagnosticPosition param1DiagnosticPosition, String param1String, Object... param1VarArgs) {
-/* 200 */       return create(DiagnosticType.NOTE, null, EnumSet.noneOf(DiagnosticFlag.class), param1DiagnosticSource, param1DiagnosticPosition, param1String, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic fragment(String param1String, Object... param1VarArgs) {
-/* 209 */       return create(DiagnosticType.FRAGMENT, null, EnumSet.noneOf(DiagnosticFlag.class), null, null, param1String, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic create(DiagnosticType param1DiagnosticType, DiagnosticSource param1DiagnosticSource, DiagnosticPosition param1DiagnosticPosition, String param1String, Object... param1VarArgs) {
-/* 223 */       return create(param1DiagnosticType, null, EnumSet.noneOf(DiagnosticFlag.class), param1DiagnosticSource, param1DiagnosticPosition, param1String, param1VarArgs);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public JCDiagnostic create(DiagnosticType param1DiagnosticType, Lint.LintCategory param1LintCategory, Set<DiagnosticFlag> param1Set, DiagnosticSource param1DiagnosticSource, DiagnosticPosition param1DiagnosticPosition, String param1String, Object... param1VarArgs) {
-/* 238 */       return new JCDiagnostic(this.formatter, param1DiagnosticType, param1LintCategory, param1Set, param1DiagnosticSource, param1DiagnosticPosition, qualify(param1DiagnosticType, param1String), param1VarArgs);
-/*     */     }
-/*     */
-/*     */     protected String qualify(DiagnosticType param1DiagnosticType, String param1String) {
-/* 242 */       return this.prefix + "." + param1DiagnosticType.key + "." + param1String;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   @Deprecated
-/*     */   public static JCDiagnostic fragment(String paramString, Object... paramVarArgs) {
-/* 256 */     return new JCDiagnostic(getFragmentFormatter(), DiagnosticType.FRAGMENT, null,
-/*     */
-/*     */
-/* 259 */         EnumSet.noneOf(DiagnosticFlag.class), null, null, "compiler." + DiagnosticType.FRAGMENT.key + "." + paramString, paramVarArgs);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   @Deprecated
-/*     */   public static DiagnosticFormatter<JCDiagnostic> getFragmentFormatter() {
-/* 268 */     if (fragmentFormatter == null) {
-/* 269 */       fragmentFormatter = new BasicDiagnosticFormatter(JavacMessages.getDefaultMessages());
-/*     */     }
-/* 271 */     return fragmentFormatter;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public enum DiagnosticType
-/*     */   {
-/* 279 */     FRAGMENT("misc"),
-/*     */
-/* 281 */     NOTE("note"),
-/*     */
-/* 283 */     WARNING("warn"),
-/*     */
-/* 285 */     ERROR("err");
-/*     */
-/*     */
-/*     */     final String key;
-/*     */
-/*     */
-/*     */
-/*     */     DiagnosticType(String param1String1) {
-/* 293 */       this.key = param1String1;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static class SimpleDiagnosticPosition
-/*     */     implements DiagnosticPosition
-/*     */   {
-/*     */     private final int pos;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public SimpleDiagnosticPosition(int param1Int) {
-/* 324 */       this.pos = param1Int;
-/*     */     }
-/*     */
-/*     */     public JCTree getTree() {
-/* 328 */       return null;
-/*     */     }
-/*     */
-/*     */     public int getStartPosition() {
-/* 332 */       return this.pos;
-/*     */     }
-/*     */
-/*     */     public int getPreferredPosition() {
-/* 336 */       return this.pos;
-/*     */     }
-/*     */
-/*     */     public int getEndPosition(EndPosTable param1EndPosTable) {
-/* 340 */       return this.pos;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */   public enum DiagnosticFlag
-/*     */   {
-/* 347 */     MANDATORY,
-/* 348 */     RESOLVE_ERROR,
-/* 349 */     SYNTAX,
-/* 350 */     RECOVERABLE,
-/* 351 */     NON_DEFERRABLE,
-/* 352 */     COMPRESSED;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   class SourcePosition
-/*     */   {
-/*     */     private final int line;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     private final int column;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     SourcePosition() {
-/* 375 */       boolean bool = (JCDiagnostic.this.position == null) ? true : JCDiagnostic.this.position.getPreferredPosition();
-/* 376 */       if (bool == -1 || JCDiagnostic.this.source == null) {
-/* 377 */         this.line = this.column = -1;
-/*     */       } else {
-/* 379 */         this.line = JCDiagnostic.this.source.getLineNumber(bool);
-/* 380 */         this.column = JCDiagnostic.this.source.getColumnNumber(bool, true);
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public int getLineNumber() {
-/* 385 */       return this.line;
-/*     */     }
-/*     */
-/*     */     public int getColumnNumber() {
-/* 389 */       return this.column;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   protected JCDiagnostic(DiagnosticFormatter<JCDiagnostic> paramDiagnosticFormatter, DiagnosticType paramDiagnosticType, Lint.LintCategory paramLintCategory, Set<DiagnosticFlag> paramSet, DiagnosticSource paramDiagnosticSource, DiagnosticPosition paramDiagnosticPosition, String paramString, Object... paramVarArgs) {
-/* 411 */     if (paramDiagnosticSource == null && paramDiagnosticPosition != null && paramDiagnosticPosition.getPreferredPosition() != -1) {
-/* 412 */       throw new IllegalArgumentException();
-/*     */     }
-/* 414 */     this.defaultFormatter = paramDiagnosticFormatter;
-/* 415 */     this.type = paramDiagnosticType;
-/* 416 */     this.lintCategory = paramLintCategory;
-/* 417 */     this.flags = paramSet;
-/* 418 */     this.source = paramDiagnosticSource;
-/* 419 */     this.position = paramDiagnosticPosition;
-/* 420 */     this.key = paramString;
-/* 421 */     this.args = paramVarArgs;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public DiagnosticType getType() {
-/* 429 */     return this.type;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public List<JCDiagnostic> getSubdiagnostics() {
-/* 437 */     return List.nil();
-/*     */   }
-/*     */
-/*     */   public boolean isMultiline() {
-/* 441 */     return false;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public boolean isMandatory() {
-/* 449 */     return this.flags.contains(DiagnosticFlag.MANDATORY);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public boolean hasLintCategory() {
-/* 456 */     return (this.lintCategory != null);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Lint.LintCategory getLintCategory() {
-/* 463 */     return this.lintCategory;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public JavaFileObject getSource() {
-/* 471 */     if (this.source == null) {
-/* 472 */       return null;
-/*     */     }
-/* 474 */     return this.source.getFile();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public DiagnosticSource getDiagnosticSource() {
-/* 482 */     return this.source;
-/*     */   }
-/*     */
-/*     */   protected int getIntStartPosition() {
-/* 486 */     return (this.position == null) ? -1 : this.position.getStartPosition();
-/*     */   }
-/*     */
-/*     */   protected int getIntPosition() {
-/* 490 */     return (this.position == null) ? -1 : this.position.getPreferredPosition();
-/*     */   }
-/*     */
-/*     */   protected int getIntEndPosition() {
-/* 494 */     return (this.position == null) ? -1 : this.position.getEndPosition(this.source.getEndPosTable());
-/*     */   }
-/*     */
-/*     */   public long getStartPosition() {
-/* 498 */     return getIntStartPosition();
-/*     */   }
-/*     */
-/*     */   public long getPosition() {
-/* 502 */     return getIntPosition();
-/*     */   }
-/*     */
-/*     */   public long getEndPosition() {
-/* 506 */     return getIntEndPosition();
-/*     */   }
-/*     */
-/*     */   public DiagnosticPosition getDiagnosticPosition() {
-/* 510 */     return this.position;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public long getLineNumber() {
-/* 518 */     if (this.sourcePosition == null) {
-/* 519 */       this.sourcePosition = new SourcePosition();
-/*     */     }
-/* 521 */     return this.sourcePosition.getLineNumber();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public long getColumnNumber() {
-/* 529 */     if (this.sourcePosition == null) {
-/* 530 */       this.sourcePosition = new SourcePosition();
-/*     */     }
-/* 532 */     return this.sourcePosition.getColumnNumber();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Object[] getArgs() {
-/* 540 */     return this.args;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public String getPrefix() {
-/* 548 */     return getPrefix(this.type);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public String getPrefix(DiagnosticType paramDiagnosticType) {
-/* 556 */     return this.defaultFormatter.formatKind(this, Locale.getDefault());
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public String toString() {
-/* 564 */     return this.defaultFormatter.format(this, Locale.getDefault());
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Kind getKind() {
-/* 574 */     switch (this.type) {
-/*     */       case SYNTAX:
-/* 576 */         return Kind.NOTE;
-/*     */       case RESOLVE_ERROR:
-/* 578 */         return this.flags.contains(DiagnosticFlag.MANDATORY) ? Kind.MANDATORY_WARNING : Kind.WARNING;
-/*     */
-/*     */
-/*     */       case null:
-/* 582 */         return Kind.ERROR;
-/*     */     }
-/* 584 */     return Kind.OTHER;
-/*     */   }
-/*     */
-/*     */
-/*     */   public String getCode() {
-/* 589 */     return this.key;
-/*     */   }
-/*     */
-/*     */   public String getMessage(Locale paramLocale) {
-/* 593 */     return this.defaultFormatter.formatMessage(this, paramLocale);
-/*     */   }
-/*     */
-/*     */   public void setFlag(DiagnosticFlag paramDiagnosticFlag) {
-/* 597 */     this.flags.add(paramDiagnosticFlag);
-/*     */
-/* 599 */     if (this.type == DiagnosticType.ERROR) {
-/* 600 */       switch (paramDiagnosticFlag) {
-/*     */         case SYNTAX:
-/* 602 */           this.flags.remove(DiagnosticFlag.RECOVERABLE);
-/*     */           break;
-/*     */         case RESOLVE_ERROR:
-/* 605 */           this.flags.add(DiagnosticFlag.RECOVERABLE);
-/*     */           break;
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public boolean isFlagSet(DiagnosticFlag paramDiagnosticFlag) {
-/* 612 */     return this.flags.contains(paramDiagnosticFlag);
-/*     */   }
-/*     */
-/*     */   public static class MultilineDiagnostic
-/*     */     extends JCDiagnostic {
-/*     */     private final List<JCDiagnostic> subdiagnostics;
-/*     */
-/*     */     public MultilineDiagnostic(JCDiagnostic param1JCDiagnostic, List<JCDiagnostic> param1List) {
-/* 620 */       super(param1JCDiagnostic.defaultFormatter, param1JCDiagnostic
-/* 621 */           .getType(), param1JCDiagnostic
-/* 622 */           .getLintCategory(), param1JCDiagnostic
-/* 623 */           .flags, param1JCDiagnostic
-/* 624 */           .getDiagnosticSource(), param1JCDiagnostic
-/* 625 */           .position, param1JCDiagnostic
-/* 626 */           .getCode(), param1JCDiagnostic
-/* 627 */           .getArgs());
-/* 628 */       this.subdiagnostics = param1List;
-/*     */     }
-/*     */
-/*     */
-/*     */     public List<JCDiagnostic> getSubdiagnostics() {
-/* 633 */       return this.subdiagnostics;
-/*     */     }
-/*     */
-/*     */
-/*     */     public boolean isMultiline() {
-/* 638 */       return true;
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static interface DiagnosticPosition {
-/*     */     JCTree getTree();
-/*     */
-/*     */     int getStartPosition();
-/*     */
-/*     */     int getPreferredPosition();
-/*     */
-/*     */     int getEndPosition(EndPosTable param1EndPosTable);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\java\\util\JCDiagnostic.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.util;
+
+import java.util.EnumSet;
+import java.util.Locale;
+import java.util.Set;
+
+import javax.tools.Diagnostic;
+import javax.tools.JavaFileObject;
+
+import com.sun.tools.javac.api.DiagnosticFormatter;
+import com.sun.tools.javac.code.Lint.LintCategory;
+import com.sun.tools.javac.tree.EndPosTable;
+import com.sun.tools.javac.tree.JCTree;
+
+import static com.sun.tools.javac.util.JCDiagnostic.DiagnosticType.*;
+
+/** An abstraction of a diagnostic message generated by the compiler.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class JCDiagnostic implements Diagnostic<JavaFileObject> {
+    /** A factory for creating diagnostic objects. */
+    public static class Factory {
+        /** The context key for the diagnostic factory. */
+        protected static final Context.Key<Factory> diagnosticFactoryKey =
+            new Context.Key<Factory>();
+
+        /** Get the Factory instance for this context. */
+        public static Factory instance(Context context) {
+            Factory instance = context.get(diagnosticFactoryKey);
+            if (instance == null)
+                instance = new Factory(context);
+            return instance;
+        }
+
+        DiagnosticFormatter<JCDiagnostic> formatter;
+        final String prefix;
+        final Set<DiagnosticFlag> defaultErrorFlags;
+
+        /** Create a new diagnostic factory. */
+        protected Factory(Context context) {
+            this(JavacMessages.instance(context), "compiler");
+            context.put(diagnosticFactoryKey, this);
+
+            final Options options = Options.instance(context);
+            initOptions(options);
+            options.addListener(new Runnable() {
+               public void run() {
+                   initOptions(options);
+               }
+            });
+        }
+
+        private void initOptions(Options options) {
+            if (options.isSet("onlySyntaxErrorsUnrecoverable"))
+                defaultErrorFlags.add(DiagnosticFlag.RECOVERABLE);
+        }
+
+        /** Create a new diagnostic factory. */
+        public Factory(JavacMessages messages, String prefix) {
+            this.prefix = prefix;
+            this.formatter = new BasicDiagnosticFormatter(messages);
+            defaultErrorFlags = EnumSet.of(DiagnosticFlag.MANDATORY);
+        }
+
+        /**
+         * Create an error diagnostic.
+         *  @param source The source of the compilation unit, if any, in which to report the error.
+         *  @param pos    The source position at which to report the error.
+         *  @param key    The key for the localized error message.
+         *  @param args   Fields of the error message.
+         */
+        public JCDiagnostic error(
+                DiagnosticSource source, DiagnosticPosition pos, String key, Object... args) {
+            return create(ERROR, null, defaultErrorFlags, source, pos, key, args);
+        }
+
+        /**
+         * Create a warning diagnostic that will not be hidden by the -nowarn or -Xlint:none options.
+         *  @param source The source of the compilation unit, if any, in which to report the warning.
+         *  @param pos    The source position at which to report the warning.
+         *  @param key    The key for the localized warning message.
+         *  @param args   Fields of the warning message.
+         *  @see MandatoryWarningHandler
+         */
+        public JCDiagnostic mandatoryWarning(
+                DiagnosticSource source, DiagnosticPosition pos, String key, Object... args) {
+            return create(WARNING, null, EnumSet.of(DiagnosticFlag.MANDATORY), source, pos, key, args);
+        }
+
+        /**
+         * Create a warning diagnostic that will not be hidden by the -nowarn or -Xlint:none options.
+         *  @param lc     The lint category for the diagnostic
+         *  @param source The source of the compilation unit, if any, in which to report the warning.
+         *  @param pos    The source position at which to report the warning.
+         *  @param key    The key for the localized warning message.
+         *  @param args   Fields of the warning message.
+         *  @see MandatoryWarningHandler
+         */
+        public JCDiagnostic mandatoryWarning(
+                LintCategory lc,
+                DiagnosticSource source, DiagnosticPosition pos, String key, Object... args) {
+            return create(WARNING, lc, EnumSet.of(DiagnosticFlag.MANDATORY), source, pos, key, args);
+        }
+
+        /**
+         * Create a warning diagnostic.
+         *  @param lc     The lint category for the diagnostic
+         *  @param key    The key for the localized error message.
+         *  @param args   Fields of the warning message.
+         *  @see MandatoryWarningHandler
+         */
+        public JCDiagnostic warning(
+                 LintCategory lc, String key, Object... args) {
+            return create(WARNING, lc, EnumSet.noneOf(DiagnosticFlag.class), null, null, key, args);
+        }
+
+        /**
+         * Create a warning diagnostic.
+         *  @param source The source of the compilation unit, if any, in which to report the warning.
+         *  @param pos    The source position at which to report the warning.
+         *  @param key    The key for the localized warning message.
+         *  @param args   Fields of the warning message.
+         */
+        public JCDiagnostic warning(
+                DiagnosticSource source, DiagnosticPosition pos, String key, Object... args) {
+            return create(WARNING, null, EnumSet.noneOf(DiagnosticFlag.class), source, pos, key, args);
+        }
+
+        /**
+         * Create a warning diagnostic.
+         *  @param lc     The lint category for the diagnostic
+         *  @param source The source of the compilation unit, if any, in which to report the warning.
+         *  @param pos    The source position at which to report the warning.
+         *  @param key    The key for the localized warning message.
+         *  @param args   Fields of the warning message.
+         *  @see MandatoryWarningHandler
+         */
+        public JCDiagnostic warning(
+                 LintCategory lc, DiagnosticSource source, DiagnosticPosition pos, String key, Object... args) {
+            return create(WARNING, lc, EnumSet.noneOf(DiagnosticFlag.class), source, pos, key, args);
+        }
+
+        /**
+         * Create a note diagnostic that will not be hidden by the -nowarn or -Xlint:none options.
+         *  @param key    The key for the localized message.
+         *  @param args   Fields of the message.
+         *  @see MandatoryWarningHandler
+         */
+        public JCDiagnostic mandatoryNote(DiagnosticSource source, String key, Object... args) {
+            return create(NOTE, null, EnumSet.of(DiagnosticFlag.MANDATORY), source, null, key, args);
+        }
+
+        /**
+         * Create a note diagnostic.
+         *  @param key    The key for the localized error message.
+         *  @param args   Fields of the message.
+         */
+        public JCDiagnostic note(String key, Object... args) {
+            return create(NOTE, null, EnumSet.noneOf(DiagnosticFlag.class), null, null, key, args);
+        }
+
+        /**
+         * Create a note diagnostic.
+         *  @param source The source of the compilation unit, if any, in which to report the note.
+         *  @param pos    The source position at which to report the note.
+         *  @param key    The key for the localized message.
+         *  @param args   Fields of the message.
+         */
+        public JCDiagnostic note(
+                DiagnosticSource source, DiagnosticPosition pos, String key, Object... args) {
+            return create(NOTE, null, EnumSet.noneOf(DiagnosticFlag.class), source, pos, key, args);
+        }
+
+        /**
+         * Create a fragment diagnostic, for use as an argument in other diagnostics
+         *  @param key    The key for the localized message.
+         *  @param args   Fields of the message.
+         */
+        public JCDiagnostic fragment(String key, Object... args) {
+            return create(FRAGMENT, null, EnumSet.noneOf(DiagnosticFlag.class), null, null, key, args);
+        }
+
+        /**
+         * Create a new diagnostic of the given kind, which is not mandatory and which has
+         * no lint category.
+         *  @param kind        The diagnostic kind
+         *  @param source      The source of the compilation unit, if any, in which to report the message.
+         *  @param pos         The source position at which to report the message.
+         *  @param key         The key for the localized message.
+         *  @param args        Fields of the message.
+         */
+        public JCDiagnostic create(
+                DiagnosticType kind, DiagnosticSource source, DiagnosticPosition pos, String key, Object... args) {
+            return create(kind, null, EnumSet.noneOf(DiagnosticFlag.class), source, pos, key, args);
+        }
+
+        /**
+         * Create a new diagnostic of the given kind.
+         *  @param kind        The diagnostic kind
+         *  @param lc          The lint category, if applicable, or null
+         *  @param flags       The set of flags for the diagnostic
+         *  @param source      The source of the compilation unit, if any, in which to report the message.
+         *  @param pos         The source position at which to report the message.
+         *  @param key         The key for the localized message.
+         *  @param args        Fields of the message.
+         */
+        public JCDiagnostic create(
+                DiagnosticType kind, LintCategory lc, Set<DiagnosticFlag> flags, DiagnosticSource source, DiagnosticPosition pos, String key, Object... args) {
+            return new JCDiagnostic(formatter, kind, lc, flags, source, pos, qualify(kind, key), args);
+        }
+
+        protected String qualify(DiagnosticType t, String key) {
+            return prefix + "." + t.key + "." + key;
+        }
+    }
+
+
+
+    /**
+     * Create a fragment diagnostic, for use as an argument in other diagnostics
+     *  @param key    The key for the localized error message.
+     *  @param args   Fields of the error message.
+     *
+     */
+    @Deprecated
+    public static JCDiagnostic fragment(String key, Object... args) {
+        return new JCDiagnostic(getFragmentFormatter(),
+                              FRAGMENT,
+                              null,
+                              EnumSet.noneOf(DiagnosticFlag.class),
+                              null,
+                              null,
+                              "compiler." + FRAGMENT.key + "." + key,
+                              args);
+    }
+    //where
+    @Deprecated
+    public static DiagnosticFormatter<JCDiagnostic> getFragmentFormatter() {
+        if (fragmentFormatter == null) {
+            fragmentFormatter = new BasicDiagnosticFormatter(JavacMessages.getDefaultMessages());
+        }
+        return fragmentFormatter;
+    }
+
+    /**
+     * A DiagnosticType defines the type of the diagnostic.
+     **/
+    public enum DiagnosticType {
+        /** A fragment of an enclosing diagnostic. */
+        FRAGMENT("misc"),
+        /** A note: similar to, but less serious than, a warning. */
+        NOTE("note"),
+        /** A warning. */
+        WARNING("warn"),
+        /** An error. */
+        ERROR("err");
+
+        final String key;
+
+        /** Create a DiagnosticType.
+         * @param key A string used to create the resource key for the diagnostic.
+         */
+        DiagnosticType(String key) {
+            this.key = key;
+        }
+    };
+
+    /**
+     * A DiagnosticPosition provides information about the positions in a file
+     * that gave rise to a diagnostic. It always defines a "preferred" position
+     * that most accurately defines the location of the diagnostic, it may also
+     * provide a related tree node that spans that location.
+     */
+    public static interface DiagnosticPosition {
+        /** Gets the tree node, if any, to which the diagnostic applies. */
+        JCTree getTree();
+        /** If there is a tree node, get the start position of the tree node.
+         *  Otherwise, just returns the same as getPreferredPosition(). */
+        int getStartPosition();
+        /** Get the position within the file that most accurately defines the
+         *  location for the diagnostic. */
+        int getPreferredPosition();
+        /** If there is a tree node, and if endPositions are available, get
+         *  the end position of the tree node. Otherwise, just returns the
+         *  same as getPreferredPosition(). */
+        int getEndPosition(EndPosTable endPosTable);
+    }
+
+    /**
+     * A DiagnosticPosition that simply identifies a position, but no related
+     * tree node, as the location for a diagnostic. Used for scanner and parser
+     * diagnostics. */
+    public static class SimpleDiagnosticPosition implements DiagnosticPosition {
+        public SimpleDiagnosticPosition(int pos) {
+            this.pos = pos;
+        }
+
+        public JCTree getTree() {
+            return null;
+        }
+
+        public int getStartPosition() {
+            return pos;
+        }
+
+        public int getPreferredPosition() {
+            return pos;
+        }
+
+        public int getEndPosition(EndPosTable endPosTable) {
+            return pos;
+        }
+
+        private final int pos;
+    }
+
+    public enum DiagnosticFlag {
+        MANDATORY,
+        RESOLVE_ERROR,
+        SYNTAX,
+        RECOVERABLE,
+        NON_DEFERRABLE,
+        COMPRESSED
+    }
+
+    private final DiagnosticType type;
+    private final DiagnosticSource source;
+    private final DiagnosticPosition position;
+    private final String key;
+    protected final Object[] args;
+    private final Set<DiagnosticFlag> flags;
+    private final LintCategory lintCategory;
+
+    /** source line position (set lazily) */
+    private SourcePosition sourcePosition;
+
+    /**
+     * This class is used to defer the line/column position fetch logic after diagnostic construction.
+     */
+    class SourcePosition {
+
+        private final int line;
+        private final int column;
+
+        SourcePosition() {
+            int n = (position == null ? Position.NOPOS : position.getPreferredPosition());
+            if (n == Position.NOPOS || source == null)
+                line = column = -1;
+            else {
+                line = source.getLineNumber(n);
+                column = source.getColumnNumber(n, true);
+            }
+        }
+
+        public int getLineNumber() {
+            return line;
+        }
+
+        public int getColumnNumber() {
+            return column;
+        }
+    }
+
+    /**
+     * Create a diagnostic object.
+     * @param formatter the formatter to use for the diagnostic
+     * @param dt the type of diagnostic
+     * @param lc     the lint category for the diagnostic
+     * @param source the name of the source file, or null if none.
+     * @param pos the character offset within the source file, if given.
+     * @param key a resource key to identify the text of the diagnostic
+     * @param args arguments to be included in the text of the diagnostic
+     */
+    protected JCDiagnostic(DiagnosticFormatter<JCDiagnostic> formatter,
+                       DiagnosticType dt,
+                       LintCategory lc,
+                       Set<DiagnosticFlag> flags,
+                       DiagnosticSource source,
+                       DiagnosticPosition pos,
+                       String key,
+                       Object... args) {
+        if (source == null && pos != null && pos.getPreferredPosition() != Position.NOPOS)
+            throw new IllegalArgumentException();
+
+        this.defaultFormatter = formatter;
+        this.type = dt;
+        this.lintCategory = lc;
+        this.flags = flags;
+        this.source = source;
+        this.position = pos;
+        this.key = key;
+        this.args = args;
+    }
+
+    /**
+     * Get the type of this diagnostic.
+     * @return the type of this diagnostic
+     */
+    public DiagnosticType getType() {
+        return type;
+    }
+
+    /**
+     * Get the subdiagnostic list
+     * @return subdiagnostic list
+     */
+    public List<JCDiagnostic> getSubdiagnostics() {
+        return List.nil();
+    }
+
+    public boolean isMultiline() {
+        return false;
+    }
+
+    /**
+     * Check whether or not this diagnostic is required to be shown.
+     * @return true if this diagnostic is required to be shown.
+     */
+    public boolean isMandatory() {
+        return flags.contains(DiagnosticFlag.MANDATORY);
+    }
+
+    /**
+     * Check whether this diagnostic has an associated lint category.
+     */
+    public boolean hasLintCategory() {
+        return (lintCategory != null);
+    }
+
+    /**
+     * Get the associated lint category, or null if none.
+     */
+    public LintCategory getLintCategory() {
+        return lintCategory;
+    }
+
+    /**
+     * Get the name of the source file referred to by this diagnostic.
+     * @return the name of the source referred to with this diagnostic, or null if none
+     */
+    public JavaFileObject getSource() {
+        if (source == null)
+            return null;
+        else
+            return source.getFile();
+    }
+
+    /**
+     * Get the source referred to by this diagnostic.
+     * @return the source referred to with this diagnostic, or null if none
+     */
+    public DiagnosticSource getDiagnosticSource() {
+        return source;
+    }
+
+    protected int getIntStartPosition() {
+        return (position == null ? Position.NOPOS : position.getStartPosition());
+    }
+
+    protected int getIntPosition() {
+        return (position == null ? Position.NOPOS : position.getPreferredPosition());
+    }
+
+    protected int getIntEndPosition() {
+        return (position == null ? Position.NOPOS : position.getEndPosition(source.getEndPosTable()));
+    }
+
+    public long getStartPosition() {
+        return getIntStartPosition();
+    }
+
+    public long getPosition() {
+        return getIntPosition();
+    }
+
+    public long getEndPosition() {
+        return getIntEndPosition();
+    }
+
+    public DiagnosticPosition getDiagnosticPosition() {
+        return position;
+    }
+
+    /**
+     * Get the line number within the source referred to by this diagnostic.
+     * @return  the line number within the source referred to by this diagnostic
+     */
+    public long getLineNumber() {
+        if (sourcePosition == null) {
+            sourcePosition = new SourcePosition();
+        }
+        return sourcePosition.getLineNumber();
+    }
+
+    /**
+     * Get the column number within the line of source referred to by this diagnostic.
+     * @return  the column number within the line of source referred to by this diagnostic
+     */
+    public long getColumnNumber() {
+        if (sourcePosition == null) {
+            sourcePosition = new SourcePosition();
+        }
+        return sourcePosition.getColumnNumber();
+    }
+
+    /**
+     * Get the arguments to be included in the text of the diagnostic.
+     * @return  the arguments to be included in the text of the diagnostic
+     */
+    public Object[] getArgs() {
+        return args;
+    }
+
+    /**
+     * Get the prefix string associated with this type of diagnostic.
+     * @return the prefix string associated with this type of diagnostic
+     */
+    public String getPrefix() {
+        return getPrefix(type);
+    }
+
+    /**
+     * Get the prefix string associated with a particular type of diagnostic.
+     * @return the prefix string associated with a particular type of diagnostic
+     */
+    public String getPrefix(DiagnosticType dt) {
+        return defaultFormatter.formatKind(this, Locale.getDefault());
+    }
+
+    /**
+     * Return the standard presentation of this diagnostic.
+     */
+    @Override
+    public String toString() {
+        return defaultFormatter.format(this,Locale.getDefault());
+    }
+
+    private DiagnosticFormatter<JCDiagnostic> defaultFormatter;
+    @Deprecated
+    private static DiagnosticFormatter<JCDiagnostic> fragmentFormatter;
+
+    // Methods for javax.tools.Diagnostic
+
+    public Kind getKind() {
+        switch (type) {
+        case NOTE:
+            return Kind.NOTE;
+        case WARNING:
+            return flags.contains(DiagnosticFlag.MANDATORY)
+                    ? Kind.MANDATORY_WARNING
+                    : Kind.WARNING;
+        case ERROR:
+            return Kind.ERROR;
+        default:
+            return Kind.OTHER;
+        }
+    }
+
+    public String getCode() {
+        return key;
+    }
+
+    public String getMessage(Locale locale) {
+        return defaultFormatter.formatMessage(this, locale);
+    }
+
+    public void setFlag(DiagnosticFlag flag) {
+        flags.add(flag);
+
+        if (type == DiagnosticType.ERROR) {
+            switch (flag) {
+                case SYNTAX:
+                    flags.remove(DiagnosticFlag.RECOVERABLE);
+                    break;
+                case RESOLVE_ERROR:
+                    flags.add(DiagnosticFlag.RECOVERABLE);
+                    break;
+            }
+        }
+    }
+
+    public boolean isFlagSet(DiagnosticFlag flag) {
+        return flags.contains(flag);
+    }
+
+    public static class MultilineDiagnostic extends JCDiagnostic {
+
+        private final List<JCDiagnostic> subdiagnostics;
+
+        public MultilineDiagnostic(JCDiagnostic other, List<JCDiagnostic> subdiagnostics) {
+            super(other.defaultFormatter,
+                  other.getType(),
+                  other.getLintCategory(),
+                  other.flags,
+                  other.getDiagnosticSource(),
+                  other.position,
+                  other.getCode(),
+                  other.getArgs());
+            this.subdiagnostics = subdiagnostics;
+        }
+
+        @Override
+        public List<JCDiagnostic> getSubdiagnostics() {
+            return subdiagnostics;
+        }
+
+        @Override
+        public boolean isMultiline() {
+            return true;
+        }
+    }
+}

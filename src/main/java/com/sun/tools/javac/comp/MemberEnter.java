@@ -1,1672 +1,1666 @@
-/*      */ package com.sun.tools.javac.comp;
-/*      */
-/*      */ import com.sun.tools.javac.code.Attribute;
-/*      */ import com.sun.tools.javac.code.DeferredLintHandler;
-/*      */ import com.sun.tools.javac.code.Kinds;
-/*      */ import com.sun.tools.javac.code.Lint;
-/*      */ import com.sun.tools.javac.code.Scope;
-/*      */ import com.sun.tools.javac.code.Source;
-/*      */ import com.sun.tools.javac.code.Symbol;
-/*      */ import com.sun.tools.javac.code.Symtab;
-/*      */ import com.sun.tools.javac.code.Type;
-/*      */ import com.sun.tools.javac.code.TypeAnnotations;
-/*      */ import com.sun.tools.javac.code.TypeTag;
-/*      */ import com.sun.tools.javac.code.Types;
-/*      */ import com.sun.tools.javac.jvm.ClassReader;
-/*      */ import com.sun.tools.javac.jvm.Target;
-/*      */ import com.sun.tools.javac.tree.JCTree;
-/*      */ import com.sun.tools.javac.tree.TreeInfo;
-/*      */ import com.sun.tools.javac.tree.TreeMaker;
-/*      */ import com.sun.tools.javac.tree.TreeScanner;
-/*      */ import com.sun.tools.javac.util.Assert;
-/*      */ import com.sun.tools.javac.util.Context;
-/*      */ import com.sun.tools.javac.util.FatalError;
-/*      */ import com.sun.tools.javac.util.JCDiagnostic;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.Name;
-/*      */ import com.sun.tools.javac.util.Names;
-/*      */ import java.util.HashMap;
-/*      */ import java.util.HashSet;
-/*      */ import java.util.LinkedHashMap;
-/*      */ import java.util.List;
-/*      */ import java.util.Map;
-/*      */ import java.util.Set;
-/*      */ import javax.tools.JavaFileObject;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class MemberEnter
-/*      */   extends JCTree.Visitor
-/*      */   implements Symbol.Completer
-/*      */ {
-/*   65 */   protected static final Context.Key<MemberEnter> memberEnterKey = new Context.Key(); static final boolean checkClash = true;
-/*      */   private final Names names;
-/*      */   private final Enter enter;
-/*      */   private final Log log;
-/*      */   private final Check chk;
-/*      */   private final Attr attr;
-/*      */   private final Symtab syms;
-/*      */   private final TreeMaker make;
-/*      */   private final ClassReader reader;
-/*      */   private final Todo todo;
-/*      */   private final Annotate annotate;
-/*      */   private final TypeAnnotations typeAnnotations;
-/*      */   private final Types types;
-/*      */   private final JCDiagnostic.Factory diags;
-/*      */   private final Source source;
-/*      */   private final Target target;
-/*      */   private final DeferredLintHandler deferredLintHandler;
-/*      */   private final Lint lint;
-/*      */   private final TypeEnvs typeEnvs;
-/*      */   boolean allowTypeAnnos;
-/*      */   boolean allowRepeatedAnnos;
-/*      */   ListBuffer<Env<AttrContext>> halfcompleted;
-/*      */   boolean isFirst;
-/*      */   boolean completionEnabled;
-/*      */   protected Env<AttrContext> env;
-/*      */
-/*      */   public static MemberEnter instance(Context paramContext) {
-/*   92 */     MemberEnter memberEnter = (MemberEnter)paramContext.get(memberEnterKey);
-/*   93 */     if (memberEnter == null)
-/*   94 */       memberEnter = new MemberEnter(paramContext);
-/*   95 */     return memberEnter;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected MemberEnter(Context paramContext) {
-/*  131 */     this.halfcompleted = new ListBuffer();
-/*      */
-/*      */
-/*      */
-/*      */
-/*  136 */     this.isFirst = true;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  142 */     this.completionEnabled = true; paramContext.put(memberEnterKey, this); this.names = Names.instance(paramContext); this.enter = Enter.instance(paramContext); this.log = Log.instance(paramContext); this.chk = Check.instance(paramContext); this.attr = Attr.instance(paramContext); this.syms = Symtab.instance(paramContext);
-/*      */     this.make = TreeMaker.instance(paramContext);
-/*      */     this.reader = ClassReader.instance(paramContext);
-/*      */     this.todo = Todo.instance(paramContext);
-/*      */     this.annotate = Annotate.instance(paramContext);
-/*      */     this.typeAnnotations = TypeAnnotations.instance(paramContext);
-/*      */     this.types = Types.instance(paramContext);
-/*      */     this.diags = JCDiagnostic.Factory.instance(paramContext);
-/*      */     this.source = Source.instance(paramContext);
-/*      */     this.target = Target.instance(paramContext);
-/*      */     this.deferredLintHandler = DeferredLintHandler.instance(paramContext);
-/*      */     this.lint = Lint.instance(paramContext);
-/*      */     this.typeEnvs = TypeEnvs.instance(paramContext);
-/*      */     this.allowTypeAnnos = this.source.allowTypeAnnotations();
-/*  156 */     this.allowRepeatedAnnos = this.source.allowRepeatedAnnotations(); } private void importAll(int paramInt, Symbol.TypeSymbol paramTypeSymbol, Env<AttrContext> paramEnv) { if (paramTypeSymbol.kind == 1 && (paramTypeSymbol.members()).elems == null && !paramTypeSymbol.exists()) {
-/*      */
-/*  158 */       if (((Symbol.PackageSymbol)paramTypeSymbol).fullname.equals(this.names.java_lang)) {
-/*  159 */         JCDiagnostic jCDiagnostic = this.diags.fragment("fatal.err.no.java.lang", new Object[0]);
-/*  160 */         throw new FatalError(jCDiagnostic);
-/*      */       }
-/*  162 */       this.log.error(JCDiagnostic.DiagnosticFlag.RESOLVE_ERROR, paramInt, "doesnt.exist", new Object[] { paramTypeSymbol });
-/*      */     }
-/*      */
-/*  165 */     paramEnv.toplevel.starImportScope.importAll(paramTypeSymbol.members()); }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void importStaticAll(int paramInt, final Symbol.TypeSymbol tsym, Env<AttrContext> paramEnv) {
-/*  176 */     final JavaFileObject sourcefile = paramEnv.toplevel.sourcefile;
-/*  177 */     final Scope.StarImportScope toScope = paramEnv.toplevel.starImportScope;
-/*  178 */     final Symbol.PackageSymbol packge = paramEnv.toplevel.packge;
-/*  179 */     final Symbol.TypeSymbol origin = tsym;
-/*      */
-/*      */
-/*  182 */     (new Object() {
-/*  183 */         Set<Symbol> processed = new HashSet<>();
-/*      */         void importFrom(Symbol.TypeSymbol param1TypeSymbol) {
-/*  185 */           if (param1TypeSymbol == null || !this.processed.add(param1TypeSymbol)) {
-/*      */             return;
-/*      */           }
-/*      */
-/*  189 */           importFrom((MemberEnter.this.types.supertype(param1TypeSymbol.type)).tsym);
-/*  190 */           for (Type type : MemberEnter.this.types.interfaces(param1TypeSymbol.type)) {
-/*  191 */             importFrom(type.tsym);
-/*      */           }
-/*  193 */           Scope scope = param1TypeSymbol.members();
-/*  194 */           for (Scope.Entry entry = scope.elems; entry != null; entry = entry.sibling) {
-/*  195 */             Symbol symbol = entry.sym;
-/*  196 */             if (symbol.kind == 2 && (symbol
-/*  197 */               .flags() & 0x8L) != 0L && MemberEnter.this
-/*  198 */               .staticImportAccessible(symbol, packge) && symbol
-/*  199 */               .isMemberOf(origin, MemberEnter.this.types) &&
-/*  200 */               !toScope.includes(symbol))
-/*  201 */               toScope.enter(symbol, scope, origin.members(), true);
-/*      */           }
-/*      */         }
-/*  204 */       }).importFrom(tsym);
-/*      */
-/*      */
-/*  207 */     this.annotate.earlier(new Annotate.Worker() {
-/*  208 */           Set<Symbol> processed = new HashSet<>();
-/*      */
-/*      */           public String toString() {
-/*  211 */             return "import static " + tsym + ".* in " + sourcefile;
-/*      */           }
-/*      */           void importFrom(Symbol.TypeSymbol param1TypeSymbol) {
-/*  214 */             if (param1TypeSymbol == null || !this.processed.add(param1TypeSymbol)) {
-/*      */               return;
-/*      */             }
-/*      */
-/*  218 */             importFrom((MemberEnter.this.types.supertype(param1TypeSymbol.type)).tsym);
-/*  219 */             for (Type type : MemberEnter.this.types.interfaces(param1TypeSymbol.type)) {
-/*  220 */               importFrom(type.tsym);
-/*      */             }
-/*  222 */             Scope scope = param1TypeSymbol.members();
-/*  223 */             for (Scope.Entry entry = scope.elems; entry != null; entry = entry.sibling) {
-/*  224 */               Symbol symbol = entry.sym;
-/*  225 */               if (symbol.isStatic() && symbol.kind != 2 && MemberEnter.this
-/*  226 */                 .staticImportAccessible(symbol, packge) &&
-/*  227 */                 !toScope.includes(symbol) && symbol
-/*  228 */                 .isMemberOf(origin, MemberEnter.this.types))
-/*  229 */                 toScope.enter(symbol, scope, origin.members(), true);
-/*      */             }
-/*      */           }
-/*      */
-/*      */           public void run() {
-/*  234 */             importFrom(tsym);
-/*      */           }
-/*      */         });
-/*      */   }
-/*      */
-/*      */
-/*      */   boolean staticImportAccessible(Symbol paramSymbol, Symbol.PackageSymbol paramPackageSymbol) {
-/*  241 */     int i = (int)(paramSymbol.flags() & 0x7L);
-/*  242 */     switch (i)
-/*      */
-/*      */     { default:
-/*  245 */         return true;
-/*      */       case 2:
-/*  247 */         return false;
-/*      */       case 0:
-/*      */       case 4:
-/*  250 */         break; }  return (paramSymbol.packge() == paramPackageSymbol);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void importNamedStatic(final JCDiagnostic.DiagnosticPosition pos, final Symbol.TypeSymbol tsym, final Name name, final Env<AttrContext> env) {
-/*  265 */     if (tsym.kind != 2) {
-/*  266 */       this.log.error(JCDiagnostic.DiagnosticFlag.RECOVERABLE, pos, "static.imp.only.classes.and.interfaces", new Object[0]);
-/*      */
-/*      */       return;
-/*      */     }
-/*  270 */     final Scope.ImportScope toScope = env.toplevel.namedImportScope;
-/*  271 */     final Symbol.PackageSymbol packge = env.toplevel.packge;
-/*  272 */     final Symbol.TypeSymbol origin = tsym;
-/*      */
-/*      */
-/*  275 */     (new Object() {
-/*  276 */         Set<Symbol> processed = new HashSet<>();
-/*      */         void importFrom(Symbol.TypeSymbol param1TypeSymbol) {
-/*  278 */           if (param1TypeSymbol == null || !this.processed.add(param1TypeSymbol)) {
-/*      */             return;
-/*      */           }
-/*      */
-/*  282 */           importFrom((MemberEnter.this.types.supertype(param1TypeSymbol.type)).tsym);
-/*  283 */           for (Type type : MemberEnter.this.types.interfaces(param1TypeSymbol.type)) {
-/*  284 */             importFrom(type.tsym);
-/*      */           }
-/*  286 */           Scope.Entry entry = param1TypeSymbol.members().lookup(name);
-/*  287 */           for (; entry.scope != null;
-/*  288 */             entry = entry.next()) {
-/*  289 */             Symbol symbol = entry.sym;
-/*  290 */             if (symbol.isStatic() && symbol.kind == 2 && MemberEnter.this
-/*      */
-/*  292 */               .staticImportAccessible(symbol, packge) && symbol
-/*  293 */               .isMemberOf(origin, MemberEnter.this.types) && MemberEnter.this
-/*  294 */               .chk.checkUniqueStaticImport(pos, symbol, toScope))
-/*  295 */               toScope.enter(symbol, symbol.owner.members(), origin.members(), true);
-/*      */           }
-/*      */         }
-/*  298 */       }).importFrom(tsym);
-/*      */
-/*      */
-/*  301 */     this.annotate.earlier(new Annotate.Worker() {
-/*  302 */           Set<Symbol> processed = new HashSet<>();
-/*      */           boolean found = false;
-/*      */
-/*      */           public String toString() {
-/*  306 */             return "import static " + tsym + "." + name;
-/*      */           }
-/*      */           void importFrom(Symbol.TypeSymbol param1TypeSymbol) {
-/*  309 */             if (param1TypeSymbol == null || !this.processed.add(param1TypeSymbol)) {
-/*      */               return;
-/*      */             }
-/*      */
-/*  313 */             importFrom((MemberEnter.this.types.supertype(param1TypeSymbol.type)).tsym);
-/*  314 */             for (Type type : MemberEnter.this.types.interfaces(param1TypeSymbol.type)) {
-/*  315 */               importFrom(type.tsym);
-/*      */             }
-/*  317 */             Scope.Entry entry = param1TypeSymbol.members().lookup(name);
-/*  318 */             for (; entry.scope != null;
-/*  319 */               entry = entry.next()) {
-/*  320 */               Symbol symbol = entry.sym;
-/*  321 */               if (symbol.isStatic() && MemberEnter.this
-/*  322 */                 .staticImportAccessible(symbol, packge) && symbol
-/*  323 */                 .isMemberOf(origin, MemberEnter.this.types)) {
-/*  324 */                 this.found = true;
-/*  325 */                 if (symbol.kind != 2)
-/*  326 */                   toScope.enter(symbol, symbol.owner.members(), origin.members(), true);
-/*      */               }
-/*      */             }
-/*      */           }
-/*      */
-/*      */           public void run() {
-/*  332 */             JavaFileObject javaFileObject = MemberEnter.this.log.useSource(env.toplevel.sourcefile);
-/*      */             try {
-/*  334 */               importFrom(tsym);
-/*  335 */               if (!this.found) {
-/*  336 */                 MemberEnter.this.log.error(pos, "cant.resolve.location", new Object[] { Kinds.KindName.STATIC, this.val$name,
-/*      */
-/*  338 */                       List.nil(), List.nil(),
-/*  339 */                       Kinds.typeKindName(this.val$tsym.type), this.val$tsym.type });
-/*      */               }
-/*      */             } finally {
-/*      */
-/*  343 */               MemberEnter.this.log.useSource(javaFileObject);
-/*      */             }
-/*      */           }
-/*      */         });
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void importNamed(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol, Env<AttrContext> paramEnv) {
-/*  355 */     if (paramSymbol.kind == 2 && this.chk
-/*  356 */       .checkUniqueImport(paramDiagnosticPosition, paramSymbol, (Scope)paramEnv.toplevel.namedImportScope)) {
-/*  357 */       paramEnv.toplevel.namedImportScope.enter(paramSymbol, paramSymbol.owner.members());
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Type signature(Symbol.MethodSymbol paramMethodSymbol, List<JCTree.JCTypeParameter> paramList, List<JCTree.JCVariableDecl> paramList1, JCTree paramJCTree, JCTree.JCVariableDecl paramJCVariableDecl, List<JCTree.JCExpression> paramList2, Env<AttrContext> paramEnv) {
-/*      */     Type type;
-/*  379 */     List<Type> list = this.enter.classEnter(paramList, paramEnv);
-/*  380 */     this.attr.attribTypeVariables(paramList, paramEnv);
-/*      */
-/*      */
-/*  383 */     ListBuffer listBuffer1 = new ListBuffer(); List<JCTree.JCVariableDecl> list1;
-/*  384 */     for (list1 = paramList1; list1.nonEmpty(); list1 = list1.tail) {
-/*  385 */       memberEnter((JCTree)list1.head, paramEnv);
-/*  386 */       listBuffer1.append(((JCTree.JCVariableDecl)list1.head).vartype.type);
-/*      */     }
-/*      */
-/*      */
-/*  390 */     list1 = (paramJCTree == null) ? (List<JCTree.JCVariableDecl>)this.syms.voidType : (List<JCTree.JCVariableDecl>)this.attr.attribType(paramJCTree, paramEnv);
-/*      */
-/*      */
-/*      */
-/*  394 */     if (paramJCVariableDecl != null) {
-/*  395 */       memberEnter((JCTree)paramJCVariableDecl, paramEnv);
-/*  396 */       type = paramJCVariableDecl.vartype.type;
-/*      */     } else {
-/*  398 */       type = null;
-/*      */     }
-/*      */
-/*      */
-/*  402 */     ListBuffer listBuffer2 = new ListBuffer();
-/*  403 */     for (List<JCTree.JCExpression> list2 = paramList2; list2.nonEmpty(); list2 = list2.tail) {
-/*  404 */       Type type1 = this.attr.attribType((JCTree)list2.head, paramEnv);
-/*  405 */       if (!type1.hasTag(TypeTag.TYPEVAR)) {
-/*  406 */         type1 = this.chk.checkClassType(((JCTree.JCExpression)list2.head).pos(), type1);
-/*  407 */       } else if (type1.tsym.owner == paramMethodSymbol) {
-/*      */
-/*  409 */         type1.tsym.flags_field |= 0x800000000000L;
-/*      */       }
-/*  411 */       listBuffer2.append(type1);
-/*      */     }
-/*      */
-/*      */
-/*  415 */     Type.MethodType methodType = new Type.MethodType(listBuffer1.toList(), (Type)list1, listBuffer2.toList(), (Symbol.TypeSymbol)this.syms.methodClass);
-/*      */
-/*  417 */     methodType.recvtype = type;
-/*      */
-/*  419 */     return list.isEmpty() ? (Type)methodType : (Type)new Type.ForAll(list, (Type)methodType);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected void memberEnter(JCTree paramJCTree, Env<AttrContext> paramEnv) {
-/*  434 */     Env<AttrContext> env = this.env;
-/*      */     try {
-/*  436 */       this.env = paramEnv;
-/*  437 */       paramJCTree.accept(this);
-/*  438 */     } catch (Symbol.CompletionFailure completionFailure) {
-/*  439 */       this.chk.completionError(paramJCTree.pos(), completionFailure);
-/*      */     } finally {
-/*  441 */       this.env = env;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void memberEnter(List<? extends JCTree> paramList, Env<AttrContext> paramEnv) {
-/*  448 */     for (List<? extends JCTree> list = paramList; list.nonEmpty(); list = list.tail) {
-/*  449 */       memberEnter((JCTree)list.head, paramEnv);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   void finishClass(JCTree.JCClassDecl paramJCClassDecl, Env<AttrContext> paramEnv) {
-/*  455 */     if ((paramJCClassDecl.mods.flags & 0x4000L) != 0L && (
-/*  456 */       (this.types.supertype(paramJCClassDecl.sym.type)).tsym.flags() & 0x4000L) == 0L) {
-/*  457 */       addEnumMembers(paramJCClassDecl, paramEnv);
-/*      */     }
-/*  459 */     memberEnter(paramJCClassDecl.defs, paramEnv);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void addEnumMembers(JCTree.JCClassDecl paramJCClassDecl, Env<AttrContext> paramEnv) {
-/*  466 */     JCTree.JCExpression jCExpression = this.make.Type((Type)new Type.ArrayType(paramJCClassDecl.sym.type, (Symbol.TypeSymbol)this.syms.arrayClass));
-/*      */
-/*      */
-/*      */
-/*  470 */     JCTree.JCMethodDecl jCMethodDecl1 = this.make.MethodDef(this.make.Modifiers(9L), this.names.values, jCExpression,
-/*      */
-/*      */
-/*  473 */         List.nil(),
-/*  474 */         List.nil(),
-/*  475 */         List.nil(), null, null);
-/*      */
-/*      */
-/*  478 */     memberEnter((JCTree)jCMethodDecl1, paramEnv);
-/*      */
-/*      */
-/*      */
-/*  482 */     JCTree.JCMethodDecl jCMethodDecl2 = this.make.MethodDef(this.make.Modifiers(9L), this.names.valueOf, this.make
-/*      */
-/*  484 */         .Type(paramJCClassDecl.sym.type),
-/*  485 */         List.nil(),
-/*  486 */         List.of(this.make.VarDef(this.make.Modifiers(8589967360L), this.names
-/*      */
-/*  488 */             .fromString("name"), this.make
-/*  489 */             .Type(this.syms.stringType), null)),
-/*  490 */         List.nil(), null, null);
-/*      */
-/*      */
-/*  493 */     memberEnter((JCTree)jCMethodDecl2, paramEnv);
-/*      */   }
-/*      */
-/*      */   public void visitTopLevel(JCTree.JCCompilationUnit paramJCCompilationUnit) {
-/*  497 */     if (paramJCCompilationUnit.starImportScope.elems != null) {
-/*      */       return;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*  504 */     if (paramJCCompilationUnit.pid != null) {
-/*  505 */       Symbol.PackageSymbol packageSymbol = paramJCCompilationUnit.packge;
-/*  506 */       while (((Symbol)packageSymbol).owner != this.syms.rootPackage) {
-/*  507 */         ((Symbol)packageSymbol).owner.complete();
-/*  508 */         if (this.syms.classes.get(packageSymbol.getQualifiedName()) != null) {
-/*  509 */           this.log.error(paramJCCompilationUnit.pos, "pkg.clashes.with.class.of.same.name", new Object[] { packageSymbol });
-/*      */         }
-/*      */
-/*      */
-/*  513 */         Symbol symbol = ((Symbol)packageSymbol).owner;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*  518 */     annotateLater(paramJCCompilationUnit.packageAnnotations, this.env, (Symbol)paramJCCompilationUnit.packge, null);
-/*      */
-/*  520 */     JCDiagnostic.DiagnosticPosition diagnosticPosition = this.deferredLintHandler.immediate();
-/*  521 */     Lint lint = this.chk.setLint(this.lint);
-/*      */
-/*      */
-/*      */     try {
-/*  525 */       importAll(paramJCCompilationUnit.pos, (Symbol.TypeSymbol)this.reader.enterPackage(this.names.java_lang), this.env);
-/*      */
-/*      */
-/*  528 */       memberEnter(paramJCCompilationUnit.defs, this.env);
-/*      */     } finally {
-/*  530 */       this.chk.setLint(lint);
-/*  531 */       this.deferredLintHandler.setPos(diagnosticPosition);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public void visitImport(JCTree.JCImport paramJCImport) {
-/*  537 */     JCTree.JCFieldAccess jCFieldAccess = (JCTree.JCFieldAccess)paramJCImport.qualid;
-/*  538 */     Name name = TreeInfo.name((JCTree)jCFieldAccess);
-/*      */
-/*      */
-/*      */
-/*  542 */     Env<AttrContext> env = this.env.dup((JCTree)paramJCImport);
-/*      */
-/*  544 */     Symbol.TypeSymbol typeSymbol = (this.attr.attribImportQualifier(paramJCImport, env)).tsym;
-/*  545 */     if (name == this.names.asterisk) {
-/*      */
-/*  547 */       this.chk.checkCanonical((JCTree)jCFieldAccess.selected);
-/*  548 */       if (paramJCImport.staticImport) {
-/*  549 */         importStaticAll(paramJCImport.pos, typeSymbol, this.env);
-/*      */       } else {
-/*  551 */         importAll(paramJCImport.pos, typeSymbol, this.env);
-/*      */       }
-/*      */
-/*  554 */     } else if (paramJCImport.staticImport) {
-/*  555 */       importNamedStatic(paramJCImport.pos(), typeSymbol, name, env);
-/*  556 */       this.chk.checkCanonical((JCTree)jCFieldAccess.selected);
-/*      */     } else {
-/*  558 */       Symbol.TypeSymbol typeSymbol1 = (attribImportType((JCTree)jCFieldAccess, env)).tsym;
-/*  559 */       this.chk.checkCanonical((JCTree)jCFieldAccess);
-/*  560 */       importNamed(paramJCImport.pos(), (Symbol)typeSymbol1, this.env);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public void visitMethodDef(JCTree.JCMethodDecl paramJCMethodDecl) {
-/*  566 */     Scope scope = this.enter.enterScope(this.env);
-/*  567 */     Symbol.MethodSymbol methodSymbol = new Symbol.MethodSymbol(0L, paramJCMethodDecl.name, null, scope.owner);
-/*  568 */     methodSymbol.flags_field = this.chk.checkFlags(paramJCMethodDecl.pos(), paramJCMethodDecl.mods.flags, (Symbol)methodSymbol, (JCTree)paramJCMethodDecl);
-/*  569 */     paramJCMethodDecl.sym = methodSymbol;
-/*      */
-/*      */
-/*  572 */     if ((paramJCMethodDecl.mods.flags & 0x80000000000L) != 0L) {
-/*  573 */       (methodSymbol.enclClass()).flags_field |= 0x80000000000L;
-/*      */     }
-/*      */
-/*  576 */     Env<AttrContext> env = methodEnv(paramJCMethodDecl, this.env);
-/*      */
-/*  578 */     JCDiagnostic.DiagnosticPosition diagnosticPosition = this.deferredLintHandler.setPos(paramJCMethodDecl.pos());
-/*      */
-/*      */     try {
-/*  581 */       methodSymbol.type = signature(methodSymbol, paramJCMethodDecl.typarams, paramJCMethodDecl.params, (JCTree)paramJCMethodDecl.restype, paramJCMethodDecl.recvparam, paramJCMethodDecl.thrown, env);
-/*      */
-/*      */     }
-/*      */     finally {
-/*      */
-/*  586 */       this.deferredLintHandler.setPos(diagnosticPosition);
-/*      */     }
-/*      */
-/*  589 */     if (this.types.isSignaturePolymorphic(methodSymbol)) {
-/*  590 */       methodSymbol.flags_field |= 0x400000000000L;
-/*      */     }
-/*      */
-/*      */
-/*  594 */     ListBuffer listBuffer = new ListBuffer();
-/*  595 */     JCTree.JCVariableDecl jCVariableDecl = null;
-/*  596 */     for (List list = paramJCMethodDecl.params; list.nonEmpty(); list = list.tail) {
-/*  597 */       JCTree.JCVariableDecl jCVariableDecl1 = jCVariableDecl = (JCTree.JCVariableDecl)list.head;
-/*  598 */       listBuffer.append(Assert.checkNonNull(jCVariableDecl1.sym));
-/*      */     }
-/*  600 */     methodSymbol.params = listBuffer.toList();
-/*      */
-/*      */
-/*  603 */     if (jCVariableDecl != null && (jCVariableDecl.mods.flags & 0x400000000L) != 0L) {
-/*  604 */       methodSymbol.flags_field |= 0x400000000L;
-/*      */     }
-/*  606 */     ((AttrContext)env.info).scope.leave();
-/*  607 */     if (this.chk.checkUnique(paramJCMethodDecl.pos(), (Symbol)methodSymbol, scope)) {
-/*  608 */       scope.enter((Symbol)methodSymbol);
-/*      */     }
-/*      */
-/*  611 */     annotateLater(paramJCMethodDecl.mods.annotations, env, (Symbol)methodSymbol, paramJCMethodDecl.pos());
-/*      */
-/*      */
-/*  614 */     typeAnnotate((JCTree)paramJCMethodDecl, env, (Symbol)methodSymbol, paramJCMethodDecl.pos());
-/*      */
-/*  616 */     if (paramJCMethodDecl.defaultValue != null) {
-/*  617 */       annotateDefaultValueLater(paramJCMethodDecl.defaultValue, env, methodSymbol);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Env<AttrContext> methodEnv(JCTree.JCMethodDecl paramJCMethodDecl, Env<AttrContext> paramEnv) {
-/*  626 */     Env<AttrContext> env = paramEnv.dup((JCTree)paramJCMethodDecl, ((AttrContext)paramEnv.info).dup(((AttrContext)paramEnv.info).scope.dupUnshared()));
-/*  627 */     env.enclMethod = paramJCMethodDecl;
-/*  628 */     ((AttrContext)env.info).scope.owner = (Symbol)paramJCMethodDecl.sym;
-/*  629 */     if (paramJCMethodDecl.sym.type != null) {
-/*      */
-/*  631 */       this.attr.getClass(); ((AttrContext)env.info).returnResult = new Attr.ResultInfo(this.attr, 12, paramJCMethodDecl.sym.type.getReturnType());
-/*      */     }
-/*  633 */     if ((paramJCMethodDecl.mods.flags & 0x8L) != 0L) ((AttrContext)env.info).staticLevel++;
-/*  634 */     return env;
-/*      */   }
-/*      */
-/*      */   public void visitVarDef(JCTree.JCVariableDecl paramJCVariableDecl) {
-/*  638 */     Env<AttrContext> env = this.env;
-/*  639 */     if ((paramJCVariableDecl.mods.flags & 0x8L) != 0L || (((AttrContext)this.env.info).scope.owner
-/*  640 */       .flags() & 0x200L) != 0L) {
-/*  641 */       env = this.env.dup((JCTree)paramJCVariableDecl, ((AttrContext)this.env.info).dup());
-/*  642 */       ((AttrContext)env.info).staticLevel++;
-/*      */     }
-/*  644 */     JCDiagnostic.DiagnosticPosition diagnosticPosition = this.deferredLintHandler.setPos(paramJCVariableDecl.pos());
-/*      */     try {
-/*  646 */       if (TreeInfo.isEnumInit((JCTree)paramJCVariableDecl)) {
-/*  647 */         this.attr.attribIdentAsEnumType(env, (JCTree.JCIdent)paramJCVariableDecl.vartype);
-/*      */       } else {
-/*  649 */         this.attr.attribType((JCTree)paramJCVariableDecl.vartype, env);
-/*  650 */         if (TreeInfo.isReceiverParam((JCTree)paramJCVariableDecl))
-/*  651 */           checkReceiver(paramJCVariableDecl, env);
-/*      */       }
-/*      */     } finally {
-/*  654 */       this.deferredLintHandler.setPos(diagnosticPosition);
-/*      */     }
-/*      */
-/*  657 */     if ((paramJCVariableDecl.mods.flags & 0x400000000L) != 0L) {
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  664 */       Type.ArrayType arrayType = (Type.ArrayType)paramJCVariableDecl.vartype.type.unannotatedType();
-/*  665 */       paramJCVariableDecl.vartype.type = (Type)arrayType.makeVarargs();
-/*      */     }
-/*  667 */     Scope scope = this.enter.enterScope(this.env);
-/*  668 */     Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(0L, paramJCVariableDecl.name, paramJCVariableDecl.vartype.type, scope.owner);
-/*      */
-/*  670 */     varSymbol.flags_field = this.chk.checkFlags(paramJCVariableDecl.pos(), paramJCVariableDecl.mods.flags, (Symbol)varSymbol, (JCTree)paramJCVariableDecl);
-/*  671 */     paramJCVariableDecl.sym = varSymbol;
-/*  672 */     if (paramJCVariableDecl.init != null) {
-/*  673 */       varSymbol.flags_field |= 0x40000L;
-/*  674 */       if ((varSymbol.flags_field & 0x10L) != 0L &&
-/*  675 */         needsLazyConstValue((JCTree)paramJCVariableDecl.init)) {
-/*  676 */         Env<AttrContext> env1 = getInitEnv(paramJCVariableDecl, this.env);
-/*  677 */         ((AttrContext)env1.info).enclVar = (Symbol)varSymbol;
-/*  678 */         varSymbol.setLazyConstValue(initEnv(paramJCVariableDecl, env1), this.attr, paramJCVariableDecl);
-/*      */       }
-/*      */     }
-/*  681 */     if (this.chk.checkUnique(paramJCVariableDecl.pos(), (Symbol)varSymbol, scope)) {
-/*  682 */       this.chk.checkTransparentVar(paramJCVariableDecl.pos(), varSymbol, scope);
-/*  683 */       scope.enter((Symbol)varSymbol);
-/*      */     }
-/*  685 */     annotateLater(paramJCVariableDecl.mods.annotations, env, (Symbol)varSymbol, paramJCVariableDecl.pos());
-/*  686 */     typeAnnotate((JCTree)paramJCVariableDecl.vartype, this.env, (Symbol)varSymbol, paramJCVariableDecl.pos());
-/*  687 */     varSymbol.pos = paramJCVariableDecl.pos;
-/*      */   }
-/*      */
-/*      */   void checkType(JCTree paramJCTree, Type paramType, String paramString) {
-/*  691 */     if (!paramJCTree.type.isErroneous() && !this.types.isSameType(paramJCTree.type, paramType))
-/*  692 */       this.log.error((JCDiagnostic.DiagnosticPosition)paramJCTree, paramString, new Object[] { paramType, paramJCTree.type });
-/*      */   }
-/*      */
-/*      */   void checkReceiver(JCTree.JCVariableDecl paramJCVariableDecl, Env<AttrContext> paramEnv) {
-/*  696 */     this.attr.attribExpr((JCTree)paramJCVariableDecl.nameexpr, paramEnv);
-/*  697 */     Symbol.MethodSymbol methodSymbol = paramEnv.enclMethod.sym;
-/*  698 */     if (methodSymbol.isConstructor()) {
-/*  699 */       Type type = methodSymbol.owner.owner.type;
-/*  700 */       if (type.hasTag(TypeTag.METHOD))
-/*      */       {
-/*  702 */         type = methodSymbol.owner.owner.owner.type;
-/*      */       }
-/*  704 */       if (type.hasTag(TypeTag.CLASS)) {
-/*  705 */         checkType((JCTree)paramJCVariableDecl.vartype, type, "incorrect.constructor.receiver.type");
-/*  706 */         checkType((JCTree)paramJCVariableDecl.nameexpr, type, "incorrect.constructor.receiver.name");
-/*      */       } else {
-/*  708 */         this.log.error((JCDiagnostic.DiagnosticPosition)paramJCVariableDecl, "receiver.parameter.not.applicable.constructor.toplevel.class", new Object[0]);
-/*      */       }
-/*      */     } else {
-/*  711 */       checkType((JCTree)paramJCVariableDecl.vartype, methodSymbol.owner.type, "incorrect.receiver.type");
-/*  712 */       checkType((JCTree)paramJCVariableDecl.nameexpr, methodSymbol.owner.type, "incorrect.receiver.name");
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public boolean needsLazyConstValue(JCTree paramJCTree) {
-/*  717 */     InitTreeVisitor initTreeVisitor = new InitTreeVisitor();
-/*  718 */     paramJCTree.accept(initTreeVisitor);
-/*  719 */     return initTreeVisitor.result;
-/*      */   }
-/*      */
-/*      */
-/*      */   static class InitTreeVisitor
-/*      */     extends JCTree.Visitor
-/*      */   {
-/*      */     private boolean result = true;
-/*      */
-/*      */
-/*      */     public void visitTree(JCTree param1JCTree) {}
-/*      */
-/*      */
-/*      */     public void visitNewClass(JCTree.JCNewClass param1JCNewClass) {
-/*  733 */       this.result = false;
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitNewArray(JCTree.JCNewArray param1JCNewArray) {
-/*  738 */       this.result = false;
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitLambda(JCTree.JCLambda param1JCLambda) {
-/*  743 */       this.result = false;
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitReference(JCTree.JCMemberReference param1JCMemberReference) {
-/*  748 */       this.result = false;
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitApply(JCTree.JCMethodInvocation param1JCMethodInvocation) {
-/*  753 */       this.result = false;
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitSelect(JCTree.JCFieldAccess param1JCFieldAccess) {
-/*  758 */       param1JCFieldAccess.selected.accept(this);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitConditional(JCTree.JCConditional param1JCConditional) {
-/*  763 */       param1JCConditional.cond.accept(this);
-/*  764 */       param1JCConditional.truepart.accept(this);
-/*  765 */       param1JCConditional.falsepart.accept(this);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitParens(JCTree.JCParens param1JCParens) {
-/*  770 */       param1JCParens.expr.accept(this);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitTypeCast(JCTree.JCTypeCast param1JCTypeCast) {
-/*  775 */       param1JCTypeCast.expr.accept(this);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Env<AttrContext> initEnv(JCTree.JCVariableDecl paramJCVariableDecl, Env<AttrContext> paramEnv) {
-/*  788 */     Env<AttrContext> env = paramEnv.dupto(new AttrContextEnv((JCTree)paramJCVariableDecl, ((AttrContext)paramEnv.info).dup()));
-/*  789 */     if (paramJCVariableDecl.sym.owner.kind == 2) {
-/*  790 */       ((AttrContext)env.info).scope = ((AttrContext)paramEnv.info).scope.dupUnshared();
-/*  791 */       ((AttrContext)env.info).scope.owner = (Symbol)paramJCVariableDecl.sym;
-/*      */     }
-/*  793 */     if ((paramJCVariableDecl.mods.flags & 0x8L) != 0L || ((paramEnv.enclClass.sym
-/*  794 */       .flags() & 0x200L) != 0L && paramEnv.enclMethod == null))
-/*  795 */       ((AttrContext)env.info).staticLevel++;
-/*  796 */     return env;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void visitTree(JCTree paramJCTree) {}
-/*      */
-/*      */
-/*      */   public void visitErroneous(JCTree.JCErroneous paramJCErroneous) {
-/*  805 */     if (paramJCErroneous.errs != null)
-/*  806 */       memberEnter(paramJCErroneous.errs, this.env);
-/*      */   }
-/*      */
-/*      */   public Env<AttrContext> getMethodEnv(JCTree.JCMethodDecl paramJCMethodDecl, Env<AttrContext> paramEnv) {
-/*  810 */     Env<AttrContext> env = methodEnv(paramJCMethodDecl, paramEnv);
-/*  811 */     ((AttrContext)env.info).lint = ((AttrContext)env.info).lint.augment((Symbol)paramJCMethodDecl.sym); List list;
-/*  812 */     for (list = paramJCMethodDecl.typarams; list.nonEmpty(); list = list.tail)
-/*  813 */       ((AttrContext)env.info).scope.enterIfAbsent((Symbol)((JCTree.JCTypeParameter)list.head).type.tsym);
-/*  814 */     for (list = paramJCMethodDecl.params; list.nonEmpty(); list = list.tail)
-/*  815 */       ((AttrContext)env.info).scope.enterIfAbsent((Symbol)((JCTree.JCVariableDecl)list.head).sym);
-/*  816 */     return env;
-/*      */   }
-/*      */
-/*      */   public Env<AttrContext> getInitEnv(JCTree.JCVariableDecl paramJCVariableDecl, Env<AttrContext> paramEnv) {
-/*  820 */     return initEnv(paramJCVariableDecl, paramEnv);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Type attribImportType(JCTree paramJCTree, Env<AttrContext> paramEnv) {
-/*  829 */     Assert.check(this.completionEnabled);
-/*      */
-/*      */
-/*      */     try {
-/*  833 */       this.completionEnabled = false;
-/*  834 */       return this.attr.attribType(paramJCTree, paramEnv);
-/*      */     } finally {
-/*  836 */       this.completionEnabled = true;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void annotateLater(final List<JCTree.JCAnnotation> annotations, final Env<AttrContext> localEnv, final Symbol s, final JCDiagnostic.DiagnosticPosition deferPos) {
-/*  849 */     if (annotations.isEmpty()) {
-/*      */       return;
-/*      */     }
-/*  852 */     if (s.kind != 1) {
-/*  853 */       s.resetAnnotations();
-/*      */     }
-/*  855 */     this.annotate.normal(new Annotate.Worker()
-/*      */         {
-/*      */           public String toString() {
-/*  858 */             return "annotate " + annotations + " onto " + s + " in " + s.owner;
-/*      */           }
-/*      */
-/*      */
-/*      */           public void run() {
-/*  863 */             Assert.check((s.kind == 1 || s.annotationsPendingCompletion()));
-/*  864 */             JavaFileObject javaFileObject = MemberEnter.this.log.useSource(localEnv.toplevel.sourcefile);
-/*      */
-/*      */
-/*      */
-/*  868 */             JCDiagnostic.DiagnosticPosition diagnosticPosition = (deferPos != null) ? MemberEnter.this.deferredLintHandler.setPos(deferPos) : MemberEnter.this.deferredLintHandler.immediate();
-/*  869 */             Lint lint = (deferPos != null) ? null : MemberEnter.this.chk.setLint(MemberEnter.this.lint);
-/*      */             try {
-/*  871 */               if (s.hasAnnotations() && annotations
-/*  872 */                 .nonEmpty())
-/*  873 */                 MemberEnter.this.log.error(((JCTree.JCAnnotation)annotations.head).pos, "already.annotated", new Object[] {
-/*      */
-/*  875 */                       Kinds.kindName(this.val$s), this.val$s });
-/*  876 */               MemberEnter.this.actualEnterAnnotations(annotations, localEnv, s);
-/*      */             } finally {
-/*  878 */               if (lint != null)
-/*  879 */                 MemberEnter.this.chk.setLint(lint);
-/*  880 */               MemberEnter.this.deferredLintHandler.setPos(diagnosticPosition);
-/*  881 */               MemberEnter.this.log.useSource(javaFileObject);
-/*      */             }
-/*      */           }
-/*      */         });
-/*      */
-/*  886 */     this.annotate.validate(new Annotate.Worker()
-/*      */         {
-/*      */           public void run() {
-/*  889 */             JavaFileObject javaFileObject = MemberEnter.this.log.useSource(localEnv.toplevel.sourcefile);
-/*      */             try {
-/*  891 */               MemberEnter.this.chk.validateAnnotations(annotations, s);
-/*      */             } finally {
-/*  893 */               MemberEnter.this.log.useSource(javaFileObject);
-/*      */             }
-/*      */           }
-/*      */         });
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private boolean hasDeprecatedAnnotation(List<JCTree.JCAnnotation> paramList) {
-/*  904 */     for (List<JCTree.JCAnnotation> list = paramList; !list.isEmpty(); list = list.tail) {
-/*  905 */       JCTree.JCAnnotation jCAnnotation = (JCTree.JCAnnotation)list.head;
-/*  906 */       if (jCAnnotation.annotationType.type == this.syms.deprecatedType && jCAnnotation.args.isEmpty())
-/*  907 */         return true;
-/*      */     }
-/*  909 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void actualEnterAnnotations(List<JCTree.JCAnnotation> paramList, Env<AttrContext> paramEnv, Symbol paramSymbol) {
-/*  916 */     LinkedHashMap<Object, Object> linkedHashMap = new LinkedHashMap<>();
-/*      */
-/*  918 */     HashMap<Object, Object> hashMap = new HashMap<>();
-/*      */
-/*      */
-/*  921 */     for (List<JCTree.JCAnnotation> list = paramList; !list.isEmpty(); list = list.tail) {
-/*  922 */       JCTree.JCAnnotation jCAnnotation = (JCTree.JCAnnotation)list.head;
-/*  923 */       Attribute.Compound compound = this.annotate.enterAnnotation(jCAnnotation, this.syms.annotationType, paramEnv);
-/*      */
-/*      */
-/*  926 */       if (compound != null) {
-/*      */
-/*      */
-/*      */
-/*  930 */         if (linkedHashMap.containsKey(jCAnnotation.type.tsym)) {
-/*  931 */           if (!this.allowRepeatedAnnos) {
-/*  932 */             this.log.error(jCAnnotation.pos(), "repeatable.annotations.not.supported.in.source", new Object[0]);
-/*  933 */             this.allowRepeatedAnnos = true;
-/*      */           }
-/*  935 */           ListBuffer listBuffer = (ListBuffer)linkedHashMap.get(jCAnnotation.type.tsym);
-/*  936 */           listBuffer = listBuffer.append(compound);
-/*  937 */           linkedHashMap.put(jCAnnotation.type.tsym, listBuffer);
-/*  938 */           hashMap.put(compound, jCAnnotation.pos());
-/*      */         } else {
-/*  940 */           linkedHashMap.put(jCAnnotation.type.tsym, ListBuffer.of(compound));
-/*  941 */           hashMap.put(compound, jCAnnotation.pos());
-/*      */         }
-/*      */
-/*      */
-/*  945 */         if (!compound.type.isErroneous() && paramSymbol.owner.kind != 16 && this.types
-/*      */
-/*  947 */           .isSameType(compound.type, this.syms.deprecatedType)) {
-/*  948 */           paramSymbol.flags_field |= 0x20000L;
-/*      */         }
-/*      */       }
-/*      */     }
-/*  952 */     this.annotate.getClass(); paramSymbol.setDeclarationAttributesWithCompletion(new Annotate.AnnotateRepeatedContext(this.annotate, paramEnv, (Map)linkedHashMap, (Map)hashMap, this.log, false));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void annotateDefaultValueLater(final JCTree.JCExpression defaultValue, final Env<AttrContext> localEnv, final Symbol.MethodSymbol m) {
-/*  960 */     this.annotate.normal(new Annotate.Worker()
-/*      */         {
-/*      */           public String toString() {
-/*  963 */             return "annotate " + m.owner + "." + m + " default " + defaultValue;
-/*      */           }
-/*      */
-/*      */
-/*      */
-/*      */           public void run() {
-/*  969 */             JavaFileObject javaFileObject = MemberEnter.this.log.useSource(localEnv.toplevel.sourcefile);
-/*      */             try {
-/*  971 */               MemberEnter.this.enterDefaultValue(defaultValue, localEnv, m);
-/*      */             } finally {
-/*  973 */               MemberEnter.this.log.useSource(javaFileObject);
-/*      */             }
-/*      */           }
-/*      */         });
-/*  977 */     this.annotate.validate(new Annotate.Worker()
-/*      */         {
-/*      */           public void run() {
-/*  980 */             JavaFileObject javaFileObject = MemberEnter.this.log.useSource(localEnv.toplevel.sourcefile);
-/*      */
-/*      */
-/*      */             try {
-/*  984 */               MemberEnter.this.chk.validateAnnotationTree((JCTree)defaultValue);
-/*      */             } finally {
-/*  986 */               MemberEnter.this.log.useSource(javaFileObject);
-/*      */             }
-/*      */           }
-/*      */         });
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void enterDefaultValue(JCTree.JCExpression paramJCExpression, Env<AttrContext> paramEnv, Symbol.MethodSymbol paramMethodSymbol) {
-/*  996 */     paramMethodSymbol.defaultValue = this.annotate.enterAttributeValue(paramMethodSymbol.type.getReturnType(), paramJCExpression, paramEnv);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void complete(Symbol paramSymbol) throws Symbol.CompletionFailure {
-/* 1010 */     if (!this.completionEnabled) {
-/*      */
-/* 1012 */       Assert.check(((paramSymbol.flags() & 0x1000000L) == 0L));
-/* 1013 */       paramSymbol.completer = this;
-/*      */
-/*      */       return;
-/*      */     }
-/* 1017 */     Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)paramSymbol;
-/* 1018 */     Type.ClassType classType = (Type.ClassType)classSymbol.type;
-/* 1019 */     Env<AttrContext> env = this.typeEnvs.get((Symbol.TypeSymbol)classSymbol);
-/* 1020 */     JCTree.JCClassDecl jCClassDecl = (JCTree.JCClassDecl)env.tree;
-/* 1021 */     boolean bool = this.isFirst;
-/* 1022 */     this.isFirst = false;
-/*      */     try {
-/* 1024 */       this.annotate.enterStart();
-/*      */
-/* 1026 */       JavaFileObject javaFileObject = this.log.useSource(env.toplevel.sourcefile);
-/* 1027 */       JCDiagnostic.DiagnosticPosition diagnosticPosition = this.deferredLintHandler.setPos(jCClassDecl.pos());
-/*      */
-/*      */       try {
-/* 1030 */         this.halfcompleted.append(env);
-/*      */
-/*      */
-/* 1033 */         classSymbol.flags_field |= 0x10000000L;
-/*      */
-/*      */
-/*      */
-/* 1037 */         if (classSymbol.owner.kind == 1) {
-/* 1038 */           memberEnter((JCTree)env.toplevel, env.enclosing(JCTree.Tag.TOPLEVEL));
-/* 1039 */           this.todo.append(env);
-/*      */         }
-/*      */
-/* 1042 */         if (classSymbol.owner.kind == 2) {
-/* 1043 */           classSymbol.owner.complete();
-/*      */         }
-/*      */
-/* 1046 */         Env<AttrContext> env1 = baseEnv(jCClassDecl, env);
-/*      */
-/* 1048 */         if (jCClassDecl.extending != null)
-/* 1049 */           typeAnnotate((JCTree)jCClassDecl.extending, env1, paramSymbol, jCClassDecl.pos());
-/* 1050 */         for (JCTree.JCExpression jCExpression : jCClassDecl.implementing)
-/* 1051 */           typeAnnotate((JCTree)jCExpression, env1, paramSymbol, jCClassDecl.pos());
-/* 1052 */         this.annotate.flush();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1059 */         Type type = (Type)((jCClassDecl.extending != null) ? this.attr.attribBase((JCTree)jCClassDecl.extending, env1, true, false, true) : (((jCClassDecl.mods.flags & 0x4000L) != 0L) ? this.attr.attribBase((JCTree)enumBase(jCClassDecl.pos, classSymbol), env1, true, false, false) : ((classSymbol.fullname == this.names.java_lang_Object) ? Type.noType : this.syms.objectType)));
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1064 */         classType.supertype_field = modelMissingTypes(type, jCClassDecl.extending, false);
-/*      */
-/*      */
-/* 1067 */         ListBuffer listBuffer1 = new ListBuffer();
-/* 1068 */         ListBuffer listBuffer2 = null;
-/* 1069 */         HashSet<Type> hashSet = new HashSet();
-/* 1070 */         List list = jCClassDecl.implementing;
-/* 1071 */         for (JCTree.JCExpression jCExpression : list) {
-/* 1072 */           Type type1 = this.attr.attribBase((JCTree)jCExpression, env1, false, true, true);
-/* 1073 */           if (type1.hasTag(TypeTag.CLASS)) {
-/* 1074 */             listBuffer1.append(type1);
-/* 1075 */             if (listBuffer2 != null) listBuffer2.append(type1);
-/* 1076 */             this.chk.checkNotRepeated(jCExpression.pos(), this.types.erasure(type1), hashSet); continue;
-/*      */           }
-/* 1078 */           if (listBuffer2 == null)
-/* 1079 */             listBuffer2 = (new ListBuffer()).appendList(listBuffer1);
-/* 1080 */           listBuffer2.append(modelMissingTypes(type1, jCExpression, true));
-/*      */         }
-/*      */
-/* 1083 */         if ((classSymbol.flags_field & 0x2000L) != 0L) {
-/* 1084 */           classType.interfaces_field = List.of(this.syms.annotationType);
-/* 1085 */           classType.all_interfaces_field = classType.interfaces_field;
-/*      */         } else {
-/* 1087 */           classType.interfaces_field = listBuffer1.toList();
-/* 1088 */           classType
-/* 1089 */             .all_interfaces_field = (listBuffer2 == null) ? classType.interfaces_field : listBuffer2.toList();
-/*      */         }
-/*      */
-/* 1092 */         if (classSymbol.fullname == this.names.java_lang_Object) {
-/* 1093 */           if (jCClassDecl.extending != null) {
-/* 1094 */             this.chk.checkNonCyclic(jCClassDecl.extending.pos(), type);
-/*      */
-/* 1096 */             classType.supertype_field = (Type)Type.noType;
-/*      */           }
-/* 1098 */           else if (jCClassDecl.implementing.nonEmpty()) {
-/* 1099 */             this.chk.checkNonCyclic(((JCTree.JCExpression)jCClassDecl.implementing.head).pos(), (Type)classType.interfaces_field.head);
-/*      */
-/* 1101 */             classType.interfaces_field = List.nil();
-/*      */           }
-/*      */         }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1109 */         this.attr.attribAnnotationTypes(jCClassDecl.mods.annotations, env1);
-/* 1110 */         if (hasDeprecatedAnnotation(jCClassDecl.mods.annotations))
-/* 1111 */           classSymbol.flags_field |= 0x20000L;
-/* 1112 */         annotateLater(jCClassDecl.mods.annotations, env1, (Symbol)classSymbol, jCClassDecl.pos());
-/*      */
-/*      */
-/* 1115 */         this.chk.checkNonCyclicDecl(jCClassDecl);
-/*      */
-/* 1117 */         this.attr.attribTypeVariables(jCClassDecl.typarams, env1);
-/*      */
-/* 1119 */         for (JCTree.JCTypeParameter jCTypeParameter : jCClassDecl.typarams) {
-/* 1120 */           typeAnnotate((JCTree)jCTypeParameter, env1, paramSymbol, jCClassDecl.pos());
-/*      */         }
-/*      */
-/* 1123 */         if ((classSymbol.flags() & 0x200L) == 0L &&
-/* 1124 */           !TreeInfo.hasConstructors(jCClassDecl.defs)) {
-/* 1125 */           List<Type> list1 = List.nil();
-/* 1126 */           List<Type> list2 = List.nil();
-/* 1127 */           List<Type> list3 = List.nil();
-/* 1128 */           long l = 0L;
-/* 1129 */           boolean bool1 = false;
-/* 1130 */           boolean bool2 = true;
-/* 1131 */           JCTree.JCNewClass jCNewClass = null;
-/* 1132 */           if (classSymbol.name.isEmpty()) {
-/* 1133 */             jCNewClass = (JCTree.JCNewClass)env.next.tree;
-/* 1134 */             if (jCNewClass.constructor != null) {
-/* 1135 */               bool2 = (jCNewClass.constructor.kind != 63) ? true : false;
-/* 1136 */               Type type1 = this.types.memberType(classSymbol.type, jCNewClass.constructor);
-/*      */
-/* 1138 */               list1 = type1.getParameterTypes();
-/* 1139 */               list2 = type1.getTypeArguments();
-/* 1140 */               l = jCNewClass.constructor.flags() & 0x400000000L;
-/* 1141 */               if (jCNewClass.encl != null) {
-/* 1142 */                 list1 = list1.prepend(jCNewClass.encl.type);
-/* 1143 */                 bool1 = true;
-/*      */               }
-/* 1145 */               list3 = type1.getThrownTypes();
-/*      */             }
-/*      */           }
-/* 1148 */           if (bool2) {
-/* 1149 */             Symbol.MethodSymbol methodSymbol = (jCNewClass != null) ? (Symbol.MethodSymbol)jCNewClass.constructor : null;
-/*      */
-/* 1151 */             JCTree jCTree = DefaultConstructor(this.make.at(jCClassDecl.pos), classSymbol, methodSymbol, list2, list1, list3, l, bool1);
-/*      */
-/*      */
-/*      */
-/* 1155 */             jCClassDecl.defs = jCClassDecl.defs.prepend(jCTree);
-/*      */           }
-/*      */         }
-/*      */
-/*      */
-/* 1160 */         Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(262160L, this.names._this, classSymbol.type, (Symbol)classSymbol);
-/*      */
-/* 1162 */         varSymbol.pos = 0;
-/* 1163 */         ((AttrContext)env.info).scope.enter((Symbol)varSymbol);
-/*      */
-/* 1165 */         if ((classSymbol.flags_field & 0x200L) == 0L && classType.supertype_field
-/* 1166 */           .hasTag(TypeTag.CLASS)) {
-/* 1167 */           Symbol.VarSymbol varSymbol1 = new Symbol.VarSymbol(262160L, this.names._super, classType.supertype_field, (Symbol)classSymbol);
-/*      */
-/*      */
-/* 1170 */           varSymbol1.pos = 0;
-/* 1171 */           ((AttrContext)env.info).scope.enter((Symbol)varSymbol1);
-/*      */         }
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1177 */         if (classSymbol.owner.kind == 1 && classSymbol.owner != this.syms.unnamedPackage && this.reader
-/*      */
-/* 1179 */           .packageExists(classSymbol.fullname)) {
-/* 1180 */           this.log.error(jCClassDecl.pos, "clash.with.pkg.of.same.name", new Object[] { Kinds.kindName(paramSymbol), classSymbol });
-/*      */         }
-/* 1182 */         if (classSymbol.owner.kind == 1 && (classSymbol.flags_field & 0x1L) == 0L &&
-/* 1183 */           !env.toplevel.sourcefile.isNameCompatible(classSymbol.name.toString(), JavaFileObject.Kind.SOURCE)) {
-/* 1184 */           classSymbol.flags_field |= 0x100000000000L;
-/*      */         }
-/* 1186 */       } catch (Symbol.CompletionFailure completionFailure) {
-/* 1187 */         this.chk.completionError(jCClassDecl.pos(), completionFailure);
-/*      */       } finally {
-/* 1189 */         this.deferredLintHandler.setPos(diagnosticPosition);
-/* 1190 */         this.log.useSource(javaFileObject);
-/*      */       }
-/*      */
-/*      */
-/*      */
-/* 1195 */       if (bool) {
-/*      */         try {
-/* 1197 */           while (this.halfcompleted.nonEmpty()) {
-/* 1198 */             Env<AttrContext> env1 = (Env)this.halfcompleted.next();
-/* 1199 */             finish(env1);
-/* 1200 */             if (this.allowTypeAnnos) {
-/* 1201 */               this.typeAnnotations.organizeTypeAnnotationsSignatures(env1, (JCTree.JCClassDecl)env1.tree);
-/* 1202 */               this.typeAnnotations.validateTypeAnnotationsSignatures(env1, (JCTree.JCClassDecl)env1.tree);
-/*      */             }
-/*      */           }
-/*      */         } finally {
-/* 1206 */           this.isFirst = true;
-/*      */         }
-/*      */       }
-/*      */     } finally {
-/* 1210 */       this.annotate.enterDone();
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void actualEnterTypeAnnotations(List<JCTree.JCAnnotation> paramList, Env<AttrContext> paramEnv, Symbol paramSymbol) {
-/* 1220 */     LinkedHashMap<Object, Object> linkedHashMap = new LinkedHashMap<>();
-/*      */
-/* 1222 */     HashMap<Object, Object> hashMap = new HashMap<>();
-/*      */
-/*      */
-/* 1225 */     for (List<JCTree.JCAnnotation> list = paramList; !list.isEmpty(); list = list.tail) {
-/* 1226 */       JCTree.JCAnnotation jCAnnotation = (JCTree.JCAnnotation)list.head;
-/* 1227 */       Attribute.TypeCompound typeCompound = this.annotate.enterTypeAnnotation(jCAnnotation, this.syms.annotationType, paramEnv);
-/*      */
-/*      */
-/* 1230 */       if (typeCompound != null)
-/*      */       {
-/*      */
-/*      */
-/* 1234 */         if (linkedHashMap.containsKey(jCAnnotation.type.tsym)) {
-/* 1235 */           if (this.source.allowRepeatedAnnotations()) {
-/* 1236 */             ListBuffer listBuffer = (ListBuffer)linkedHashMap.get(jCAnnotation.type.tsym);
-/* 1237 */             listBuffer = listBuffer.append(typeCompound);
-/* 1238 */             linkedHashMap.put(jCAnnotation.type.tsym, listBuffer);
-/* 1239 */             hashMap.put(typeCompound, jCAnnotation.pos());
-/*      */           } else {
-/* 1241 */             this.log.error(jCAnnotation.pos(), "repeatable.annotations.not.supported.in.source", new Object[0]);
-/*      */           }
-/*      */         } else {
-/* 1244 */           linkedHashMap.put(jCAnnotation.type.tsym, ListBuffer.of(typeCompound));
-/* 1245 */           hashMap.put(typeCompound, jCAnnotation.pos());
-/*      */         }
-/*      */       }
-/*      */     }
-/* 1249 */     if (paramSymbol != null) {
-/* 1250 */       this.annotate.getClass(); paramSymbol.appendTypeAttributesWithCompletion(new Annotate.AnnotateRepeatedContext(this.annotate, paramEnv, (Map)linkedHashMap, (Map)hashMap, this.log, true));
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public void typeAnnotate(JCTree paramJCTree, Env<AttrContext> paramEnv, Symbol paramSymbol, JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) {
-/* 1256 */     if (this.allowTypeAnnos) {
-/* 1257 */       paramJCTree.accept((JCTree.Visitor)new TypeAnnotate(paramEnv, paramSymbol, paramDiagnosticPosition));
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   private class TypeAnnotate
-/*      */     extends TreeScanner
-/*      */   {
-/*      */     private Env<AttrContext> env;
-/*      */
-/*      */     private Symbol sym;
-/*      */     private JCDiagnostic.DiagnosticPosition deferPos;
-/*      */
-/*      */     public TypeAnnotate(Env<AttrContext> param1Env, Symbol param1Symbol, JCDiagnostic.DiagnosticPosition param1DiagnosticPosition) {
-/* 1271 */       this.env = param1Env;
-/* 1272 */       this.sym = param1Symbol;
-/* 1273 */       this.deferPos = param1DiagnosticPosition;
-/*      */     }
-/*      */
-/*      */     void annotateTypeLater(final List<JCTree.JCAnnotation> annotations) {
-/* 1277 */       if (annotations.isEmpty()) {
-/*      */         return;
-/*      */       }
-/*      */
-/* 1281 */       final JCDiagnostic.DiagnosticPosition deferPos = this.deferPos;
-/*      */
-/* 1283 */       MemberEnter.this.annotate.normal(new Annotate.Worker()
-/*      */           {
-/*      */             public String toString() {
-/* 1286 */               return "type annotate " + annotations + " onto " + TypeAnnotate.this.sym + " in " + TypeAnnotate.this.sym.owner;
-/*      */             }
-/*      */
-/*      */             public void run() {
-/* 1290 */               JavaFileObject javaFileObject = MemberEnter.this.log.useSource(TypeAnnotate.this.env.toplevel.sourcefile);
-/* 1291 */               JCDiagnostic.DiagnosticPosition diagnosticPosition = null;
-/*      */
-/* 1293 */               if (deferPos != null) {
-/* 1294 */                 diagnosticPosition = MemberEnter.this.deferredLintHandler.setPos(deferPos);
-/*      */               }
-/*      */               try {
-/* 1297 */                 MemberEnter.this.actualEnterTypeAnnotations(annotations, TypeAnnotate.this.env, TypeAnnotate.this.sym);
-/*      */               } finally {
-/* 1299 */                 if (diagnosticPosition != null)
-/* 1300 */                   MemberEnter.this.deferredLintHandler.setPos(diagnosticPosition);
-/* 1301 */                 MemberEnter.this.log.useSource(javaFileObject);
-/*      */               }
-/*      */             }
-/*      */           });
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitAnnotatedType(JCTree.JCAnnotatedType param1JCAnnotatedType) {
-/* 1309 */       annotateTypeLater(param1JCAnnotatedType.annotations);
-/* 1310 */       super.visitAnnotatedType(param1JCAnnotatedType);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitTypeParameter(JCTree.JCTypeParameter param1JCTypeParameter) {
-/* 1315 */       annotateTypeLater(param1JCTypeParameter.annotations);
-/* 1316 */       super.visitTypeParameter(param1JCTypeParameter);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitNewArray(JCTree.JCNewArray param1JCNewArray) {
-/* 1321 */       annotateTypeLater(param1JCNewArray.annotations);
-/* 1322 */       for (List<JCTree.JCAnnotation> list : (Iterable<List<JCTree.JCAnnotation>>)param1JCNewArray.dimAnnotations)
-/* 1323 */         annotateTypeLater(list);
-/* 1324 */       super.visitNewArray(param1JCNewArray);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitMethodDef(JCTree.JCMethodDecl param1JCMethodDecl) {
-/* 1329 */       scan((JCTree)param1JCMethodDecl.mods);
-/* 1330 */       scan((JCTree)param1JCMethodDecl.restype);
-/* 1331 */       scan(param1JCMethodDecl.typarams);
-/* 1332 */       scan((JCTree)param1JCMethodDecl.recvparam);
-/* 1333 */       scan(param1JCMethodDecl.params);
-/* 1334 */       scan(param1JCMethodDecl.thrown);
-/* 1335 */       scan((JCTree)param1JCMethodDecl.defaultValue);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitVarDef(JCTree.JCVariableDecl param1JCVariableDecl) {
-/* 1342 */       JCDiagnostic.DiagnosticPosition diagnosticPosition = this.deferPos;
-/* 1343 */       this.deferPos = param1JCVariableDecl.pos();
-/*      */       try {
-/* 1345 */         if (this.sym != null && this.sym.kind == 4) {
-/*      */
-/*      */
-/* 1348 */           scan((JCTree)param1JCVariableDecl.mods);
-/* 1349 */           scan((JCTree)param1JCVariableDecl.vartype);
-/*      */         }
-/* 1351 */         scan((JCTree)param1JCVariableDecl.init);
-/*      */       } finally {
-/* 1353 */         this.deferPos = diagnosticPosition;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) {}
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public void visitNewClass(JCTree.JCNewClass param1JCNewClass) {
-/* 1366 */       if (param1JCNewClass.def == null)
-/*      */       {
-/*      */
-/* 1369 */         super.visitNewClass(param1JCNewClass);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   private Env<AttrContext> baseEnv(JCTree.JCClassDecl paramJCClassDecl, Env<AttrContext> paramEnv) {
-/* 1376 */     Scope scope = new Scope((Symbol)paramJCClassDecl.sym);
-/*      */
-/* 1378 */     for (Scope.Entry entry = ((AttrContext)paramEnv.outer.info).scope.elems; entry != null; entry = entry.sibling) {
-/* 1379 */       if (entry.sym.isLocal()) {
-/* 1380 */         scope.enter(entry.sym);
-/*      */       }
-/*      */     }
-/*      */
-/* 1384 */     if (paramJCClassDecl.typarams != null) {
-/* 1385 */       List list = paramJCClassDecl.typarams;
-/* 1386 */       for (; list.nonEmpty();
-/* 1387 */         list = list.tail)
-/* 1388 */         scope.enter((Symbol)((JCTree.JCTypeParameter)list.head).type.tsym);
-/* 1389 */     }  Env<AttrContext> env1 = paramEnv.outer;
-/* 1390 */     Env<AttrContext> env2 = env1.dup((JCTree)paramJCClassDecl, ((AttrContext)env1.info).dup(scope));
-/* 1391 */     env2.baseClause = true;
-/* 1392 */     env2.outer = env1;
-/* 1393 */     ((AttrContext)env2.info).isSelfCall = false;
-/* 1394 */     return env2;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void finish(Env<AttrContext> paramEnv) {
-/* 1401 */     JavaFileObject javaFileObject = this.log.useSource(paramEnv.toplevel.sourcefile);
-/*      */     try {
-/* 1403 */       JCTree.JCClassDecl jCClassDecl = (JCTree.JCClassDecl)paramEnv.tree;
-/* 1404 */       finishClass(jCClassDecl, paramEnv);
-/*      */     } finally {
-/* 1406 */       this.log.useSource(javaFileObject);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private JCTree.JCExpression enumBase(int paramInt, Symbol.ClassSymbol paramClassSymbol) {
-/* 1416 */     return (JCTree.JCExpression)this.make.at(paramInt).TypeApply(this.make.QualIdent((Symbol)this.syms.enumSym),
-/* 1417 */         List.of(this.make.Type(paramClassSymbol.type)));
-/*      */   }
-/*      */
-/*      */
-/*      */   Type modelMissingTypes(Type paramType, final JCTree.JCExpression tree, final boolean interfaceExpected) {
-/* 1422 */     if (!paramType.hasTag(TypeTag.ERROR)) {
-/* 1423 */       return paramType;
-/*      */     }
-/* 1425 */     return (Type)new Type.ErrorType(paramType.getOriginalType(), paramType.tsym)
-/*      */       {
-/*      */         private Type modelType;
-/*      */
-/*      */         public Type getModelType() {
-/* 1430 */           if (this.modelType == null)
-/* 1431 */             this.modelType = (new Synthesizer(getOriginalType(), interfaceExpected)).visit((JCTree)tree);
-/* 1432 */           return this.modelType;
-/*      */         }
-/*      */       };
-/*      */   }
-/*      */
-/*      */   private class Synthesizer extends JCTree.Visitor {
-/*      */     Type originalType;
-/*      */     boolean interfaceExpected;
-/* 1440 */     List<Symbol.ClassSymbol> synthesizedSymbols = List.nil();
-/*      */     Type result;
-/*      */
-/*      */     Synthesizer(Type param1Type, boolean param1Boolean) {
-/* 1444 */       this.originalType = param1Type;
-/* 1445 */       this.interfaceExpected = param1Boolean;
-/*      */     }
-/*      */
-/*      */     Type visit(JCTree param1JCTree) {
-/* 1449 */       param1JCTree.accept(this);
-/* 1450 */       return this.result;
-/*      */     }
-/*      */
-/*      */     List<Type> visit(List<? extends JCTree> param1List) {
-/* 1454 */       ListBuffer listBuffer = new ListBuffer();
-/* 1455 */       for (JCTree jCTree : param1List)
-/* 1456 */         listBuffer.append(visit(jCTree));
-/* 1457 */       return listBuffer.toList();
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitTree(JCTree param1JCTree) {
-/* 1462 */       this.result = MemberEnter.this.syms.errType;
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitIdent(JCTree.JCIdent param1JCIdent) {
-/* 1467 */       if (!param1JCIdent.type.hasTag(TypeTag.ERROR)) {
-/* 1468 */         this.result = param1JCIdent.type;
-/*      */       } else {
-/* 1470 */         this.result = (synthesizeClass(param1JCIdent.name, (Symbol)MemberEnter.this.syms.unnamedPackage)).type;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitSelect(JCTree.JCFieldAccess param1JCFieldAccess) {
-/* 1476 */       if (!param1JCFieldAccess.type.hasTag(TypeTag.ERROR)) {
-/* 1477 */         this.result = param1JCFieldAccess.type;
-/*      */       } else {
-/*      */         Type type;
-/* 1480 */         boolean bool = this.interfaceExpected;
-/*      */         try {
-/* 1482 */           this.interfaceExpected = false;
-/* 1483 */           type = visit((JCTree)param1JCFieldAccess.selected);
-/*      */         } finally {
-/* 1485 */           this.interfaceExpected = bool;
-/*      */         }
-/* 1487 */         Symbol.ClassSymbol classSymbol = synthesizeClass(param1JCFieldAccess.name, (Symbol)type.tsym);
-/* 1488 */         this.result = classSymbol.type;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitTypeApply(JCTree.JCTypeApply param1JCTypeApply) {
-/* 1494 */       if (!param1JCTypeApply.type.hasTag(TypeTag.ERROR)) {
-/* 1495 */         this.result = param1JCTypeApply.type;
-/*      */       } else {
-/* 1497 */         Type.ClassType classType = (Type.ClassType)visit((JCTree)param1JCTypeApply.clazz);
-/* 1498 */         if (this.synthesizedSymbols.contains(classType.tsym))
-/* 1499 */           synthesizeTyparams((Symbol.ClassSymbol)classType.tsym, param1JCTypeApply.arguments.size());
-/* 1500 */         final List<Type> actuals = visit(param1JCTypeApply.arguments);
-/* 1501 */         this.result = (Type)new Type.ErrorType(param1JCTypeApply.type, classType.tsym)
-/*      */           {
-/*      */             public List<Type> getTypeArguments() {
-/* 1504 */               return actuals;
-/*      */             }
-/*      */           };
-/*      */       }
-/*      */     }
-/*      */
-/*      */     Symbol.ClassSymbol synthesizeClass(Name param1Name, Symbol param1Symbol) {
-/* 1511 */       boolean bool = this.interfaceExpected ? true : false;
-/* 1512 */       Symbol.ClassSymbol classSymbol = new Symbol.ClassSymbol(bool, param1Name, param1Symbol);
-/* 1513 */       classSymbol.members_field = (Scope)new Scope.ErrorScope((Symbol)classSymbol);
-/* 1514 */       classSymbol.type = (Type)new Type.ErrorType(this.originalType, (Symbol.TypeSymbol)classSymbol)
-/*      */         {
-/*      */           public List<Type> getTypeArguments() {
-/* 1517 */             return this.typarams_field;
-/*      */           }
-/*      */         };
-/* 1520 */       this.synthesizedSymbols = this.synthesizedSymbols.prepend(classSymbol);
-/* 1521 */       return classSymbol;
-/*      */     }
-/*      */
-/*      */     void synthesizeTyparams(Symbol.ClassSymbol param1ClassSymbol, int param1Int) {
-/* 1525 */       Type.ClassType classType = (Type.ClassType)param1ClassSymbol.type;
-/* 1526 */       Assert.check(classType.typarams_field.isEmpty());
-/* 1527 */       if (param1Int == 1) {
-/* 1528 */         Type.TypeVar typeVar = new Type.TypeVar(MemberEnter.this.names.fromString("T"), (Symbol)param1ClassSymbol, MemberEnter.this.syms.botType);
-/* 1529 */         classType.typarams_field = classType.typarams_field.prepend(typeVar);
-/*      */       } else {
-/* 1531 */         for (int i = param1Int; i > 0; i--) {
-/* 1532 */           Type.TypeVar typeVar = new Type.TypeVar(MemberEnter.this.names.fromString("T" + i), (Symbol)param1ClassSymbol, MemberEnter.this.syms.botType);
-/* 1533 */           classType.typarams_field = classType.typarams_field.prepend(typeVar);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree DefaultConstructor(TreeMaker paramTreeMaker, Symbol.ClassSymbol paramClassSymbol, Symbol.MethodSymbol paramMethodSymbol, List<Type> paramList1, List<Type> paramList2, List<Type> paramList3, long paramLong, boolean paramBoolean) {
-/* 1572 */     if ((paramClassSymbol.flags() & 0x4000L) != 0L &&
-/* 1573 */       (this.types.supertype(paramClassSymbol.type)).tsym == this.syms.enumSym) {
-/*      */
-/* 1575 */       paramLong = paramLong & 0xFFFFFFFFFFFFFFF8L | 0x2L | 0x1000000000L;
-/*      */     } else {
-/* 1577 */       paramLong |= paramClassSymbol.flags() & 0x7L | 0x1000000000L;
-/* 1578 */     }  if (paramClassSymbol.name.isEmpty()) {
-/* 1579 */       paramLong |= 0x20000000L;
-/*      */     }
-/* 1581 */     Type.MethodType methodType = new Type.MethodType(paramList2, null, paramList3, (Symbol.TypeSymbol)paramClassSymbol);
-/* 1582 */     Type type = (Type)(paramList1.nonEmpty() ? new Type.ForAll(paramList1, (Type)methodType) : methodType);
-/*      */
-/*      */
-/* 1585 */     Symbol.MethodSymbol methodSymbol = new Symbol.MethodSymbol(paramLong, this.names.init, type, (Symbol)paramClassSymbol);
-/*      */
-/* 1587 */     methodSymbol.params = createDefaultConstructorParams(paramTreeMaker, paramMethodSymbol, methodSymbol, paramList2, paramBoolean);
-/*      */
-/* 1589 */     List<JCTree.JCVariableDecl> list = paramTreeMaker.Params(paramList2, (Symbol)methodSymbol);
-/* 1590 */     List list1 = List.nil();
-/* 1591 */     if (paramClassSymbol.type != this.syms.objectType) {
-/* 1592 */       list1 = list1.prepend(SuperCall(paramTreeMaker, paramList1, list, paramBoolean));
-/*      */     }
-/* 1594 */     return (JCTree)paramTreeMaker.MethodDef(methodSymbol, paramTreeMaker.Block(0L, list1));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private List<Symbol.VarSymbol> createDefaultConstructorParams(TreeMaker paramTreeMaker, Symbol.MethodSymbol paramMethodSymbol1, Symbol.MethodSymbol paramMethodSymbol2, List<Type> paramList, boolean paramBoolean) {
-/* 1604 */     List<Symbol.VarSymbol> list = null;
-/* 1605 */     List<Type> list1 = paramList;
-/* 1606 */     if (paramBoolean) {
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1617 */       list = List.nil();
-/* 1618 */       Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(8589934592L, paramTreeMaker.paramName(0), (Type)paramList.head, (Symbol)paramMethodSymbol2);
-/* 1619 */       list = list.append(varSymbol);
-/* 1620 */       list1 = list1.tail;
-/*      */     }
-/* 1622 */     if (paramMethodSymbol1 != null && paramMethodSymbol1.params != null && paramMethodSymbol1.params
-/* 1623 */       .nonEmpty() && list1.nonEmpty()) {
-/* 1624 */       list = (list == null) ? List.nil() : list;
-/* 1625 */       List list2 = paramMethodSymbol1.params;
-/* 1626 */       while (list2.nonEmpty() && list1.nonEmpty()) {
-/* 1627 */         Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(((Symbol.VarSymbol)list2.head).flags() | 0x200000000L, ((Symbol.VarSymbol)list2.head).name, (Type)list1.head, (Symbol)paramMethodSymbol2);
-/*      */
-/* 1629 */         list = list.append(varSymbol);
-/* 1630 */         list2 = list2.tail;
-/* 1631 */         list1 = list1.tail;
-/*      */       }
-/*      */     }
-/* 1634 */     return list;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCExpressionStatement SuperCall(TreeMaker paramTreeMaker, List<Type> paramList, List<JCTree.JCVariableDecl> paramList1, boolean paramBoolean) {
-/*      */     JCTree.JCIdent jCIdent;
-/* 1657 */     if (paramBoolean) {
-/* 1658 */       JCTree.JCFieldAccess jCFieldAccess = paramTreeMaker.Select(paramTreeMaker.Ident((JCTree.JCVariableDecl)paramList1.head), this.names._super);
-/* 1659 */       paramList1 = paramList1.tail;
-/*      */     } else {
-/* 1661 */       jCIdent = paramTreeMaker.Ident(this.names._super);
-/*      */     }
-/* 1663 */     List list = paramList.nonEmpty() ? paramTreeMaker.Types(paramList) : null;
-/* 1664 */     return paramTreeMaker.Exec((JCTree.JCExpression)paramTreeMaker.Apply(list, (JCTree.JCExpression)jCIdent, paramTreeMaker.Idents(paramList1)));
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\comp\MemberEnter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.comp;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+
+import javax.tools.JavaFileObject;
+
+import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.jvm.*;
+import com.sun.tools.javac.tree.*;
+import com.sun.tools.javac.util.*;
+
+import com.sun.tools.javac.code.Type.*;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.tree.JCTree.*;
+
+import static com.sun.tools.javac.code.Flags.*;
+import static com.sun.tools.javac.code.Flags.ANNOTATION;
+import static com.sun.tools.javac.code.Kinds.*;
+import static com.sun.tools.javac.code.TypeTag.CLASS;
+import static com.sun.tools.javac.code.TypeTag.ERROR;
+import static com.sun.tools.javac.code.TypeTag.TYPEVAR;
+import static com.sun.tools.javac.tree.JCTree.Tag.*;
+import com.sun.tools.javac.util.JCDiagnostic.DiagnosticFlag;
+import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
+
+/** This is the second phase of Enter, in which classes are completed
+ *  by entering their members into the class scope using
+ *  MemberEnter.complete().  See Enter for an overview.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class MemberEnter extends JCTree.Visitor implements Completer {
+    protected static final Context.Key<MemberEnter> memberEnterKey =
+        new Context.Key<MemberEnter>();
+
+    /** A switch to determine whether we check for package/class conflicts
+     */
+    final static boolean checkClash = true;
+
+    private final Names names;
+    private final Enter enter;
+    private final Log log;
+    private final Check chk;
+    private final Attr attr;
+    private final Symtab syms;
+    private final TreeMaker make;
+    private final ClassReader reader;
+    private final Todo todo;
+    private final Annotate annotate;
+    private final TypeAnnotations typeAnnotations;
+    private final Types types;
+    private final JCDiagnostic.Factory diags;
+    private final Source source;
+    private final Target target;
+    private final DeferredLintHandler deferredLintHandler;
+    private final Lint lint;
+    private final TypeEnvs typeEnvs;
+
+    public static MemberEnter instance(Context context) {
+        MemberEnter instance = context.get(memberEnterKey);
+        if (instance == null)
+            instance = new MemberEnter(context);
+        return instance;
+    }
+
+    protected MemberEnter(Context context) {
+        context.put(memberEnterKey, this);
+        names = Names.instance(context);
+        enter = Enter.instance(context);
+        log = Log.instance(context);
+        chk = Check.instance(context);
+        attr = Attr.instance(context);
+        syms = Symtab.instance(context);
+        make = TreeMaker.instance(context);
+        reader = ClassReader.instance(context);
+        todo = Todo.instance(context);
+        annotate = Annotate.instance(context);
+        typeAnnotations = TypeAnnotations.instance(context);
+        types = Types.instance(context);
+        diags = JCDiagnostic.Factory.instance(context);
+        source = Source.instance(context);
+        target = Target.instance(context);
+        deferredLintHandler = DeferredLintHandler.instance(context);
+        lint = Lint.instance(context);
+        typeEnvs = TypeEnvs.instance(context);
+        allowTypeAnnos = source.allowTypeAnnotations();
+        allowRepeatedAnnos = source.allowRepeatedAnnotations();
+    }
+
+    /** Switch: support type annotations.
+     */
+    boolean allowTypeAnnos;
+
+    boolean allowRepeatedAnnos;
+
+    /** A queue for classes whose members still need to be entered into the
+     *  symbol table.
+     */
+    ListBuffer<Env<AttrContext>> halfcompleted = new ListBuffer<Env<AttrContext>>();
+
+    /** Set to true only when the first of a set of classes is
+     *  processed from the half completed queue.
+     */
+    boolean isFirst = true;
+
+    /** A flag to disable completion from time to time during member
+     *  enter, as we only need to look up types.  This avoids
+     *  unnecessarily deep recursion.
+     */
+    boolean completionEnabled = true;
+
+    /* ---------- Processing import clauses ----------------
+     */
+
+    /** Import all classes of a class or package on demand.
+     *  @param pos           Position to be used for error reporting.
+     *  @param tsym          The class or package the members of which are imported.
+     *  @param env           The env in which the imported classes will be entered.
+     */
+    private void importAll(int pos,
+                           final TypeSymbol tsym,
+                           Env<AttrContext> env) {
+        // Check that packages imported from exist (JLS ???).
+        if (tsym.kind == PCK && tsym.members().elems == null && !tsym.exists()) {
+            // If we can't find java.lang, exit immediately.
+            if (((PackageSymbol)tsym).fullname.equals(names.java_lang)) {
+                JCDiagnostic msg = diags.fragment("fatal.err.no.java.lang");
+                throw new FatalError(msg);
+            } else {
+                log.error(DiagnosticFlag.RESOLVE_ERROR, pos, "doesnt.exist", tsym);
+            }
+        }
+        env.toplevel.starImportScope.importAll(tsym.members());
+    }
+
+    /** Import all static members of a class or package on demand.
+     *  @param pos           Position to be used for error reporting.
+     *  @param tsym          The class or package the members of which are imported.
+     *  @param env           The env in which the imported classes will be entered.
+     */
+    private void importStaticAll(int pos,
+                                 final TypeSymbol tsym,
+                                 Env<AttrContext> env) {
+        final JavaFileObject sourcefile = env.toplevel.sourcefile;
+        final Scope toScope = env.toplevel.starImportScope;
+        final PackageSymbol packge = env.toplevel.packge;
+        final TypeSymbol origin = tsym;
+
+        // enter imported types immediately
+        new Object() {
+            Set<Symbol> processed = new HashSet<Symbol>();
+            void importFrom(TypeSymbol tsym) {
+                if (tsym == null || !processed.add(tsym))
+                    return;
+
+                // also import inherited names
+                importFrom(types.supertype(tsym.type).tsym);
+                for (Type t : types.interfaces(tsym.type))
+                    importFrom(t.tsym);
+
+                final Scope fromScope = tsym.members();
+                for (Scope.Entry e = fromScope.elems; e != null; e = e.sibling) {
+                    Symbol sym = e.sym;
+                    if (sym.kind == TYP &&
+                        (sym.flags() & STATIC) != 0 &&
+                        staticImportAccessible(sym, packge) &&
+                        sym.isMemberOf(origin, types) &&
+                        !toScope.includes(sym))
+                        toScope.enter(sym, fromScope, origin.members(), true);
+                }
+            }
+        }.importFrom(tsym);
+
+        // enter non-types before annotations that might use them
+        annotate.earlier(new Annotate.Worker() {
+            Set<Symbol> processed = new HashSet<Symbol>();
+
+            public String toString() {
+                return "import static " + tsym + ".*" + " in " + sourcefile;
+            }
+            void importFrom(TypeSymbol tsym) {
+                if (tsym == null || !processed.add(tsym))
+                    return;
+
+                // also import inherited names
+                importFrom(types.supertype(tsym.type).tsym);
+                for (Type t : types.interfaces(tsym.type))
+                    importFrom(t.tsym);
+
+                final Scope fromScope = tsym.members();
+                for (Scope.Entry e = fromScope.elems; e != null; e = e.sibling) {
+                    Symbol sym = e.sym;
+                    if (sym.isStatic() && sym.kind != TYP &&
+                        staticImportAccessible(sym, packge) &&
+                        !toScope.includes(sym) &&
+                        sym.isMemberOf(origin, types)) {
+                        toScope.enter(sym, fromScope, origin.members(), true);
+                    }
+                }
+            }
+            public void run() {
+                importFrom(tsym);
+            }
+        });
+    }
+
+    // is the sym accessible everywhere in packge?
+    boolean staticImportAccessible(Symbol sym, PackageSymbol packge) {
+        int flags = (int)(sym.flags() & AccessFlags);
+        switch (flags) {
+        default:
+        case PUBLIC:
+            return true;
+        case PRIVATE:
+            return false;
+        case 0:
+        case PROTECTED:
+            return sym.packge() == packge;
+        }
+    }
+
+    /** Import statics types of a given name.  Non-types are handled in Attr.
+     *  @param pos           Position to be used for error reporting.
+     *  @param tsym          The class from which the name is imported.
+     *  @param name          The (simple) name being imported.
+     *  @param env           The environment containing the named import
+     *                  scope to add to.
+     */
+    private void importNamedStatic(final DiagnosticPosition pos,
+                                   final TypeSymbol tsym,
+                                   final Name name,
+                                   final Env<AttrContext> env) {
+        if (tsym.kind != TYP) {
+            log.error(DiagnosticFlag.RECOVERABLE, pos, "static.imp.only.classes.and.interfaces");
+            return;
+        }
+
+        final Scope toScope = env.toplevel.namedImportScope;
+        final PackageSymbol packge = env.toplevel.packge;
+        final TypeSymbol origin = tsym;
+
+        // enter imported types immediately
+        new Object() {
+            Set<Symbol> processed = new HashSet<Symbol>();
+            void importFrom(TypeSymbol tsym) {
+                if (tsym == null || !processed.add(tsym))
+                    return;
+
+                // also import inherited names
+                importFrom(types.supertype(tsym.type).tsym);
+                for (Type t : types.interfaces(tsym.type))
+                    importFrom(t.tsym);
+
+                for (Scope.Entry e = tsym.members().lookup(name);
+                     e.scope != null;
+                     e = e.next()) {
+                    Symbol sym = e.sym;
+                    if (sym.isStatic() &&
+                        sym.kind == TYP &&
+                        staticImportAccessible(sym, packge) &&
+                        sym.isMemberOf(origin, types) &&
+                        chk.checkUniqueStaticImport(pos, sym, toScope))
+                        toScope.enter(sym, sym.owner.members(), origin.members(), true);
+                }
+            }
+        }.importFrom(tsym);
+
+        // enter non-types before annotations that might use them
+        annotate.earlier(new Annotate.Worker() {
+            Set<Symbol> processed = new HashSet<Symbol>();
+            boolean found = false;
+
+            public String toString() {
+                return "import static " + tsym + "." + name;
+            }
+            void importFrom(TypeSymbol tsym) {
+                if (tsym == null || !processed.add(tsym))
+                    return;
+
+                // also import inherited names
+                importFrom(types.supertype(tsym.type).tsym);
+                for (Type t : types.interfaces(tsym.type))
+                    importFrom(t.tsym);
+
+                for (Scope.Entry e = tsym.members().lookup(name);
+                     e.scope != null;
+                     e = e.next()) {
+                    Symbol sym = e.sym;
+                    if (sym.isStatic() &&
+                        staticImportAccessible(sym, packge) &&
+                        sym.isMemberOf(origin, types)) {
+                        found = true;
+                        if (sym.kind != TYP) {
+                            toScope.enter(sym, sym.owner.members(), origin.members(), true);
+                        }
+                    }
+                }
+            }
+            public void run() {
+                JavaFileObject prev = log.useSource(env.toplevel.sourcefile);
+                try {
+                    importFrom(tsym);
+                    if (!found) {
+                        log.error(pos, "cant.resolve.location",
+                                  KindName.STATIC,
+                                  name, List.<Type>nil(), List.<Type>nil(),
+                                  Kinds.typeKindName(tsym.type),
+                                  tsym.type);
+                    }
+                } finally {
+                    log.useSource(prev);
+                }
+            }
+        });
+    }
+    /** Import given class.
+     *  @param pos           Position to be used for error reporting.
+     *  @param tsym          The class to be imported.
+     *  @param env           The environment containing the named import
+     *                  scope to add to.
+     */
+    private void importNamed(DiagnosticPosition pos, Symbol tsym, Env<AttrContext> env) {
+        if (tsym.kind == TYP &&
+            chk.checkUniqueImport(pos, tsym, env.toplevel.namedImportScope))
+            env.toplevel.namedImportScope.enter(tsym, tsym.owner.members());
+    }
+
+    /** Construct method type from method signature.
+     *  @param typarams    The method's type parameters.
+     *  @param params      The method's value parameters.
+     *  @param res             The method's result type,
+     *                 null if it is a constructor.
+     *  @param recvparam       The method's receiver parameter,
+     *                 null if none given; TODO: or already set here?
+     *  @param thrown      The method's thrown exceptions.
+     *  @param env             The method's (local) environment.
+     */
+    Type signature(MethodSymbol msym,
+                   List<JCTypeParameter> typarams,
+                   List<JCVariableDecl> params,
+                   JCTree res,
+                   JCVariableDecl recvparam,
+                   List<JCExpression> thrown,
+                   Env<AttrContext> env) {
+
+        // Enter and attribute type parameters.
+        List<Type> tvars = enter.classEnter(typarams, env);
+        attr.attribTypeVariables(typarams, env);
+
+        // Enter and attribute value parameters.
+        ListBuffer<Type> argbuf = new ListBuffer<Type>();
+        for (List<JCVariableDecl> l = params; l.nonEmpty(); l = l.tail) {
+            memberEnter(l.head, env);
+            argbuf.append(l.head.vartype.type);
+        }
+
+        // Attribute result type, if one is given.
+        Type restype = res == null ? syms.voidType : attr.attribType(res, env);
+
+        // Attribute receiver type, if one is given.
+        Type recvtype;
+        if (recvparam!=null) {
+            memberEnter(recvparam, env);
+            recvtype = recvparam.vartype.type;
+        } else {
+            recvtype = null;
+        }
+
+        // Attribute thrown exceptions.
+        ListBuffer<Type> thrownbuf = new ListBuffer<Type>();
+        for (List<JCExpression> l = thrown; l.nonEmpty(); l = l.tail) {
+            Type exc = attr.attribType(l.head, env);
+            if (!exc.hasTag(TYPEVAR)) {
+                exc = chk.checkClassType(l.head.pos(), exc);
+            } else if (exc.tsym.owner == msym) {
+                //mark inference variables in 'throws' clause
+                exc.tsym.flags_field |= THROWS;
+            }
+            thrownbuf.append(exc);
+        }
+        MethodType mtype = new MethodType(argbuf.toList(),
+                                    restype,
+                                    thrownbuf.toList(),
+                                    syms.methodClass);
+        mtype.recvtype = recvtype;
+
+        return tvars.isEmpty() ? mtype : new ForAll(tvars, mtype);
+    }
+
+/* ********************************************************************
+ * Visitor methods for member enter
+ *********************************************************************/
+
+    /** Visitor argument: the current environment
+     */
+    protected Env<AttrContext> env;
+
+    /** Enter field and method definitions and process import
+     *  clauses, catching any completion failure exceptions.
+     */
+    protected void memberEnter(JCTree tree, Env<AttrContext> env) {
+        Env<AttrContext> prevEnv = this.env;
+        try {
+            this.env = env;
+            tree.accept(this);
+        }  catch (CompletionFailure ex) {
+            chk.completionError(tree.pos(), ex);
+        } finally {
+            this.env = prevEnv;
+        }
+    }
+
+    /** Enter members from a list of trees.
+     */
+    void memberEnter(List<? extends JCTree> trees, Env<AttrContext> env) {
+        for (List<? extends JCTree> l = trees; l.nonEmpty(); l = l.tail)
+            memberEnter(l.head, env);
+    }
+
+    /** Enter members for a class.
+     */
+    void finishClass(JCClassDecl tree, Env<AttrContext> env) {
+        if ((tree.mods.flags & Flags.ENUM) != 0 &&
+            (types.supertype(tree.sym.type).tsym.flags() & Flags.ENUM) == 0) {
+            addEnumMembers(tree, env);
+        }
+        memberEnter(tree.defs, env);
+    }
+
+    /** Add the implicit members for an enum type
+     *  to the symbol table.
+     */
+    private void addEnumMembers(JCClassDecl tree, Env<AttrContext> env) {
+        JCExpression valuesType = make.Type(new ArrayType(tree.sym.type, syms.arrayClass));
+
+        // public static T[] values() { return ???; }
+        JCMethodDecl values = make.
+            MethodDef(make.Modifiers(Flags.PUBLIC|Flags.STATIC),
+                      names.values,
+                      valuesType,
+                      List.<JCTypeParameter>nil(),
+                      List.<JCVariableDecl>nil(),
+                      List.<JCExpression>nil(), // thrown
+                      null, //make.Block(0, Tree.emptyList.prepend(make.Return(make.Ident(names._null)))),
+                      null);
+        memberEnter(values, env);
+
+        // public static T valueOf(String name) { return ???; }
+        JCMethodDecl valueOf = make.
+            MethodDef(make.Modifiers(Flags.PUBLIC|Flags.STATIC),
+                      names.valueOf,
+                      make.Type(tree.sym.type),
+                      List.<JCTypeParameter>nil(),
+                      List.of(make.VarDef(make.Modifiers(Flags.PARAMETER |
+                                                         Flags.MANDATED),
+                                            names.fromString("name"),
+                                            make.Type(syms.stringType), null)),
+                      List.<JCExpression>nil(), // thrown
+                      null, //make.Block(0, Tree.emptyList.prepend(make.Return(make.Ident(names._null)))),
+                      null);
+        memberEnter(valueOf, env);
+    }
+
+    public void visitTopLevel(JCCompilationUnit tree) {
+        if (tree.starImportScope.elems != null) {
+            // we must have already processed this toplevel
+            return;
+        }
+
+        // check that no class exists with same fully qualified name as
+        // toplevel package
+        if (checkClash && tree.pid != null) {
+            Symbol p = tree.packge;
+            while (p.owner != syms.rootPackage) {
+                p.owner.complete(); // enter all class members of p
+                if (syms.classes.get(p.getQualifiedName()) != null) {
+                    log.error(tree.pos,
+                              "pkg.clashes.with.class.of.same.name",
+                              p);
+                }
+                p = p.owner;
+            }
+        }
+
+        // process package annotations
+        annotateLater(tree.packageAnnotations, env, tree.packge, null);
+
+        DiagnosticPosition prevLintPos = deferredLintHandler.immediate();
+        Lint prevLint = chk.setLint(lint);
+
+        try {
+            // Import-on-demand java.lang.
+            importAll(tree.pos, reader.enterPackage(names.java_lang), env);
+
+            // Process all import clauses.
+            memberEnter(tree.defs, env);
+        } finally {
+            chk.setLint(prevLint);
+            deferredLintHandler.setPos(prevLintPos);
+        }
+    }
+
+    // process the non-static imports and the static imports of types.
+    public void visitImport(JCImport tree) {
+        JCFieldAccess imp = (JCFieldAccess)tree.qualid;
+        Name name = TreeInfo.name(imp);
+
+        // Create a local environment pointing to this tree to disable
+        // effects of other imports in Resolve.findGlobalType
+        Env<AttrContext> localEnv = env.dup(tree);
+
+        TypeSymbol p = attr.attribImportQualifier(tree, localEnv).tsym;
+        if (name == names.asterisk) {
+            // Import on demand.
+            chk.checkCanonical(imp.selected);
+            if (tree.staticImport)
+                importStaticAll(tree.pos, p, env);
+            else
+                importAll(tree.pos, p, env);
+        } else {
+            // Named type import.
+            if (tree.staticImport) {
+                importNamedStatic(tree.pos(), p, name, localEnv);
+                chk.checkCanonical(imp.selected);
+            } else {
+                TypeSymbol c = attribImportType(imp, localEnv).tsym;
+                chk.checkCanonical(imp);
+                importNamed(tree.pos(), c, env);
+            }
+        }
+    }
+
+    public void visitMethodDef(JCMethodDecl tree) {
+        Scope enclScope = enter.enterScope(env);
+        MethodSymbol m = new MethodSymbol(0, tree.name, null, enclScope.owner);
+        m.flags_field = chk.checkFlags(tree.pos(), tree.mods.flags, m, tree);
+        tree.sym = m;
+
+        //if this is a default method, add the DEFAULT flag to the enclosing interface
+        if ((tree.mods.flags & DEFAULT) != 0) {
+            m.enclClass().flags_field |= DEFAULT;
+        }
+
+        Env<AttrContext> localEnv = methodEnv(tree, env);
+
+        DiagnosticPosition prevLintPos = deferredLintHandler.setPos(tree.pos());
+        try {
+            // Compute the method type
+            m.type = signature(m, tree.typarams, tree.params,
+                               tree.restype, tree.recvparam,
+                               tree.thrown,
+                               localEnv);
+        } finally {
+            deferredLintHandler.setPos(prevLintPos);
+        }
+
+        if (types.isSignaturePolymorphic(m)) {
+            m.flags_field |= SIGNATURE_POLYMORPHIC;
+        }
+
+        // Set m.params
+        ListBuffer<VarSymbol> params = new ListBuffer<VarSymbol>();
+        JCVariableDecl lastParam = null;
+        for (List<JCVariableDecl> l = tree.params; l.nonEmpty(); l = l.tail) {
+            JCVariableDecl param = lastParam = l.head;
+            params.append(Assert.checkNonNull(param.sym));
+        }
+        m.params = params.toList();
+
+        // mark the method varargs, if necessary
+        if (lastParam != null && (lastParam.mods.flags & Flags.VARARGS) != 0)
+            m.flags_field |= Flags.VARARGS;
+
+        localEnv.info.scope.leave();
+        if (chk.checkUnique(tree.pos(), m, enclScope)) {
+        enclScope.enter(m);
+        }
+
+        annotateLater(tree.mods.annotations, localEnv, m, tree.pos());
+        // Visit the signature of the method. Note that
+        // TypeAnnotate doesn't descend into the body.
+        typeAnnotate(tree, localEnv, m, tree.pos());
+
+        if (tree.defaultValue != null)
+            annotateDefaultValueLater(tree.defaultValue, localEnv, m);
+    }
+
+    /** Create a fresh environment for method bodies.
+     *  @param tree     The method definition.
+     *  @param env      The environment current outside of the method definition.
+     */
+    Env<AttrContext> methodEnv(JCMethodDecl tree, Env<AttrContext> env) {
+        Env<AttrContext> localEnv =
+            env.dup(tree, env.info.dup(env.info.scope.dupUnshared()));
+        localEnv.enclMethod = tree;
+        localEnv.info.scope.owner = tree.sym;
+        if (tree.sym.type != null) {
+            //when this is called in the enter stage, there's no type to be set
+            localEnv.info.returnResult = attr.new ResultInfo(VAL, tree.sym.type.getReturnType());
+        }
+        if ((tree.mods.flags & STATIC) != 0) localEnv.info.staticLevel++;
+        return localEnv;
+    }
+
+    public void visitVarDef(JCVariableDecl tree) {
+        Env<AttrContext> localEnv = env;
+        if ((tree.mods.flags & STATIC) != 0 ||
+            (env.info.scope.owner.flags() & INTERFACE) != 0) {
+            localEnv = env.dup(tree, env.info.dup());
+            localEnv.info.staticLevel++;
+        }
+        DiagnosticPosition prevLintPos = deferredLintHandler.setPos(tree.pos());
+        try {
+            if (TreeInfo.isEnumInit(tree)) {
+                attr.attribIdentAsEnumType(localEnv, (JCIdent)tree.vartype);
+            } else {
+                attr.attribType(tree.vartype, localEnv);
+                if (TreeInfo.isReceiverParam(tree))
+                    checkReceiver(tree, localEnv);
+            }
+        } finally {
+            deferredLintHandler.setPos(prevLintPos);
+        }
+
+        if ((tree.mods.flags & VARARGS) != 0) {
+            //if we are entering a varargs parameter, we need to
+            //replace its type (a plain array type) with the more
+            //precise VarargsType --- we need to do it this way
+            //because varargs is represented in the tree as a
+            //modifier on the parameter declaration, and not as a
+            //distinct type of array node.
+            ArrayType atype = (ArrayType)tree.vartype.type.unannotatedType();
+            tree.vartype.type = atype.makeVarargs();
+        }
+        Scope enclScope = enter.enterScope(env);
+        VarSymbol v =
+            new VarSymbol(0, tree.name, tree.vartype.type, enclScope.owner);
+        v.flags_field = chk.checkFlags(tree.pos(), tree.mods.flags, v, tree);
+        tree.sym = v;
+        if (tree.init != null) {
+            v.flags_field |= HASINIT;
+            if ((v.flags_field & FINAL) != 0 &&
+                needsLazyConstValue(tree.init)) {
+                Env<AttrContext> initEnv = getInitEnv(tree, env);
+                initEnv.info.enclVar = v;
+                v.setLazyConstValue(initEnv(tree, initEnv), attr, tree);
+            }
+        }
+        if (chk.checkUnique(tree.pos(), v, enclScope)) {
+            chk.checkTransparentVar(tree.pos(), v, enclScope);
+            enclScope.enter(v);
+        }
+        annotateLater(tree.mods.annotations, localEnv, v, tree.pos());
+        typeAnnotate(tree.vartype, env, v, tree.pos());
+        v.pos = tree.pos;
+    }
+    // where
+    void checkType(JCTree tree, Type type, String diag) {
+        if (!tree.type.isErroneous() && !types.isSameType(tree.type, type)) {
+            log.error(tree, diag, type, tree.type);
+        }
+    }
+    void checkReceiver(JCVariableDecl tree, Env<AttrContext> localEnv) {
+        attr.attribExpr(tree.nameexpr, localEnv);
+        MethodSymbol m = localEnv.enclMethod.sym;
+        if (m.isConstructor()) {
+            Type outertype = m.owner.owner.type;
+            if (outertype.hasTag(TypeTag.METHOD)) {
+                // we have a local inner class
+                outertype = m.owner.owner.owner.type;
+            }
+            if (outertype.hasTag(TypeTag.CLASS)) {
+                checkType(tree.vartype, outertype, "incorrect.constructor.receiver.type");
+                checkType(tree.nameexpr, outertype, "incorrect.constructor.receiver.name");
+            } else {
+                log.error(tree, "receiver.parameter.not.applicable.constructor.toplevel.class");
+            }
+        } else {
+            checkType(tree.vartype, m.owner.type, "incorrect.receiver.type");
+            checkType(tree.nameexpr, m.owner.type, "incorrect.receiver.name");
+        }
+    }
+
+    public boolean needsLazyConstValue(JCTree tree) {
+        InitTreeVisitor initTreeVisitor = new InitTreeVisitor();
+        tree.accept(initTreeVisitor);
+        return initTreeVisitor.result;
+    }
+
+    /** Visitor class for expressions which might be constant expressions.
+     */
+    static class InitTreeVisitor extends JCTree.Visitor {
+
+        private boolean result = true;
+
+        @Override
+        public void visitTree(JCTree tree) {}
+
+        @Override
+        public void visitNewClass(JCNewClass that) {
+            result = false;
+        }
+
+        @Override
+        public void visitNewArray(JCNewArray that) {
+            result = false;
+        }
+
+        @Override
+        public void visitLambda(JCLambda that) {
+            result = false;
+        }
+
+        @Override
+        public void visitReference(JCMemberReference that) {
+            result = false;
+        }
+
+        @Override
+        public void visitApply(JCMethodInvocation that) {
+            result = false;
+        }
+
+        @Override
+        public void visitSelect(JCFieldAccess tree) {
+            tree.selected.accept(this);
+        }
+
+        @Override
+        public void visitConditional(JCConditional tree) {
+            tree.cond.accept(this);
+            tree.truepart.accept(this);
+            tree.falsepart.accept(this);
+        }
+
+        @Override
+        public void visitParens(JCParens tree) {
+            tree.expr.accept(this);
+        }
+
+        @Override
+        public void visitTypeCast(JCTypeCast tree) {
+            tree.expr.accept(this);
+        }
+    }
+
+    /** Create a fresh environment for a variable's initializer.
+     *  If the variable is a field, the owner of the environment's scope
+     *  is be the variable itself, otherwise the owner is the method
+     *  enclosing the variable definition.
+     *
+     *  @param tree     The variable definition.
+     *  @param env      The environment current outside of the variable definition.
+     */
+    Env<AttrContext> initEnv(JCVariableDecl tree, Env<AttrContext> env) {
+        Env<AttrContext> localEnv = env.dupto(new AttrContextEnv(tree, env.info.dup()));
+        if (tree.sym.owner.kind == TYP) {
+            localEnv.info.scope = env.info.scope.dupUnshared();
+            localEnv.info.scope.owner = tree.sym;
+        }
+        if ((tree.mods.flags & STATIC) != 0 ||
+                ((env.enclClass.sym.flags() & INTERFACE) != 0 && env.enclMethod == null))
+            localEnv.info.staticLevel++;
+        return localEnv;
+    }
+
+    /** Default member enter visitor method: do nothing
+     */
+    public void visitTree(JCTree tree) {
+    }
+
+    public void visitErroneous(JCErroneous tree) {
+        if (tree.errs != null)
+            memberEnter(tree.errs, env);
+    }
+
+    public Env<AttrContext> getMethodEnv(JCMethodDecl tree, Env<AttrContext> env) {
+        Env<AttrContext> mEnv = methodEnv(tree, env);
+        mEnv.info.lint = mEnv.info.lint.augment(tree.sym);
+        for (List<JCTypeParameter> l = tree.typarams; l.nonEmpty(); l = l.tail)
+            mEnv.info.scope.enterIfAbsent(l.head.type.tsym);
+        for (List<JCVariableDecl> l = tree.params; l.nonEmpty(); l = l.tail)
+            mEnv.info.scope.enterIfAbsent(l.head.sym);
+        return mEnv;
+    }
+
+    public Env<AttrContext> getInitEnv(JCVariableDecl tree, Env<AttrContext> env) {
+        Env<AttrContext> iEnv = initEnv(tree, env);
+        return iEnv;
+    }
+
+/* ********************************************************************
+ * Type completion
+ *********************************************************************/
+
+    Type attribImportType(JCTree tree, Env<AttrContext> env) {
+        Assert.check(completionEnabled);
+        try {
+            // To prevent deep recursion, suppress completion of some
+            // types.
+            completionEnabled = false;
+            return attr.attribType(tree, env);
+        } finally {
+            completionEnabled = true;
+        }
+    }
+
+/* ********************************************************************
+ * Annotation processing
+ *********************************************************************/
+
+    /** Queue annotations for later processing. */
+    void annotateLater(final List<JCAnnotation> annotations,
+                       final Env<AttrContext> localEnv,
+                       final Symbol s,
+                       final DiagnosticPosition deferPos) {
+        if (annotations.isEmpty()) {
+            return;
+        }
+        if (s.kind != PCK) {
+            s.resetAnnotations(); // mark Annotations as incomplete for now
+        }
+        annotate.normal(new Annotate.Worker() {
+                @Override
+                public String toString() {
+                    return "annotate " + annotations + " onto " + s + " in " + s.owner;
+                }
+
+                @Override
+                public void run() {
+                    Assert.check(s.kind == PCK || s.annotationsPendingCompletion());
+                    JavaFileObject prev = log.useSource(localEnv.toplevel.sourcefile);
+                    DiagnosticPosition prevLintPos =
+                        deferPos != null
+                        ? deferredLintHandler.setPos(deferPos)
+                        : deferredLintHandler.immediate();
+                    Lint prevLint = deferPos != null ? null : chk.setLint(lint);
+                    try {
+                        if (s.hasAnnotations() &&
+                            annotations.nonEmpty())
+                            log.error(annotations.head.pos,
+                                      "already.annotated",
+                                      kindName(s), s);
+                        actualEnterAnnotations(annotations, localEnv, s);
+                    } finally {
+                        if (prevLint != null)
+                            chk.setLint(prevLint);
+                        deferredLintHandler.setPos(prevLintPos);
+                        log.useSource(prev);
+                    }
+                }
+            });
+
+        annotate.validate(new Annotate.Worker() { //validate annotations
+            @Override
+            public void run() {
+                JavaFileObject prev = log.useSource(localEnv.toplevel.sourcefile);
+                try {
+                    chk.validateAnnotations(annotations, s);
+                } finally {
+                    log.useSource(prev);
+                }
+            }
+        });
+    }
+
+    /**
+     * Check if a list of annotations contains a reference to
+     * java.lang.Deprecated.
+     **/
+    private boolean hasDeprecatedAnnotation(List<JCAnnotation> annotations) {
+        for (List<JCAnnotation> al = annotations; !al.isEmpty(); al = al.tail) {
+            JCAnnotation a = al.head;
+            if (a.annotationType.type == syms.deprecatedType && a.args.isEmpty())
+                return true;
+        }
+        return false;
+    }
+
+    /** Enter a set of annotations. */
+    private void actualEnterAnnotations(List<JCAnnotation> annotations,
+                          Env<AttrContext> env,
+                          Symbol s) {
+        Map<TypeSymbol, ListBuffer<Attribute.Compound>> annotated =
+                new LinkedHashMap<TypeSymbol, ListBuffer<Attribute.Compound>>();
+        Map<Attribute.Compound, DiagnosticPosition> pos =
+                new HashMap<Attribute.Compound, DiagnosticPosition>();
+
+        for (List<JCAnnotation> al = annotations; !al.isEmpty(); al = al.tail) {
+            JCAnnotation a = al.head;
+            Attribute.Compound c = annotate.enterAnnotation(a,
+                                                            syms.annotationType,
+                                                            env);
+            if (c == null) {
+                continue;
+            }
+
+            if (annotated.containsKey(a.type.tsym)) {
+                if (!allowRepeatedAnnos) {
+                    log.error(a.pos(), "repeatable.annotations.not.supported.in.source");
+                    allowRepeatedAnnos = true;
+                }
+                ListBuffer<Attribute.Compound> l = annotated.get(a.type.tsym);
+                l = l.append(c);
+                annotated.put(a.type.tsym, l);
+                pos.put(c, a.pos());
+            } else {
+                annotated.put(a.type.tsym, ListBuffer.of(c));
+                pos.put(c, a.pos());
+            }
+
+            // Note: @Deprecated has no effect on local variables and parameters
+            if (!c.type.isErroneous()
+                && s.owner.kind != MTH
+                && types.isSameType(c.type, syms.deprecatedType)) {
+                s.flags_field |= Flags.DEPRECATED;
+            }
+        }
+
+        s.setDeclarationAttributesWithCompletion(
+                annotate.new AnnotateRepeatedContext<Attribute.Compound>(env, annotated, pos, log, false));
+    }
+
+    /** Queue processing of an attribute default value. */
+    void annotateDefaultValueLater(final JCExpression defaultValue,
+                                   final Env<AttrContext> localEnv,
+                                   final MethodSymbol m) {
+        annotate.normal(new Annotate.Worker() {
+                @Override
+                public String toString() {
+                    return "annotate " + m.owner + "." +
+                        m + " default " + defaultValue;
+                }
+
+                @Override
+                public void run() {
+                    JavaFileObject prev = log.useSource(localEnv.toplevel.sourcefile);
+                    try {
+                        enterDefaultValue(defaultValue, localEnv, m);
+                    } finally {
+                        log.useSource(prev);
+                    }
+                }
+            });
+        annotate.validate(new Annotate.Worker() { //validate annotations
+            @Override
+            public void run() {
+                JavaFileObject prev = log.useSource(localEnv.toplevel.sourcefile);
+                try {
+                    // if default value is an annotation, check it is a well-formed
+                    // annotation value (e.g. no duplicate values, no missing values, etc.)
+                    chk.validateAnnotationTree(defaultValue);
+                } finally {
+                    log.useSource(prev);
+                }
+            }
+        });
+    }
+
+    /** Enter a default value for an attribute method. */
+    private void enterDefaultValue(final JCExpression defaultValue,
+                                   final Env<AttrContext> localEnv,
+                                   final MethodSymbol m) {
+        m.defaultValue = annotate.enterAttributeValue(m.type.getReturnType(),
+                                                      defaultValue,
+                                                      localEnv);
+    }
+
+/* ********************************************************************
+ * Source completer
+ *********************************************************************/
+
+    /** Complete entering a class.
+     *  @param sym         The symbol of the class to be completed.
+     */
+    public void complete(Symbol sym) throws CompletionFailure {
+        // Suppress some (recursive) MemberEnter invocations
+        if (!completionEnabled) {
+            // Re-install same completer for next time around and return.
+            Assert.check((sym.flags() & Flags.COMPOUND) == 0);
+            sym.completer = this;
+            return;
+        }
+
+        ClassSymbol c = (ClassSymbol)sym;
+        ClassType ct = (ClassType)c.type;
+        Env<AttrContext> env = typeEnvs.get(c);
+        JCClassDecl tree = (JCClassDecl)env.tree;
+        boolean wasFirst = isFirst;
+        isFirst = false;
+        try {
+            annotate.enterStart();
+
+            JavaFileObject prev = log.useSource(env.toplevel.sourcefile);
+            DiagnosticPosition prevLintPos = deferredLintHandler.setPos(tree.pos());
+            try {
+                // Save class environment for later member enter (2) processing.
+                halfcompleted.append(env);
+
+                // Mark class as not yet attributed.
+                c.flags_field |= UNATTRIBUTED;
+
+                // If this is a toplevel-class, make sure any preceding import
+                // clauses have been seen.
+                if (c.owner.kind == PCK) {
+                    memberEnter(env.toplevel, env.enclosing(TOPLEVEL));
+                    todo.append(env);
+                }
+
+                if (c.owner.kind == TYP)
+                    c.owner.complete();
+
+                // create an environment for evaluating the base clauses
+                Env<AttrContext> baseEnv = baseEnv(tree, env);
+
+                if (tree.extending != null)
+                    typeAnnotate(tree.extending, baseEnv, sym, tree.pos());
+                for (JCExpression impl : tree.implementing)
+                    typeAnnotate(impl, baseEnv, sym, tree.pos());
+                annotate.flush();
+
+                // Determine supertype.
+                Type supertype =
+                    (tree.extending != null)
+                    ? attr.attribBase(tree.extending, baseEnv, true, false, true)
+                    : ((tree.mods.flags & Flags.ENUM) != 0)
+                    ? attr.attribBase(enumBase(tree.pos, c), baseEnv,
+                                      true, false, false)
+                    : (c.fullname == names.java_lang_Object)
+                    ? Type.noType
+                    : syms.objectType;
+                ct.supertype_field = modelMissingTypes(supertype, tree.extending, false);
+
+                // Determine interfaces.
+                ListBuffer<Type> interfaces = new ListBuffer<Type>();
+                ListBuffer<Type> all_interfaces = null; // lazy init
+                Set<Type> interfaceSet = new HashSet<Type>();
+                List<JCExpression> interfaceTrees = tree.implementing;
+                for (JCExpression iface : interfaceTrees) {
+                    Type i = attr.attribBase(iface, baseEnv, false, true, true);
+                    if (i.hasTag(CLASS)) {
+                        interfaces.append(i);
+                        if (all_interfaces != null) all_interfaces.append(i);
+                        chk.checkNotRepeated(iface.pos(), types.erasure(i), interfaceSet);
+                    } else {
+                        if (all_interfaces == null)
+                            all_interfaces = new ListBuffer<Type>().appendList(interfaces);
+                        all_interfaces.append(modelMissingTypes(i, iface, true));
+                    }
+                }
+                if ((c.flags_field & ANNOTATION) != 0) {
+                    ct.interfaces_field = List.of(syms.annotationType);
+                    ct.all_interfaces_field = ct.interfaces_field;
+                }  else {
+                    ct.interfaces_field = interfaces.toList();
+                    ct.all_interfaces_field = (all_interfaces == null)
+                            ? ct.interfaces_field : all_interfaces.toList();
+                }
+
+                if (c.fullname == names.java_lang_Object) {
+                    if (tree.extending != null) {
+                        chk.checkNonCyclic(tree.extending.pos(),
+                                           supertype);
+                        ct.supertype_field = Type.noType;
+                    }
+                    else if (tree.implementing.nonEmpty()) {
+                        chk.checkNonCyclic(tree.implementing.head.pos(),
+                                           ct.interfaces_field.head);
+                        ct.interfaces_field = List.nil();
+                    }
+                }
+
+                // Annotations.
+                // In general, we cannot fully process annotations yet,  but we
+                // can attribute the annotation types and then check to see if the
+                // @Deprecated annotation is present.
+                attr.attribAnnotationTypes(tree.mods.annotations, baseEnv);
+                if (hasDeprecatedAnnotation(tree.mods.annotations))
+                    c.flags_field |= DEPRECATED;
+                annotateLater(tree.mods.annotations, baseEnv, c, tree.pos());
+                // class type parameters use baseEnv but everything uses env
+
+                chk.checkNonCyclicDecl(tree);
+
+                attr.attribTypeVariables(tree.typarams, baseEnv);
+                // Do this here, where we have the symbol.
+                for (JCTypeParameter tp : tree.typarams)
+                    typeAnnotate(tp, baseEnv, sym, tree.pos());
+
+                // Add default constructor if needed.
+                if ((c.flags() & INTERFACE) == 0 &&
+                    !TreeInfo.hasConstructors(tree.defs)) {
+                    List<Type> argtypes = List.nil();
+                    List<Type> typarams = List.nil();
+                    List<Type> thrown = List.nil();
+                    long ctorFlags = 0;
+                    boolean based = false;
+                    boolean addConstructor = true;
+                    JCNewClass nc = null;
+                    if (c.name.isEmpty()) {
+                        nc = (JCNewClass)env.next.tree;
+                        if (nc.constructor != null) {
+                            addConstructor = nc.constructor.kind != ERR;
+                            Type superConstrType = types.memberType(c.type,
+                                                                    nc.constructor);
+                            argtypes = superConstrType.getParameterTypes();
+                            typarams = superConstrType.getTypeArguments();
+                            ctorFlags = nc.constructor.flags() & VARARGS;
+                            if (nc.encl != null) {
+                                argtypes = argtypes.prepend(nc.encl.type);
+                                based = true;
+                            }
+                            thrown = superConstrType.getThrownTypes();
+                        }
+                    }
+                    if (addConstructor) {
+                        MethodSymbol basedConstructor = nc != null ?
+                                (MethodSymbol)nc.constructor : null;
+                        JCTree constrDef = DefaultConstructor(make.at(tree.pos), c,
+                                                            basedConstructor,
+                                                            typarams, argtypes, thrown,
+                                                            ctorFlags, based);
+                        tree.defs = tree.defs.prepend(constrDef);
+                    }
+                }
+
+                // enter symbols for 'this' into current scope.
+                VarSymbol thisSym =
+                    new VarSymbol(FINAL | HASINIT, names._this, c.type, c);
+                thisSym.pos = Position.FIRSTPOS;
+                env.info.scope.enter(thisSym);
+                // if this is a class, enter symbol for 'super' into current scope.
+                if ((c.flags_field & INTERFACE) == 0 &&
+                        ct.supertype_field.hasTag(CLASS)) {
+                    VarSymbol superSym =
+                        new VarSymbol(FINAL | HASINIT, names._super,
+                                      ct.supertype_field, c);
+                    superSym.pos = Position.FIRSTPOS;
+                    env.info.scope.enter(superSym);
+                }
+
+                // check that no package exists with same fully qualified name,
+                // but admit classes in the unnamed package which have the same
+                // name as a top-level package.
+                if (checkClash &&
+                    c.owner.kind == PCK && c.owner != syms.unnamedPackage &&
+                    reader.packageExists(c.fullname)) {
+                    log.error(tree.pos, "clash.with.pkg.of.same.name", Kinds.kindName(sym), c);
+                }
+                if (c.owner.kind == PCK && (c.flags_field & PUBLIC) == 0 &&
+                    !env.toplevel.sourcefile.isNameCompatible(c.name.toString(),JavaFileObject.Kind.SOURCE)) {
+                    c.flags_field |= AUXILIARY;
+                }
+            } catch (CompletionFailure ex) {
+                chk.completionError(tree.pos(), ex);
+            } finally {
+                deferredLintHandler.setPos(prevLintPos);
+                log.useSource(prev);
+            }
+
+            // Enter all member fields and methods of a set of half completed
+            // classes in a second phase.
+            if (wasFirst) {
+                try {
+                    while (halfcompleted.nonEmpty()) {
+                        Env<AttrContext> toFinish = halfcompleted.next();
+                        finish(toFinish);
+                        if (allowTypeAnnos) {
+                            typeAnnotations.organizeTypeAnnotationsSignatures(toFinish, (JCClassDecl)toFinish.tree);
+                            typeAnnotations.validateTypeAnnotationsSignatures(toFinish, (JCClassDecl)toFinish.tree);
+                        }
+                    }
+                } finally {
+                    isFirst = true;
+                }
+            }
+        } finally {
+            annotate.enterDone();
+        }
+    }
+
+    /*
+     * If the symbol is non-null, attach the type annotation to it.
+     */
+    private void actualEnterTypeAnnotations(final List<JCAnnotation> annotations,
+            final Env<AttrContext> env,
+            final Symbol s) {
+        Map<TypeSymbol, ListBuffer<Attribute.TypeCompound>> annotated =
+                new LinkedHashMap<TypeSymbol, ListBuffer<Attribute.TypeCompound>>();
+        Map<Attribute.TypeCompound, DiagnosticPosition> pos =
+                new HashMap<Attribute.TypeCompound, DiagnosticPosition>();
+
+        for (List<JCAnnotation> al = annotations; !al.isEmpty(); al = al.tail) {
+            JCAnnotation a = al.head;
+            Attribute.TypeCompound tc = annotate.enterTypeAnnotation(a,
+                    syms.annotationType,
+                    env);
+            if (tc == null) {
+                continue;
+            }
+
+            if (annotated.containsKey(a.type.tsym)) {
+                if (source.allowRepeatedAnnotations()) {
+                    ListBuffer<Attribute.TypeCompound> l = annotated.get(a.type.tsym);
+                    l = l.append(tc);
+                    annotated.put(a.type.tsym, l);
+                    pos.put(tc, a.pos());
+                } else {
+                    log.error(a.pos(), "repeatable.annotations.not.supported.in.source");
+                }
+            } else {
+                annotated.put(a.type.tsym, ListBuffer.of(tc));
+                pos.put(tc, a.pos());
+            }
+        }
+
+        if (s != null) {
+            s.appendTypeAttributesWithCompletion(
+                    annotate.new AnnotateRepeatedContext<Attribute.TypeCompound>(env, annotated, pos, log, true));
+        }
+    }
+
+    public void typeAnnotate(final JCTree tree, final Env<AttrContext> env, final Symbol sym, DiagnosticPosition deferPos) {
+        if (allowTypeAnnos) {
+            tree.accept(new TypeAnnotate(env, sym, deferPos));
+        }
+    }
+
+    /**
+     * We need to use a TreeScanner, because it is not enough to visit the top-level
+     * annotations. We also need to visit type arguments, etc.
+     */
+    private class TypeAnnotate extends TreeScanner {
+        private Env<AttrContext> env;
+        private Symbol sym;
+        private DiagnosticPosition deferPos;
+
+        public TypeAnnotate(final Env<AttrContext> env, final Symbol sym, DiagnosticPosition deferPos) {
+            this.env = env;
+            this.sym = sym;
+            this.deferPos = deferPos;
+        }
+
+        void annotateTypeLater(final List<JCAnnotation> annotations) {
+            if (annotations.isEmpty()) {
+                return;
+            }
+
+            final DiagnosticPosition deferPos = this.deferPos;
+
+            annotate.normal(new Annotate.Worker() {
+                @Override
+                public String toString() {
+                    return "type annotate " + annotations + " onto " + sym + " in " + sym.owner;
+                }
+                @Override
+                public void run() {
+                    JavaFileObject prev = log.useSource(env.toplevel.sourcefile);
+                    DiagnosticPosition prevLintPos = null;
+
+                    if (deferPos != null) {
+                        prevLintPos = deferredLintHandler.setPos(deferPos);
+                    }
+                    try {
+                        actualEnterTypeAnnotations(annotations, env, sym);
+                    } finally {
+                        if (prevLintPos != null)
+                            deferredLintHandler.setPos(prevLintPos);
+                        log.useSource(prev);
+                    }
+                }
+            });
+        }
+
+        @Override
+        public void visitAnnotatedType(final JCAnnotatedType tree) {
+            annotateTypeLater(tree.annotations);
+            super.visitAnnotatedType(tree);
+        }
+
+        @Override
+        public void visitTypeParameter(final JCTypeParameter tree) {
+            annotateTypeLater(tree.annotations);
+            super.visitTypeParameter(tree);
+        }
+
+        @Override
+        public void visitNewArray(final JCNewArray tree) {
+            annotateTypeLater(tree.annotations);
+            for (List<JCAnnotation> dimAnnos : tree.dimAnnotations)
+                annotateTypeLater(dimAnnos);
+            super.visitNewArray(tree);
+        }
+
+        @Override
+        public void visitMethodDef(final JCMethodDecl tree) {
+            scan(tree.mods);
+            scan(tree.restype);
+            scan(tree.typarams);
+            scan(tree.recvparam);
+            scan(tree.params);
+            scan(tree.thrown);
+            scan(tree.defaultValue);
+            // Do not annotate the body, just the signature.
+            // scan(tree.body);
+        }
+
+        @Override
+        public void visitVarDef(final JCVariableDecl tree) {
+            DiagnosticPosition prevPos = deferPos;
+            deferPos = tree.pos();
+            try {
+                if (sym != null && sym.kind == Kinds.VAR) {
+                    // Don't visit a parameter once when the sym is the method
+                    // and once when the sym is the parameter.
+                    scan(tree.mods);
+                    scan(tree.vartype);
+                }
+                scan(tree.init);
+            } finally {
+                deferPos = prevPos;
+            }
+        }
+
+        @Override
+        public void visitClassDef(JCClassDecl tree) {
+            // We can only hit a classdef if it is declared within
+            // a method. Ignore it - the class will be visited
+            // separately later.
+        }
+
+        @Override
+        public void visitNewClass(JCNewClass tree) {
+            if (tree.def == null) {
+                // For an anonymous class instantiation the class
+                // will be visited separately.
+                super.visitNewClass(tree);
+            }
+        }
+    }
+
+
+    private Env<AttrContext> baseEnv(JCClassDecl tree, Env<AttrContext> env) {
+        Scope baseScope = new Scope(tree.sym);
+        //import already entered local classes into base scope
+        for (Scope.Entry e = env.outer.info.scope.elems ; e != null ; e = e.sibling) {
+            if (e.sym.isLocal()) {
+                baseScope.enter(e.sym);
+            }
+        }
+        //import current type-parameters into base scope
+        if (tree.typarams != null)
+            for (List<JCTypeParameter> typarams = tree.typarams;
+                 typarams.nonEmpty();
+                 typarams = typarams.tail)
+                baseScope.enter(typarams.head.type.tsym);
+        Env<AttrContext> outer = env.outer; // the base clause can't see members of this class
+        Env<AttrContext> localEnv = outer.dup(tree, outer.info.dup(baseScope));
+        localEnv.baseClause = true;
+        localEnv.outer = outer;
+        localEnv.info.isSelfCall = false;
+        return localEnv;
+    }
+
+    /** Enter member fields and methods of a class
+     *  @param env        the environment current for the class block.
+     */
+    private void finish(Env<AttrContext> env) {
+        JavaFileObject prev = log.useSource(env.toplevel.sourcefile);
+        try {
+            JCClassDecl tree = (JCClassDecl)env.tree;
+            finishClass(tree, env);
+        } finally {
+            log.useSource(prev);
+        }
+    }
+
+    /** Generate a base clause for an enum type.
+     *  @param pos              The position for trees and diagnostics, if any
+     *  @param c                The class symbol of the enum
+     */
+    private JCExpression enumBase(int pos, ClassSymbol c) {
+        JCExpression result = make.at(pos).
+            TypeApply(make.QualIdent(syms.enumSym),
+                      List.<JCExpression>of(make.Type(c.type)));
+        return result;
+    }
+
+    Type modelMissingTypes(Type t, final JCExpression tree, final boolean interfaceExpected) {
+        if (!t.hasTag(ERROR))
+            return t;
+
+        return new ErrorType(t.getOriginalType(), t.tsym) {
+            private Type modelType;
+
+            @Override
+            public Type getModelType() {
+                if (modelType == null)
+                    modelType = new Synthesizer(getOriginalType(), interfaceExpected).visit(tree);
+                return modelType;
+            }
+        };
+    }
+    // where
+    private class Synthesizer extends JCTree.Visitor {
+        Type originalType;
+        boolean interfaceExpected;
+        List<ClassSymbol> synthesizedSymbols = List.nil();
+        Type result;
+
+        Synthesizer(Type originalType, boolean interfaceExpected) {
+            this.originalType = originalType;
+            this.interfaceExpected = interfaceExpected;
+        }
+
+        Type visit(JCTree tree) {
+            tree.accept(this);
+            return result;
+        }
+
+        List<Type> visit(List<? extends JCTree> trees) {
+            ListBuffer<Type> lb = new ListBuffer<Type>();
+            for (JCTree t: trees)
+                lb.append(visit(t));
+            return lb.toList();
+        }
+
+        @Override
+        public void visitTree(JCTree tree) {
+            result = syms.errType;
+        }
+
+        @Override
+        public void visitIdent(JCIdent tree) {
+            if (!tree.type.hasTag(ERROR)) {
+                result = tree.type;
+            } else {
+                result = synthesizeClass(tree.name, syms.unnamedPackage).type;
+            }
+        }
+
+        @Override
+        public void visitSelect(JCFieldAccess tree) {
+            if (!tree.type.hasTag(ERROR)) {
+                result = tree.type;
+            } else {
+                Type selectedType;
+                boolean prev = interfaceExpected;
+                try {
+                    interfaceExpected = false;
+                    selectedType = visit(tree.selected);
+                } finally {
+                    interfaceExpected = prev;
+                }
+                ClassSymbol c = synthesizeClass(tree.name, selectedType.tsym);
+                result = c.type;
+            }
+        }
+
+        @Override
+        public void visitTypeApply(JCTypeApply tree) {
+            if (!tree.type.hasTag(ERROR)) {
+                result = tree.type;
+            } else {
+                ClassType clazzType = (ClassType) visit(tree.clazz);
+                if (synthesizedSymbols.contains(clazzType.tsym))
+                    synthesizeTyparams((ClassSymbol) clazzType.tsym, tree.arguments.size());
+                final List<Type> actuals = visit(tree.arguments);
+                result = new ErrorType(tree.type, clazzType.tsym) {
+                    @Override
+                    public List<Type> getTypeArguments() {
+                        return actuals;
+                    }
+                };
+            }
+        }
+
+        ClassSymbol synthesizeClass(Name name, Symbol owner) {
+            int flags = interfaceExpected ? INTERFACE : 0;
+            ClassSymbol c = new ClassSymbol(flags, name, owner);
+            c.members_field = new Scope.ErrorScope(c);
+            c.type = new ErrorType(originalType, c) {
+                @Override
+                public List<Type> getTypeArguments() {
+                    return typarams_field;
+                }
+            };
+            synthesizedSymbols = synthesizedSymbols.prepend(c);
+            return c;
+        }
+
+        void synthesizeTyparams(ClassSymbol sym, int n) {
+            ClassType ct = (ClassType) sym.type;
+            Assert.check(ct.typarams_field.isEmpty());
+            if (n == 1) {
+                TypeVar v = new TypeVar(names.fromString("T"), sym, syms.botType);
+                ct.typarams_field = ct.typarams_field.prepend(v);
+            } else {
+                for (int i = n; i > 0; i--) {
+                    TypeVar v = new TypeVar(names.fromString("T" + i), sym, syms.botType);
+                    ct.typarams_field = ct.typarams_field.prepend(v);
+                }
+            }
+        }
+    }
+
+
+/* ***************************************************************************
+ * tree building
+ ****************************************************************************/
+
+    /** Generate default constructor for given class. For classes different
+     *  from java.lang.Object, this is:
+     *
+     *    c(argtype_0 x_0, ..., argtype_n x_n) throws thrown {
+     *      super(x_0, ..., x_n)
+     *    }
+     *
+     *  or, if based == true:
+     *
+     *    c(argtype_0 x_0, ..., argtype_n x_n) throws thrown {
+     *      x_0.super(x_1, ..., x_n)
+     *    }
+     *
+     *  @param make     The tree factory.
+     *  @param c        The class owning the default constructor.
+     *  @param argtypes The parameter types of the constructor.
+     *  @param thrown   The thrown exceptions of the constructor.
+     *  @param based    Is first parameter a this$n?
+     */
+    JCTree DefaultConstructor(TreeMaker make,
+                            ClassSymbol c,
+                            MethodSymbol baseInit,
+                            List<Type> typarams,
+                            List<Type> argtypes,
+                            List<Type> thrown,
+                            long flags,
+                            boolean based) {
+        JCTree result;
+        if ((c.flags() & ENUM) != 0 &&
+            (types.supertype(c.type).tsym == syms.enumSym)) {
+            // constructors of true enums are private
+            flags = (flags & ~AccessFlags) | PRIVATE | GENERATEDCONSTR;
+        } else
+            flags |= (c.flags() & AccessFlags) | GENERATEDCONSTR;
+        if (c.name.isEmpty()) {
+            flags |= ANONCONSTR;
+        }
+        Type mType = new MethodType(argtypes, null, thrown, c);
+        Type initType = typarams.nonEmpty() ?
+                new ForAll(typarams, mType) :
+                mType;
+        MethodSymbol init = new MethodSymbol(flags, names.init,
+                initType, c);
+        init.params = createDefaultConstructorParams(make, baseInit, init,
+                argtypes, based);
+        List<JCVariableDecl> params = make.Params(argtypes, init);
+        List<JCStatement> stats = List.nil();
+        if (c.type != syms.objectType) {
+            stats = stats.prepend(SuperCall(make, typarams, params, based));
+        }
+        result = make.MethodDef(init, make.Block(0, stats));
+        return result;
+    }
+
+    private List<VarSymbol> createDefaultConstructorParams(
+            TreeMaker make,
+            MethodSymbol baseInit,
+            MethodSymbol init,
+            List<Type> argtypes,
+            boolean based) {
+        List<VarSymbol> initParams = null;
+        List<Type> argTypesList = argtypes;
+        if (based) {
+            /*  In this case argtypes will have an extra type, compared to baseInit,
+             *  corresponding to the type of the enclosing instance i.e.:
+             *
+             *  Inner i = outer.new Inner(1){}
+             *
+             *  in the above example argtypes will be (Outer, int) and baseInit
+             *  will have parameter's types (int). So in this case we have to add
+             *  first the extra type in argtypes and then get the names of the
+             *  parameters from baseInit.
+             */
+            initParams = List.nil();
+            VarSymbol param = new VarSymbol(PARAMETER, make.paramName(0), argtypes.head, init);
+            initParams = initParams.append(param);
+            argTypesList = argTypesList.tail;
+        }
+        if (baseInit != null && baseInit.params != null &&
+            baseInit.params.nonEmpty() && argTypesList.nonEmpty()) {
+            initParams = (initParams == null) ? List.<VarSymbol>nil() : initParams;
+            List<VarSymbol> baseInitParams = baseInit.params;
+            while (baseInitParams.nonEmpty() && argTypesList.nonEmpty()) {
+                VarSymbol param = new VarSymbol(baseInitParams.head.flags() | PARAMETER,
+                        baseInitParams.head.name, argTypesList.head, init);
+                initParams = initParams.append(param);
+                baseInitParams = baseInitParams.tail;
+                argTypesList = argTypesList.tail;
+            }
+        }
+        return initParams;
+    }
+
+    /** Generate call to superclass constructor. This is:
+     *
+     *    super(id_0, ..., id_n)
+     *
+     * or, if based == true
+     *
+     *    id_0.super(id_1,...,id_n)
+     *
+     *  where id_0, ..., id_n are the names of the given parameters.
+     *
+     *  @param make    The tree factory
+     *  @param params  The parameters that need to be passed to super
+     *  @param typarams  The type parameters that need to be passed to super
+     *  @param based   Is first parameter a this$n?
+     */
+    JCExpressionStatement SuperCall(TreeMaker make,
+                   List<Type> typarams,
+                   List<JCVariableDecl> params,
+                   boolean based) {
+        JCExpression meth;
+        if (based) {
+            meth = make.Select(make.Ident(params.head), names._super);
+            params = params.tail;
+        } else {
+            meth = make.Ident(names._super);
+        }
+        List<JCExpression> typeargs = typarams.nonEmpty() ? make.Types(typarams) : null;
+        return make.Exec(make.Apply(typeargs, meth, make.Idents(params)));
+    }
+}

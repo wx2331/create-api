@@ -1,306 +1,301 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.javadoc.Tag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlConstants;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.formats.html.markup.RawHtml;
-/*     */ import com.sun.tools.doclets.formats.html.markup.StringContent;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.ProfilePackageSummaryWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPath;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPaths;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.Util;
-/*     */ import com.sun.tools.javac.jvm.Profile;
-/*     */ import java.io.IOException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class ProfilePackageWriterImpl
-/*     */   extends HtmlDocletWriter
-/*     */   implements ProfilePackageSummaryWriter
-/*     */ {
-/*     */   protected PackageDoc prev;
-/*     */   protected PackageDoc next;
-/*     */   protected PackageDoc packageDoc;
-/*     */   protected String profileName;
-/*     */   protected int profileValue;
-/*     */   
-/*     */   public ProfilePackageWriterImpl(ConfigurationImpl paramConfigurationImpl, PackageDoc paramPackageDoc1, PackageDoc paramPackageDoc2, PackageDoc paramPackageDoc3, Profile paramProfile) throws IOException {
-/*  94 */     super(paramConfigurationImpl, DocPath.forPackage(paramPackageDoc1).resolve(
-/*  95 */           DocPaths.profilePackageSummary(paramProfile.name)));
-/*  96 */     this.prev = paramPackageDoc2;
-/*  97 */     this.next = paramPackageDoc3;
-/*  98 */     this.packageDoc = paramPackageDoc1;
-/*  99 */     this.profileName = paramProfile.name;
-/* 100 */     this.profileValue = paramProfile.value;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getPackageHeader(String paramString) {
-/* 107 */     String str = this.packageDoc.name();
-/* 108 */     HtmlTree htmlTree1 = getBody(true, getWindowTitle(str));
-/* 109 */     addTop((Content)htmlTree1);
-/* 110 */     addNavLinks(true, (Content)htmlTree1);
-/* 111 */     HtmlTree htmlTree2 = new HtmlTree(HtmlTag.DIV);
-/* 112 */     htmlTree2.addStyle(HtmlStyle.header);
-/* 113 */     StringContent stringContent = new StringContent(this.profileName);
-/* 114 */     HtmlTree htmlTree3 = HtmlTree.DIV(HtmlStyle.subTitle, (Content)stringContent);
-/* 115 */     htmlTree2.addContent((Content)htmlTree3);
-/* 116 */     HtmlTree htmlTree4 = new HtmlTree(HtmlTag.P);
-/* 117 */     addAnnotationInfo(this.packageDoc, (Content)htmlTree4);
-/* 118 */     htmlTree2.addContent((Content)htmlTree4);
-/* 119 */     HtmlTree htmlTree5 = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, true, HtmlStyle.title, this.packageLabel);
-/*     */     
-/* 121 */     htmlTree5.addContent(getSpace());
-/* 122 */     RawHtml rawHtml = new RawHtml(paramString);
-/* 123 */     htmlTree5.addContent((Content)rawHtml);
-/* 124 */     htmlTree2.addContent((Content)htmlTree5);
-/* 125 */     addDeprecationInfo((Content)htmlTree2);
-/* 126 */     if ((this.packageDoc.inlineTags()).length > 0 && !this.configuration.nocomment) {
-/* 127 */       HtmlTree htmlTree6 = new HtmlTree(HtmlTag.DIV);
-/* 128 */       htmlTree6.addStyle(HtmlStyle.docSummary);
-/* 129 */       addSummaryComment((Doc)this.packageDoc, (Content)htmlTree6);
-/* 130 */       htmlTree2.addContent((Content)htmlTree6);
-/* 131 */       Content content1 = getSpace();
-/* 132 */       Content content2 = getHyperLink(getDocLink(SectionName.PACKAGE_DESCRIPTION), this.descriptionLabel, "", "");
-/*     */ 
-/*     */       
-/* 135 */       HtmlTree htmlTree7 = new HtmlTree(HtmlTag.P, new Content[] { this.seeLabel, content1, content2 });
-/* 136 */       htmlTree2.addContent((Content)htmlTree7);
-/*     */     } 
-/* 138 */     htmlTree1.addContent((Content)htmlTree2);
-/* 139 */     return (Content)htmlTree1;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getContentHeader() {
-/* 146 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.DIV);
-/* 147 */     htmlTree.addStyle(HtmlStyle.contentContainer);
-/* 148 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addDeprecationInfo(Content paramContent) {
-/* 157 */     Tag[] arrayOfTag = this.packageDoc.tags("deprecated");
-/* 158 */     if (Util.isDeprecated((Doc)this.packageDoc)) {
-/* 159 */       HtmlTree htmlTree1 = new HtmlTree(HtmlTag.DIV);
-/* 160 */       htmlTree1.addStyle(HtmlStyle.deprecatedContent);
-/* 161 */       HtmlTree htmlTree2 = HtmlTree.SPAN(HtmlStyle.deprecatedLabel, this.deprecatedPhrase);
-/* 162 */       htmlTree1.addContent((Content)htmlTree2);
-/* 163 */       if (arrayOfTag.length > 0) {
-/* 164 */         Tag[] arrayOfTag1 = arrayOfTag[0].inlineTags();
-/* 165 */         if (arrayOfTag1.length > 0) {
-/* 166 */           addInlineDeprecatedComment((Doc)this.packageDoc, arrayOfTag[0], (Content)htmlTree1);
-/*     */         }
-/*     */       } 
-/* 169 */       paramContent.addContent((Content)htmlTree1);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addClassesSummary(ClassDoc[] paramArrayOfClassDoc, String paramString1, String paramString2, String[] paramArrayOfString, Content paramContent) {
-/* 178 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.LI);
-/* 179 */     htmlTree.addStyle(HtmlStyle.blockList);
-/* 180 */     addClassesSummary(paramArrayOfClassDoc, paramString1, paramString2, paramArrayOfString, (Content)htmlTree, this.profileValue);
-/*     */     
-/* 182 */     paramContent.addContent((Content)htmlTree);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getSummaryHeader() {
-/* 189 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.UL);
-/* 190 */     htmlTree.addStyle(HtmlStyle.blockList);
-/* 191 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addPackageDescription(Content paramContent) {
-/* 198 */     if ((this.packageDoc.inlineTags()).length > 0) {
-/* 199 */       paramContent.addContent(
-/* 200 */           getMarkerAnchor(SectionName.PACKAGE_DESCRIPTION));
-/*     */       
-/* 202 */       StringContent stringContent = new StringContent(this.configuration.getText("doclet.Package_Description", this.packageDoc
-/* 203 */             .name()));
-/* 204 */       paramContent.addContent((Content)HtmlTree.HEADING(HtmlConstants.PACKAGE_HEADING, true, (Content)stringContent));
-/*     */       
-/* 206 */       addInlineComment((Doc)this.packageDoc, paramContent);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addPackageTags(Content paramContent) {
-/* 214 */     addTagsInfo((Doc)this.packageDoc, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addPackageFooter(Content paramContent) {
-/* 221 */     addNavLinks(false, paramContent);
-/* 222 */     addBottom(paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void printDocument(Content paramContent) throws IOException {
-/* 229 */     printHtmlDocument(this.configuration.metakeywords.getMetaKeywords(this.packageDoc), true, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getNavLinkClassUse() {
-/* 239 */     Content content = getHyperLink(DocPaths.PACKAGE_USE, this.useLabel, "", "");
-/*     */     
-/* 241 */     return (Content)HtmlTree.LI(content);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getNavLinkPrevious() {
-/*     */     HtmlTree htmlTree;
-/* 252 */     if (this.prev == null) {
-/* 253 */       htmlTree = HtmlTree.LI(this.prevpackageLabel);
-/*     */     } else {
-/* 255 */       DocPath docPath = DocPath.relativePath(this.packageDoc, this.prev);
-/* 256 */       htmlTree = HtmlTree.LI(getHyperLink(docPath.resolve(DocPaths.profilePackageSummary(this.profileName)), this.prevpackageLabel, "", ""));
-/*     */     } 
-/*     */     
-/* 259 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getNavLinkNext() {
-/*     */     HtmlTree htmlTree;
-/* 269 */     if (this.next == null) {
-/* 270 */       htmlTree = HtmlTree.LI(this.nextpackageLabel);
-/*     */     } else {
-/* 272 */       DocPath docPath = DocPath.relativePath(this.packageDoc, this.next);
-/* 273 */       htmlTree = HtmlTree.LI(getHyperLink(docPath.resolve(DocPaths.profilePackageSummary(this.profileName)), this.nextpackageLabel, "", ""));
-/*     */     } 
-/*     */     
-/* 276 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getNavLinkTree() {
-/* 286 */     Content content = getHyperLink(DocPaths.PACKAGE_TREE, this.treeLabel, "", "");
-/*     */     
-/* 288 */     return (Content)HtmlTree.LI(content);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getNavLinkPackage() {
-/* 298 */     return (Content)HtmlTree.LI(HtmlStyle.navBarCell1Rev, this.packageLabel);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\ProfilePackageWriterImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+import java.util.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.javac.jvm.Profile;
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Class to generate file for each profile package contents in the right-hand
+ * frame. This will list all the Class Kinds in the package. A click on any
+ * class-kind will update the frame with the clicked class-kind page.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Bhavesh Patel
+ */
+public class ProfilePackageWriterImpl extends HtmlDocletWriter
+    implements ProfilePackageSummaryWriter {
+
+    /**
+     * The prev package name in the alpha-order list.
+     */
+    protected PackageDoc prev;
+
+    /**
+     * The next package name in the alpha-order list.
+     */
+    protected PackageDoc next;
+
+    /**
+     * The profile package being documented.
+     */
+    protected PackageDoc packageDoc;
+
+    /**
+     * The name of the profile being documented.
+     */
+    protected String profileName;
+
+    /**
+     * The value of the profile being documented.
+     */
+    protected int profileValue;
+
+    /**
+     * Constructor to construct ProfilePackageWriter object and to generate
+     * "profilename-package-summary.html" file in the respective package directory.
+     * For example for profile compact1 and package "java.lang" this will generate file
+     * "compact1-package-summary.html" file in the "java/lang" directory. It will also
+     * create "java/lang" directory in the current or the destination directory
+     * if it doesn't exist.
+     *
+     * @param configuration the configuration of the doclet.
+     * @param packageDoc    PackageDoc under consideration.
+     * @param prev          Previous package in the sorted array.
+     * @param next          Next package in the sorted array.
+     * @param profile       The profile being documented.
+     */
+    public ProfilePackageWriterImpl(ConfigurationImpl configuration,
+            PackageDoc packageDoc, PackageDoc prev, PackageDoc next,
+            Profile profile) throws IOException {
+        super(configuration, DocPath.forPackage(packageDoc).resolve(
+                DocPaths.profilePackageSummary(profile.name)));
+        this.prev = prev;
+        this.next = next;
+        this.packageDoc = packageDoc;
+        this.profileName = profile.name;
+        this.profileValue = profile.value;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getPackageHeader(String heading) {
+        String pkgName = packageDoc.name();
+        Content bodyTree = getBody(true, getWindowTitle(pkgName));
+        addTop(bodyTree);
+        addNavLinks(true, bodyTree);
+        HtmlTree div = new HtmlTree(HtmlTag.DIV);
+        div.addStyle(HtmlStyle.header);
+        Content profileContent = new StringContent(profileName);
+        Content profileNameDiv = HtmlTree.DIV(HtmlStyle.subTitle, profileContent);
+        div.addContent(profileNameDiv);
+        Content annotationContent = new HtmlTree(HtmlTag.P);
+        addAnnotationInfo(packageDoc, annotationContent);
+        div.addContent(annotationContent);
+        Content tHeading = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, true,
+                HtmlStyle.title, packageLabel);
+        tHeading.addContent(getSpace());
+        Content packageHead = new RawHtml(heading);
+        tHeading.addContent(packageHead);
+        div.addContent(tHeading);
+        addDeprecationInfo(div);
+        if (packageDoc.inlineTags().length > 0 && ! configuration.nocomment) {
+            HtmlTree docSummaryDiv = new HtmlTree(HtmlTag.DIV);
+            docSummaryDiv.addStyle(HtmlStyle.docSummary);
+            addSummaryComment(packageDoc, docSummaryDiv);
+            div.addContent(docSummaryDiv);
+            Content space = getSpace();
+            Content descLink = getHyperLink(getDocLink(
+                    SectionName.PACKAGE_DESCRIPTION),
+                    descriptionLabel, "", "");
+            Content descPara = new HtmlTree(HtmlTag.P, seeLabel, space, descLink);
+            div.addContent(descPara);
+        }
+        bodyTree.addContent(div);
+        return bodyTree;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getContentHeader() {
+        HtmlTree div = new HtmlTree(HtmlTag.DIV);
+        div.addStyle(HtmlStyle.contentContainer);
+        return div;
+    }
+
+    /**
+     * Add the package deprecation information to the documentation tree.
+     *
+     * @param div the content tree to which the deprecation information will be added
+     */
+    public void addDeprecationInfo(Content div) {
+        Tag[] deprs = packageDoc.tags("deprecated");
+        if (Util.isDeprecated(packageDoc)) {
+            HtmlTree deprDiv = new HtmlTree(HtmlTag.DIV);
+            deprDiv.addStyle(HtmlStyle.deprecatedContent);
+            Content deprPhrase = HtmlTree.SPAN(HtmlStyle.deprecatedLabel, deprecatedPhrase);
+            deprDiv.addContent(deprPhrase);
+            if (deprs.length > 0) {
+                Tag[] commentTags = deprs[0].inlineTags();
+                if (commentTags.length > 0) {
+                    addInlineDeprecatedComment(packageDoc, deprs[0], deprDiv);
+                }
+            }
+            div.addContent(deprDiv);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addClassesSummary(ClassDoc[] classes, String label,
+            String tableSummary, String[] tableHeader, Content packageSummaryContentTree) {
+        HtmlTree li = new HtmlTree(HtmlTag.LI);
+        li.addStyle(HtmlStyle.blockList);
+        addClassesSummary(classes, label, tableSummary, tableHeader,
+                li, profileValue);
+        packageSummaryContentTree.addContent(li);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getSummaryHeader() {
+        HtmlTree ul = new HtmlTree(HtmlTag.UL);
+        ul.addStyle(HtmlStyle.blockList);
+        return ul;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addPackageDescription(Content packageContentTree) {
+        if (packageDoc.inlineTags().length > 0) {
+            packageContentTree.addContent(
+                    getMarkerAnchor(SectionName.PACKAGE_DESCRIPTION));
+            Content h2Content = new StringContent(
+                    configuration.getText("doclet.Package_Description",
+                    packageDoc.name()));
+            packageContentTree.addContent(HtmlTree.HEADING(HtmlConstants.PACKAGE_HEADING,
+                    true, h2Content));
+            addInlineComment(packageDoc, packageContentTree);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addPackageTags(Content packageContentTree) {
+        addTagsInfo(packageDoc, packageContentTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addPackageFooter(Content contentTree) {
+        addNavLinks(false, contentTree);
+        addBottom(contentTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void printDocument(Content contentTree) throws IOException {
+        printHtmlDocument(configuration.metakeywords.getMetaKeywords(packageDoc),
+                true, contentTree);
+    }
+
+    /**
+     * Get "Use" link for this package in the navigation bar.
+     *
+     * @return a content tree for the class use link
+     */
+    protected Content getNavLinkClassUse() {
+        Content useLink = getHyperLink(DocPaths.PACKAGE_USE,
+                useLabel, "", "");
+        Content li = HtmlTree.LI(useLink);
+        return li;
+    }
+
+    /**
+     * Get "PREV PACKAGE" link in the navigation bar.
+     *
+     * @return a content tree for the previous link
+     */
+    public Content getNavLinkPrevious() {
+        Content li;
+        if (prev == null) {
+            li = HtmlTree.LI(prevpackageLabel);
+        } else {
+            DocPath path = DocPath.relativePath(packageDoc, prev);
+            li = HtmlTree.LI(getHyperLink(path.resolve(DocPaths.profilePackageSummary(profileName)),
+                prevpackageLabel, "", ""));
+        }
+        return li;
+    }
+
+    /**
+     * Get "NEXT PACKAGE" link in the navigation bar.
+     *
+     * @return a content tree for the next link
+     */
+    public Content getNavLinkNext() {
+        Content li;
+        if (next == null) {
+            li = HtmlTree.LI(nextpackageLabel);
+        } else {
+            DocPath path = DocPath.relativePath(packageDoc, next);
+            li = HtmlTree.LI(getHyperLink(path.resolve(DocPaths.profilePackageSummary(profileName)),
+                nextpackageLabel, "", ""));
+        }
+        return li;
+    }
+
+    /**
+     * Get "Tree" link in the navigation bar. This will be link to the package
+     * tree file.
+     *
+     * @return a content tree for the tree link
+     */
+    protected Content getNavLinkTree() {
+        Content useLink = getHyperLink(DocPaths.PACKAGE_TREE,
+                treeLabel, "", "");
+        Content li = HtmlTree.LI(useLink);
+        return li;
+    }
+
+    /**
+     * Highlight "Package" in the navigation bar, as this is the package page.
+     *
+     * @return a content tree for the package link
+     */
+    protected Content getNavLinkPackage() {
+        Content li = HtmlTree.LI(HtmlStyle.navBarCell1Rev, packageLabel);
+        return li;
+    }
+}

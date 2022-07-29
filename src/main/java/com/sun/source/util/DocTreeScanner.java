@@ -1,279 +1,274 @@
-/*     */ package com.sun.source.util;
-/*     */ 
-/*     */ import com.sun.source.doctree.AttributeTree;
-/*     */ import com.sun.source.doctree.AuthorTree;
-/*     */ import com.sun.source.doctree.CommentTree;
-/*     */ import com.sun.source.doctree.DeprecatedTree;
-/*     */ import com.sun.source.doctree.DocCommentTree;
-/*     */ import com.sun.source.doctree.DocRootTree;
-/*     */ import com.sun.source.doctree.DocTree;
-/*     */ import com.sun.source.doctree.DocTreeVisitor;
-/*     */ import com.sun.source.doctree.EndElementTree;
-/*     */ import com.sun.source.doctree.EntityTree;
-/*     */ import com.sun.source.doctree.ErroneousTree;
-/*     */ import com.sun.source.doctree.IdentifierTree;
-/*     */ import com.sun.source.doctree.InheritDocTree;
-/*     */ import com.sun.source.doctree.LinkTree;
-/*     */ import com.sun.source.doctree.LiteralTree;
-/*     */ import com.sun.source.doctree.ParamTree;
-/*     */ import com.sun.source.doctree.ReferenceTree;
-/*     */ import com.sun.source.doctree.ReturnTree;
-/*     */ import com.sun.source.doctree.SeeTree;
-/*     */ import com.sun.source.doctree.SerialDataTree;
-/*     */ import com.sun.source.doctree.SerialFieldTree;
-/*     */ import com.sun.source.doctree.SerialTree;
-/*     */ import com.sun.source.doctree.SinceTree;
-/*     */ import com.sun.source.doctree.StartElementTree;
-/*     */ import com.sun.source.doctree.TextTree;
-/*     */ import com.sun.source.doctree.ThrowsTree;
-/*     */ import com.sun.source.doctree.UnknownBlockTagTree;
-/*     */ import com.sun.source.doctree.UnknownInlineTagTree;
-/*     */ import com.sun.source.doctree.ValueTree;
-/*     */ import com.sun.source.doctree.VersionTree;
-/*     */ import jdk.Exported;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ @Exported
-/*     */ public class DocTreeScanner<R, P>
-/*     */   implements DocTreeVisitor<R, P>
-/*     */ {
-/*     */   public R scan(DocTree paramDocTree, P paramP) {
-/*  77 */     return (paramDocTree == null) ? null : (R)paramDocTree.accept(this, paramP);
-/*     */   }
-/*     */   
-/*     */   private R scanAndReduce(DocTree paramDocTree, P paramP, R paramR) {
-/*  81 */     return reduce(scan(paramDocTree, paramP), paramR);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public R scan(Iterable<? extends DocTree> paramIterable, P paramP) {
-/*  88 */     R r = null;
-/*  89 */     if (paramIterable != null) {
-/*  90 */       boolean bool = true;
-/*  91 */       for (DocTree docTree : paramIterable) {
-/*  92 */         r = bool ? scan(docTree, paramP) : scanAndReduce(docTree, paramP, r);
-/*  93 */         bool = false;
-/*     */       } 
-/*     */     } 
-/*  96 */     return r;
-/*     */   }
-/*     */   
-/*     */   private R scanAndReduce(Iterable<? extends DocTree> paramIterable, P paramP, R paramR) {
-/* 100 */     return reduce(scan(paramIterable, paramP), paramR);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public R reduce(R paramR1, R paramR2) {
-/* 109 */     return paramR1;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public R visitAttribute(AttributeTree paramAttributeTree, P paramP) {
-/* 119 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitAuthor(AuthorTree paramAuthorTree, P paramP) {
-/* 124 */     return scan(paramAuthorTree.getName(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitComment(CommentTree paramCommentTree, P paramP) {
-/* 129 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitDeprecated(DeprecatedTree paramDeprecatedTree, P paramP) {
-/* 134 */     return scan(paramDeprecatedTree.getBody(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitDocComment(DocCommentTree paramDocCommentTree, P paramP) {
-/* 139 */     R r = scan(paramDocCommentTree.getFirstSentence(), paramP);
-/* 140 */     r = scanAndReduce(paramDocCommentTree.getBody(), paramP, r);
-/* 141 */     r = scanAndReduce(paramDocCommentTree.getBlockTags(), paramP, r);
-/* 142 */     return r;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitDocRoot(DocRootTree paramDocRootTree, P paramP) {
-/* 147 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitEndElement(EndElementTree paramEndElementTree, P paramP) {
-/* 152 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitEntity(EntityTree paramEntityTree, P paramP) {
-/* 157 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitErroneous(ErroneousTree paramErroneousTree, P paramP) {
-/* 162 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitIdentifier(IdentifierTree paramIdentifierTree, P paramP) {
-/* 167 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitInheritDoc(InheritDocTree paramInheritDocTree, P paramP) {
-/* 172 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitLink(LinkTree paramLinkTree, P paramP) {
-/* 177 */     R r = scan((DocTree)paramLinkTree.getReference(), paramP);
-/* 178 */     r = scanAndReduce(paramLinkTree.getLabel(), paramP, r);
-/* 179 */     return r;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitLiteral(LiteralTree paramLiteralTree, P paramP) {
-/* 184 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitParam(ParamTree paramParamTree, P paramP) {
-/* 189 */     R r = scan((DocTree)paramParamTree.getName(), paramP);
-/* 190 */     r = scanAndReduce(paramParamTree.getDescription(), paramP, r);
-/* 191 */     return r;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitReference(ReferenceTree paramReferenceTree, P paramP) {
-/* 196 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitReturn(ReturnTree paramReturnTree, P paramP) {
-/* 201 */     return scan(paramReturnTree.getDescription(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitSee(SeeTree paramSeeTree, P paramP) {
-/* 206 */     return scan(paramSeeTree.getReference(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitSerial(SerialTree paramSerialTree, P paramP) {
-/* 211 */     return scan(paramSerialTree.getDescription(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitSerialData(SerialDataTree paramSerialDataTree, P paramP) {
-/* 216 */     return scan(paramSerialDataTree.getDescription(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitSerialField(SerialFieldTree paramSerialFieldTree, P paramP) {
-/* 221 */     R r = scan((DocTree)paramSerialFieldTree.getName(), paramP);
-/* 222 */     r = scanAndReduce((DocTree)paramSerialFieldTree.getType(), paramP, r);
-/* 223 */     r = scanAndReduce(paramSerialFieldTree.getDescription(), paramP, r);
-/* 224 */     return r;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitSince(SinceTree paramSinceTree, P paramP) {
-/* 229 */     return scan(paramSinceTree.getBody(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitStartElement(StartElementTree paramStartElementTree, P paramP) {
-/* 234 */     return scan(paramStartElementTree.getAttributes(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitText(TextTree paramTextTree, P paramP) {
-/* 239 */     return null;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitThrows(ThrowsTree paramThrowsTree, P paramP) {
-/* 244 */     R r = scan((DocTree)paramThrowsTree.getExceptionName(), paramP);
-/* 245 */     r = scanAndReduce(paramThrowsTree.getDescription(), paramP, r);
-/* 246 */     return r;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitUnknownBlockTag(UnknownBlockTagTree paramUnknownBlockTagTree, P paramP) {
-/* 251 */     return scan(paramUnknownBlockTagTree.getContent(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitUnknownInlineTag(UnknownInlineTagTree paramUnknownInlineTagTree, P paramP) {
-/* 256 */     return scan(paramUnknownInlineTagTree.getContent(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitValue(ValueTree paramValueTree, P paramP) {
-/* 261 */     return scan((DocTree)paramValueTree.getReference(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitVersion(VersionTree paramVersionTree, P paramP) {
-/* 266 */     return scan(paramVersionTree.getBody(), paramP);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public R visitOther(DocTree paramDocTree, P paramP) {
-/* 271 */     return null;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\sourc\\util\DocTreeScanner.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2011, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.source.util;
+
+import com.sun.source.doctree.*;
+
+
+/**
+ * A TreeVisitor that visits all the child tree nodes.
+ * To visit nodes of a particular type, just override the
+ * corresponding visitXYZ method.
+ * Inside your method, call super.visitXYZ to visit descendant
+ * nodes.
+ *
+ * <p>The default implementation of the visitXYZ methods will determine
+ * a result as follows:
+ * <ul>
+ * <li>If the node being visited has no children, the result will be null.
+ * <li>If the node being visited has one child, the result will be the
+ * result of calling {@code scan} on that child. The child may be a simple node
+ * or itself a list of nodes.
+ * <li> If the node being visited has more than one child, the result will
+ * be determined by calling {@code scan} each child in turn, and then combining the
+ * result of each scan after the first with the cumulative result
+ * so far, as determined by the {@link #reduce} method. Each child may be either
+ * a simple node of a list of nodes. The default behavior of the {@code reduce}
+ * method is such that the result of the visitXYZ method will be the result of
+ * the last child scanned.
+ * </ul>
+ *
+ * <p>Here is an example to count the number of erroneous nodes in a tree:
+ * <pre>
+ *   class CountErrors extends DocTreeScanner&lt;Integer,Void&gt; {
+ *      {@literal @}Override
+ *      public Integer visitErroneous(ErroneousTree node, Void p) {
+ *          return 1;
+ *      }
+ *      {@literal @}Override
+ *      public Integer reduce(Integer r1, Integer r2) {
+ *          return (r1 == null ? 0 : r1) + (r2 == null ? 0 : r2);
+ *      }
+ *   }
+ * </pre>
+ *
+ * @since 1.8
+ */
+@jdk.Exported
+public class DocTreeScanner<R,P> implements DocTreeVisitor<R,P> {
+
+    /**
+     * Scan a single node.
+     */
+    public R scan(DocTree node, P p) {
+        return (node == null) ? null : node.accept(this, p);
+    }
+
+    private R scanAndReduce(DocTree node, P p, R r) {
+        return reduce(scan(node, p), r);
+    }
+
+    /**
+     * Scan a list of nodes.
+     */
+    public R scan(Iterable<? extends DocTree> nodes, P p) {
+        R r = null;
+        if (nodes != null) {
+            boolean first = true;
+            for (DocTree node : nodes) {
+                r = (first ? scan(node, p) : scanAndReduce(node, p, r));
+                first = false;
+            }
+        }
+        return r;
+    }
+
+    private R scanAndReduce(Iterable<? extends DocTree> nodes, P p, R r) {
+        return reduce(scan(nodes, p), r);
+    }
+
+    /**
+     * Reduces two results into a combined result.
+     * The default implementation is to return the first parameter.
+     * The general contract of the method is that it may take any action whatsoever.
+     */
+    public R reduce(R r1, R r2) {
+        return r1;
+    }
+
+
+/* ***************************************************************************
+ * Visitor methods
+ ****************************************************************************/
+
+    @Override
+    public R visitAttribute(AttributeTree node, P p) {
+        return null;
+    }
+
+    @Override
+    public R visitAuthor(AuthorTree node, P p) {
+        return scan(node.getName(), p);
+    }
+
+    @Override
+    public R visitComment(CommentTree node, P p) {
+        return null;
+    }
+
+    @Override
+    public R visitDeprecated(DeprecatedTree node, P p) {
+        return scan(node.getBody(), p);
+    }
+
+    @Override
+    public R visitDocComment(DocCommentTree node, P p) {
+        R r = scan(node.getFirstSentence(), p);
+        r = scanAndReduce(node.getBody(), p, r);
+        r = scanAndReduce(node.getBlockTags(), p, r);
+        return r;
+    }
+
+    @Override
+    public R visitDocRoot(DocRootTree node, P p) {
+        return null;
+    }
+
+    @Override
+    public R visitEndElement(EndElementTree node, P p) {
+        return null;
+    }
+
+    @Override
+    public R visitEntity(EntityTree node, P p) {
+        return null;
+    }
+
+    @Override
+    public R visitErroneous(ErroneousTree node, P p) {
+        return null;
+    }
+
+    @Override
+    public R visitIdentifier(IdentifierTree node, P p) {
+        return null;
+    }
+
+    @Override
+    public R visitInheritDoc(InheritDocTree node, P p) {
+        return null;
+    }
+
+    @Override
+    public R visitLink(LinkTree node, P p) {
+        R r = scan(node.getReference(), p);
+        r = scanAndReduce(node.getLabel(), p, r);
+        return r;
+    }
+
+    @Override
+    public R visitLiteral(LiteralTree node, P p) {
+        return null;
+    }
+
+    @Override
+    public R visitParam(ParamTree node, P p) {
+        R r = scan(node.getName(), p);
+        r = scanAndReduce(node.getDescription(), p, r);
+        return r;
+    }
+
+    @Override
+    public R visitReference(ReferenceTree node, P p) {
+        return null;
+    }
+
+    @Override
+    public R visitReturn(ReturnTree node, P p) {
+        return scan(node.getDescription(), p);
+    }
+
+    @Override
+    public R visitSee(SeeTree node, P p) {
+        return scan(node.getReference(), p);
+    }
+
+    @Override
+    public R visitSerial(SerialTree node, P p) {
+        return scan(node.getDescription(), p);
+    }
+
+    @Override
+    public R visitSerialData(SerialDataTree node, P p) {
+        return scan(node.getDescription(), p);
+    }
+
+    @Override
+    public R visitSerialField(SerialFieldTree node, P p) {
+        R r = scan(node.getName(), p);
+        r = scanAndReduce(node.getType(), p, r);
+        r = scanAndReduce(node.getDescription(), p, r);
+        return r;
+    }
+
+    @Override
+    public R visitSince(SinceTree node, P p) {
+        return scan(node.getBody(), p);
+    }
+
+    @Override
+    public R visitStartElement(StartElementTree node, P p) {
+        return scan(node.getAttributes(), p);
+    }
+
+    @Override
+    public R visitText(TextTree node, P p) {
+        return null;
+    }
+
+    @Override
+    public R visitThrows(ThrowsTree node, P p) {
+        R r = scan(node.getExceptionName(), p);
+        r = scanAndReduce(node.getDescription(), p, r);
+        return r;
+    }
+
+    @Override
+    public R visitUnknownBlockTag(UnknownBlockTagTree node, P p) {
+        return scan(node.getContent(), p);
+    }
+
+    @Override
+    public R visitUnknownInlineTag(UnknownInlineTagTree node, P p) {
+        return scan(node.getContent(), p);
+    }
+
+    @Override
+    public R visitValue(ValueTree node, P p) {
+        return scan(node.getReference(), p);
+    }
+
+    @Override
+    public R visitVersion(VersionTree node, P p) {
+        return scan(node.getBody(), p);
+    }
+
+    @Override
+    public R visitOther(DocTree node, P p) {
+        return null;
+    }
+
+}

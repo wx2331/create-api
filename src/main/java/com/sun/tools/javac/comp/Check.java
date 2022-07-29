@@ -1,3555 +1,3541 @@
-/*      */ package com.sun.tools.javac.comp;
-/*      */
-/*      */ import com.sun.tools.javac.code.Attribute;
-/*      */ import com.sun.tools.javac.code.DeferredLintHandler;
-/*      */ import com.sun.tools.javac.code.Flags;
-/*      */ import com.sun.tools.javac.code.Kinds;
-/*      */ import com.sun.tools.javac.code.Lint;
-/*      */ import com.sun.tools.javac.code.Scope;
-/*      */ import com.sun.tools.javac.code.Source;
-/*      */ import com.sun.tools.javac.code.Symbol;
-/*      */ import com.sun.tools.javac.code.Symtab;
-/*      */ import com.sun.tools.javac.code.Type;
-/*      */ import com.sun.tools.javac.code.TypeTag;
-/*      */ import com.sun.tools.javac.code.Types;
-/*      */ import com.sun.tools.javac.jvm.Profile;
-/*      */ import com.sun.tools.javac.jvm.Target;
-/*      */ import com.sun.tools.javac.tree.JCTree;
-/*      */ import com.sun.tools.javac.tree.TreeInfo;
-/*      */ import com.sun.tools.javac.tree.TreeScanner;
-/*      */ import com.sun.tools.javac.util.Abort;
-/*      */ import com.sun.tools.javac.util.Assert;
-/*      */ import com.sun.tools.javac.util.Context;
-/*      */ import com.sun.tools.javac.util.DiagnosticSource;
-/*      */ import com.sun.tools.javac.util.Filter;
-/*      */ import com.sun.tools.javac.util.JCDiagnostic;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.MandatoryWarningHandler;
-/*      */ import com.sun.tools.javac.util.Name;
-/*      */ import com.sun.tools.javac.util.Names;
-/*      */ import com.sun.tools.javac.util.Options;
-/*      */ import com.sun.tools.javac.util.Pair;
-/*      */ import com.sun.tools.javac.util.Warner;
-/*      */ import java.util.Collections;
-/*      */ import java.util.HashMap;
-/*      */ import java.util.HashSet;
-/*      */ import java.util.LinkedHashSet;
-/*      */ import java.util.Map;
-/*      */ import java.util.Set;
-/*      */ import javax.tools.JavaFileManager;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class Check
-/*      */ {
-/*   67 */   protected static final Context.Key<Check> checkKey = new Context.Key(); private final Names names; private final Log log; private final Resolve rs; private final Symtab syms; private final Enter enter; private final DeferredAttr deferredAttr; private final Infer infer; private final Types types; private final JCDiagnostic.Factory diags; private boolean warnOnSyntheticConflicts; private boolean suppressAbortOnBadClassFile; private boolean enableSunApiLintControl;
-/*      */   private final TreeInfo treeinfo;
-/*      */   private final JavaFileManager fileManager;
-/*      */   private final Profile profile;
-/*      */   private final boolean warnOnAccessToSensitiveMembers;
-/*      */   private Lint lint;
-/*      */   private Symbol.MethodSymbol method;
-/*      */   boolean allowGenerics;
-/*      */   boolean allowVarargs;
-/*      */   boolean allowAnnotations;
-/*      */   boolean allowCovariantReturns;
-/*      */   boolean allowSimplifiedVarargs;
-/*      */   boolean allowDefaultMethods;
-/*      */   boolean allowStrictMethodClashCheck;
-/*      */   boolean complexInference;
-/*      */   char syntheticNameChar;
-/*      */   public Map<Name, Symbol.ClassSymbol> compiled;
-/*      */   private MandatoryWarningHandler deprecationHandler;
-/*      */   private MandatoryWarningHandler uncheckedHandler;
-/*      */   private MandatoryWarningHandler sunApiHandler;
-/*      */   private DeferredLintHandler deferredLintHandler;
-/*      */   CheckContext basicHandler;
-/*      */   private static final boolean ignoreAnnotatedCasts = true;
-/*      */   Types.UnaryVisitor<Boolean> isTypeArgErroneous;
-/*      */   Warner overrideWarner;
-/*      */   private Filter<Symbol> equalsHasCodeFilter;
-/*      */   private Set<Name> defaultTargets;
-/*      */   private final Name[] dfltTargetMeta;
-/*      */
-/*      */   public static Check instance(Context paramContext) {
-/*   97 */     Check check = (Check)paramContext.get(checkKey);
-/*   98 */     if (check == null)
-/*   99 */       check = new Check(paramContext);
-/*  100 */     return check;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected Check(Context paramContext) {
-/*  196 */     this.compiled = new HashMap<>();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  496 */     this.basicHandler = new CheckContext() {
-/*      */         public void report(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, JCDiagnostic param1JCDiagnostic) {
-/*  498 */           Check.this.log.error(param1DiagnosticPosition, "prob.found.req", new Object[] { param1JCDiagnostic });
-/*      */         }
-/*      */         public boolean compatible(Type param1Type1, Type param1Type2, Warner param1Warner) {
-/*  501 */           return Check.this.types.isAssignable(param1Type1, param1Type2, param1Warner);
-/*      */         }
-/*      */
-/*      */         public Warner checkWarner(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Type param1Type1, Type param1Type2) {
-/*  505 */           return Check.this.convertWarner(param1DiagnosticPosition, param1Type1, param1Type2);
-/*      */         }
-/*      */
-/*      */         public Infer.InferenceContext inferenceContext() {
-/*  509 */           return Check.this.infer.emptyContext;
-/*      */         }
-/*      */
-/*      */         public DeferredAttr.DeferredAttrContext deferredAttrContext() {
-/*  513 */           return Check.this.deferredAttr.emptyDeferredAttrContext;
-/*      */         }
-/*      */
-/*      */
-/*      */         public String toString() {
-/*  518 */           return "CheckContext: basicHandler";
-/*      */         }
-/*      */       };
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1007 */     this.isTypeArgErroneous = new Types.UnaryVisitor<Boolean>() {
-/*      */         public Boolean visitType(Type param1Type, Void param1Void) {
-/* 1009 */           return Boolean.valueOf(param1Type.isErroneous());
-/*      */         }
-/*      */
-/*      */         public Boolean visitTypeVar(Type.TypeVar param1TypeVar, Void param1Void) {
-/* 1013 */           return (Boolean)visit(param1TypeVar.getUpperBound());
-/*      */         }
-/*      */
-/*      */         public Boolean visitCapturedType(Type.CapturedType param1CapturedType, Void param1Void) {
-/* 1017 */           return Boolean.valueOf((((Boolean)visit(param1CapturedType.getUpperBound())).booleanValue() || ((Boolean)
-/* 1018 */               visit(param1CapturedType.getLowerBound())).booleanValue()));
-/*      */         }
-/*      */
-/*      */         public Boolean visitWildcardType(Type.WildcardType param1WildcardType, Void param1Void) {
-/* 1022 */           return (Boolean)visit(param1WildcardType.type);
-/*      */         }
-/*      */       };
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1751 */     this.overrideWarner = new Warner();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1993 */     this.equalsHasCodeFilter = new Filter<Symbol>()
-/*      */       {
-/* 1995 */         public boolean accepts(Symbol param1Symbol) { return (Symbol.MethodSymbol.implementation_filter.accepts(param1Symbol) && (param1Symbol
-/* 1996 */             .flags() & 0x200000000000L) == 0L); }
-/*      */       }; paramContext.put(checkKey, this); this.names = Names.instance(paramContext); this.dfltTargetMeta = new Name[] { this.names.PACKAGE, this.names.TYPE, this.names.FIELD, this.names.METHOD, this.names.CONSTRUCTOR, this.names.ANNOTATION_TYPE, this.names.LOCAL_VARIABLE, this.names.PARAMETER }; this.log = Log.instance(paramContext); this.rs = Resolve.instance(paramContext); this.syms = Symtab.instance(paramContext); this.enter = Enter.instance(paramContext); this.deferredAttr = DeferredAttr.instance(paramContext); this.infer = Infer.instance(paramContext); this.types = Types.instance(paramContext); this.diags = JCDiagnostic.Factory.instance(paramContext); Options options = Options.instance(paramContext); this.lint = Lint.instance(paramContext); this.treeinfo = TreeInfo.instance(paramContext); this.fileManager = (JavaFileManager)paramContext.get(JavaFileManager.class); Source source = Source.instance(paramContext); this.allowGenerics = source.allowGenerics(); this.allowVarargs = source.allowVarargs(); this.allowAnnotations = source.allowAnnotations(); this.allowCovariantReturns = source.allowCovariantReturns(); this.allowSimplifiedVarargs = source.allowSimplifiedVarargs(); this.allowDefaultMethods = source.allowDefaultMethods(); this.allowStrictMethodClashCheck = source.allowStrictMethodClashCheck(); this.complexInference = options.isSet("complexinference"); this.warnOnSyntheticConflicts = options.isSet("warnOnSyntheticConflicts"); this.suppressAbortOnBadClassFile = options.isSet("suppressAbortOnBadClassFile"); this.enableSunApiLintControl = options.isSet("enableSunApiLintControl"); this.warnOnAccessToSensitiveMembers = options.isSet("warnOnAccessToSensitiveMembers"); Target target = Target.instance(paramContext); this.syntheticNameChar = target.syntheticNameChar(); this.profile = Profile.instance(paramContext); boolean bool1 = this.lint.isEnabled(Lint.LintCategory.DEPRECATION); boolean bool2 = this.lint.isEnabled(Lint.LintCategory.UNCHECKED); boolean bool3 = this.lint.isEnabled(Lint.LintCategory.SUNAPI); boolean bool4 = source.enforceMandatoryWarnings(); this.deprecationHandler = new MandatoryWarningHandler(this.log, bool1, bool4, "deprecated", Lint.LintCategory.DEPRECATION); this.uncheckedHandler = new MandatoryWarningHandler(this.log, bool2, bool4, "unchecked", Lint.LintCategory.UNCHECKED); this.sunApiHandler = new MandatoryWarningHandler(this.log, bool3, bool4, "sunapi", null); this.deferredLintHandler = DeferredLintHandler.instance(paramContext);
-/*      */   }
-/*      */   Lint setLint(Lint paramLint) { Lint lint = this.lint; this.lint = paramLint; return lint; }
-/*      */   Symbol.MethodSymbol setMethod(Symbol.MethodSymbol paramMethodSymbol) { Symbol.MethodSymbol methodSymbol = this.method; this.method = paramMethodSymbol; return methodSymbol; }
-/*      */   void warnDeprecated(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol) { if (!this.lint.isSuppressed(Lint.LintCategory.DEPRECATION)) this.deprecationHandler.report(paramDiagnosticPosition, "has.been.deprecated", new Object[] { paramSymbol, paramSymbol.location() });  }
-/*      */   public void warnUnchecked(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, String paramString, Object... paramVarArgs) { if (!this.lint.isSuppressed(Lint.LintCategory.UNCHECKED)) this.uncheckedHandler.report(paramDiagnosticPosition, paramString, paramVarArgs);  }
-/*      */   void warnUnsafeVararg(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, String paramString, Object... paramVarArgs) { if (this.lint.isEnabled(Lint.LintCategory.VARARGS) && this.allowSimplifiedVarargs) this.log.warning(Lint.LintCategory.VARARGS, paramDiagnosticPosition, paramString, paramVarArgs);  }
-/*      */   public void warnSunApi(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, String paramString, Object... paramVarArgs) { if (!this.lint.isSuppressed(Lint.LintCategory.SUNAPI)) this.sunApiHandler.report(paramDiagnosticPosition, paramString, paramVarArgs);  }
-/*      */   public void warnStatic(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, String paramString, Object... paramVarArgs) { if (this.lint.isEnabled(Lint.LintCategory.STATIC)) this.log.warning(Lint.LintCategory.STATIC, paramDiagnosticPosition, paramString, paramVarArgs);  }
-/*      */   public void reportDeferredDiagnostics() { this.deprecationHandler.reportDeferredDiagnostic(); this.uncheckedHandler.reportDeferredDiagnostic(); this.sunApiHandler.reportDeferredDiagnostic(); } public Type completionError(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.CompletionFailure paramCompletionFailure) { this.log.error(JCDiagnostic.DiagnosticFlag.NON_DEFERRABLE, paramDiagnosticPosition, "cant.access", new Object[] { paramCompletionFailure.sym, paramCompletionFailure.getDetailValue() }); if (paramCompletionFailure instanceof com.sun.tools.javac.jvm.ClassReader.BadClassFile && !this.suppressAbortOnBadClassFile) throw new Abort();  return this.syms.errType; } Type typeTagError(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Object paramObject1, Object paramObject2) { if (paramObject2 instanceof Type && ((Type)paramObject2).hasTag(TypeTag.VOID)) { this.log.error(paramDiagnosticPosition, "illegal.start.of.type", new Object[0]); return this.syms.errType; }  this.log.error(paramDiagnosticPosition, "type.found.req", new Object[] { paramObject2, paramObject1 }); return this.types.createErrorType((paramObject2 instanceof Type) ? (Type)paramObject2 : this.syms.errType); } void earlyRefError(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol) { this.log.error(paramDiagnosticPosition, "cant.ref.before.ctor.called", new Object[] { paramSymbol }); } void duplicateError(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol) { if (!paramSymbol.type.isErroneous()) { Symbol symbol = paramSymbol.location(); if (symbol.kind == 16 && ((Symbol.MethodSymbol)symbol).isStaticOrInstanceInit()) { this.log.error(paramDiagnosticPosition, "already.defined.in.clinit", new Object[] { Kinds.kindName(paramSymbol), paramSymbol, Kinds.kindName(paramSymbol.location()), Kinds.kindName((Symbol)paramSymbol.location().enclClass()), paramSymbol.location().enclClass() }); } else { this.log.error(paramDiagnosticPosition, "already.defined", new Object[] { Kinds.kindName(paramSymbol), paramSymbol, Kinds.kindName(paramSymbol.location()), paramSymbol.location() }); }  }  } void varargsDuplicateError(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol1, Symbol paramSymbol2) { if (!paramSymbol1.type.isErroneous() && !paramSymbol2.type.isErroneous()) this.log.error(paramDiagnosticPosition, "array.and.varargs", new Object[] { paramSymbol1, paramSymbol2, paramSymbol2.location() });  } void checkTransparentVar(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.VarSymbol paramVarSymbol, Scope paramScope) { if (paramScope.next != null) { Scope.Entry entry = paramScope.next.lookup(paramVarSymbol.name); for (; entry.scope != null && entry.sym.owner == paramVarSymbol.owner; entry = entry.next()) { if (entry.sym.kind == 4 && (entry.sym.owner.kind & 0x14) != 0 && paramVarSymbol.name != this.names.error) { duplicateError(paramDiagnosticPosition, entry.sym); return; }  }  }  } void checkTransparentClass(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.ClassSymbol paramClassSymbol, Scope paramScope) { if (paramScope.next != null) { Scope.Entry entry = paramScope.next.lookup(paramClassSymbol.name); for (; entry.scope != null && entry.sym.owner == paramClassSymbol.owner; entry = entry.next()) { if (entry.sym.kind == 2 && !entry.sym.type.hasTag(TypeTag.TYPEVAR) && (entry.sym.owner.kind & 0x14) != 0 && paramClassSymbol.name != this.names.error) { duplicateError(paramDiagnosticPosition, entry.sym); return; }  }  }  } boolean checkUniqueClassName(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Name paramName, Scope paramScope) { for (Scope.Entry entry = paramScope.lookup(paramName); entry.scope == paramScope; entry = entry.next()) { if (entry.sym.kind == 2 && entry.sym.name != this.names.error) { duplicateError(paramDiagnosticPosition, entry.sym); return false; }  }  for (Symbol symbol = paramScope.owner; symbol != null; symbol = symbol.owner) { if (symbol.kind == 2 && symbol.name == paramName && symbol.name != this.names.error) { duplicateError(paramDiagnosticPosition, symbol); return true; }  }  return true; } Name localClassName(Symbol.ClassSymbol paramClassSymbol) { for (byte b = 1;; b++) { Name name = this.names.fromString("" + (paramClassSymbol.owner.enclClass()).flatname + this.syntheticNameChar + b + paramClassSymbol.name); if (this.compiled.get(name) == null) return name;  }  } static class NestedCheckContext implements CheckContext {
-/* 2007 */     CheckContext enclosingContext; NestedCheckContext(CheckContext param1CheckContext) { this.enclosingContext = param1CheckContext; } public boolean compatible(Type param1Type1, Type param1Type2, Warner param1Warner) { return this.enclosingContext.compatible(param1Type1, param1Type2, param1Warner); } public void report(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, JCDiagnostic param1JCDiagnostic) { this.enclosingContext.report(param1DiagnosticPosition, param1JCDiagnostic); } public Warner checkWarner(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Type param1Type1, Type param1Type2) { return this.enclosingContext.checkWarner(param1DiagnosticPosition, param1Type1, param1Type2); } public Infer.InferenceContext inferenceContext() { return this.enclosingContext.inferenceContext(); } public DeferredAttr.DeferredAttrContext deferredAttrContext() { return this.enclosingContext.deferredAttrContext(); } } Type checkType(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType1, Type paramType2) { return checkType(paramDiagnosticPosition, paramType1, paramType2, this.basicHandler); } public void checkClassOverrideEqualsAndHashIfNeeded(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.ClassSymbol paramClassSymbol) { if (paramClassSymbol == (Symbol.ClassSymbol)this.syms.objectType.tsym || paramClassSymbol
-/* 2008 */       .isInterface() || paramClassSymbol.isEnum() || (paramClassSymbol
-/* 2009 */       .flags() & 0x2000L) != 0L || (paramClassSymbol
-/* 2010 */       .flags() & 0x400L) != 0L)
-/*      */       return;
-/* 2012 */     if (paramClassSymbol.isAnonymous()) {
-/* 2013 */       List list = this.types.interfaces(paramClassSymbol.type);
-/* 2014 */       if (list != null && !list.isEmpty() && ((Type)list.head).tsym == this.syms.comparatorType.tsym)
-/*      */         return;
-/*      */     }
-/* 2017 */     checkClassOverrideEqualsAndHash(paramDiagnosticPosition, paramClassSymbol); } Type checkType(final JCDiagnostic.DiagnosticPosition pos, final Type found, final Type req, final CheckContext checkContext) { Infer.InferenceContext inferenceContext = checkContext.inferenceContext(); if (inferenceContext.free(req) || inferenceContext.free(found)) inferenceContext.addFreeTypeListener(List.of(req, found), new Infer.FreeTypeListener() { public void typesInferred(Infer.InferenceContext param1InferenceContext) { Check.this.checkType(pos, param1InferenceContext.asInstType(found), param1InferenceContext.asInstType(req), checkContext); } }
-/*      */         );  if (req.hasTag(TypeTag.ERROR)) return req;  if (req.hasTag(TypeTag.NONE)) return found;  if (checkContext.compatible(found, req, checkContext.checkWarner(pos, found, req))) return found;  if (found.isNumeric() && req.isNumeric()) { checkContext.report(pos, this.diags.fragment("possible.loss.of.precision", new Object[] { found, req })); return this.types.createErrorType(found); }  checkContext.report(pos, this.diags.fragment("inconvertible.types", new Object[] { found, req })); return this.types.createErrorType(found); } Type checkCastable(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType1, Type paramType2) { return checkCastable(paramDiagnosticPosition, paramType1, paramType2, this.basicHandler); } Type checkCastable(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType1, Type paramType2, CheckContext paramCheckContext) { if (this.types.isCastable(paramType1, paramType2, castWarner(paramDiagnosticPosition, paramType1, paramType2))) return paramType2;  paramCheckContext.report(paramDiagnosticPosition, this.diags.fragment("inconvertible.types", new Object[] { paramType1, paramType2 })); return this.types.createErrorType(paramType1); } public void checkRedundantCast(Env<AttrContext> paramEnv, final JCTree.JCTypeCast tree) { if (!tree.type.isErroneous() && this.types.isSameType(tree.expr.type, tree.clazz.type) && !TreeInfo.containsTypeAnnotation(tree.clazz) && !is292targetTypeCast(tree)) this.deferredLintHandler.report(new DeferredLintHandler.LintLogger() { public void report() { if (Check.this.lint.isEnabled(Lint.LintCategory.CAST)) Check.this.log.warning(Lint.LintCategory.CAST, tree.pos(), "redundant.cast", new Object[] { this.val$tree.expr.type });  } }
-/*      */         );  } private boolean is292targetTypeCast(JCTree.JCTypeCast paramJCTypeCast) { boolean bool = false; JCTree.JCExpression jCExpression = TreeInfo.skipParens(paramJCTypeCast.expr); if (jCExpression.hasTag(JCTree.Tag.APPLY)) { JCTree.JCMethodInvocation jCMethodInvocation = (JCTree.JCMethodInvocation)jCExpression; Symbol symbol = TreeInfo.symbol((JCTree)jCMethodInvocation.meth); bool = (symbol != null && symbol.kind == 16 && (symbol.flags() & 0x2000000000L) != 0L) ? true : false; }  return bool; } private boolean checkExtends(Type paramType1, Type paramType2) { if (paramType1.isUnbound()) return true;  if (!paramType1.hasTag(TypeTag.WILDCARD)) { paramType1 = this.types.cvarUpperBound(paramType1); return this.types.isSubtype(paramType1, paramType2); }  if (paramType1.isExtendsBound()) return this.types.isCastable(paramType2, this.types.wildUpperBound(paramType1), this.types.noWarnings);  if (paramType1.isSuperBound()) return !this.types.notSoftSubtype(this.types.wildLowerBound(paramType1), paramType2);  return true; } Type checkNonVoid(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) { if (paramType.hasTag(TypeTag.VOID)) { this.log.error(paramDiagnosticPosition, "void.not.allowed.here", new Object[0]); return this.types.createErrorType(paramType); }  return paramType; } Type checkClassOrArrayType(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) { if (!paramType.hasTag(TypeTag.CLASS) && !paramType.hasTag(TypeTag.ARRAY) && !paramType.hasTag(TypeTag.ERROR)) return typeTagError(paramDiagnosticPosition, this.diags.fragment("type.req.class.array", new Object[0]), asTypeParam(paramType));  return paramType; } Type checkClassType(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) { if (!paramType.hasTag(TypeTag.CLASS) && !paramType.hasTag(TypeTag.ERROR)) return typeTagError(paramDiagnosticPosition, this.diags.fragment("type.req.class", new Object[0]), asTypeParam(paramType));  return paramType; } private Object asTypeParam(Type paramType) { return paramType.hasTag(TypeTag.TYPEVAR) ? this.diags.fragment("type.parameter", new Object[] { paramType }) : paramType; } Type checkConstructorRefType(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) { paramType = checkClassOrArrayType(paramDiagnosticPosition, paramType); if (paramType.hasTag(TypeTag.CLASS)) { if ((paramType.tsym.flags() & 0x600L) != 0L) { this.log.error(paramDiagnosticPosition, "abstract.cant.be.instantiated", new Object[] { paramType.tsym }); paramType = this.types.createErrorType(paramType); } else if ((paramType.tsym.flags() & 0x4000L) != 0L) { this.log.error(paramDiagnosticPosition, "enum.cant.be.instantiated", new Object[0]); paramType = this.types.createErrorType(paramType); } else { paramType = checkClassType(paramDiagnosticPosition, paramType, true); }  } else if (paramType.hasTag(TypeTag.ARRAY) && !this.types.isReifiable(((Type.ArrayType)paramType).elemtype)) { this.log.error(paramDiagnosticPosition, "generic.array.creation", new Object[0]); paramType = this.types.createErrorType(paramType); }  return paramType; } Type checkClassType(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType, boolean paramBoolean) { paramType = checkClassType(paramDiagnosticPosition, paramType); if (paramBoolean && paramType.isParameterized()) { List list = paramType.getTypeArguments(); while (list.nonEmpty()) { if (((Type)list.head).hasTag(TypeTag.WILDCARD)) return typeTagError(paramDiagnosticPosition, this.diags.fragment("type.req.exact", new Object[0]), list.head);  list = list.tail; }  }  return paramType; } Type checkRefType(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) { if (paramType.isReference()) return paramType;  return typeTagError(paramDiagnosticPosition, this.diags.fragment("type.req.ref", new Object[0]), paramType); } List<Type> checkRefTypes(List<JCTree.JCExpression> paramList, List<Type> paramList1) { List<JCTree.JCExpression> list = paramList; for (List<Type> list1 = paramList1; list1.nonEmpty(); list1 = list1.tail) { list1.head = checkRefType(((JCTree.JCExpression)list.head).pos(), (Type)list1.head); list = list.tail; }  return paramList1; } Type checkNullOrRefType(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) { if (paramType.isReference() || paramType.hasTag(TypeTag.BOT)) return paramType;  return typeTagError(paramDiagnosticPosition, this.diags.fragment("type.req.ref", new Object[0]), paramType); } boolean checkDisjoint(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, long paramLong1, long paramLong2, long paramLong3) { if ((paramLong1 & paramLong2) != 0L && (paramLong1 & paramLong3) != 0L) { this.log.error(paramDiagnosticPosition, "illegal.combination.of.modifiers", new Object[] { Flags.asFlagSet(TreeInfo.firstFlag(paramLong1 & paramLong2)), Flags.asFlagSet(TreeInfo.firstFlag(paramLong1 & paramLong3)) }); return false; }  return true; } Type checkDiamond(JCTree.JCNewClass paramJCNewClass, Type paramType) { if (!TreeInfo.isDiamond((JCTree)paramJCNewClass) || paramType.isErroneous()) return checkClassType(paramJCNewClass.clazz.pos(), paramType, true);  if (paramJCNewClass.def != null) { this.log.error(paramJCNewClass.clazz.pos(), "cant.apply.diamond.1", new Object[] { paramType, this.diags.fragment("diamond.and.anon.class", new Object[] { paramType }) }); return this.types.createErrorType(paramType); }  if (paramType.tsym.type.getTypeArguments().isEmpty()) { this.log.error(paramJCNewClass.clazz.pos(), "cant.apply.diamond.1", new Object[] { paramType, this.diags.fragment("diamond.non.generic", new Object[] { paramType }) }); return this.types.createErrorType(paramType); }  if (paramJCNewClass.typeargs != null && paramJCNewClass.typeargs.nonEmpty()) { this.log.error(paramJCNewClass.clazz.pos(), "cant.apply.diamond.1", new Object[] { paramType, this.diags.fragment("diamond.and.explicit.params", new Object[] { paramType }) }); return this.types.createErrorType(paramType); }  return paramType; } void checkVarargsMethodDecl(Env<AttrContext> paramEnv, JCTree.JCMethodDecl paramJCMethodDecl) { Symbol.MethodSymbol methodSymbol = paramJCMethodDecl.sym; if (!this.allowSimplifiedVarargs) return;  boolean bool = (methodSymbol.attribute((Symbol)this.syms.trustMeType.tsym) != null) ? true : false; Type type = null; if (methodSymbol.isVarArgs()) type = this.types.elemtype(((JCTree.JCVariableDecl)paramJCMethodDecl.params.last()).type);  if (bool && !isTrustMeAllowedOnMethod((Symbol)methodSymbol)) { if (type != null) { this.log.error((JCDiagnostic.DiagnosticPosition)paramJCMethodDecl, "varargs.invalid.trustme.anno", new Object[] { this.syms.trustMeType.tsym, this.diags.fragment("varargs.trustme.on.virtual.varargs", new Object[] { methodSymbol }) }); } else { this.log.error((JCDiagnostic.DiagnosticPosition)paramJCMethodDecl, "varargs.invalid.trustme.anno", new Object[] { this.syms.trustMeType.tsym, this.diags.fragment("varargs.trustme.on.non.varargs.meth", new Object[] { methodSymbol }) }); }  } else if (bool && type != null && this.types.isReifiable(type)) { warnUnsafeVararg((JCDiagnostic.DiagnosticPosition)paramJCMethodDecl, "varargs.redundant.trustme.anno", new Object[] { this.syms.trustMeType.tsym, this.diags.fragment("varargs.trustme.on.reifiable.varargs", new Object[] { type }) }); } else if (!bool && type != null && !this.types.isReifiable(type)) { warnUnchecked(((JCTree.JCVariableDecl)paramJCMethodDecl.params.head).pos(), "unchecked.varargs.non.reifiable.type", new Object[] { type }); }  } private boolean isTrustMeAllowedOnMethod(Symbol paramSymbol) { return ((paramSymbol.flags() & 0x400000000L) != 0L && (paramSymbol.isConstructor() || (paramSymbol.flags() & 0x18L) != 0L)); } Type checkMethod(final Type mtype, final Symbol sym, final Env<AttrContext> env, final List<JCTree.JCExpression> argtrees, final List<Type> argtypes, final boolean useVarargs, Infer.InferenceContext paramInferenceContext) { if (paramInferenceContext.free(mtype)) { paramInferenceContext.addFreeTypeListener(List.of(mtype), new Infer.FreeTypeListener() { public void typesInferred(Infer.InferenceContext param1InferenceContext) { Check.this.checkMethod(param1InferenceContext.asInstType(mtype), sym, env, argtrees, argtypes, useVarargs, param1InferenceContext); } }
-/*      */         ); return mtype; }  Type type1 = mtype; List list1 = type1.getParameterTypes(); List list2 = sym.type.getParameterTypes(); if (list2.length() != list1.length()) list2 = list1;  Type type2 = useVarargs ? (Type)list1.last() : null; if (sym.name == this.names.init && sym.owner == this.syms.enumSym) { list1 = list1.tail.tail; list2 = list2.tail.tail; }  List<JCTree.JCExpression> list = argtrees; if (list != null) { while (list1.head != type2) { JCTree jCTree = (JCTree)list.head; Warner warner = convertWarner(jCTree.pos(), jCTree.type, (Type)list2.head); assertConvertible(jCTree, jCTree.type, (Type)list1.head, warner); list = list.tail; list1 = list1.tail; list2 = list2.tail; }  if (useVarargs) { Type type = this.types.elemtype(type2); while (list.tail != null) { JCTree jCTree = (JCTree)list.head; Warner warner = convertWarner(jCTree.pos(), jCTree.type, type); assertConvertible(jCTree, jCTree.type, type, warner); list = list.tail; }  } else if ((sym.flags() & 0x400400000000L) == 17179869184L && this.allowVarargs) { Type type3 = (Type)type1.getParameterTypes().last(); Type type4 = (Type)argtypes.last(); if (this.types.isSubtypeUnchecked(type4, this.types.elemtype(type3)) && !this.types.isSameType(this.types.erasure(type3), this.types.erasure(type4))) this.log.warning(((JCTree.JCExpression)argtrees.last()).pos(), "inexact.non-varargs.call", new Object[] { this.types.elemtype(type3), type3 });  }  }  if (useVarargs) { Type type = (Type)type1.getParameterTypes().last(); if (!this.types.isReifiable(type) && (!this.allowSimplifiedVarargs || sym.attribute((Symbol)this.syms.trustMeType.tsym) == null || !isTrustMeAllowedOnMethod(sym))) warnUnchecked(env.tree.pos(), "unchecked.generic.array.creation", new Object[] { type });  if ((sym.baseSymbol().flags() & 0x400000000000L) == 0L) TreeInfo.setVarargsElement(env.tree, this.types.elemtype(type));  }  JCTree.JCPolyExpression.PolyKind polyKind = (sym.type.hasTag(TypeTag.FORALL) && sym.type.getReturnType().containsAny(((Type.ForAll)sym.type).tvars)) ? JCTree.JCPolyExpression.PolyKind.POLY : JCTree.JCPolyExpression.PolyKind.STANDALONE; TreeInfo.setPolyKind(env.tree, polyKind); return type1; } private void assertConvertible(JCTree paramJCTree, Type paramType1, Type paramType2, Warner paramWarner) { if (this.types.isConvertible(paramType1, paramType2, paramWarner)) return;  if (paramType2.isCompound() && this.types.isSubtype(paramType1, this.types.supertype(paramType2)) && this.types.isSubtypeUnchecked(paramType1, this.types.interfaces(paramType2), paramWarner)) return;  } public boolean checkValidGenericType(Type paramType) { return (firstIncompatibleTypeArg(paramType) == null); } private Type firstIncompatibleTypeArg(Type paramType) { List list1 = paramType.tsym.type.allparams(); List list2 = paramType.allparams(); List list3 = paramType.getTypeArguments(); List list4 = paramType.tsym.type.getTypeArguments(); ListBuffer listBuffer = new ListBuffer(); while (list3.nonEmpty() && list4.nonEmpty()) { listBuffer.append(this.types.subst(((Type)list4.head).getUpperBound(), list1, list2)); list3 = list3.tail; list4 = list4.tail; }  list3 = paramType.getTypeArguments(); List list5 = this.types.substBounds(list1, list1, this.types.capture(paramType).allparams()); while (list3.nonEmpty() && list5.nonEmpty()) { ((Type)list3.head).withTypeVar((Type)list5.head); list3 = list3.tail; list5 = list5.tail; }  list3 = paramType.getTypeArguments(); List list6 = listBuffer.toList(); while (list3.nonEmpty() && list6.nonEmpty()) { Type type = (Type)list3.head; if (!isTypeArgErroneous(type) && !((Type)list6.head).isErroneous() && !checkExtends(type, (Type)list6.head)) return (Type)list3.head;  list3 = list3.tail; list6 = list6.tail; }  list3 = paramType.getTypeArguments(); list6 = listBuffer.toList(); for (Type type : this.types.capture(paramType).getTypeArguments()) { if (type.hasTag(TypeTag.TYPEVAR) && type.getUpperBound().isErroneous() && !((Type)list6.head).isErroneous() && !isTypeArgErroneous((Type)list3.head)) return (Type)list3.head;  list6 = list6.tail; list3 = list3.tail; }  return null; } boolean isTypeArgErroneous(Type paramType) { return ((Boolean)this.isTypeArgErroneous.visit(paramType)).booleanValue(); } long checkFlags(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, long paramLong, Symbol paramSymbol, JCTree paramJCTree) { long l1, l2 = 0L; switch (paramSymbol.kind) { case 4: if (TreeInfo.isReceiverParam(paramJCTree)) { long l = 8589934592L; break; }  if (paramSymbol.owner.kind != 2) { long l = 8589934608L; break; }  if ((paramSymbol.owner.flags_field & 0x200L) != 0L) long l = l2 = 25L;  l1 = 16607L; break;case 16: if (paramSymbol.name == this.names.init) { if ((paramSymbol.owner.flags_field & 0x4000L) != 0L) { l2 = 2L; l1 = 2L; } else { l1 = 7L; }  } else if ((paramSymbol.owner.flags_field & 0x200L) != 0L) { if ((paramSymbol.owner.flags_field & 0x2000L) != 0L) { l1 = 1025L; l2 = 1025L; } else if ((paramLong & 0x80000000008L) != 0L) { l1 = 8796093025289L; l2 = 1L; if ((paramLong & 0x80000000000L) != 0L) l2 |= 0x400L;  } else { l1 = l2 = 1025L; }  } else { l1 = 3391L; }  if (((paramLong | l2) & 0x400L) == 0L || (paramLong & 0x80000000000L) != 0L) l2 |= paramSymbol.owner.flags_field & 0x800L;  break;case 2: if (paramSymbol.isLocal()) { l1 = 23568L; if (paramSymbol.name.isEmpty()) { l1 |= 0x8L; l2 |= 0x10L; }  if ((paramSymbol.owner.flags_field & 0x8L) == 0L && (paramLong & 0x4000L) != 0L) this.log.error(paramDiagnosticPosition, "enums.must.be.static", new Object[0]);  } else if (paramSymbol.owner.kind == 2) { l1 = 24087L; if (paramSymbol.owner.owner.kind == 1 || (paramSymbol.owner.flags_field & 0x8L) != 0L) { l1 |= 0x8L; } else if ((paramLong & 0x4000L) != 0L) { this.log.error(paramDiagnosticPosition, "enums.must.be.static", new Object[0]); }  if ((paramLong & 0x4200L) != 0L) l2 = 8L;  } else { l1 = 32273L; }  if ((paramLong & 0x200L) != 0L) l2 |= 0x400L;  if ((paramLong & 0x4000L) != 0L) { l1 &= 0xFFFFFFFFFFFFFBEFL; l2 |= implicitEnumFinalFlag(paramJCTree); }  l2 |= paramSymbol.owner.flags_field & 0x800L; break;default: throw new AssertionError(); }  long l3 = paramLong & 0x80000000FFFL & (l1 ^ 0xFFFFFFFFFFFFFFFFL); if (l3 != 0L) { if ((l3 & 0x200L) != 0L) { this.log.error(paramDiagnosticPosition, "intf.not.allowed.here", new Object[0]); l1 |= 0x200L; } else { this.log.error(paramDiagnosticPosition, "mod.not.allowed.here", new Object[] { Flags.asFlagSet(l3) }); }  } else if ((paramSymbol.kind != 2 && !checkDisjoint(paramDiagnosticPosition, paramLong, 1024L, 8796093022218L)) || !checkDisjoint(paramDiagnosticPosition, paramLong, 8L, 8796093022208L) || !checkDisjoint(paramDiagnosticPosition, paramLong, 1536L, 304L) || !checkDisjoint(paramDiagnosticPosition, paramLong, 1L, 6L) || !checkDisjoint(paramDiagnosticPosition, paramLong, 2L, 5L) || !checkDisjoint(paramDiagnosticPosition, paramLong, 16L, 64L) || paramSymbol.kind == 2 || checkDisjoint(paramDiagnosticPosition, paramLong, 1280L, 2048L)) {  }  return paramLong & (l1 | 0xFFFFF7FFFFFFF000L) | l2; } private long implicitEnumFinalFlag(JCTree paramJCTree) { if (!paramJCTree.hasTag(JCTree.Tag.CLASSDEF)) return 0L;  class SpecialTreeVisitor extends JCTree.Visitor {
-/*      */       boolean specialized = false; public void visitTree(JCTree param1JCTree) {} public void visitVarDef(JCTree.JCVariableDecl param1JCVariableDecl) { if ((param1JCVariableDecl.mods.flags & 0x4000L) != 0L && param1JCVariableDecl.init instanceof JCTree.JCNewClass && ((JCTree.JCNewClass)param1JCVariableDecl.init).def != null) this.specialized = true;  } }; SpecialTreeVisitor specialTreeVisitor = new SpecialTreeVisitor(); JCTree.JCClassDecl jCClassDecl = (JCTree.JCClassDecl)paramJCTree; for (JCTree jCTree : jCClassDecl.defs) { jCTree.accept(specialTreeVisitor); if (specialTreeVisitor.specialized) return 0L;  }  return 16L; } void validate(JCTree paramJCTree, Env<AttrContext> paramEnv) { validate(paramJCTree, paramEnv, true); } void validate(JCTree paramJCTree, Env<AttrContext> paramEnv, boolean paramBoolean) { (new Validator(paramEnv)).validateTree(paramJCTree, paramBoolean, true); } void validate(List<? extends JCTree> paramList, Env<AttrContext> paramEnv) { for (List<? extends JCTree> list = paramList; list.nonEmpty(); list = list.tail) validate((JCTree)list.head, paramEnv);  } class Validator extends JCTree.Visitor {
-/* 2022 */     boolean checkRaw; boolean isOuter; Env<AttrContext> env; Validator(Env<AttrContext> param1Env) { this.env = param1Env; } public void visitTypeArray(JCTree.JCArrayTypeTree param1JCArrayTypeTree) { validateTree((JCTree)param1JCArrayTypeTree.elemtype, this.checkRaw, this.isOuter); } public void visitTypeApply(JCTree.JCTypeApply param1JCTypeApply) { if (param1JCTypeApply.type.hasTag(TypeTag.CLASS)) { List list1 = param1JCTypeApply.arguments; List list2 = param1JCTypeApply.type.tsym.type.getTypeArguments(); Type type = Check.this.firstIncompatibleTypeArg(param1JCTypeApply.type); if (type != null) for (JCTree jCTree : param1JCTypeApply.arguments) { if (jCTree.type == type) Check.this.log.error((JCDiagnostic.DiagnosticPosition)jCTree, "not.within.bounds", new Object[] { type, list2.head });  list2 = list2.tail; }   list2 = param1JCTypeApply.type.tsym.type.getTypeArguments(); boolean bool = (param1JCTypeApply.type.tsym.flatName() == Check.this.names.java_lang_Class) ? true : false; while (list1.nonEmpty() && list2.nonEmpty()) { validateTree((JCTree)list1.head, (!this.isOuter || !bool), false); list1 = list1.tail; list2 = list2.tail; }  if (param1JCTypeApply.type.getEnclosingType().isRaw()) Check.this.log.error(param1JCTypeApply.pos(), "improperly.formed.type.inner.raw.param", new Object[0]);  if (param1JCTypeApply.clazz.hasTag(JCTree.Tag.SELECT)) visitSelectInternal((JCTree.JCFieldAccess)param1JCTypeApply.clazz);  }  } public void visitTypeParameter(JCTree.JCTypeParameter param1JCTypeParameter) { validateTrees(param1JCTypeParameter.bounds, true, this.isOuter); Check.this.checkClassBounds(param1JCTypeParameter.pos(), param1JCTypeParameter.type); } public void visitWildcard(JCTree.JCWildcard param1JCWildcard) { if (param1JCWildcard.inner != null) validateTree(param1JCWildcard.inner, true, this.isOuter);  } public void visitSelect(JCTree.JCFieldAccess param1JCFieldAccess) { if (param1JCFieldAccess.type.hasTag(TypeTag.CLASS)) { visitSelectInternal(param1JCFieldAccess); if (param1JCFieldAccess.selected.type.isParameterized() && param1JCFieldAccess.type.tsym.type.getTypeArguments().nonEmpty()) Check.this.log.error(param1JCFieldAccess.pos(), "improperly.formed.type.param.missing", new Object[0]);  }  } public void visitSelectInternal(JCTree.JCFieldAccess param1JCFieldAccess) { if (param1JCFieldAccess.type.tsym.isStatic() && param1JCFieldAccess.selected.type.isParameterized()) { Check.this.log.error(param1JCFieldAccess.pos(), "cant.select.static.class.from.param.type", new Object[0]); } else { param1JCFieldAccess.selected.accept(this); }  } public void visitAnnotatedType(JCTree.JCAnnotatedType param1JCAnnotatedType) { param1JCAnnotatedType.underlyingType.accept(this); } public void visitTypeIdent(JCTree.JCPrimitiveTypeTree param1JCPrimitiveTypeTree) { if (param1JCPrimitiveTypeTree.type.hasTag(TypeTag.VOID)) Check.this.log.error(param1JCPrimitiveTypeTree.pos(), "void.not.allowed.here", new Object[0]);  super.visitTypeIdent(param1JCPrimitiveTypeTree); } public void visitTree(JCTree param1JCTree) {} public void validateTree(JCTree param1JCTree, boolean param1Boolean1, boolean param1Boolean2) { if (param1JCTree != null) { boolean bool = this.checkRaw; this.checkRaw = param1Boolean1; this.isOuter = param1Boolean2; try { param1JCTree.accept(this); if (param1Boolean1) Check.this.checkRaw(param1JCTree, this.env);  } catch (Symbol.CompletionFailure completionFailure) { Check.this.completionError(param1JCTree.pos(), completionFailure); } finally { this.checkRaw = bool; }  }  } public void validateTrees(List<? extends JCTree> param1List, boolean param1Boolean1, boolean param1Boolean2) { for (List<? extends JCTree> list = param1List; list.nonEmpty(); list = list.tail) validateTree((JCTree)list.head, param1Boolean1, param1Boolean2);  } } void checkRaw(JCTree paramJCTree, Env<AttrContext> paramEnv) { if (this.lint.isEnabled(Lint.LintCategory.RAW) && paramJCTree.type.hasTag(TypeTag.CLASS) && !TreeInfo.isDiamond(paramJCTree) && !withinAnonConstr(paramEnv) && paramJCTree.type.isRaw()) this.log.warning(Lint.LintCategory.RAW, paramJCTree.pos(), "raw.class.use", new Object[] { paramJCTree.type, paramJCTree.type.tsym.type });  } private boolean withinAnonConstr(Env<AttrContext> paramEnv) { return (paramEnv.enclClass.name.isEmpty() && paramEnv.enclMethod != null && paramEnv.enclMethod.name == this.names.init); } boolean subset(Type paramType, List<Type> paramList) { for (List<Type> list = paramList; list.nonEmpty(); list = list.tail) { if (this.types.isSubtype(paramType, (Type)list.head)) return true;  }  return false; } boolean intersects(Type paramType, List<Type> paramList) { for (List<Type> list = paramList; list.nonEmpty(); list = list.tail) { if (this.types.isSubtype(paramType, (Type)list.head) || this.types.isSubtype((Type)list.head, paramType)) return true;  }  return false; } List<Type> incl(Type paramType, List<Type> paramList) { return subset(paramType, paramList) ? paramList : excl(paramType, paramList).prepend(paramType); } List<Type> excl(Type paramType, List<Type> paramList) { if (paramList.isEmpty()) return paramList;  List<Type> list = excl(paramType, paramList.tail); if (this.types.isSubtype((Type)paramList.head, paramType)) return list;  if (list == paramList.tail) return paramList;  return list.prepend(paramList.head); } List<Type> union(List<Type> paramList1, List<Type> paramList2) { List<Type> list1 = paramList1; for (List<Type> list2 = paramList2; list2.nonEmpty(); list2 = list2.tail) list1 = incl((Type)list2.head, list1);  return list1; } List<Type> diff(List<Type> paramList1, List<Type> paramList2) { List<Type> list1 = paramList1; for (List<Type> list2 = paramList2; list2.nonEmpty(); list2 = list2.tail) list1 = excl((Type)list2.head, list1);  return list1; } public List<Type> intersect(List<Type> paramList1, List<Type> paramList2) { List<Type> list1 = List.nil(); List<Type> list2; for (list2 = paramList1; list2.nonEmpty(); list2 = list2.tail) { if (subset((Type)list2.head, paramList2)) list1 = incl((Type)list2.head, list1);  }  for (list2 = paramList2; list2.nonEmpty(); list2 = list2.tail) { if (subset((Type)list2.head, paramList1)) list1 = incl((Type)list2.head, list1);  }  return list1; } boolean isUnchecked(Symbol.ClassSymbol paramClassSymbol) { return (paramClassSymbol.kind == 63 || paramClassSymbol.isSubClass((Symbol)this.syms.errorType.tsym, this.types) || paramClassSymbol.isSubClass((Symbol)this.syms.runtimeExceptionType.tsym, this.types)); } private void checkClassOverrideEqualsAndHash(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.ClassSymbol paramClassSymbol) { if (this.lint.isEnabled(Lint.LintCategory.OVERRIDES))
-/*      */
-/* 2024 */     { Symbol.MethodSymbol methodSymbol1 = (Symbol.MethodSymbol)(this.syms.objectType.tsym.members().lookup(this.names.equals)).sym;
-/*      */
-/* 2026 */       Symbol.MethodSymbol methodSymbol2 = (Symbol.MethodSymbol)(this.syms.objectType.tsym.members().lookup(this.names.hashCode)).sym;
-/* 2027 */       boolean bool1 = ((this.types.implementation(methodSymbol1, (Symbol.TypeSymbol)paramClassSymbol, false, this.equalsHasCodeFilter)).owner == paramClassSymbol) ? true : false;
-/*      */
-/* 2029 */       boolean bool2 = (this.types.implementation(methodSymbol2, (Symbol.TypeSymbol)paramClassSymbol, false, this.equalsHasCodeFilter) != methodSymbol2) ? true : false;
-/*      */
-/*      */
-/* 2032 */       if (bool1 && !bool2)
-/* 2033 */         this.log.warning(Lint.LintCategory.OVERRIDES, paramDiagnosticPosition, "override.equals.but.not.hashcode", new Object[] { paramClassSymbol });  }  } boolean isUnchecked(Type paramType) { return paramType.hasTag(TypeTag.TYPEVAR) ? isUnchecked(this.types.supertype(paramType)) : (paramType.hasTag(TypeTag.CLASS) ? isUnchecked((Symbol.ClassSymbol)paramType.tsym) : paramType.hasTag(TypeTag.BOT)); } boolean isUnchecked(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) { try { return isUnchecked(paramType); } catch (Symbol.CompletionFailure completionFailure) { completionError(paramDiagnosticPosition, completionFailure); return true; }  } boolean isHandled(Type paramType, List<Type> paramList) { return (isUnchecked(paramType) || subset(paramType, paramList)); } List<Type> unhandled(List<Type> paramList1, List<Type> paramList2) { List<Type> list1 = List.nil(); for (List<Type> list2 = paramList1; list2.nonEmpty(); list2 = list2.tail) { if (!isHandled((Type)list2.head, paramList2)) list1 = list1.prepend(list2.head);  }  return list1; } static int protection(long paramLong) { switch ((short)(int)(paramLong & 0x7L)) { case 2: return 3;case 4: return 1;default: return 0;case 0: break; }  return 2; } Object cannotOverride(Symbol.MethodSymbol paramMethodSymbol1, Symbol.MethodSymbol paramMethodSymbol2) { String str; if ((paramMethodSymbol2.owner.flags() & 0x200L) == 0L) { str = "cant.override"; } else if ((paramMethodSymbol1.owner.flags() & 0x200L) == 0L) { str = "cant.implement"; } else { str = "clashes.with"; }  return this.diags.fragment(str, new Object[] { paramMethodSymbol1, paramMethodSymbol1.location(), paramMethodSymbol2, paramMethodSymbol2.location() }); } Object uncheckedOverrides(Symbol.MethodSymbol paramMethodSymbol1, Symbol.MethodSymbol paramMethodSymbol2) { String str; if ((paramMethodSymbol2.owner.flags() & 0x200L) == 0L) { str = "unchecked.override"; } else if ((paramMethodSymbol1.owner.flags() & 0x200L) == 0L) { str = "unchecked.implement"; } else { str = "unchecked.clash.with"; }  return this.diags.fragment(str, new Object[] { paramMethodSymbol1, paramMethodSymbol1.location(), paramMethodSymbol2, paramMethodSymbol2.location() }); } Object varargsOverrides(Symbol.MethodSymbol paramMethodSymbol1, Symbol.MethodSymbol paramMethodSymbol2) { String str; if ((paramMethodSymbol2.owner.flags() & 0x200L) == 0L) { str = "varargs.override"; } else if ((paramMethodSymbol1.owner.flags() & 0x200L) == 0L) { str = "varargs.implement"; } else { str = "varargs.clash.with"; }  return this.diags.fragment(str, new Object[] { paramMethodSymbol1, paramMethodSymbol1.location(), paramMethodSymbol2, paramMethodSymbol2.location() }); } void checkOverride(JCTree paramJCTree, Symbol.MethodSymbol paramMethodSymbol1, Symbol.MethodSymbol paramMethodSymbol2, Symbol.ClassSymbol paramClassSymbol) { if ((paramMethodSymbol1.flags() & 0x80001000L) != 0L || (paramMethodSymbol2.flags() & 0x1000L) != 0L) return;  if ((paramMethodSymbol1.flags() & 0x8L) != 0L && (paramMethodSymbol2.flags() & 0x8L) == 0L) { this.log.error(TreeInfo.diagnosticPositionFor((Symbol)paramMethodSymbol1, paramJCTree), "override.static", new Object[] { cannotOverride(paramMethodSymbol1, paramMethodSymbol2) }); paramMethodSymbol1.flags_field |= 0x200000000000L; return; }  if ((paramMethodSymbol2.flags() & 0x10L) != 0L || ((paramMethodSymbol1.flags() & 0x8L) == 0L && (paramMethodSymbol2.flags() & 0x8L) != 0L)) { this.log.error(TreeInfo.diagnosticPositionFor((Symbol)paramMethodSymbol1, paramJCTree), "override.meth", new Object[] { cannotOverride(paramMethodSymbol1, paramMethodSymbol2), Flags.asFlagSet(paramMethodSymbol2.flags() & 0x18L) }); paramMethodSymbol1.flags_field |= 0x200000000000L; return; }  if ((paramMethodSymbol1.owner.flags() & 0x2000L) != 0L) return;  if ((paramClassSymbol.flags() & 0x200L) == 0L && protection(paramMethodSymbol1.flags()) > protection(paramMethodSymbol2.flags())) { this.log.error(TreeInfo.diagnosticPositionFor((Symbol)paramMethodSymbol1, paramJCTree), "override.weaker.access", new Object[] { cannotOverride(paramMethodSymbol1, paramMethodSymbol2), (paramMethodSymbol2.flags() == 0L) ? "package" : Flags.asFlagSet(paramMethodSymbol2.flags() & 0x7L) }); paramMethodSymbol1.flags_field |= 0x200000000000L; return; }  Type type1 = this.types.memberType(paramClassSymbol.type, (Symbol)paramMethodSymbol1); Type type2 = this.types.memberType(paramClassSymbol.type, (Symbol)paramMethodSymbol2); List list1 = type1.getTypeArguments(); List list2 = type2.getTypeArguments(); Type type3 = type1.getReturnType(); Type type4 = this.types.subst(type2.getReturnType(), list2, list1); this.overrideWarner.clear(); boolean bool = this.types.returnTypeSubstitutable(type1, type2, type4, this.overrideWarner); if (!bool) { if (this.allowCovariantReturns || paramMethodSymbol1.owner == paramClassSymbol || !paramMethodSymbol1.owner.isSubClass(paramMethodSymbol2.owner, this.types)) { this.log.error(TreeInfo.diagnosticPositionFor((Symbol)paramMethodSymbol1, paramJCTree), "override.incompatible.ret", new Object[] { cannotOverride(paramMethodSymbol1, paramMethodSymbol2), type3, type4 }); paramMethodSymbol1.flags_field |= 0x200000000000L; return; }  } else if (this.overrideWarner.hasNonSilentLint(Lint.LintCategory.UNCHECKED)) { warnUnchecked(TreeInfo.diagnosticPositionFor((Symbol)paramMethodSymbol1, paramJCTree), "override.unchecked.ret", new Object[] { uncheckedOverrides(paramMethodSymbol1, paramMethodSymbol2), type3, type4 }); }  List<Type> list3 = this.types.subst(type2.getThrownTypes(), list2, list1); List<Type> list4 = unhandled(type1.getThrownTypes(), this.types.erasure(list3)); List<Type> list5 = unhandled(type1.getThrownTypes(), list3); if (list4.nonEmpty()) { this.log.error(TreeInfo.diagnosticPositionFor((Symbol)paramMethodSymbol1, paramJCTree), "override.meth.doesnt.throw", new Object[] { cannotOverride(paramMethodSymbol1, paramMethodSymbol2), list5.head }); paramMethodSymbol1.flags_field |= 0x200000000000L; return; }  if (list5.nonEmpty()) { warnUnchecked(TreeInfo.diagnosticPositionFor((Symbol)paramMethodSymbol1, paramJCTree), "override.unchecked.thrown", new Object[] { cannotOverride(paramMethodSymbol1, paramMethodSymbol2), list5.head }); return; }  if (((paramMethodSymbol1.flags() ^ paramMethodSymbol2.flags()) & 0x400000000L) != 0L && this.lint.isEnabled(Lint.LintCategory.OVERRIDES)) this.log.warning(TreeInfo.diagnosticPositionFor((Symbol)paramMethodSymbol1, paramJCTree), ((paramMethodSymbol1.flags() & 0x400000000L) != 0L) ? "override.varargs.missing" : "override.varargs.extra", new Object[] { varargsOverrides(paramMethodSymbol1, paramMethodSymbol2) });  if ((paramMethodSymbol2.flags() & 0x80000000L) != 0L) this.log.warning(TreeInfo.diagnosticPositionFor((Symbol)paramMethodSymbol1, paramJCTree), "override.bridge", new Object[] { uncheckedOverrides(paramMethodSymbol1, paramMethodSymbol2) });  if (!isDeprecatedOverrideIgnorable(paramMethodSymbol2, paramClassSymbol)) { Lint lint = setLint(this.lint.augment((Symbol)paramMethodSymbol1)); try { checkDeprecated(TreeInfo.diagnosticPositionFor((Symbol)paramMethodSymbol1, paramJCTree), (Symbol)paramMethodSymbol1, (Symbol)paramMethodSymbol2); } finally { setLint(lint); }  }  } private boolean isDeprecatedOverrideIgnorable(Symbol.MethodSymbol paramMethodSymbol, Symbol.ClassSymbol paramClassSymbol) { Symbol.ClassSymbol classSymbol = paramMethodSymbol.enclClass(); Type type = this.types.supertype(paramClassSymbol.type); if (!type.hasTag(TypeTag.CLASS)) return true;  Symbol.MethodSymbol methodSymbol = paramMethodSymbol.implementation(type.tsym, this.types, false); if (classSymbol != null && (classSymbol.flags() & 0x200L) != 0L) { List list = this.types.interfaces(paramClassSymbol.type); return list.contains(classSymbol.type) ? false : ((methodSymbol != null)); }  return (methodSymbol != paramMethodSymbol); } public void checkCompatibleConcretes(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) { Type type1 = this.types.supertype(paramType); if (!type1.hasTag(TypeTag.CLASS)) return;  Type type2 = type1; for (; type2.hasTag(TypeTag.CLASS) && type2.tsym.type.isParameterized(); type2 = this.types.supertype(type2)) { Scope.Entry entry = (type2.tsym.members()).elems; for (; entry != null; entry = entry.sibling) { Symbol symbol = entry.sym; if (symbol.kind == 16 && (symbol.flags() & 0x80001008L) == 0L && symbol.isInheritedIn((Symbol)paramType.tsym, this.types) && ((Symbol.MethodSymbol)symbol).implementation(paramType.tsym, this.types, true) == symbol) { Type type = this.types.memberType(type2, symbol); int i = type.getParameterTypes().length(); if (type != symbol.type) { Type type3 = type1; for (; type3.hasTag(TypeTag.CLASS); type3 = this.types.supertype(type3)) { Scope.Entry entry1 = type3.tsym.members().lookup(symbol.name); for (; entry1.scope != null; entry1 = entry1.next()) { Symbol symbol1 = entry1.sym; if (symbol1 != symbol && symbol1.kind == 16 && (symbol1.flags() & 0x80001008L) == 0L && symbol1.type.getParameterTypes().length() == i && symbol1.isInheritedIn((Symbol)paramType.tsym, this.types) && ((Symbol.MethodSymbol)symbol1).implementation(paramType.tsym, this.types, true) == symbol1) { Type type4 = this.types.memberType(type3, symbol1); if (this.types.overrideEquivalent(type, type4)) this.log.error(paramDiagnosticPosition, "concrete.inheritance.conflict", new Object[] { symbol, type2, symbol1, type3, type1 });  }  }  }  }  }  }  }  } public boolean checkCompatibleAbstracts(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType1, Type paramType2) { return checkCompatibleAbstracts(paramDiagnosticPosition, paramType1, paramType2, this.types.makeIntersectionType(paramType1, paramType2)); } public boolean checkCompatibleAbstracts(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType1, Type paramType2, Type paramType3) { if ((paramType3.tsym.flags() & 0x1000000L) != 0L) { paramType1 = this.types.capture(paramType1); paramType2 = this.types.capture(paramType2); }  return (firstIncompatibility(paramDiagnosticPosition, paramType1, paramType2, paramType3) == null); } private Symbol firstIncompatibility(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType1, Type paramType2, Type paramType3) { HashMap<Object, Object> hashMap2, hashMap1 = new HashMap<>(); closure(paramType1, (Map)hashMap1); if (paramType1 == paramType2) { hashMap2 = hashMap1; } else { closure(paramType2, (Map)hashMap1, (Map)(hashMap2 = new HashMap<>())); }  for (Type type : hashMap1.values()) { for (Type type1 : hashMap2.values()) { Symbol symbol = firstDirectIncompatibility(paramDiagnosticPosition, type, type1, paramType3); if (symbol != null) return symbol;  }  }  return null; }
-/*      */   private void closure(Type paramType, Map<Symbol.TypeSymbol, Type> paramMap) { if (!paramType.hasTag(TypeTag.CLASS)) return;  if (paramMap.put(paramType.tsym, paramType) == null) { closure(this.types.supertype(paramType), paramMap); for (Type type : this.types.interfaces(paramType)) closure(type, paramMap);  }  }
-/*      */   private void closure(Type paramType, Map<Symbol.TypeSymbol, Type> paramMap1, Map<Symbol.TypeSymbol, Type> paramMap2) { if (!paramType.hasTag(TypeTag.CLASS)) return;  if (paramMap1.get(paramType.tsym) != null) return;  if (paramMap2.put(paramType.tsym, paramType) == null) { closure(this.types.supertype(paramType), paramMap1, paramMap2); for (Type type : this.types.interfaces(paramType)) closure(type, paramMap1, paramMap2);  }  }
-/*      */   private Symbol firstDirectIncompatibility(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType1, Type paramType2, Type paramType3) { for (Scope.Entry entry = (paramType1.tsym.members()).elems; entry != null; entry = entry.sibling) { Symbol symbol = entry.sym; Type type = null; if (symbol.kind == 16 && symbol.isInheritedIn((Symbol)paramType3.tsym, this.types) && (symbol.flags() & 0x1000L) == 0L) { Symbol.MethodSymbol methodSymbol = ((Symbol.MethodSymbol)symbol).implementation(paramType3.tsym, this.types, false); if (methodSymbol == null || (methodSymbol.flags() & 0x400L) != 0L) for (Scope.Entry entry1 = paramType2.tsym.members().lookup(symbol.name); entry1.scope != null; entry1 = entry1.next()) { Symbol symbol1 = entry1.sym; if (symbol != symbol1 && symbol1.kind == 16 && symbol1.isInheritedIn((Symbol)paramType3.tsym, this.types) && (symbol1.flags() & 0x1000L) == 0L) { if (type == null) type = this.types.memberType(paramType1, symbol);  Type type1 = this.types.memberType(paramType2, symbol1); if (this.types.overrideEquivalent(type, type1)) { List list1 = type.getTypeArguments(); List list2 = type1.getTypeArguments(); Type type2 = type.getReturnType(); Type type3 = this.types.subst(type1.getReturnType(), list2, list1); boolean bool = (this.types.isSameType(type2, type3) || (!type2.isPrimitiveOrVoid() && !type3.isPrimitiveOrVoid() && (this.types.covariantReturnType(type2, type3, this.types.noWarnings) || this.types.covariantReturnType(type3, type2, this.types.noWarnings))) || checkCommonOverriderIn(symbol, symbol1, paramType3)) ? true : false; if (!bool) { this.log.error(paramDiagnosticPosition, "types.incompatible.diff.ret", new Object[] { paramType1, paramType2, symbol1.name + "(" + this.types.memberType(paramType2, symbol1).getParameterTypes() + ")" }); return symbol1; }  } else if (checkNameClash((Symbol.ClassSymbol)paramType3.tsym, symbol, symbol1) && !checkCommonOverriderIn(symbol, symbol1, paramType3)) { this.log.error(paramDiagnosticPosition, "name.clash.same.erasure.no.override", new Object[] { symbol, symbol.location(), symbol1, symbol1.location() }); return symbol1; }  }  }   }  }  return null; }
-/*      */   boolean checkCommonOverriderIn(Symbol paramSymbol1, Symbol paramSymbol2, Type paramType) { HashMap<Object, Object> hashMap = new HashMap<>(); Type type1 = this.types.memberType(paramType, paramSymbol1); Type type2 = this.types.memberType(paramType, paramSymbol2); closure(paramType, (Map)hashMap); for (Type type : hashMap.values()) { for (Scope.Entry entry = type.tsym.members().lookup(paramSymbol1.name); entry.scope != null; entry = entry.next()) { Symbol symbol = entry.sym; if (symbol != paramSymbol1 && symbol != paramSymbol2 && symbol.kind == 16 && (symbol.flags() & 0x80001000L) == 0L) { Type type3 = this.types.memberType(paramType, symbol); if (this.types.overrideEquivalent(type3, type1) && this.types.overrideEquivalent(type3, type2) && this.types.returnTypeSubstitutable(type3, type1) && this.types.returnTypeSubstitutable(type3, type2)) return true;  }  }  }  return false; }
-/*      */   void checkOverride(JCTree.JCMethodDecl paramJCMethodDecl, Symbol.MethodSymbol paramMethodSymbol) { Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)paramMethodSymbol.owner; if ((classSymbol.flags() & 0x4000L) != 0L && this.names.finalize.equals(paramMethodSymbol.name) && paramMethodSymbol.overrides((Symbol)this.syms.enumFinalFinalize, (Symbol.TypeSymbol)classSymbol, this.types, false)) { this.log.error(paramJCMethodDecl.pos(), "enum.no.finalize", new Object[0]); return; }  for (Type type = classSymbol.type; type.hasTag(TypeTag.CLASS); type = this.types.supertype(type)) { if (type != classSymbol.type) checkOverride((JCTree)paramJCMethodDecl, type, classSymbol, paramMethodSymbol);  for (Type type1 : this.types.interfaces(type)) checkOverride((JCTree)paramJCMethodDecl, type1, classSymbol, paramMethodSymbol);  }  if (paramMethodSymbol.attribute((Symbol)this.syms.overrideType.tsym) != null && !isOverrider((Symbol)paramMethodSymbol)) { JCDiagnostic.DiagnosticPosition diagnosticPosition = paramJCMethodDecl.pos(); for (JCTree.JCAnnotation jCAnnotation : (paramJCMethodDecl.getModifiers()).annotations) { if (jCAnnotation.annotationType.type.tsym == this.syms.overrideType.tsym) { diagnosticPosition = jCAnnotation.pos(); break; }  }  this.log.error(diagnosticPosition, "method.does.not.override.superclass", new Object[0]); }  }
-/*      */   void checkOverride(JCTree paramJCTree, Type paramType, Symbol.ClassSymbol paramClassSymbol, Symbol.MethodSymbol paramMethodSymbol) { Symbol.TypeSymbol typeSymbol = paramType.tsym; Scope.Entry entry = typeSymbol.members().lookup(paramMethodSymbol.name); while (entry.scope != null) { if (paramMethodSymbol.overrides(entry.sym, (Symbol.TypeSymbol)paramClassSymbol, this.types, false) && (entry.sym.flags() & 0x400L) == 0L) checkOverride(paramJCTree, paramMethodSymbol, (Symbol.MethodSymbol)entry.sym, paramClassSymbol);  entry = entry.next(); }  }
-/* 2040 */   private boolean checkNameClash(Symbol.ClassSymbol paramClassSymbol, Symbol paramSymbol1, Symbol paramSymbol2) { ClashFilter clashFilter = new ClashFilter(paramClassSymbol.type);
-/* 2041 */     return (clashFilter.accepts(paramSymbol1) && clashFilter
-/* 2042 */       .accepts(paramSymbol2) && this.types
-/* 2043 */       .hasSameArgs(paramSymbol1.erasure(this.types), paramSymbol2.erasure(this.types))); }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkAllDefined(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.ClassSymbol paramClassSymbol) {
-/* 2052 */     Symbol.MethodSymbol methodSymbol = this.types.firstUnimplementedAbstract(paramClassSymbol);
-/* 2053 */     if (methodSymbol != null) {
-/*      */
-/*      */
-/* 2056 */       Symbol.MethodSymbol methodSymbol1 = new Symbol.MethodSymbol(methodSymbol.flags(), methodSymbol.name, this.types.memberType(paramClassSymbol.type, (Symbol)methodSymbol), methodSymbol.owner);
-/* 2057 */       this.log.error(paramDiagnosticPosition, "does.not.override.abstract", new Object[] { paramClassSymbol, methodSymbol1, methodSymbol1
-/* 2058 */             .location() });
-/*      */     }
-/*      */   }
-/*      */
-/*      */   void checkNonCyclicDecl(JCTree.JCClassDecl paramJCClassDecl) {
-/* 2063 */     CycleChecker cycleChecker = new CycleChecker();
-/* 2064 */     cycleChecker.scan((JCTree)paramJCClassDecl);
-/* 2065 */     if (!cycleChecker.errorFound && !cycleChecker.partialCheck)
-/* 2066 */       paramJCClassDecl.sym.flags_field |= 0x40000000L;
-/*      */   }
-/*      */
-/*      */   class CycleChecker
-/*      */     extends TreeScanner
-/*      */   {
-/* 2072 */     List<Symbol> seenClasses = List.nil();
-/*      */     boolean errorFound = false;
-/*      */     boolean partialCheck = false;
-/*      */
-/*      */     private void checkSymbol(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Symbol param1Symbol) {
-/* 2077 */       if (param1Symbol != null && param1Symbol.kind == 2) {
-/* 2078 */         Env<AttrContext> env = Check.this.enter.getEnv((Symbol.TypeSymbol)param1Symbol);
-/* 2079 */         if (env != null) {
-/* 2080 */           DiagnosticSource diagnosticSource = Check.this.log.currentSource();
-/*      */           try {
-/* 2082 */             Check.this.log.useSource(env.toplevel.sourcefile);
-/* 2083 */             scan(env.tree);
-/*      */           } finally {
-/*      */
-/* 2086 */             Check.this.log.useSource(diagnosticSource.getFile());
-/*      */           }
-/* 2088 */         } else if (param1Symbol.kind == 2) {
-/* 2089 */           checkClass(param1DiagnosticPosition, param1Symbol, List.nil());
-/*      */         }
-/*      */       } else {
-/*      */
-/* 2093 */         this.partialCheck = true;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitSelect(JCTree.JCFieldAccess param1JCFieldAccess) {
-/* 2099 */       super.visitSelect(param1JCFieldAccess);
-/* 2100 */       checkSymbol(param1JCFieldAccess.pos(), param1JCFieldAccess.sym);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitIdent(JCTree.JCIdent param1JCIdent) {
-/* 2105 */       checkSymbol(param1JCIdent.pos(), param1JCIdent.sym);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitTypeApply(JCTree.JCTypeApply param1JCTypeApply) {
-/* 2110 */       scan((JCTree)param1JCTypeApply.clazz);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitTypeArray(JCTree.JCArrayTypeTree param1JCArrayTypeTree) {
-/* 2115 */       scan((JCTree)param1JCArrayTypeTree.elemtype);
-/*      */     }
-/*      */
-/*      */
-/*      */     public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) {
-/* 2120 */       List<JCTree> list = List.nil();
-/* 2121 */       if (param1JCClassDecl.getExtendsClause() != null) {
-/* 2122 */         list = list.prepend(param1JCClassDecl.getExtendsClause());
-/*      */       }
-/* 2124 */       if (param1JCClassDecl.getImplementsClause() != null) {
-/* 2125 */         for (JCTree jCTree : param1JCClassDecl.getImplementsClause()) {
-/* 2126 */           list = list.prepend(jCTree);
-/*      */         }
-/*      */       }
-/* 2129 */       checkClass(param1JCClassDecl.pos(), (Symbol)param1JCClassDecl.sym, list);
-/*      */     }
-/*      */
-/*      */     void checkClass(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Symbol param1Symbol, List<JCTree> param1List) {
-/* 2133 */       if ((param1Symbol.flags_field & 0x40000000L) != 0L)
-/*      */         return;
-/* 2135 */       if (this.seenClasses.contains(param1Symbol)) {
-/* 2136 */         this.errorFound = true;
-/* 2137 */         Check.this.noteCyclic(param1DiagnosticPosition, (Symbol.ClassSymbol)param1Symbol);
-/* 2138 */       } else if (!param1Symbol.type.isErroneous()) {
-/*      */         try {
-/* 2140 */           this.seenClasses = this.seenClasses.prepend(param1Symbol);
-/* 2141 */           if (param1Symbol.type.hasTag(TypeTag.CLASS)) {
-/* 2142 */             if (param1List.nonEmpty()) {
-/* 2143 */               scan(param1List);
-/*      */             } else {
-/*      */
-/* 2146 */               Type.ClassType classType = (Type.ClassType)param1Symbol.type;
-/* 2147 */               if (classType.supertype_field == null || classType.interfaces_field == null) {
-/*      */
-/*      */
-/* 2150 */                 this.partialCheck = true;
-/*      */                 return;
-/*      */               }
-/* 2153 */               checkSymbol(param1DiagnosticPosition, (Symbol)classType.supertype_field.tsym);
-/* 2154 */               for (Type type : classType.interfaces_field) {
-/* 2155 */                 checkSymbol(param1DiagnosticPosition, (Symbol)type.tsym);
-/*      */               }
-/*      */             }
-/* 2158 */             if (param1Symbol.owner.kind == 2) {
-/* 2159 */               checkSymbol(param1DiagnosticPosition, param1Symbol.owner);
-/*      */             }
-/*      */           }
-/*      */         } finally {
-/* 2163 */           this.seenClasses = this.seenClasses.tail;
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkNonCyclic(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) {
-/* 2176 */     checkNonCyclicInternal(paramDiagnosticPosition, paramType);
-/*      */   }
-/*      */
-/*      */
-/*      */   void checkNonCyclic(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type.TypeVar paramTypeVar) {
-/* 2181 */     checkNonCyclic1(paramDiagnosticPosition, (Type)paramTypeVar, List.nil());
-/*      */   }
-/*      */
-/*      */
-/*      */   private void checkNonCyclic1(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType, List<Type.TypeVar> paramList) {
-/* 2186 */     if (paramType.hasTag(TypeTag.TYPEVAR) && (paramType.tsym.flags() & 0x10000000L) != 0L)
-/*      */       return;
-/* 2188 */     if (paramList.contains(paramType)) {
-/* 2189 */       Type.TypeVar typeVar = (Type.TypeVar)paramType.unannotatedType();
-/* 2190 */       typeVar.bound = this.types.createErrorType(paramType);
-/* 2191 */       this.log.error(paramDiagnosticPosition, "cyclic.inheritance", new Object[] { paramType });
-/* 2192 */     } else if (paramType.hasTag(TypeTag.TYPEVAR)) {
-/* 2193 */       Type.TypeVar typeVar = (Type.TypeVar)paramType.unannotatedType();
-/* 2194 */       paramList = paramList.prepend(typeVar);
-/* 2195 */       for (Type type : this.types.getBounds(typeVar)) {
-/* 2196 */         checkNonCyclic1(paramDiagnosticPosition, type, paramList);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private boolean checkNonCyclicInternal(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) {
-/* 2208 */     boolean bool = true;
-/*      */
-/* 2210 */     Symbol.TypeSymbol typeSymbol = paramType.tsym;
-/* 2211 */     if ((((Symbol)typeSymbol).flags_field & 0x40000000L) != 0L) return true;
-/*      */
-/* 2213 */     if ((((Symbol)typeSymbol).flags_field & 0x8000000L) != 0L) {
-/* 2214 */       noteCyclic(paramDiagnosticPosition, (Symbol.ClassSymbol)typeSymbol);
-/* 2215 */     } else if (!((Symbol)typeSymbol).type.isErroneous()) {
-/*      */       try {
-/* 2217 */         ((Symbol)typeSymbol).flags_field |= 0x8000000L;
-/* 2218 */         if (((Symbol)typeSymbol).type.hasTag(TypeTag.CLASS)) {
-/* 2219 */           Type.ClassType classType = (Type.ClassType)((Symbol)typeSymbol).type;
-/* 2220 */           if (classType.interfaces_field != null)
-/* 2221 */             for (List list = classType.interfaces_field; list.nonEmpty(); list = list.tail)
-/* 2222 */               bool &= checkNonCyclicInternal(paramDiagnosticPosition, (Type)list.head);
-/* 2223 */           if (classType.supertype_field != null) {
-/* 2224 */             Type type = classType.supertype_field;
-/* 2225 */             if (type != null && type.hasTag(TypeTag.CLASS))
-/* 2226 */               bool &= checkNonCyclicInternal(paramDiagnosticPosition, type);
-/*      */           }
-/* 2228 */           if (((Symbol)typeSymbol).owner.kind == 2)
-/* 2229 */             bool &= checkNonCyclicInternal(paramDiagnosticPosition, ((Symbol)typeSymbol).owner.type);
-/*      */         }
-/*      */       } finally {
-/* 2232 */         ((Symbol)typeSymbol).flags_field &= 0xFFFFFFFFF7FFFFFFL;
-/*      */       }
-/*      */     }
-/* 2235 */     if (bool)
-/* 2236 */       bool = ((((Symbol)typeSymbol).flags_field & 0x10000000L) == 0L && ((Symbol)typeSymbol).completer == null);
-/* 2237 */     if (bool) ((Symbol)typeSymbol).flags_field |= 0x40000000L;
-/* 2238 */     return bool;
-/*      */   }
-/*      */
-/*      */
-/*      */   private void noteCyclic(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.ClassSymbol paramClassSymbol) {
-/* 2243 */     this.log.error(paramDiagnosticPosition, "cyclic.inheritance", new Object[] { paramClassSymbol });
-/* 2244 */     for (List list = this.types.interfaces(paramClassSymbol.type); list.nonEmpty(); list = list.tail)
-/* 2245 */       list.head = this.types.createErrorType((Symbol.ClassSymbol)((Type)list.head).tsym, (Type)Type.noType);
-/* 2246 */     Type type = this.types.supertype(paramClassSymbol.type);
-/* 2247 */     if (type.hasTag(TypeTag.CLASS))
-/* 2248 */       ((Type.ClassType)paramClassSymbol.type).supertype_field = this.types.createErrorType((Symbol.ClassSymbol)type.tsym, (Type)Type.noType);
-/* 2249 */     paramClassSymbol.type = this.types.createErrorType(paramClassSymbol, paramClassSymbol.type);
-/* 2250 */     paramClassSymbol.flags_field |= 0x40000000L;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkImplementations(JCTree.JCClassDecl paramJCClassDecl) {
-/* 2258 */     checkImplementations((JCTree)paramJCClassDecl, paramJCClassDecl.sym, paramJCClassDecl.sym);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkImplementations(JCTree paramJCTree, Symbol.ClassSymbol paramClassSymbol1, Symbol.ClassSymbol paramClassSymbol2) {
-/* 2265 */     for (List list = this.types.closure(paramClassSymbol2.type); list.nonEmpty(); list = list.tail) {
-/* 2266 */       Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)((Type)list.head).tsym;
-/* 2267 */       if ((this.allowGenerics || paramClassSymbol1 != classSymbol) && (classSymbol.flags() & 0x400L) != 0L) {
-/* 2268 */         for (Scope.Entry entry = (classSymbol.members()).elems; entry != null; entry = entry.sibling) {
-/* 2269 */           if (entry.sym.kind == 16 && (entry.sym
-/* 2270 */             .flags() & 0x408L) == 1024L) {
-/* 2271 */             Symbol.MethodSymbol methodSymbol1 = (Symbol.MethodSymbol)entry.sym;
-/* 2272 */             Symbol.MethodSymbol methodSymbol2 = methodSymbol1.implementation((Symbol.TypeSymbol)paramClassSymbol1, this.types, false);
-/* 2273 */             if (methodSymbol2 != null && methodSymbol2 != methodSymbol1 && (methodSymbol2.owner
-/* 2274 */               .flags() & 0x200L) == (paramClassSymbol1
-/* 2275 */               .flags() & 0x200L))
-/*      */             {
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2282 */               checkOverride(paramJCTree, methodSymbol2, methodSymbol1, paramClassSymbol1);
-/*      */             }
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkCompatibleSupertypes(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) {
-/* 2296 */     List list1 = this.types.interfaces(paramType);
-/* 2297 */     Type type = this.types.supertype(paramType);
-/* 2298 */     if (type.hasTag(TypeTag.CLASS) && (type.tsym
-/* 2299 */       .flags() & 0x400L) != 0L)
-/* 2300 */       list1 = list1.prepend(type);
-/* 2301 */     for (List list2 = list1; list2.nonEmpty(); list2 = list2.tail) {
-/* 2302 */       if (this.allowGenerics && !((Type)list2.head).getTypeArguments().isEmpty() &&
-/* 2303 */         !checkCompatibleAbstracts(paramDiagnosticPosition, (Type)list2.head, (Type)list2.head, paramType))
-/*      */         return;
-/* 2305 */       for (List list = list1; list != list2; list = list.tail) {
-/* 2306 */         if (!checkCompatibleAbstracts(paramDiagnosticPosition, (Type)list2.head, (Type)list.head, paramType))
-/*      */           return;
-/*      */       }
-/* 2309 */     }  checkCompatibleConcretes(paramDiagnosticPosition, paramType);
-/*      */   }
-/*      */
-/*      */   void checkConflicts(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol, Symbol.TypeSymbol paramTypeSymbol) {
-/* 2313 */     for (Type type = paramTypeSymbol.type; type != Type.noType; type = this.types.supertype(type)) {
-/* 2314 */       for (Scope.Entry entry = type.tsym.members().lookup(paramSymbol.name); entry.scope == type.tsym.members(); entry = entry.next()) {
-/*      */
-/* 2316 */         if (paramSymbol.kind == entry.sym.kind && this.types
-/* 2317 */           .isSameType(this.types.erasure(paramSymbol.type), this.types.erasure(entry.sym.type)) && paramSymbol != entry.sym && (paramSymbol
-/*      */
-/* 2319 */           .flags() & 0x1000L) != (entry.sym.flags() & 0x1000L) && (paramSymbol
-/* 2320 */           .flags() & 0x200000L) == 0L && (entry.sym.flags() & 0x200000L) == 0L && (paramSymbol
-/* 2321 */           .flags() & 0x80000000L) == 0L && (entry.sym.flags() & 0x80000000L) == 0L) {
-/* 2322 */           syntheticError(paramDiagnosticPosition, ((entry.sym.flags() & 0x1000L) == 0L) ? entry.sym : paramSymbol);
-/*      */           return;
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkOverrideClashes(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType, Symbol.MethodSymbol paramMethodSymbol) {
-/* 2337 */     ClashFilter clashFilter = new ClashFilter(paramType);
-/*      */
-/*      */
-/*      */
-/* 2341 */     List list = List.nil();
-/* 2342 */     boolean bool = false;
-/* 2343 */     for (Symbol symbol : this.types.membersClosure(paramType, false).getElementsByName(paramMethodSymbol.name, clashFilter)) {
-/* 2344 */       if (!paramMethodSymbol.overrides(symbol, paramType.tsym, this.types, false)) {
-/* 2345 */         if (symbol == paramMethodSymbol) {
-/*      */           continue;
-/*      */         }
-/*      */
-/* 2349 */         if (!bool) {
-/* 2350 */           list = list.prepend(symbol);
-/*      */         }
-/*      */
-/*      */         continue;
-/*      */       }
-/* 2355 */       if (symbol != paramMethodSymbol) {
-/* 2356 */         bool = true;
-/* 2357 */         list = List.nil();
-/*      */       }
-/*      */
-/*      */
-/* 2361 */       for (Symbol symbol1 : this.types.membersClosure(paramType, false).getElementsByName(paramMethodSymbol.name, clashFilter)) {
-/* 2362 */         if (symbol1 == symbol) {
-/*      */           continue;
-/*      */         }
-/* 2365 */         if (!this.types.isSubSignature(paramMethodSymbol.type, this.types.memberType(paramType, symbol1), this.allowStrictMethodClashCheck) && this.types
-/* 2366 */           .hasSameArgs(symbol1.erasure(this.types), symbol.erasure(this.types))) {
-/* 2367 */           paramMethodSymbol.flags_field |= 0x40000000000L;
-/* 2368 */           String str = (symbol == paramMethodSymbol) ? "name.clash.same.erasure.no.override" : "name.clash.same.erasure.no.override.1";
-/*      */
-/*      */
-/* 2371 */           this.log.error(paramDiagnosticPosition, str, new Object[] { paramMethodSymbol, paramMethodSymbol
-/*      */
-/* 2373 */                 .location(), symbol1, symbol1
-/* 2374 */                 .location(), symbol, symbol
-/* 2375 */                 .location() });
-/*      */
-/*      */           return;
-/*      */         }
-/*      */       }
-/*      */     }
-/* 2381 */     if (!bool) {
-/* 2382 */       for (Symbol.MethodSymbol methodSymbol : list) {
-/* 2383 */         checkPotentiallyAmbiguousOverloads(paramDiagnosticPosition, paramType, paramMethodSymbol, methodSymbol);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkHideClashes(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType, Symbol.MethodSymbol paramMethodSymbol) {
-/* 2396 */     ClashFilter clashFilter = new ClashFilter(paramType);
-/*      */
-/* 2398 */     for (Symbol symbol : this.types.membersClosure(paramType, true).getElementsByName(paramMethodSymbol.name, clashFilter)) {
-/*      */
-/*      */
-/* 2401 */       if (!this.types.isSubSignature(paramMethodSymbol.type, this.types.memberType(paramType, symbol), this.allowStrictMethodClashCheck)) {
-/* 2402 */         if (this.types.hasSameArgs(symbol.erasure(this.types), paramMethodSymbol.erasure(this.types))) {
-/* 2403 */           this.log.error(paramDiagnosticPosition, "name.clash.same.erasure.no.hide", new Object[] { paramMethodSymbol, paramMethodSymbol
-/*      */
-/* 2405 */                 .location(), symbol, symbol
-/* 2406 */                 .location() });
-/*      */           return;
-/*      */         }
-/* 2409 */         checkPotentiallyAmbiguousOverloads(paramDiagnosticPosition, paramType, paramMethodSymbol, (Symbol.MethodSymbol)symbol);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   private class ClashFilter
-/*      */     implements Filter<Symbol>
-/*      */   {
-/*      */     Type site;
-/*      */
-/*      */     ClashFilter(Type param1Type) {
-/* 2421 */       this.site = param1Type;
-/*      */     }
-/*      */
-/*      */     boolean shouldSkip(Symbol param1Symbol) {
-/* 2425 */       return ((param1Symbol.flags() & 0x40000000000L) != 0L && param1Symbol.owner == this.site.tsym);
-/*      */     }
-/*      */
-/*      */
-/*      */     public boolean accepts(Symbol param1Symbol) {
-/* 2430 */       return (param1Symbol.kind == 16 && (param1Symbol
-/* 2431 */         .flags() & 0x1000L) == 0L &&
-/* 2432 */         !shouldSkip(param1Symbol) && param1Symbol
-/* 2433 */         .isInheritedIn((Symbol)this.site.tsym, Check.this.types) &&
-/* 2434 */         !param1Symbol.isConstructor());
-/*      */     }
-/*      */   }
-/*      */
-/*      */   void checkDefaultMethodClashes(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) {
-/* 2439 */     DefaultMethodClashFilter defaultMethodClashFilter = new DefaultMethodClashFilter(paramType);
-/* 2440 */     for (Symbol symbol : this.types.membersClosure(paramType, false).getElements(defaultMethodClashFilter)) {
-/* 2441 */       Assert.check((symbol.kind == 16));
-/* 2442 */       List list = this.types.interfaceCandidates(paramType, (Symbol.MethodSymbol)symbol);
-/* 2443 */       if (list.size() > 1) {
-/* 2444 */         ListBuffer listBuffer1 = new ListBuffer();
-/* 2445 */         ListBuffer listBuffer2 = new ListBuffer();
-/* 2446 */         for (Symbol.MethodSymbol methodSymbol : list) {
-/* 2447 */           if ((methodSymbol.flags() & 0x80000000000L) != 0L) {
-/* 2448 */             listBuffer2 = listBuffer2.append(methodSymbol);
-/* 2449 */           } else if ((methodSymbol.flags() & 0x400L) != 0L) {
-/* 2450 */             listBuffer1 = listBuffer1.append(methodSymbol);
-/*      */           }
-/* 2452 */           if (listBuffer2.nonEmpty() && listBuffer2.size() + listBuffer1.size() >= 2) {
-/*      */             String str;
-/*      */
-/*      */
-/*      */
-/* 2457 */             Symbol symbol2, symbol1 = (Symbol)listBuffer2.first();
-/*      */
-/* 2459 */             if (listBuffer2.size() > 1) {
-/* 2460 */               str = "types.incompatible.unrelated.defaults";
-/* 2461 */               symbol2 = (Symbol)(listBuffer2.toList()).tail.head;
-/*      */             } else {
-/* 2463 */               str = "types.incompatible.abstract.default";
-/* 2464 */               symbol2 = (Symbol)listBuffer1.first();
-/*      */             }
-/* 2466 */             this.log.error(paramDiagnosticPosition, str, new Object[] {
-/* 2467 */                   Kinds.kindName((Symbol)paramType.tsym), paramType, symbol.name, this.types
-/* 2468 */                   .memberType(paramType, symbol).getParameterTypes(), symbol1
-/* 2469 */                   .location(), symbol2.location()
-/*      */                 });
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private class DefaultMethodClashFilter
-/*      */     implements Filter<Symbol>
-/*      */   {
-/*      */     Type site;
-/*      */
-/*      */     DefaultMethodClashFilter(Type param1Type) {
-/* 2483 */       this.site = param1Type;
-/*      */     }
-/*      */
-/*      */     public boolean accepts(Symbol param1Symbol) {
-/* 2487 */       return (param1Symbol.kind == 16 && (param1Symbol
-/* 2488 */         .flags() & 0x80000000000L) != 0L && param1Symbol
-/* 2489 */         .isInheritedIn((Symbol)this.site.tsym, Check.this.types) &&
-/* 2490 */         !param1Symbol.isConstructor());
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkPotentiallyAmbiguousOverloads(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType, Symbol.MethodSymbol paramMethodSymbol1, Symbol.MethodSymbol paramMethodSymbol2) {
-/* 2502 */     if (paramMethodSymbol1 != paramMethodSymbol2 && this.allowDefaultMethods && this.lint
-/*      */
-/* 2504 */       .isEnabled(Lint.LintCategory.OVERLOADS) && (paramMethodSymbol1
-/* 2505 */       .flags() & 0x1000000000000L) == 0L && (paramMethodSymbol2
-/* 2506 */       .flags() & 0x1000000000000L) == 0L) {
-/* 2507 */       Type type1 = this.types.memberType(paramType, (Symbol)paramMethodSymbol1);
-/* 2508 */       Type type2 = this.types.memberType(paramType, (Symbol)paramMethodSymbol2);
-/*      */
-/* 2510 */       if (type1.hasTag(TypeTag.FORALL) && type2.hasTag(TypeTag.FORALL) && this.types
-/* 2511 */         .hasSameBounds((Type.ForAll)type1, (Type.ForAll)type2)) {
-/* 2512 */         type2 = this.types.subst(type2, ((Type.ForAll)type2).tvars, ((Type.ForAll)type1).tvars);
-/*      */       }
-/*      */
-/* 2515 */       int i = Math.max(type1.getParameterTypes().length(), type2.getParameterTypes().length());
-/* 2516 */       List<Type> list1 = this.rs.adjustArgs(type1.getParameterTypes(), (Symbol)paramMethodSymbol1, i, true);
-/* 2517 */       List<Type> list2 = this.rs.adjustArgs(type2.getParameterTypes(), (Symbol)paramMethodSymbol2, i, true);
-/*      */
-/* 2519 */       if (list1.length() != list2.length())
-/* 2520 */         return;  boolean bool = false;
-/* 2521 */       while (list1.nonEmpty() && list2.nonEmpty()) {
-/* 2522 */         Type type3 = (Type)list1.head;
-/* 2523 */         Type type4 = (Type)list2.head;
-/* 2524 */         if (!this.types.isSubtype(type4, type3) && !this.types.isSubtype(type3, type4)) {
-/* 2525 */           if (this.types.isFunctionalInterface(type3) && this.types.isFunctionalInterface(type4) && this.types
-/* 2526 */             .findDescriptorType(type3).getParameterTypes().length() > 0 && this.types
-/* 2527 */             .findDescriptorType(type3).getParameterTypes().length() == this.types
-/* 2528 */             .findDescriptorType(type4).getParameterTypes().length()) {
-/* 2529 */             bool = true;
-/*      */           } else {
-/*      */             break;
-/*      */           }
-/*      */         }
-/* 2534 */         list1 = list1.tail;
-/* 2535 */         list2 = list2.tail;
-/*      */       }
-/* 2537 */       if (bool) {
-/*      */
-/*      */
-/* 2540 */         paramMethodSymbol1.flags_field |= 0x1000000000000L;
-/* 2541 */         paramMethodSymbol2.flags_field |= 0x1000000000000L;
-/* 2542 */         this.log.warning(Lint.LintCategory.OVERLOADS, paramDiagnosticPosition, "potentially.ambiguous.overload", new Object[] { paramMethodSymbol1, paramMethodSymbol1
-/* 2543 */               .location(), paramMethodSymbol2, paramMethodSymbol2
-/* 2544 */               .location() });
-/*      */         return;
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */   void checkElemAccessFromSerializableLambda(JCTree paramJCTree) {
-/* 2551 */     if (this.warnOnAccessToSensitiveMembers) {
-/* 2552 */       Symbol symbol = TreeInfo.symbol(paramJCTree);
-/* 2553 */       if ((symbol.kind & 0x14) == 0) {
-/*      */         return;
-/*      */       }
-/*      */
-/* 2557 */       if (symbol.kind == 4 && ((
-/* 2558 */         symbol.flags() & 0x200000000L) != 0L || symbol
-/* 2559 */         .isLocal() || symbol.name == this.names._this || symbol.name == this.names._super)) {
-/*      */         return;
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2566 */       if (!this.types.isSubtype(symbol.owner.type, this.syms.serializableType) &&
-/* 2567 */         isEffectivelyNonPublic(symbol)) {
-/* 2568 */         this.log.warning(paramJCTree.pos(), "access.to.sensitive.member.from.serializable.element", new Object[] { symbol });
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   private boolean isEffectivelyNonPublic(Symbol paramSymbol) {
-/* 2575 */     if (paramSymbol.packge() == this.syms.rootPackage) {
-/* 2576 */       return false;
-/*      */     }
-/*      */
-/* 2579 */     while (paramSymbol.kind != 1) {
-/* 2580 */       if ((paramSymbol.flags() & 0x1L) == 0L) {
-/* 2581 */         return true;
-/*      */       }
-/* 2583 */       paramSymbol = paramSymbol.owner;
-/*      */     }
-/* 2585 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private void syntheticError(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol) {
-/* 2591 */     if (!paramSymbol.type.isErroneous()) {
-/* 2592 */       if (this.warnOnSyntheticConflicts) {
-/* 2593 */         this.log.warning(paramDiagnosticPosition, "synthetic.name.conflict", new Object[] { paramSymbol, paramSymbol.location() });
-/*      */       } else {
-/*      */
-/* 2596 */         this.log.error(paramDiagnosticPosition, "synthetic.name.conflict", new Object[] { paramSymbol, paramSymbol.location() });
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkClassBounds(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) {
-/* 2607 */     checkClassBounds(paramDiagnosticPosition, new HashMap<>(), paramType);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkClassBounds(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Map<Symbol.TypeSymbol, Type> paramMap, Type paramType) {
-/* 2617 */     if (paramType.isErroneous())
-/* 2618 */       return;  for (List list = this.types.interfaces(paramType); list.nonEmpty(); list = list.tail) {
-/* 2619 */       Type type1 = (Type)list.head;
-/* 2620 */       Type type2 = paramMap.put(type1.tsym, type1);
-/* 2621 */       if (type2 != null) {
-/* 2622 */         List list1 = type2.allparams();
-/* 2623 */         List list2 = type1.allparams();
-/* 2624 */         if (!this.types.containsTypeEquivalent(list1, list2))
-/* 2625 */           this.log.error(paramDiagnosticPosition, "cant.inherit.diff.arg", new Object[] { type1.tsym,
-/* 2626 */                 Type.toString(list1),
-/* 2627 */                 Type.toString(list2) });
-/*      */       }
-/* 2629 */       checkClassBounds(paramDiagnosticPosition, paramMap, type1);
-/*      */     }
-/* 2631 */     Type type = this.types.supertype(paramType);
-/* 2632 */     if (type != Type.noType) checkClassBounds(paramDiagnosticPosition, paramMap, type);
-/*      */
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void checkNotRepeated(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType, Set<Type> paramSet) {
-/* 2639 */     if (paramSet.contains(paramType)) {
-/* 2640 */       this.log.error(paramDiagnosticPosition, "repeated.interface", new Object[0]);
-/*      */     } else {
-/* 2642 */       paramSet.add(paramType);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void validateAnnotationTree(JCTree paramJCTree) {
-/*      */     class AnnotationValidator
-/*      */       extends TreeScanner
-/*      */     {
-/*      */       public void visitAnnotation(JCTree.JCAnnotation param1JCAnnotation) {
-/* 2657 */         if (!param1JCAnnotation.type.isErroneous()) {
-/* 2658 */           super.visitAnnotation(param1JCAnnotation);
-/* 2659 */           Check.this.validateAnnotation(param1JCAnnotation);
-/*      */         }
-/*      */       }
-/*      */     };
-/* 2663 */     paramJCTree.accept((JCTree.Visitor)new AnnotationValidator());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void validateAnnotationType(JCTree paramJCTree) {
-/* 2675 */     if (paramJCTree != null) {
-/* 2676 */       validateAnnotationType(paramJCTree.pos(), paramJCTree.type);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   void validateAnnotationType(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) {
-/* 2681 */     if (paramType.isPrimitive())
-/* 2682 */       return;  if (this.types.isSameType(paramType, this.syms.stringType))
-/* 2683 */       return;  if ((paramType.tsym.flags() & 0x4000L) != 0L)
-/* 2684 */       return;  if ((paramType.tsym.flags() & 0x2000L) != 0L)
-/* 2685 */       return;  if ((this.types.cvarLowerBound(paramType)).tsym == this.syms.classType.tsym)
-/* 2686 */       return;  if (this.types.isArray(paramType) && !this.types.isArray(this.types.elemtype(paramType))) {
-/* 2687 */       validateAnnotationType(paramDiagnosticPosition, this.types.elemtype(paramType));
-/*      */       return;
-/*      */     }
-/* 2690 */     this.log.error(paramDiagnosticPosition, "invalid.annotation.member.type", new Object[0]);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void validateAnnotationMethod(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.MethodSymbol paramMethodSymbol) {
-/* 2702 */     for (Type type = this.syms.annotationType; type.hasTag(TypeTag.CLASS); type = this.types.supertype(type)) {
-/* 2703 */       Scope scope = type.tsym.members();
-/* 2704 */       for (Scope.Entry entry = scope.lookup(paramMethodSymbol.name); entry.scope != null; entry = entry.next()) {
-/* 2705 */         if (entry.sym.kind == 16 && (entry.sym
-/* 2706 */           .flags() & 0x5L) != 0L && this.types
-/* 2707 */           .overrideEquivalent(paramMethodSymbol.type, entry.sym.type)) {
-/* 2708 */           this.log.error(paramDiagnosticPosition, "intf.annotation.member.clash", new Object[] { entry.sym, type });
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public void validateAnnotations(List<JCTree.JCAnnotation> paramList, Symbol paramSymbol) {
-/* 2716 */     for (JCTree.JCAnnotation jCAnnotation : paramList) {
-/* 2717 */       validateAnnotation(jCAnnotation, paramSymbol);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public void validateTypeAnnotations(List<JCTree.JCAnnotation> paramList, boolean paramBoolean) {
-/* 2723 */     for (JCTree.JCAnnotation jCAnnotation : paramList) {
-/* 2724 */       validateTypeAnnotation(jCAnnotation, paramBoolean);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   private void validateAnnotation(JCTree.JCAnnotation paramJCAnnotation, Symbol paramSymbol) {
-/* 2730 */     validateAnnotationTree((JCTree)paramJCAnnotation);
-/*      */
-/* 2732 */     if (!annotationApplicable(paramJCAnnotation, paramSymbol)) {
-/* 2733 */       this.log.error(paramJCAnnotation.pos(), "annotation.type.not.applicable", new Object[0]);
-/*      */     }
-/* 2735 */     if (paramJCAnnotation.annotationType.type.tsym == this.syms.functionalInterfaceType.tsym) {
-/* 2736 */       if (paramSymbol.kind != 2) {
-/* 2737 */         this.log.error(paramJCAnnotation.pos(), "bad.functional.intf.anno", new Object[0]);
-/* 2738 */       } else if (!paramSymbol.isInterface() || (paramSymbol.flags() & 0x2000L) != 0L) {
-/* 2739 */         this.log.error(paramJCAnnotation.pos(), "bad.functional.intf.anno.1", new Object[] { this.diags.fragment("not.a.functional.intf", new Object[] { paramSymbol }) });
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public void validateTypeAnnotation(JCTree.JCAnnotation paramJCAnnotation, boolean paramBoolean) {
-/* 2745 */     Assert.checkNonNull(paramJCAnnotation.type, "annotation tree hasn't been attributed yet: " + paramJCAnnotation);
-/* 2746 */     validateAnnotationTree((JCTree)paramJCAnnotation);
-/*      */
-/* 2748 */     if (paramJCAnnotation.hasTag(JCTree.Tag.TYPE_ANNOTATION) &&
-/* 2749 */       !paramJCAnnotation.annotationType.type.isErroneous() &&
-/* 2750 */       !isTypeAnnotation(paramJCAnnotation, paramBoolean)) {
-/* 2751 */       this.log.error(paramJCAnnotation.pos(), "annotation.type.not.applicable", new Object[0]);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void validateRepeatable(Symbol.TypeSymbol paramTypeSymbol, Attribute.Compound paramCompound, JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) {
-/* 2765 */     Assert.check(this.types.isSameType(paramCompound.type, this.syms.repeatableType));
-/*      */
-/* 2767 */     Type type = null;
-/* 2768 */     List list = paramCompound.values;
-/* 2769 */     if (!list.isEmpty()) {
-/* 2770 */       Assert.check((((Symbol.MethodSymbol)((Pair)list.head).fst).name == this.names.value));
-/* 2771 */       type = ((Attribute.Class)((Pair)list.head).snd).getValue();
-/*      */     }
-/*      */
-/* 2774 */     if (type == null) {
-/*      */       return;
-/*      */     }
-/*      */
-/*      */
-/* 2779 */     validateValue(type.tsym, paramTypeSymbol, paramDiagnosticPosition);
-/* 2780 */     validateRetention((Symbol)type.tsym, (Symbol)paramTypeSymbol, paramDiagnosticPosition);
-/* 2781 */     validateDocumented((Symbol)type.tsym, (Symbol)paramTypeSymbol, paramDiagnosticPosition);
-/* 2782 */     validateInherited((Symbol)type.tsym, (Symbol)paramTypeSymbol, paramDiagnosticPosition);
-/* 2783 */     validateTarget((Symbol)type.tsym, (Symbol)paramTypeSymbol, paramDiagnosticPosition);
-/* 2784 */     validateDefault((Symbol)type.tsym, paramDiagnosticPosition);
-/*      */   }
-/*      */
-/*      */   private void validateValue(Symbol.TypeSymbol paramTypeSymbol1, Symbol.TypeSymbol paramTypeSymbol2, JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) {
-/* 2788 */     Scope.Entry entry = paramTypeSymbol1.members().lookup(this.names.value);
-/* 2789 */     if (entry.scope != null && entry.sym.kind == 16) {
-/* 2790 */       Symbol.MethodSymbol methodSymbol = (Symbol.MethodSymbol)entry.sym;
-/* 2791 */       Type type = methodSymbol.getReturnType();
-/* 2792 */       if (!type.hasTag(TypeTag.ARRAY) || !this.types.isSameType(((Type.ArrayType)type).elemtype, paramTypeSymbol2.type)) {
-/* 2793 */         this.log.error(paramDiagnosticPosition, "invalid.repeatable.annotation.value.return", new Object[] { paramTypeSymbol1, type, this.types
-/* 2794 */               .makeArrayType(paramTypeSymbol2.type) });
-/*      */       }
-/*      */     } else {
-/* 2797 */       this.log.error(paramDiagnosticPosition, "invalid.repeatable.annotation.no.value", new Object[] { paramTypeSymbol1 });
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private void validateRetention(Symbol paramSymbol1, Symbol paramSymbol2, JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) {
-/* 2802 */     Attribute.RetentionPolicy retentionPolicy1 = this.types.getRetention(paramSymbol1);
-/* 2803 */     Attribute.RetentionPolicy retentionPolicy2 = this.types.getRetention(paramSymbol2);
-/*      */
-/* 2805 */     boolean bool = false;
-/* 2806 */     switch (retentionPolicy2) {
-/*      */       case UNCHECKED:
-/* 2808 */         if (retentionPolicy1 != Attribute.RetentionPolicy.RUNTIME) {
-/* 2809 */           bool = true;
-/*      */         }
-/*      */         break;
-/*      */       case VARARGS:
-/* 2813 */         if (retentionPolicy1 == Attribute.RetentionPolicy.SOURCE)
-/* 2814 */           bool = true;
-/*      */         break;
-/*      */     }
-/* 2817 */     if (bool) {
-/* 2818 */       this.log.error(paramDiagnosticPosition, "invalid.repeatable.annotation.retention", new Object[] { paramSymbol1, retentionPolicy1, paramSymbol2, retentionPolicy2 });
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private void validateDocumented(Symbol paramSymbol1, Symbol paramSymbol2, JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) {
-/* 2825 */     if (paramSymbol2.attribute((Symbol)this.syms.documentedType.tsym) != null &&
-/* 2826 */       paramSymbol1.attribute((Symbol)this.syms.documentedType.tsym) == null) {
-/* 2827 */       this.log.error(paramDiagnosticPosition, "invalid.repeatable.annotation.not.documented", new Object[] { paramSymbol1, paramSymbol2 });
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   private void validateInherited(Symbol paramSymbol1, Symbol paramSymbol2, JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) {
-/* 2833 */     if (paramSymbol2.attribute((Symbol)this.syms.inheritedType.tsym) != null &&
-/* 2834 */       paramSymbol1.attribute((Symbol)this.syms.inheritedType.tsym) == null) {
-/* 2835 */       this.log.error(paramDiagnosticPosition, "invalid.repeatable.annotation.not.inherited", new Object[] { paramSymbol1, paramSymbol2 });
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void validateTarget(Symbol paramSymbol1, Symbol paramSymbol2, JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) {
-/*      */     Set<Name> set1, set2;
-/* 2847 */     Attribute.Array array1 = getAttributeTargetAttribute(paramSymbol1);
-/* 2848 */     if (array1 == null) {
-/* 2849 */       set1 = getDefaultTargetSet();
-/*      */     } else {
-/* 2851 */       set1 = new HashSet();
-/* 2852 */       for (Attribute attribute : array1.values) {
-/* 2853 */         if (attribute instanceof Attribute.Enum) {
-/*      */
-/*      */
-/* 2856 */           Attribute.Enum enum_ = (Attribute.Enum)attribute;
-/* 2857 */           set1.add(enum_.value.name);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/* 2862 */     Attribute.Array array2 = getAttributeTargetAttribute(paramSymbol2);
-/* 2863 */     if (array2 == null) {
-/* 2864 */       set2 = getDefaultTargetSet();
-/*      */     } else {
-/* 2866 */       set2 = new HashSet();
-/* 2867 */       for (Attribute attribute : array2.values) {
-/* 2868 */         if (attribute instanceof Attribute.Enum) {
-/*      */
-/*      */
-/* 2871 */           Attribute.Enum enum_ = (Attribute.Enum)attribute;
-/* 2872 */           set2.add(enum_.value.name);
-/*      */         }
-/*      */       }
-/*      */     }
-/* 2876 */     if (!isTargetSubsetOf(set1, set2)) {
-/* 2877 */       this.log.error(paramDiagnosticPosition, "invalid.repeatable.annotation.incompatible.target", new Object[] { paramSymbol1, paramSymbol2 });
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   private Set<Name> getDefaultTargetSet() {
-/* 2883 */     if (this.defaultTargets == null) {
-/* 2884 */       HashSet<Name> hashSet = new HashSet();
-/* 2885 */       hashSet.add(this.names.ANNOTATION_TYPE);
-/* 2886 */       hashSet.add(this.names.CONSTRUCTOR);
-/* 2887 */       hashSet.add(this.names.FIELD);
-/* 2888 */       hashSet.add(this.names.LOCAL_VARIABLE);
-/* 2889 */       hashSet.add(this.names.METHOD);
-/* 2890 */       hashSet.add(this.names.PACKAGE);
-/* 2891 */       hashSet.add(this.names.PARAMETER);
-/* 2892 */       hashSet.add(this.names.TYPE);
-/*      */
-/* 2894 */       this.defaultTargets = Collections.unmodifiableSet(hashSet);
-/*      */     }
-/*      */
-/* 2897 */     return this.defaultTargets;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private boolean isTargetSubsetOf(Set<Name> paramSet1, Set<Name> paramSet2) {
-/* 2909 */     for (Name name : paramSet1) {
-/* 2910 */       boolean bool = false;
-/* 2911 */       for (Name name1 : paramSet2) {
-/* 2912 */         if (name1 == name) {
-/* 2913 */           bool = true; break;
-/*      */         }
-/* 2915 */         if (name1 == this.names.TYPE && name == this.names.ANNOTATION_TYPE) {
-/* 2916 */           bool = true; break;
-/*      */         }
-/* 2918 */         if (name1 == this.names.TYPE_USE && (name == this.names.TYPE || name == this.names.ANNOTATION_TYPE || name == this.names.TYPE_PARAMETER)) {
-/*      */
-/*      */
-/*      */
-/* 2922 */           bool = true;
-/*      */           break;
-/*      */         }
-/*      */       }
-/* 2926 */       if (!bool)
-/* 2927 */         return false;
-/*      */     }
-/* 2929 */     return true;
-/*      */   }
-/*      */
-/*      */
-/*      */   private void validateDefault(Symbol paramSymbol, JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) {
-/* 2934 */     Scope scope = paramSymbol.members();
-/* 2935 */     for (Symbol symbol : scope.getElements()) {
-/* 2936 */       if (symbol.name != this.names.value && symbol.kind == 16 && ((Symbol.MethodSymbol)symbol).defaultValue == null)
-/*      */       {
-/*      */
-/* 2939 */         this.log.error(paramDiagnosticPosition, "invalid.repeatable.annotation.elem.nondefault", new Object[] { paramSymbol, symbol });
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   boolean isOverrider(Symbol paramSymbol) {
-/* 2949 */     if (paramSymbol.kind != 16 || paramSymbol.isStatic())
-/* 2950 */       return false;
-/* 2951 */     Symbol.MethodSymbol methodSymbol = (Symbol.MethodSymbol)paramSymbol;
-/* 2952 */     Symbol.TypeSymbol typeSymbol = (Symbol.TypeSymbol)methodSymbol.owner;
-/* 2953 */     for (Type type : this.types.closure(typeSymbol.type)) {
-/* 2954 */       if (type == typeSymbol.type)
-/*      */         continue;
-/* 2956 */       Scope scope = type.tsym.members();
-/* 2957 */       for (Scope.Entry entry = scope.lookup(methodSymbol.name); entry.scope != null; entry = entry.next()) {
-/* 2958 */         if (!entry.sym.isStatic() && methodSymbol.overrides(entry.sym, typeSymbol, this.types, true))
-/* 2959 */           return true;
-/*      */       }
-/*      */     }
-/* 2962 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   protected boolean isTypeAnnotation(JCTree.JCAnnotation paramJCAnnotation, boolean paramBoolean) {
-/* 2968 */     Attribute.Compound compound = paramJCAnnotation.annotationType.type.tsym.attribute((Symbol)this.syms.annotationTargetType.tsym);
-/* 2969 */     if (compound == null)
-/*      */     {
-/* 2971 */       return false;
-/*      */     }
-/*      */
-/* 2974 */     Attribute attribute = compound.member(this.names.value);
-/* 2975 */     if (!(attribute instanceof Attribute.Array)) {
-/* 2976 */       return false;
-/*      */     }
-/*      */
-/* 2979 */     Attribute.Array array = (Attribute.Array)attribute;
-/* 2980 */     for (Attribute attribute1 : array.values) {
-/* 2981 */       if (!(attribute1 instanceof Attribute.Enum)) {
-/* 2982 */         return false;
-/*      */       }
-/* 2984 */       Attribute.Enum enum_ = (Attribute.Enum)attribute1;
-/*      */
-/* 2986 */       if (enum_.value.name == this.names.TYPE_USE)
-/* 2987 */         return true;
-/* 2988 */       if (paramBoolean && enum_.value.name == this.names.TYPE_PARAMETER)
-/* 2989 */         return true;
-/*      */     }
-/* 2991 */     return false;
-/*      */   }
-/*      */
-/*      */   boolean annotationApplicable(JCTree.JCAnnotation paramJCAnnotation, Symbol paramSymbol) {
-/*      */     Name[] arrayOfName;
-/* 2996 */     Attribute.Array array = getAttributeTargetAttribute((Symbol)paramJCAnnotation.annotationType.type.tsym);
-/*      */
-/*      */
-/* 2999 */     if (array == null) {
-/* 3000 */       arrayOfName = defaultTargetMetaInfo(paramJCAnnotation, paramSymbol);
-/*      */     } else {
-/*      */
-/* 3003 */       arrayOfName = new Name[array.values.length];
-/* 3004 */       for (byte b = 0; b < array.values.length; b++) {
-/* 3005 */         Attribute attribute = array.values[b];
-/* 3006 */         if (!(attribute instanceof Attribute.Enum)) {
-/* 3007 */           return true;
-/*      */         }
-/* 3009 */         Attribute.Enum enum_ = (Attribute.Enum)attribute;
-/* 3010 */         arrayOfName[b] = enum_.value.name;
-/*      */       }
-/*      */     }
-/* 3013 */     for (Name name : arrayOfName) {
-/* 3014 */       if (name == this.names.TYPE) {
-/* 3015 */         if (paramSymbol.kind == 2) return true;
-/* 3016 */       } else if (name == this.names.FIELD) {
-/* 3017 */         if (paramSymbol.kind == 4 && paramSymbol.owner.kind != 16) return true;
-/* 3018 */       } else if (name == this.names.METHOD) {
-/* 3019 */         if (paramSymbol.kind == 16 && !paramSymbol.isConstructor()) return true;
-/* 3020 */       } else if (name == this.names.PARAMETER) {
-/* 3021 */         if (paramSymbol.kind == 4 && paramSymbol.owner.kind == 16 && (paramSymbol
-/*      */
-/* 3023 */           .flags() & 0x200000000L) != 0L) {
-/* 3024 */           return true;
-/*      */         }
-/* 3026 */       } else if (name == this.names.CONSTRUCTOR) {
-/* 3027 */         if (paramSymbol.kind == 16 && paramSymbol.isConstructor()) return true;
-/* 3028 */       } else if (name == this.names.LOCAL_VARIABLE) {
-/* 3029 */         if (paramSymbol.kind == 4 && paramSymbol.owner.kind == 16 && (paramSymbol
-/* 3030 */           .flags() & 0x200000000L) == 0L) {
-/* 3031 */           return true;
-/*      */         }
-/* 3033 */       } else if (name == this.names.ANNOTATION_TYPE) {
-/* 3034 */         if (paramSymbol.kind == 2 && (paramSymbol.flags() & 0x2000L) != 0L) {
-/* 3035 */           return true;
-/*      */         }
-/* 3037 */       } else if (name == this.names.PACKAGE) {
-/* 3038 */         if (paramSymbol.kind == 1) return true;
-/* 3039 */       } else if (name == this.names.TYPE_USE) {
-/* 3040 */         if (paramSymbol.kind == 2 || paramSymbol.kind == 4 || (paramSymbol.kind == 16 &&
-/*      */
-/* 3042 */           !paramSymbol.isConstructor() &&
-/* 3043 */           !paramSymbol.type.getReturnType().hasTag(TypeTag.VOID)) || (paramSymbol.kind == 16 && paramSymbol
-/* 3044 */           .isConstructor())) {
-/* 3045 */           return true;
-/*      */         }
-/* 3047 */       } else if (name == this.names.TYPE_PARAMETER) {
-/* 3048 */         if (paramSymbol.kind == 2 && paramSymbol.type.hasTag(TypeTag.TYPEVAR)) {
-/* 3049 */           return true;
-/*      */         }
-/*      */       } else {
-/* 3052 */         return true;
-/*      */       }
-/* 3054 */     }  return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   Attribute.Array getAttributeTargetAttribute(Symbol paramSymbol) {
-/* 3060 */     Attribute.Compound compound = paramSymbol.attribute((Symbol)this.syms.annotationTargetType.tsym);
-/* 3061 */     if (compound == null) return null;
-/* 3062 */     Attribute attribute = compound.member(this.names.value);
-/* 3063 */     if (!(attribute instanceof Attribute.Array)) return null;
-/* 3064 */     return (Attribute.Array)attribute;
-/*      */   }
-/*      */
-/*      */
-/*      */   private Name[] defaultTargetMetaInfo(JCTree.JCAnnotation paramJCAnnotation, Symbol paramSymbol) {
-/* 3069 */     return this.dfltTargetMeta;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean validateAnnotationDeferErrors(JCTree.JCAnnotation paramJCAnnotation) {
-/* 3078 */     boolean bool = false;
-/* 3079 */     Log.DiscardDiagnosticHandler discardDiagnosticHandler = new Log.DiscardDiagnosticHandler(this.log);
-/*      */     try {
-/* 3081 */       bool = validateAnnotation(paramJCAnnotation);
-/*      */     } finally {
-/* 3083 */       this.log.popDiagnosticHandler((Log.DiagnosticHandler)discardDiagnosticHandler);
-/*      */     }
-/* 3085 */     return bool;
-/*      */   }
-/*      */
-/*      */   private boolean validateAnnotation(JCTree.JCAnnotation paramJCAnnotation) {
-/* 3089 */     boolean bool = true;
-/*      */
-/* 3091 */     LinkedHashSet<Symbol.MethodSymbol> linkedHashSet = new LinkedHashSet();
-/* 3092 */     Scope.Entry entry = (paramJCAnnotation.annotationType.type.tsym.members()).elems;
-/* 3093 */     for (; entry != null;
-/* 3094 */       entry = entry.sibling) {
-/* 3095 */       if (entry.sym.kind == 16 && entry.sym.name != this.names.clinit && (entry.sym
-/* 3096 */         .flags() & 0x1000L) == 0L) {
-/* 3097 */         linkedHashSet.add((Symbol.MethodSymbol)entry.sym);
-/*      */       }
-/*      */     }
-/* 3100 */     for (JCTree jCTree : paramJCAnnotation.args) {
-/* 3101 */       if (!jCTree.hasTag(JCTree.Tag.ASSIGN))
-/* 3102 */         continue;  JCTree.JCAssign jCAssign1 = (JCTree.JCAssign)jCTree;
-/* 3103 */       Symbol symbol1 = TreeInfo.symbol((JCTree)jCAssign1.lhs);
-/* 3104 */       if (symbol1 != null && !symbol1.type.isErroneous() &&
-/* 3105 */         !linkedHashSet.remove(symbol1)) {
-/* 3106 */         bool = false;
-/* 3107 */         this.log.error(jCAssign1.lhs.pos(), "duplicate.annotation.member.value", new Object[] { symbol1.name, paramJCAnnotation.type });
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */
-/* 3113 */     List list = List.nil();
-/* 3114 */     for (Symbol.MethodSymbol methodSymbol : linkedHashSet) {
-/* 3115 */       if (methodSymbol.defaultValue == null && !methodSymbol.type.isErroneous()) {
-/* 3116 */         list = list.append(methodSymbol.name);
-/*      */       }
-/*      */     }
-/* 3119 */     list = list.reverse();
-/* 3120 */     if (list.nonEmpty()) {
-/* 3121 */       bool = false;
-/* 3122 */       String str = (list.size() > 1) ? "annotation.missing.default.value.1" : "annotation.missing.default.value";
-/*      */
-/*      */
-/* 3125 */       this.log.error(paramJCAnnotation.pos(), str, new Object[] { paramJCAnnotation.type, list });
-/*      */     }
-/*      */
-/*      */
-/*      */
-/* 3130 */     if (paramJCAnnotation.annotationType.type.tsym != this.syms.annotationTargetType.tsym || paramJCAnnotation.args.tail == null)
-/*      */     {
-/* 3132 */       return bool;
-/*      */     }
-/* 3134 */     if (!((JCTree.JCExpression)paramJCAnnotation.args.head).hasTag(JCTree.Tag.ASSIGN)) return false;
-/* 3135 */     JCTree.JCAssign jCAssign = (JCTree.JCAssign)paramJCAnnotation.args.head;
-/* 3136 */     Symbol symbol = TreeInfo.symbol((JCTree)jCAssign.lhs);
-/* 3137 */     if (symbol.name != this.names.value) return false;
-/* 3138 */     JCTree.JCExpression jCExpression = jCAssign.rhs;
-/* 3139 */     if (!jCExpression.hasTag(JCTree.Tag.NEWARRAY)) return false;
-/* 3140 */     JCTree.JCNewArray jCNewArray = (JCTree.JCNewArray)jCExpression;
-/* 3141 */     HashSet<Symbol> hashSet = new HashSet();
-/* 3142 */     for (JCTree jCTree : jCNewArray.elems) {
-/* 3143 */       if (!hashSet.add(TreeInfo.symbol(jCTree))) {
-/* 3144 */         bool = false;
-/* 3145 */         this.log.error(jCTree.pos(), "repeated.annotation.target", new Object[0]);
-/*      */       }
-/*      */     }
-/* 3148 */     return bool;
-/*      */   }
-/*      */
-/*      */   void checkDeprecatedAnnotation(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol) {
-/* 3152 */     if (this.allowAnnotations && this.lint
-/* 3153 */       .isEnabled(Lint.LintCategory.DEP_ANN) && (paramSymbol
-/* 3154 */       .flags() & 0x20000L) != 0L &&
-/* 3155 */       !this.syms.deprecatedType.isErroneous() && paramSymbol
-/* 3156 */       .attribute((Symbol)this.syms.deprecatedType.tsym) == null) {
-/* 3157 */       this.log.warning(Lint.LintCategory.DEP_ANN, paramDiagnosticPosition, "missing.deprecated.annotation", new Object[0]);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   void checkDeprecated(final JCDiagnostic.DiagnosticPosition pos, Symbol paramSymbol1, final Symbol s) {
-/* 3163 */     if ((s.flags() & 0x20000L) != 0L && (paramSymbol1
-/* 3164 */       .flags() & 0x20000L) == 0L && s
-/* 3165 */       .outermostClass() != paramSymbol1.outermostClass()) {
-/* 3166 */       this.deferredLintHandler.report(new DeferredLintHandler.LintLogger()
-/*      */           {
-/*      */             public void report() {
-/* 3169 */               Check.this.warnDeprecated(pos, s);
-/*      */             }
-/*      */           });
-/*      */     }
-/*      */   }
-/*      */
-/*      */   void checkSunAPI(final JCDiagnostic.DiagnosticPosition pos, final Symbol s) {
-/* 3176 */     if ((s.flags() & 0x4000000000L) != 0L)
-/* 3177 */       this.deferredLintHandler.report(new DeferredLintHandler.LintLogger() {
-/*      */             public void report() {
-/* 3179 */               if (Check.this.enableSunApiLintControl) {
-/* 3180 */                 Check.this.warnSunApi(pos, "sun.proprietary", new Object[] { this.val$s });
-/*      */               } else {
-/* 3182 */                 Check.this.log.mandatoryWarning(pos, "sun.proprietary", new Object[] { this.val$s });
-/*      */               }
-/*      */             }
-/*      */           });
-/*      */   }
-/*      */
-/*      */   void checkProfile(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol) {
-/* 3189 */     if (this.profile != Profile.DEFAULT && (paramSymbol.flags() & 0x200000000000L) != 0L) {
-/* 3190 */       this.log.error(paramDiagnosticPosition, "not.in.profile", new Object[] { paramSymbol, this.profile });
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkNonCyclicElements(JCTree.JCClassDecl paramJCClassDecl) {
-/* 3201 */     if ((paramJCClassDecl.sym.flags_field & 0x2000L) == 0L)
-/* 3202 */       return;  Assert.check(((paramJCClassDecl.sym.flags_field & 0x8000000L) == 0L));
-/*      */     try {
-/* 3204 */       paramJCClassDecl.sym.flags_field |= 0x8000000L;
-/* 3205 */       for (JCTree jCTree : paramJCClassDecl.defs) {
-/* 3206 */         if (!jCTree.hasTag(JCTree.Tag.METHODDEF))
-/* 3207 */           continue;  JCTree.JCMethodDecl jCMethodDecl = (JCTree.JCMethodDecl)jCTree;
-/* 3208 */         checkAnnotationResType(jCMethodDecl.pos(), jCMethodDecl.restype.type);
-/*      */       }
-/*      */     } finally {
-/* 3211 */       paramJCClassDecl.sym.flags_field &= 0xFFFFFFFFF7FFFFFFL;
-/* 3212 */       paramJCClassDecl.sym.flags_field |= 0x800000000L;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   void checkNonCyclicElementsInternal(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.TypeSymbol paramTypeSymbol) {
-/* 3217 */     if ((paramTypeSymbol.flags_field & 0x800000000L) != 0L)
-/*      */       return;
-/* 3219 */     if ((paramTypeSymbol.flags_field & 0x8000000L) != 0L) {
-/* 3220 */       this.log.error(paramDiagnosticPosition, "cyclic.annotation.element", new Object[0]);
-/*      */       return;
-/*      */     }
-/*      */     try {
-/* 3224 */       paramTypeSymbol.flags_field |= 0x8000000L;
-/* 3225 */       for (Scope.Entry entry = (paramTypeSymbol.members()).elems; entry != null; entry = entry.sibling) {
-/* 3226 */         Symbol symbol = entry.sym;
-/* 3227 */         if (symbol.kind == 16)
-/*      */         {
-/* 3229 */           checkAnnotationResType(paramDiagnosticPosition, ((Symbol.MethodSymbol)symbol).type.getReturnType()); }
-/*      */       }
-/*      */     } finally {
-/* 3232 */       paramTypeSymbol.flags_field &= 0xFFFFFFFFF7FFFFFFL;
-/* 3233 */       paramTypeSymbol.flags_field |= 0x800000000L;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   void checkAnnotationResType(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType) {
-/* 3238 */     switch (paramType.getTag()) {
-/*      */       case UNCHECKED:
-/* 3240 */         if ((paramType.tsym.flags() & 0x2000L) != 0L)
-/* 3241 */           checkNonCyclicElementsInternal(paramDiagnosticPosition, paramType.tsym);
-/*      */         break;
-/*      */       case VARARGS:
-/* 3244 */         checkAnnotationResType(paramDiagnosticPosition, this.types.elemtype(paramType));
-/*      */         break;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkCyclicConstructors(JCTree.JCClassDecl paramJCClassDecl) {
-/* 3259 */     HashMap<Object, Object> hashMap = new HashMap<>();
-/*      */
-/*      */
-/* 3262 */     for (List list = paramJCClassDecl.defs; list.nonEmpty(); list = list.tail) {
-/* 3263 */       JCTree.JCMethodInvocation jCMethodInvocation = TreeInfo.firstConstructorCall((JCTree)list.head);
-/* 3264 */       if (jCMethodInvocation != null) {
-/* 3265 */         JCTree.JCMethodDecl jCMethodDecl = (JCTree.JCMethodDecl)list.head;
-/* 3266 */         if (TreeInfo.name((JCTree)jCMethodInvocation.meth) == this.names._this) {
-/* 3267 */           hashMap.put(jCMethodDecl.sym, TreeInfo.symbol((JCTree)jCMethodInvocation.meth));
-/*      */         } else {
-/* 3269 */           jCMethodDecl.sym.flags_field |= 0x40000000L;
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/* 3274 */     Symbol[] arrayOfSymbol = new Symbol[0];
-/* 3275 */     arrayOfSymbol = (Symbol[])hashMap.keySet().toArray((Object[])arrayOfSymbol);
-/* 3276 */     for (Symbol symbol : arrayOfSymbol) {
-/* 3277 */       checkCyclicConstructor(paramJCClassDecl, symbol, (Map)hashMap);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void checkCyclicConstructor(JCTree.JCClassDecl paramJCClassDecl, Symbol paramSymbol, Map<Symbol, Symbol> paramMap) {
-/* 3286 */     if (paramSymbol != null && (paramSymbol.flags_field & 0x40000000L) == 0L) {
-/* 3287 */       if ((paramSymbol.flags_field & 0x8000000L) != 0L) {
-/* 3288 */         this.log.error(TreeInfo.diagnosticPositionFor(paramSymbol, (JCTree)paramJCClassDecl), "recursive.ctor.invocation", new Object[0]);
-/*      */       } else {
-/*      */
-/* 3291 */         paramSymbol.flags_field |= 0x8000000L;
-/* 3292 */         checkCyclicConstructor(paramJCClassDecl, paramMap.remove(paramSymbol), paramMap);
-/* 3293 */         paramSymbol.flags_field &= 0xFFFFFFFFF7FFFFFFL;
-/*      */       }
-/* 3295 */       paramSymbol.flags_field |= 0x40000000L;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int checkOperator(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.OperatorSymbol paramOperatorSymbol, JCTree.Tag paramTag, Type paramType1, Type paramType2) {
-/* 3317 */     if (paramOperatorSymbol.opcode == 277) {
-/* 3318 */       this.log.error(paramDiagnosticPosition, "operator.cant.be.applied.1", new Object[] { this.treeinfo
-/*      */
-/* 3320 */             .operatorName(paramTag), paramType1, paramType2 });
-/*      */     }
-/*      */
-/* 3323 */     return paramOperatorSymbol.opcode;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkDivZero(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol, Type paramType) {
-/* 3334 */     if (paramType.constValue() != null && this.lint
-/* 3335 */       .isEnabled(Lint.LintCategory.DIVZERO) && paramType
-/* 3336 */       .getTag().isSubRangeOf(TypeTag.LONG) && ((Number)paramType
-/* 3337 */       .constValue()).longValue() == 0L) {
-/* 3338 */       int i = ((Symbol.OperatorSymbol)paramSymbol).opcode;
-/* 3339 */       if (i == 108 || i == 112 || i == 109 || i == 113)
-/*      */       {
-/* 3341 */         this.log.warning(Lint.LintCategory.DIVZERO, paramDiagnosticPosition, "div.zero", new Object[0]);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void checkEmptyIf(JCTree.JCIf paramJCIf) {
-/* 3350 */     if (paramJCIf.thenpart.hasTag(JCTree.Tag.SKIP) && paramJCIf.elsepart == null && this.lint
-/* 3351 */       .isEnabled(Lint.LintCategory.EMPTY)) {
-/* 3352 */       this.log.warning(Lint.LintCategory.EMPTY, paramJCIf.thenpart.pos(), "empty.if", new Object[0]);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   boolean checkUnique(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol, Scope paramScope) {
-/* 3361 */     if (paramSymbol.type.isErroneous())
-/* 3362 */       return true;
-/* 3363 */     if (paramSymbol.owner.name == this.names.any) return false;
-/* 3364 */     for (Scope.Entry entry = paramScope.lookup(paramSymbol.name); entry.scope == paramScope; entry = entry.next()) {
-/* 3365 */       if (paramSymbol != entry.sym && (entry.sym
-/* 3366 */         .flags() & 0x40000000000L) == 0L && paramSymbol.kind == entry.sym.kind && paramSymbol.name != this.names.error && (paramSymbol.kind != 16 || this.types
-/*      */
-/*      */
-/*      */
-/* 3370 */         .hasSameArgs(paramSymbol.type, entry.sym.type) || this.types
-/* 3371 */         .hasSameArgs(this.types.erasure(paramSymbol.type), this.types.erasure(entry.sym.type)))) {
-/* 3372 */         if ((paramSymbol.flags() & 0x400000000L) != (entry.sym.flags() & 0x400000000L)) {
-/* 3373 */           varargsDuplicateError(paramDiagnosticPosition, paramSymbol, entry.sym);
-/* 3374 */           return true;
-/* 3375 */         }  if (paramSymbol.kind == 16 && !this.types.hasSameArgs(paramSymbol.type, entry.sym.type, false)) {
-/* 3376 */           duplicateErasureError(paramDiagnosticPosition, paramSymbol, entry.sym);
-/* 3377 */           paramSymbol.flags_field |= 0x40000000000L;
-/* 3378 */           return true;
-/*      */         }
-/* 3380 */         duplicateError(paramDiagnosticPosition, entry.sym);
-/* 3381 */         return false;
-/*      */       }
-/*      */     }
-/*      */
-/* 3385 */     return true;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void duplicateErasureError(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol1, Symbol paramSymbol2) {
-/* 3391 */     if (!paramSymbol1.type.isErroneous() && !paramSymbol2.type.isErroneous()) {
-/* 3392 */       this.log.error(paramDiagnosticPosition, "name.clash.same.erasure", new Object[] { paramSymbol1, paramSymbol2 });
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   boolean checkUniqueImport(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol, Scope paramScope) {
-/* 3403 */     return checkUniqueImport(paramDiagnosticPosition, paramSymbol, paramScope, false);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   boolean checkUniqueStaticImport(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol, Scope paramScope) {
-/* 3413 */     return checkUniqueImport(paramDiagnosticPosition, paramSymbol, paramScope, true);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private boolean checkUniqueImport(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol, Scope paramScope, boolean paramBoolean) {
-/* 3424 */     for (Scope.Entry entry = paramScope.lookup(paramSymbol.name); entry.scope != null; entry = entry.next()) {
-/*      */
-/* 3426 */       boolean bool = (entry.scope == paramScope) ? true : false;
-/* 3427 */       if ((bool || paramSymbol != entry.sym) && paramSymbol.kind == entry.sym.kind && paramSymbol.name != this.names.error && (!paramBoolean ||
-/*      */
-/*      */
-/* 3430 */         !entry.isStaticallyImported())) {
-/* 3431 */         if (!entry.sym.type.isErroneous())
-/* 3432 */           if (!bool) {
-/* 3433 */             if (paramBoolean) {
-/* 3434 */               this.log.error(paramDiagnosticPosition, "already.defined.static.single.import", new Object[] { entry.sym });
-/*      */             } else {
-/* 3436 */               this.log.error(paramDiagnosticPosition, "already.defined.single.import", new Object[] { entry.sym });
-/*      */             }
-/* 3438 */           } else if (paramSymbol != entry.sym) {
-/* 3439 */             this.log.error(paramDiagnosticPosition, "already.defined.this.unit", new Object[] { entry.sym });
-/*      */           }
-/* 3441 */         return false;
-/*      */       }
-/*      */     }
-/* 3444 */     return true;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void checkCanonical(JCTree paramJCTree) {
-/* 3450 */     if (!isCanonical(paramJCTree))
-/* 3451 */       this.log.error(paramJCTree.pos(), "import.requires.canonical", new Object[] {
-/* 3452 */             TreeInfo.symbol(paramJCTree) });
-/*      */   }
-/*      */
-/*      */   private boolean isCanonical(JCTree paramJCTree) {
-/* 3456 */     while (paramJCTree.hasTag(JCTree.Tag.SELECT)) {
-/* 3457 */       JCTree.JCFieldAccess jCFieldAccess = (JCTree.JCFieldAccess)paramJCTree;
-/* 3458 */       if (jCFieldAccess.sym.owner != TreeInfo.symbol((JCTree)jCFieldAccess.selected))
-/* 3459 */         return false;
-/* 3460 */       JCTree.JCExpression jCExpression = jCFieldAccess.selected;
-/*      */     }
-/* 3462 */     return true;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   void checkForBadAuxiliaryClassAccess(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Env<AttrContext> paramEnv, Symbol.ClassSymbol paramClassSymbol) {
-/* 3468 */     if (this.lint.isEnabled(Lint.LintCategory.AUXILIARYCLASS) && (paramClassSymbol
-/* 3469 */       .flags() & 0x100000000000L) != 0L && this.rs
-/* 3470 */       .isAccessible(paramEnv, (Symbol.TypeSymbol)paramClassSymbol) &&
-/* 3471 */       !this.fileManager.isSameFile(paramClassSymbol.sourcefile, paramEnv.toplevel.sourcefile))
-/*      */     {
-/* 3473 */       this.log.warning(paramDiagnosticPosition, "auxiliary.class.accessed.from.outside.of.its.source.file", new Object[] { paramClassSymbol, paramClassSymbol.sourcefile });
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private class ConversionWarner extends Warner {
-/*      */     final String uncheckedKey;
-/*      */     final Type found;
-/*      */     final Type expected;
-/*      */
-/*      */     public ConversionWarner(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, String param1String, Type param1Type1, Type param1Type2) {
-/* 3483 */       super(param1DiagnosticPosition);
-/* 3484 */       this.uncheckedKey = param1String;
-/* 3485 */       this.found = param1Type1;
-/* 3486 */       this.expected = param1Type2;
-/*      */     }
-/*      */
-/*      */
-/*      */     public void warn(Lint.LintCategory param1LintCategory) {
-/* 3491 */       boolean bool = this.warned;
-/* 3492 */       super.warn(param1LintCategory);
-/* 3493 */       if (bool)
-/* 3494 */         return;  switch (param1LintCategory) {
-/*      */         case UNCHECKED:
-/* 3496 */           Check.this.warnUnchecked(pos(), "prob.found.req", new Object[] { Check.access$1100(this.this$0).fragment(this.uncheckedKey, new Object[0]), this.found, this.expected });
-/*      */           return;
-/*      */         case VARARGS:
-/* 3499 */           if (Check.this.method != null && Check.this
-/* 3500 */             .method.attribute((Symbol)Check.this.syms.trustMeType.tsym) != null && Check.this
-/* 3501 */             .isTrustMeAllowedOnMethod((Symbol)Check.this.method) &&
-/* 3502 */             !Check.this.types.isReifiable((Type)Check.this.method.type.getParameterTypes().last())) {
-/* 3503 */             Check.this.warnUnsafeVararg(pos(), "varargs.unsafe.use.varargs.param", new Object[] { (Check.access$1200(this.this$0)).params.last() });
-/*      */           }
-/*      */           return;
-/*      */       }
-/* 3507 */       throw new AssertionError("Unexpected lint: " + param1LintCategory);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public Warner castWarner(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType1, Type paramType2) {
-/* 3513 */     return new ConversionWarner(paramDiagnosticPosition, "unchecked.cast.to.type", paramType1, paramType2);
-/*      */   }
-/*      */
-/*      */   public Warner convertWarner(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType1, Type paramType2) {
-/* 3517 */     return new ConversionWarner(paramDiagnosticPosition, "unchecked.assign", paramType1, paramType2);
-/*      */   }
-/*      */
-/*      */   public void checkFunctionalInterface(JCTree.JCClassDecl paramJCClassDecl, Symbol.ClassSymbol paramClassSymbol) {
-/* 3521 */     Attribute.Compound compound = paramClassSymbol.attribute((Symbol)this.syms.functionalInterfaceType.tsym);
-/*      */
-/* 3523 */     if (compound != null)
-/*      */       try {
-/* 3525 */         this.types.findDescriptorSymbol((Symbol.TypeSymbol)paramClassSymbol);
-/* 3526 */       } catch (Types.FunctionDescriptorLookupError functionDescriptorLookupError) {
-/* 3527 */         JCDiagnostic.DiagnosticPosition diagnosticPosition = paramJCClassDecl.pos();
-/* 3528 */         for (JCTree.JCAnnotation jCAnnotation : (paramJCClassDecl.getModifiers()).annotations) {
-/* 3529 */           if (jCAnnotation.annotationType.type.tsym == this.syms.functionalInterfaceType.tsym) {
-/* 3530 */             diagnosticPosition = jCAnnotation.pos();
-/*      */             break;
-/*      */           }
-/*      */         }
-/* 3534 */         this.log.error(diagnosticPosition, "bad.functional.intf.anno.1", new Object[] { functionDescriptorLookupError.getDiagnostic() });
-/*      */       }
-/*      */   }
-/*      */
-/*      */   public static interface CheckContext {
-/*      */     boolean compatible(Type param1Type1, Type param1Type2, Warner param1Warner);
-/*      */
-/*      */     void report(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, JCDiagnostic param1JCDiagnostic);
-/*      */
-/*      */     Warner checkWarner(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Type param1Type1, Type param1Type2);
-/*      */
-/*      */     Infer.InferenceContext inferenceContext();
-/*      */
-/*      */     DeferredAttr.DeferredAttrContext deferredAttrContext();
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\comp\Check.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2019, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.comp;
+
+import java.util.*;
+
+import javax.tools.JavaFileManager;
+
+import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.code.Attribute.Compound;
+import com.sun.tools.javac.jvm.*;
+import com.sun.tools.javac.tree.*;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
+import com.sun.tools.javac.util.List;
+
+import com.sun.tools.javac.code.Lint;
+import com.sun.tools.javac.code.Lint.LintCategory;
+import com.sun.tools.javac.code.Type.*;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.comp.DeferredAttr.DeferredAttrContext;
+import com.sun.tools.javac.comp.Infer.InferenceContext;
+import com.sun.tools.javac.comp.Infer.FreeTypeListener;
+import com.sun.tools.javac.tree.JCTree.*;
+import com.sun.tools.javac.tree.JCTree.JCPolyExpression.*;
+
+import static com.sun.tools.javac.code.Flags.*;
+import static com.sun.tools.javac.code.Flags.ANNOTATION;
+import static com.sun.tools.javac.code.Flags.SYNCHRONIZED;
+import static com.sun.tools.javac.code.Kinds.*;
+import static com.sun.tools.javac.code.TypeTag.*;
+import static com.sun.tools.javac.code.TypeTag.WILDCARD;
+
+import static com.sun.tools.javac.tree.JCTree.Tag.*;
+
+/** Type checking helper class for the attribution phase.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Check {
+    protected static final Context.Key<Check> checkKey =
+        new Context.Key<Check>();
+
+    private final Names names;
+    private final Log log;
+    private final Resolve rs;
+    private final Symtab syms;
+    private final Enter enter;
+    private final DeferredAttr deferredAttr;
+    private final Infer infer;
+    private final Types types;
+    private final JCDiagnostic.Factory diags;
+    private boolean warnOnSyntheticConflicts;
+    private boolean suppressAbortOnBadClassFile;
+    private boolean enableSunApiLintControl;
+    private final TreeInfo treeinfo;
+    private final JavaFileManager fileManager;
+    private final Profile profile;
+    private final boolean warnOnAccessToSensitiveMembers;
+
+    // The set of lint options currently in effect. It is initialized
+    // from the context, and then is set/reset as needed by Attr as it
+    // visits all the various parts of the trees during attribution.
+    private Lint lint;
+
+    // The method being analyzed in Attr - it is set/reset as needed by
+    // Attr as it visits new method declarations.
+    private MethodSymbol method;
+
+    public static Check instance(Context context) {
+        Check instance = context.get(checkKey);
+        if (instance == null)
+            instance = new Check(context);
+        return instance;
+    }
+
+    protected Check(Context context) {
+        context.put(checkKey, this);
+
+        names = Names.instance(context);
+        dfltTargetMeta = new Name[] { names.PACKAGE, names.TYPE,
+            names.FIELD, names.METHOD, names.CONSTRUCTOR,
+            names.ANNOTATION_TYPE, names.LOCAL_VARIABLE, names.PARAMETER};
+        log = Log.instance(context);
+        rs = Resolve.instance(context);
+        syms = Symtab.instance(context);
+        enter = Enter.instance(context);
+        deferredAttr = DeferredAttr.instance(context);
+        infer = Infer.instance(context);
+        types = Types.instance(context);
+        diags = JCDiagnostic.Factory.instance(context);
+        Options options = Options.instance(context);
+        lint = Lint.instance(context);
+        treeinfo = TreeInfo.instance(context);
+        fileManager = context.get(JavaFileManager.class);
+
+        Source source = Source.instance(context);
+        allowGenerics = source.allowGenerics();
+        allowVarargs = source.allowVarargs();
+        allowAnnotations = source.allowAnnotations();
+        allowCovariantReturns = source.allowCovariantReturns();
+        allowSimplifiedVarargs = source.allowSimplifiedVarargs();
+        allowDefaultMethods = source.allowDefaultMethods();
+        allowStrictMethodClashCheck = source.allowStrictMethodClashCheck();
+        complexInference = options.isSet("complexinference");
+        warnOnSyntheticConflicts = options.isSet("warnOnSyntheticConflicts");
+        suppressAbortOnBadClassFile = options.isSet("suppressAbortOnBadClassFile");
+        enableSunApiLintControl = options.isSet("enableSunApiLintControl");
+        warnOnAccessToSensitiveMembers = options.isSet("warnOnAccessToSensitiveMembers");
+
+        Target target = Target.instance(context);
+        syntheticNameChar = target.syntheticNameChar();
+
+        profile = Profile.instance(context);
+
+        boolean verboseDeprecated = lint.isEnabled(LintCategory.DEPRECATION);
+        boolean verboseUnchecked = lint.isEnabled(LintCategory.UNCHECKED);
+        boolean verboseSunApi = lint.isEnabled(LintCategory.SUNAPI);
+        boolean enforceMandatoryWarnings = source.enforceMandatoryWarnings();
+
+        deprecationHandler = new MandatoryWarningHandler(log, verboseDeprecated,
+                enforceMandatoryWarnings, "deprecated", LintCategory.DEPRECATION);
+        uncheckedHandler = new MandatoryWarningHandler(log, verboseUnchecked,
+                enforceMandatoryWarnings, "unchecked", LintCategory.UNCHECKED);
+        sunApiHandler = new MandatoryWarningHandler(log, verboseSunApi,
+                enforceMandatoryWarnings, "sunapi", null);
+
+        deferredLintHandler = DeferredLintHandler.instance(context);
+    }
+
+    /** Switch: generics enabled?
+     */
+    boolean allowGenerics;
+
+    /** Switch: varargs enabled?
+     */
+    boolean allowVarargs;
+
+    /** Switch: annotations enabled?
+     */
+    boolean allowAnnotations;
+
+    /** Switch: covariant returns enabled?
+     */
+    boolean allowCovariantReturns;
+
+    /** Switch: simplified varargs enabled?
+     */
+    boolean allowSimplifiedVarargs;
+
+    /** Switch: default methods enabled?
+     */
+    boolean allowDefaultMethods;
+
+    /** Switch: should unrelated return types trigger a method clash?
+     */
+    boolean allowStrictMethodClashCheck;
+
+    /** Switch: -complexinference option set?
+     */
+    boolean complexInference;
+
+    /** Character for synthetic names
+     */
+    char syntheticNameChar;
+
+    /** A table mapping flat names of all compiled classes in this run to their
+     *  symbols; maintained from outside.
+     */
+    public Map<Name,ClassSymbol> compiled = new HashMap<Name, ClassSymbol>();
+
+    /** A handler for messages about deprecated usage.
+     */
+    private MandatoryWarningHandler deprecationHandler;
+
+    /** A handler for messages about unchecked or unsafe usage.
+     */
+    private MandatoryWarningHandler uncheckedHandler;
+
+    /** A handler for messages about using proprietary API.
+     */
+    private MandatoryWarningHandler sunApiHandler;
+
+    /** A handler for deferred lint warnings.
+     */
+    private DeferredLintHandler deferredLintHandler;
+
+/* *************************************************************************
+ * Errors and Warnings
+ **************************************************************************/
+
+    Lint setLint(Lint newLint) {
+        Lint prev = lint;
+        lint = newLint;
+        return prev;
+    }
+
+    MethodSymbol setMethod(MethodSymbol newMethod) {
+        MethodSymbol prev = method;
+        method = newMethod;
+        return prev;
+    }
+
+    /** Warn about deprecated symbol.
+     *  @param pos        Position to be used for error reporting.
+     *  @param sym        The deprecated symbol.
+     */
+    void warnDeprecated(DiagnosticPosition pos, Symbol sym) {
+        if (!lint.isSuppressed(LintCategory.DEPRECATION))
+            deprecationHandler.report(pos, "has.been.deprecated", sym, sym.location());
+    }
+
+    /** Warn about unchecked operation.
+     *  @param pos        Position to be used for error reporting.
+     *  @param msg        A string describing the problem.
+     */
+    public void warnUnchecked(DiagnosticPosition pos, String msg, Object... args) {
+        if (!lint.isSuppressed(LintCategory.UNCHECKED))
+            uncheckedHandler.report(pos, msg, args);
+    }
+
+    /** Warn about unsafe vararg method decl.
+     *  @param pos        Position to be used for error reporting.
+     */
+    void warnUnsafeVararg(DiagnosticPosition pos, String key, Object... args) {
+        if (lint.isEnabled(LintCategory.VARARGS) && allowSimplifiedVarargs)
+            log.warning(LintCategory.VARARGS, pos, key, args);
+    }
+
+    /** Warn about using proprietary API.
+     *  @param pos        Position to be used for error reporting.
+     *  @param msg        A string describing the problem.
+     */
+    public void warnSunApi(DiagnosticPosition pos, String msg, Object... args) {
+        if (!lint.isSuppressed(LintCategory.SUNAPI))
+            sunApiHandler.report(pos, msg, args);
+    }
+
+    public void warnStatic(DiagnosticPosition pos, String msg, Object... args) {
+        if (lint.isEnabled(LintCategory.STATIC))
+            log.warning(LintCategory.STATIC, pos, msg, args);
+    }
+
+    /**
+     * Report any deferred diagnostics.
+     */
+    public void reportDeferredDiagnostics() {
+        deprecationHandler.reportDeferredDiagnostic();
+        uncheckedHandler.reportDeferredDiagnostic();
+        sunApiHandler.reportDeferredDiagnostic();
+    }
+
+
+    /** Report a failure to complete a class.
+     *  @param pos        Position to be used for error reporting.
+     *  @param ex         The failure to report.
+     */
+    public Type completionError(DiagnosticPosition pos, CompletionFailure ex) {
+        log.error(JCDiagnostic.DiagnosticFlag.NON_DEFERRABLE, pos, "cant.access", ex.sym, ex.getDetailValue());
+        if (ex instanceof ClassReader.BadClassFile
+                && !suppressAbortOnBadClassFile) throw new Abort();
+        else return syms.errType;
+    }
+
+    /** Report an error that wrong type tag was found.
+     *  @param pos        Position to be used for error reporting.
+     *  @param required   An internationalized string describing the type tag
+     *                    required.
+     *  @param found      The type that was found.
+     */
+    Type typeTagError(DiagnosticPosition pos, Object required, Object found) {
+        // this error used to be raised by the parser,
+        // but has been delayed to this point:
+        if (found instanceof Type && ((Type)found).hasTag(VOID)) {
+            log.error(pos, "illegal.start.of.type");
+            return syms.errType;
+        }
+        log.error(pos, "type.found.req", found, required);
+        return types.createErrorType(found instanceof Type ? (Type)found : syms.errType);
+    }
+
+    /** Report an error that symbol cannot be referenced before super
+     *  has been called.
+     *  @param pos        Position to be used for error reporting.
+     *  @param sym        The referenced symbol.
+     */
+    void earlyRefError(DiagnosticPosition pos, Symbol sym) {
+        log.error(pos, "cant.ref.before.ctor.called", sym);
+    }
+
+    /** Report duplicate declaration error.
+     */
+    void duplicateError(DiagnosticPosition pos, Symbol sym) {
+        if (!sym.type.isErroneous()) {
+            Symbol location = sym.location();
+            if (location.kind == MTH &&
+                    ((MethodSymbol)location).isStaticOrInstanceInit()) {
+                log.error(pos, "already.defined.in.clinit", kindName(sym), sym,
+                        kindName(sym.location()), kindName(sym.location().enclClass()),
+                        sym.location().enclClass());
+            } else {
+                log.error(pos, "already.defined", kindName(sym), sym,
+                        kindName(sym.location()), sym.location());
+            }
+        }
+    }
+
+    /** Report array/varargs duplicate declaration
+     */
+    void varargsDuplicateError(DiagnosticPosition pos, Symbol sym1, Symbol sym2) {
+        if (!sym1.type.isErroneous() && !sym2.type.isErroneous()) {
+            log.error(pos, "array.and.varargs", sym1, sym2, sym2.location());
+        }
+    }
+
+/* ************************************************************************
+ * duplicate declaration checking
+ *************************************************************************/
+
+    /** Check that variable does not hide variable with same name in
+     *  immediately enclosing local scope.
+     *  @param pos           Position for error reporting.
+     *  @param v             The symbol.
+     *  @param s             The scope.
+     */
+    void checkTransparentVar(DiagnosticPosition pos, VarSymbol v, Scope s) {
+        if (s.next != null) {
+            for (Scope.Entry e = s.next.lookup(v.name);
+                 e.scope != null && e.sym.owner == v.owner;
+                 e = e.next()) {
+                if (e.sym.kind == VAR &&
+                    (e.sym.owner.kind & (VAR | MTH)) != 0 &&
+                    v.name != names.error) {
+                    duplicateError(pos, e.sym);
+                    return;
+                }
+            }
+        }
+    }
+
+    /** Check that a class or interface does not hide a class or
+     *  interface with same name in immediately enclosing local scope.
+     *  @param pos           Position for error reporting.
+     *  @param c             The symbol.
+     *  @param s             The scope.
+     */
+    void checkTransparentClass(DiagnosticPosition pos, ClassSymbol c, Scope s) {
+        if (s.next != null) {
+            for (Scope.Entry e = s.next.lookup(c.name);
+                 e.scope != null && e.sym.owner == c.owner;
+                 e = e.next()) {
+                if (e.sym.kind == TYP && !e.sym.type.hasTag(TYPEVAR) &&
+                    (e.sym.owner.kind & (VAR | MTH)) != 0 &&
+                    c.name != names.error) {
+                    duplicateError(pos, e.sym);
+                    return;
+                }
+            }
+        }
+    }
+
+    /** Check that class does not have the same name as one of
+     *  its enclosing classes, or as a class defined in its enclosing scope.
+     *  return true if class is unique in its enclosing scope.
+     *  @param pos           Position for error reporting.
+     *  @param name          The class name.
+     *  @param s             The enclosing scope.
+     */
+    boolean checkUniqueClassName(DiagnosticPosition pos, Name name, Scope s) {
+        for (Scope.Entry e = s.lookup(name); e.scope == s; e = e.next()) {
+            if (e.sym.kind == TYP && e.sym.name != names.error) {
+                duplicateError(pos, e.sym);
+                return false;
+            }
+        }
+        for (Symbol sym = s.owner; sym != null; sym = sym.owner) {
+            if (sym.kind == TYP && sym.name == name && sym.name != names.error) {
+                duplicateError(pos, sym);
+                return true;
+            }
+        }
+        return true;
+    }
+
+/* *************************************************************************
+ * Class name generation
+ **************************************************************************/
+
+    /** Return name of local class.
+     *  This is of the form   {@code <enclClass> $ n <classname> }
+     *  where
+     *    enclClass is the flat name of the enclosing class,
+     *    classname is the simple name of the local class
+     */
+    Name localClassName(ClassSymbol c) {
+        for (int i=1; ; i++) {
+            Name flatname = names.
+                fromString("" + c.owner.enclClass().flatname +
+                           syntheticNameChar + i +
+                           c.name);
+            if (compiled.get(flatname) == null) return flatname;
+        }
+    }
+
+/* *************************************************************************
+ * Type Checking
+ **************************************************************************/
+
+    /**
+     * A check context is an object that can be used to perform compatibility
+     * checks - depending on the check context, meaning of 'compatibility' might
+     * vary significantly.
+     */
+    public interface CheckContext {
+        /**
+         * Is type 'found' compatible with type 'req' in given context
+         */
+        boolean compatible(Type found, Type req, Warner warn);
+        /**
+         * Report a check error
+         */
+        void report(DiagnosticPosition pos, JCDiagnostic details);
+        /**
+         * Obtain a warner for this check context
+         */
+        public Warner checkWarner(DiagnosticPosition pos, Type found, Type req);
+
+        public InferenceContext inferenceContext();
+
+        public DeferredAttrContext deferredAttrContext();
+    }
+
+    /**
+     * This class represent a check context that is nested within another check
+     * context - useful to check sub-expressions. The default behavior simply
+     * redirects all method calls to the enclosing check context leveraging
+     * the forwarding pattern.
+     */
+    static class NestedCheckContext implements CheckContext {
+        CheckContext enclosingContext;
+
+        NestedCheckContext(CheckContext enclosingContext) {
+            this.enclosingContext = enclosingContext;
+        }
+
+        public boolean compatible(Type found, Type req, Warner warn) {
+            return enclosingContext.compatible(found, req, warn);
+        }
+
+        public void report(DiagnosticPosition pos, JCDiagnostic details) {
+            enclosingContext.report(pos, details);
+        }
+
+        public Warner checkWarner(DiagnosticPosition pos, Type found, Type req) {
+            return enclosingContext.checkWarner(pos, found, req);
+        }
+
+        public InferenceContext inferenceContext() {
+            return enclosingContext.inferenceContext();
+        }
+
+        public DeferredAttrContext deferredAttrContext() {
+            return enclosingContext.deferredAttrContext();
+        }
+    }
+
+    /**
+     * Check context to be used when evaluating assignment/return statements
+     */
+    CheckContext basicHandler = new CheckContext() {
+        public void report(DiagnosticPosition pos, JCDiagnostic details) {
+            log.error(pos, "prob.found.req", details);
+        }
+        public boolean compatible(Type found, Type req, Warner warn) {
+            return types.isAssignable(found, req, warn);
+        }
+
+        public Warner checkWarner(DiagnosticPosition pos, Type found, Type req) {
+            return convertWarner(pos, found, req);
+        }
+
+        public InferenceContext inferenceContext() {
+            return infer.emptyContext;
+        }
+
+        public DeferredAttrContext deferredAttrContext() {
+            return deferredAttr.emptyDeferredAttrContext;
+        }
+
+        @Override
+        public String toString() {
+            return "CheckContext: basicHandler";
+        }
+    };
+
+    /** Check that a given type is assignable to a given proto-type.
+     *  If it is, return the type, otherwise return errType.
+     *  @param pos        Position to be used for error reporting.
+     *  @param found      The type that was found.
+     *  @param req        The type that was required.
+     */
+    Type checkType(DiagnosticPosition pos, Type found, Type req) {
+        return checkType(pos, found, req, basicHandler);
+    }
+
+    Type checkType(final DiagnosticPosition pos, final Type found, final Type req, final CheckContext checkContext) {
+        final InferenceContext inferenceContext = checkContext.inferenceContext();
+        if (inferenceContext.free(req) || inferenceContext.free(found)) {
+            inferenceContext.addFreeTypeListener(List.of(req, found), new FreeTypeListener() {
+                @Override
+                public void typesInferred(InferenceContext inferenceContext) {
+                    checkType(pos, inferenceContext.asInstType(found), inferenceContext.asInstType(req), checkContext);
+                }
+            });
+        }
+        if (req.hasTag(ERROR))
+            return req;
+        if (req.hasTag(NONE))
+            return found;
+        if (checkContext.compatible(found, req, checkContext.checkWarner(pos, found, req))) {
+            return found;
+        } else {
+            if (found.isNumeric() && req.isNumeric()) {
+                checkContext.report(pos, diags.fragment("possible.loss.of.precision", found, req));
+                return types.createErrorType(found);
+            }
+            checkContext.report(pos, diags.fragment("inconvertible.types", found, req));
+            return types.createErrorType(found);
+        }
+    }
+
+    /** Check that a given type can be cast to a given target type.
+     *  Return the result of the cast.
+     *  @param pos        Position to be used for error reporting.
+     *  @param found      The type that is being cast.
+     *  @param req        The target type of the cast.
+     */
+    Type checkCastable(DiagnosticPosition pos, Type found, Type req) {
+        return checkCastable(pos, found, req, basicHandler);
+    }
+    Type checkCastable(DiagnosticPosition pos, Type found, Type req, CheckContext checkContext) {
+        if (types.isCastable(found, req, castWarner(pos, found, req))) {
+            return req;
+        } else {
+            checkContext.report(pos, diags.fragment("inconvertible.types", found, req));
+            return types.createErrorType(found);
+        }
+    }
+
+    /** Check for redundant casts (i.e. where source type is a subtype of target type)
+     * The problem should only be reported for non-292 cast
+     */
+    public void checkRedundantCast(Env<AttrContext> env, final JCTypeCast tree) {
+        if (!tree.type.isErroneous()
+                && types.isSameType(tree.expr.type, tree.clazz.type)
+                && !(ignoreAnnotatedCasts && TreeInfo.containsTypeAnnotation(tree.clazz))
+                && !is292targetTypeCast(tree)) {
+            deferredLintHandler.report(new DeferredLintHandler.LintLogger() {
+                @Override
+                public void report() {
+                    if (lint.isEnabled(LintCategory.CAST))
+                        log.warning(LintCategory.CAST,
+                                tree.pos(), "redundant.cast", tree.expr.type);
+                }
+            });
+        }
+    }
+    //where
+        private boolean is292targetTypeCast(JCTypeCast tree) {
+            boolean is292targetTypeCast = false;
+            JCExpression expr = TreeInfo.skipParens(tree.expr);
+            if (expr.hasTag(APPLY)) {
+                JCMethodInvocation apply = (JCMethodInvocation)expr;
+                Symbol sym = TreeInfo.symbol(apply.meth);
+                is292targetTypeCast = sym != null &&
+                    sym.kind == MTH &&
+                    (sym.flags() & HYPOTHETICAL) != 0;
+            }
+            return is292targetTypeCast;
+        }
+
+        private static final boolean ignoreAnnotatedCasts = true;
+
+    /** Check that a type is within some bounds.
+     *
+     *  Used in TypeApply to verify that, e.g., X in {@code V<X>} is a valid
+     *  type argument.
+     *  @param a             The type that should be bounded by bs.
+     *  @param bound         The bound.
+     */
+    private boolean checkExtends(Type a, Type bound) {
+         if (a.isUnbound()) {
+             return true;
+         } else if (!a.hasTag(WILDCARD)) {
+             a = types.cvarUpperBound(a);
+             return types.isSubtype(a, bound);
+         } else if (a.isExtendsBound()) {
+             return types.isCastable(bound, types.wildUpperBound(a), types.noWarnings);
+         } else if (a.isSuperBound()) {
+             return !types.notSoftSubtype(types.wildLowerBound(a), bound);
+         }
+         return true;
+     }
+
+    /** Check that type is different from 'void'.
+     *  @param pos           Position to be used for error reporting.
+     *  @param t             The type to be checked.
+     */
+    Type checkNonVoid(DiagnosticPosition pos, Type t) {
+        if (t.hasTag(VOID)) {
+            log.error(pos, "void.not.allowed.here");
+            return types.createErrorType(t);
+        } else {
+            return t;
+        }
+    }
+
+    Type checkClassOrArrayType(DiagnosticPosition pos, Type t) {
+        if (!t.hasTag(CLASS) && !t.hasTag(ARRAY) && !t.hasTag(ERROR)) {
+            return typeTagError(pos,
+                                diags.fragment("type.req.class.array"),
+                                asTypeParam(t));
+        } else {
+            return t;
+        }
+    }
+
+    /** Check that type is a class or interface type.
+     *  @param pos           Position to be used for error reporting.
+     *  @param t             The type to be checked.
+     */
+    Type checkClassType(DiagnosticPosition pos, Type t) {
+        if (!t.hasTag(CLASS) && !t.hasTag(ERROR)) {
+            return typeTagError(pos,
+                                diags.fragment("type.req.class"),
+                                asTypeParam(t));
+        } else {
+            return t;
+        }
+    }
+    //where
+        private Object asTypeParam(Type t) {
+            return (t.hasTag(TYPEVAR))
+                                    ? diags.fragment("type.parameter", t)
+                                    : t;
+        }
+
+    /** Check that type is a valid qualifier for a constructor reference expression
+     */
+    Type checkConstructorRefType(DiagnosticPosition pos, Type t) {
+        t = checkClassOrArrayType(pos, t);
+        if (t.hasTag(CLASS)) {
+            if ((t.tsym.flags() & (ABSTRACT | INTERFACE)) != 0) {
+                log.error(pos, "abstract.cant.be.instantiated", t.tsym);
+                t = types.createErrorType(t);
+            } else if ((t.tsym.flags() & ENUM) != 0) {
+                log.error(pos, "enum.cant.be.instantiated");
+                t = types.createErrorType(t);
+            } else {
+                t = checkClassType(pos, t, true);
+            }
+        } else if (t.hasTag(ARRAY)) {
+            if (!types.isReifiable(((ArrayType)t).elemtype)) {
+                log.error(pos, "generic.array.creation");
+                t = types.createErrorType(t);
+            }
+        }
+        return t;
+    }
+
+    /** Check that type is a class or interface type.
+     *  @param pos           Position to be used for error reporting.
+     *  @param t             The type to be checked.
+     *  @param noBounds    True if type bounds are illegal here.
+     */
+    Type checkClassType(DiagnosticPosition pos, Type t, boolean noBounds) {
+        t = checkClassType(pos, t);
+        if (noBounds && t.isParameterized()) {
+            List<Type> args = t.getTypeArguments();
+            while (args.nonEmpty()) {
+                if (args.head.hasTag(WILDCARD))
+                    return typeTagError(pos,
+                                        diags.fragment("type.req.exact"),
+                                        args.head);
+                args = args.tail;
+            }
+        }
+        return t;
+    }
+
+    /** Check that type is a reference type, i.e. a class, interface or array type
+     *  or a type variable.
+     *  @param pos           Position to be used for error reporting.
+     *  @param t             The type to be checked.
+     */
+    Type checkRefType(DiagnosticPosition pos, Type t) {
+        if (t.isReference())
+            return t;
+        else
+            return typeTagError(pos,
+                                diags.fragment("type.req.ref"),
+                                t);
+    }
+
+    /** Check that each type is a reference type, i.e. a class, interface or array type
+     *  or a type variable.
+     *  @param trees         Original trees, used for error reporting.
+     *  @param types         The types to be checked.
+     */
+    List<Type> checkRefTypes(List<JCExpression> trees, List<Type> types) {
+        List<JCExpression> tl = trees;
+        for (List<Type> l = types; l.nonEmpty(); l = l.tail) {
+            l.head = checkRefType(tl.head.pos(), l.head);
+            tl = tl.tail;
+        }
+        return types;
+    }
+
+    /** Check that type is a null or reference type.
+     *  @param pos           Position to be used for error reporting.
+     *  @param t             The type to be checked.
+     */
+    Type checkNullOrRefType(DiagnosticPosition pos, Type t) {
+        if (t.isReference() || t.hasTag(BOT))
+            return t;
+        else
+            return typeTagError(pos,
+                                diags.fragment("type.req.ref"),
+                                t);
+    }
+
+    /** Check that flag set does not contain elements of two conflicting sets. s
+     *  Return true if it doesn't.
+     *  @param pos           Position to be used for error reporting.
+     *  @param flags         The set of flags to be checked.
+     *  @param set1          Conflicting flags set #1.
+     *  @param set2          Conflicting flags set #2.
+     */
+    boolean checkDisjoint(DiagnosticPosition pos, long flags, long set1, long set2) {
+        if ((flags & set1) != 0 && (flags & set2) != 0) {
+            log.error(pos,
+                      "illegal.combination.of.modifiers",
+                      asFlagSet(TreeInfo.firstFlag(flags & set1)),
+                      asFlagSet(TreeInfo.firstFlag(flags & set2)));
+            return false;
+        } else
+            return true;
+    }
+
+    /** Check that usage of diamond operator is correct (i.e. diamond should not
+     * be used with non-generic classes or in anonymous class creation expressions)
+     */
+    Type checkDiamond(JCNewClass tree, Type t) {
+        if (!TreeInfo.isDiamond(tree) ||
+                t.isErroneous()) {
+            return checkClassType(tree.clazz.pos(), t, true);
+        } else if (tree.def != null) {
+            log.error(tree.clazz.pos(),
+                    "cant.apply.diamond.1",
+                    t, diags.fragment("diamond.and.anon.class", t));
+            return types.createErrorType(t);
+        } else if (t.tsym.type.getTypeArguments().isEmpty()) {
+            log.error(tree.clazz.pos(),
+                "cant.apply.diamond.1",
+                t, diags.fragment("diamond.non.generic", t));
+            return types.createErrorType(t);
+        } else if (tree.typeargs != null &&
+                tree.typeargs.nonEmpty()) {
+            log.error(tree.clazz.pos(),
+                "cant.apply.diamond.1",
+                t, diags.fragment("diamond.and.explicit.params", t));
+            return types.createErrorType(t);
+        } else {
+            return t;
+        }
+    }
+
+    void checkVarargsMethodDecl(Env<AttrContext> env, JCMethodDecl tree) {
+        MethodSymbol m = tree.sym;
+        if (!allowSimplifiedVarargs) return;
+        boolean hasTrustMeAnno = m.attribute(syms.trustMeType.tsym) != null;
+        Type varargElemType = null;
+        if (m.isVarArgs()) {
+            varargElemType = types.elemtype(tree.params.last().type);
+        }
+        if (hasTrustMeAnno && !isTrustMeAllowedOnMethod(m)) {
+            if (varargElemType != null) {
+                log.error(tree,
+                        "varargs.invalid.trustme.anno",
+                        syms.trustMeType.tsym,
+                        diags.fragment("varargs.trustme.on.virtual.varargs", m));
+            } else {
+                log.error(tree,
+                            "varargs.invalid.trustme.anno",
+                            syms.trustMeType.tsym,
+                            diags.fragment("varargs.trustme.on.non.varargs.meth", m));
+            }
+        } else if (hasTrustMeAnno && varargElemType != null &&
+                            types.isReifiable(varargElemType)) {
+            warnUnsafeVararg(tree,
+                            "varargs.redundant.trustme.anno",
+                            syms.trustMeType.tsym,
+                            diags.fragment("varargs.trustme.on.reifiable.varargs", varargElemType));
+        }
+        else if (!hasTrustMeAnno && varargElemType != null &&
+                !types.isReifiable(varargElemType)) {
+            warnUnchecked(tree.params.head.pos(), "unchecked.varargs.non.reifiable.type", varargElemType);
+        }
+    }
+    //where
+        private boolean isTrustMeAllowedOnMethod(Symbol s) {
+            return (s.flags() & VARARGS) != 0 &&
+                (s.isConstructor() ||
+                    (s.flags() & (STATIC | FINAL)) != 0);
+        }
+
+    Type checkMethod(final Type mtype,
+            final Symbol sym,
+            final Env<AttrContext> env,
+            final List<JCExpression> argtrees,
+            final List<Type> argtypes,
+            final boolean useVarargs,
+            InferenceContext inferenceContext) {
+        // System.out.println("call   : " + env.tree);
+        // System.out.println("method : " + owntype);
+        // System.out.println("actuals: " + argtypes);
+        if (inferenceContext.free(mtype)) {
+            inferenceContext.addFreeTypeListener(List.of(mtype), new FreeTypeListener() {
+                public void typesInferred(InferenceContext inferenceContext) {
+                    checkMethod(inferenceContext.asInstType(mtype), sym, env, argtrees, argtypes, useVarargs, inferenceContext);
+                }
+            });
+            return mtype;
+        }
+        Type owntype = mtype;
+        List<Type> formals = owntype.getParameterTypes();
+        List<Type> nonInferred = sym.type.getParameterTypes();
+        if (nonInferred.length() != formals.length()) nonInferred = formals;
+        Type last = useVarargs ? formals.last() : null;
+        if (sym.name == names.init && sym.owner == syms.enumSym) {
+            formals = formals.tail.tail;
+            nonInferred = nonInferred.tail.tail;
+        }
+        List<JCExpression> args = argtrees;
+        if (args != null) {
+            //this is null when type-checking a method reference
+            while (formals.head != last) {
+                JCTree arg = args.head;
+                Warner warn = convertWarner(arg.pos(), arg.type, nonInferred.head);
+                assertConvertible(arg, arg.type, formals.head, warn);
+                args = args.tail;
+                formals = formals.tail;
+                nonInferred = nonInferred.tail;
+            }
+            if (useVarargs) {
+                Type varArg = types.elemtype(last);
+                while (args.tail != null) {
+                    JCTree arg = args.head;
+                    Warner warn = convertWarner(arg.pos(), arg.type, varArg);
+                    assertConvertible(arg, arg.type, varArg, warn);
+                    args = args.tail;
+                }
+            } else if ((sym.flags() & (VARARGS | SIGNATURE_POLYMORPHIC)) == VARARGS &&
+                    allowVarargs) {
+                // non-varargs call to varargs method
+                Type varParam = owntype.getParameterTypes().last();
+                Type lastArg = argtypes.last();
+                if (types.isSubtypeUnchecked(lastArg, types.elemtype(varParam)) &&
+                    !types.isSameType(types.erasure(varParam), types.erasure(lastArg)))
+                    log.warning(argtrees.last().pos(), "inexact.non-varargs.call",
+                                types.elemtype(varParam), varParam);
+            }
+        }
+        if (useVarargs) {
+            Type argtype = owntype.getParameterTypes().last();
+            if (!types.isReifiable(argtype) &&
+                (!allowSimplifiedVarargs ||
+                 sym.attribute(syms.trustMeType.tsym) == null ||
+                 !isTrustMeAllowedOnMethod(sym))) {
+                warnUnchecked(env.tree.pos(),
+                                  "unchecked.generic.array.creation",
+                                  argtype);
+            }
+            if ((sym.baseSymbol().flags() & SIGNATURE_POLYMORPHIC) == 0) {
+                TreeInfo.setVarargsElement(env.tree, types.elemtype(argtype));
+            }
+         }
+         PolyKind pkind = (sym.type.hasTag(FORALL) &&
+                 sym.type.getReturnType().containsAny(((ForAll)sym.type).tvars)) ?
+                 PolyKind.POLY : PolyKind.STANDALONE;
+         TreeInfo.setPolyKind(env.tree, pkind);
+         return owntype;
+    }
+    //where
+    private void assertConvertible(JCTree tree, Type actual, Type formal, Warner warn) {
+        if (types.isConvertible(actual, formal, warn))
+            return;
+
+        if (formal.isCompound()
+            && types.isSubtype(actual, types.supertype(formal))
+            && types.isSubtypeUnchecked(actual, types.interfaces(formal), warn))
+            return;
+    }
+
+    /**
+     * Check that type 't' is a valid instantiation of a generic class
+     * (see JLS 4.5)
+     *
+     * @param t class type to be checked
+     * @return true if 't' is well-formed
+     */
+    public boolean checkValidGenericType(Type t) {
+        return firstIncompatibleTypeArg(t) == null;
+    }
+    //WHERE
+        private Type firstIncompatibleTypeArg(Type type) {
+            List<Type> formals = type.tsym.type.allparams();
+            List<Type> actuals = type.allparams();
+            List<Type> args = type.getTypeArguments();
+            List<Type> forms = type.tsym.type.getTypeArguments();
+            ListBuffer<Type> bounds_buf = new ListBuffer<Type>();
+
+            // For matching pairs of actual argument types `a' and
+            // formal type parameters with declared bound `b' ...
+            while (args.nonEmpty() && forms.nonEmpty()) {
+                // exact type arguments needs to know their
+                // bounds (for upper and lower bound
+                // calculations).  So we create new bounds where
+                // type-parameters are replaced with actuals argument types.
+                bounds_buf.append(types.subst(forms.head.getUpperBound(), formals, actuals));
+                args = args.tail;
+                forms = forms.tail;
+            }
+
+            args = type.getTypeArguments();
+            List<Type> tvars_cap = types.substBounds(formals,
+                                      formals,
+                                      types.capture(type).allparams());
+            while (args.nonEmpty() && tvars_cap.nonEmpty()) {
+                // Let the actual arguments know their bound
+                args.head.withTypeVar((TypeVar)tvars_cap.head);
+                args = args.tail;
+                tvars_cap = tvars_cap.tail;
+            }
+
+            args = type.getTypeArguments();
+            List<Type> bounds = bounds_buf.toList();
+
+            while (args.nonEmpty() && bounds.nonEmpty()) {
+                Type actual = args.head;
+                if (!isTypeArgErroneous(actual) &&
+                        !bounds.head.isErroneous() &&
+                        !checkExtends(actual, bounds.head)) {
+                    return args.head;
+                }
+                args = args.tail;
+                bounds = bounds.tail;
+            }
+
+            args = type.getTypeArguments();
+            bounds = bounds_buf.toList();
+
+            for (Type arg : types.capture(type).getTypeArguments()) {
+                if (arg.hasTag(TYPEVAR) &&
+                        arg.getUpperBound().isErroneous() &&
+                        !bounds.head.isErroneous() &&
+                        !isTypeArgErroneous(args.head)) {
+                    return args.head;
+                }
+                bounds = bounds.tail;
+                args = args.tail;
+            }
+
+            return null;
+        }
+        //where
+        boolean isTypeArgErroneous(Type t) {
+            return isTypeArgErroneous.visit(t);
+        }
+
+        Types.UnaryVisitor<Boolean> isTypeArgErroneous = new Types.UnaryVisitor<Boolean>() {
+            public Boolean visitType(Type t, Void s) {
+                return t.isErroneous();
+            }
+            @Override
+            public Boolean visitTypeVar(TypeVar t, Void s) {
+                return visit(t.getUpperBound());
+            }
+            @Override
+            public Boolean visitCapturedType(CapturedType t, Void s) {
+                return visit(t.getUpperBound()) ||
+                        visit(t.getLowerBound());
+            }
+            @Override
+            public Boolean visitWildcardType(WildcardType t, Void s) {
+                return visit(t.type);
+            }
+        };
+
+    /** Check that given modifiers are legal for given symbol and
+     *  return modifiers together with any implicit modifiers for that symbol.
+     *  Warning: we can't use flags() here since this method
+     *  is called during class enter, when flags() would cause a premature
+     *  completion.
+     *  @param pos           Position to be used for error reporting.
+     *  @param flags         The set of modifiers given in a definition.
+     *  @param sym           The defined symbol.
+     */
+    long checkFlags(DiagnosticPosition pos, long flags, Symbol sym, JCTree tree) {
+        long mask;
+        long implicit = 0;
+
+        switch (sym.kind) {
+        case VAR:
+            if (TreeInfo.isReceiverParam(tree))
+                mask = ReceiverParamFlags;
+            else if (sym.owner.kind != TYP)
+                mask = LocalVarFlags;
+            else if ((sym.owner.flags_field & INTERFACE) != 0)
+                mask = implicit = InterfaceVarFlags;
+            else
+                mask = VarFlags;
+            break;
+        case MTH:
+            if (sym.name == names.init) {
+                if ((sym.owner.flags_field & ENUM) != 0) {
+                    // enum constructors cannot be declared public or
+                    // protected and must be implicitly or explicitly
+                    // private
+                    implicit = PRIVATE;
+                    mask = PRIVATE;
+                } else
+                    mask = ConstructorFlags;
+            }  else if ((sym.owner.flags_field & INTERFACE) != 0) {
+                if ((sym.owner.flags_field & ANNOTATION) != 0) {
+                    mask = AnnotationTypeElementMask;
+                    implicit = PUBLIC | ABSTRACT;
+                } else if ((flags & (DEFAULT | STATIC)) != 0) {
+                    mask = InterfaceMethodMask;
+                    implicit = PUBLIC;
+                    if ((flags & DEFAULT) != 0) {
+                        implicit |= ABSTRACT;
+                    }
+                } else {
+                    mask = implicit = InterfaceMethodFlags;
+                }
+            } else {
+                mask = MethodFlags;
+            }
+            // Imply STRICTFP if owner has STRICTFP set.
+            if (((flags|implicit) & Flags.ABSTRACT) == 0 ||
+                ((flags) & Flags.DEFAULT) != 0)
+                implicit |= sym.owner.flags_field & STRICTFP;
+            break;
+        case TYP:
+            if (sym.isLocal()) {
+                mask = LocalClassFlags;
+                if (sym.name.isEmpty()) { // Anonymous class
+                    // Anonymous classes in static methods are themselves static;
+                    // that's why we admit STATIC here.
+                    mask |= STATIC;
+                    // JLS: Anonymous classes are final.
+                    implicit |= FINAL;
+                }
+                if ((sym.owner.flags_field & STATIC) == 0 &&
+                    (flags & ENUM) != 0)
+                    log.error(pos, "enums.must.be.static");
+            } else if (sym.owner.kind == TYP) {
+                mask = MemberClassFlags;
+                if (sym.owner.owner.kind == PCK ||
+                    (sym.owner.flags_field & STATIC) != 0)
+                    mask |= STATIC;
+                else if ((flags & ENUM) != 0)
+                    log.error(pos, "enums.must.be.static");
+                // Nested interfaces and enums are always STATIC (Spec ???)
+                if ((flags & (INTERFACE | ENUM)) != 0 ) implicit = STATIC;
+            } else {
+                mask = ClassFlags;
+            }
+            // Interfaces are always ABSTRACT
+            if ((flags & INTERFACE) != 0) implicit |= ABSTRACT;
+
+            if ((flags & ENUM) != 0) {
+                // enums can't be declared abstract or final
+                mask &= ~(ABSTRACT | FINAL);
+                implicit |= implicitEnumFinalFlag(tree);
+            }
+            // Imply STRICTFP if owner has STRICTFP set.
+            implicit |= sym.owner.flags_field & STRICTFP;
+            break;
+        default:
+            throw new AssertionError();
+        }
+        long illegal = flags & ExtendedStandardFlags & ~mask;
+        if (illegal != 0) {
+            if ((illegal & INTERFACE) != 0) {
+                log.error(pos, "intf.not.allowed.here");
+                mask |= INTERFACE;
+            }
+            else {
+                log.error(pos,
+                          "mod.not.allowed.here", asFlagSet(illegal));
+            }
+        }
+        else if ((sym.kind == TYP ||
+                  // ISSUE: Disallowing abstract&private is no longer appropriate
+                  // in the presence of inner classes. Should it be deleted here?
+                  checkDisjoint(pos, flags,
+                                ABSTRACT,
+                                PRIVATE | STATIC | DEFAULT))
+                 &&
+                 checkDisjoint(pos, flags,
+                                STATIC,
+                                DEFAULT)
+                 &&
+                 checkDisjoint(pos, flags,
+                               ABSTRACT | INTERFACE,
+                               FINAL | NATIVE | SYNCHRONIZED)
+                 &&
+                 checkDisjoint(pos, flags,
+                               PUBLIC,
+                               PRIVATE | PROTECTED)
+                 &&
+                 checkDisjoint(pos, flags,
+                               PRIVATE,
+                               PUBLIC | PROTECTED)
+                 &&
+                 checkDisjoint(pos, flags,
+                               FINAL,
+                               VOLATILE)
+                 &&
+                 (sym.kind == TYP ||
+                  checkDisjoint(pos, flags,
+                                ABSTRACT | NATIVE,
+                                STRICTFP))) {
+            // skip
+        }
+        return flags & (mask | ~ExtendedStandardFlags) | implicit;
+    }
+
+
+    /** Determine if this enum should be implicitly final.
+     *
+     *  If the enum has no specialized enum contants, it is final.
+     *
+     *  If the enum does have specialized enum contants, it is
+     *  <i>not</i> final.
+     */
+    private long implicitEnumFinalFlag(JCTree tree) {
+        if (!tree.hasTag(CLASSDEF)) return 0;
+        class SpecialTreeVisitor extends JCTree.Visitor {
+            boolean specialized;
+            SpecialTreeVisitor() {
+                this.specialized = false;
+            };
+
+            @Override
+            public void visitTree(JCTree tree) { /* no-op */ }
+
+            @Override
+            public void visitVarDef(JCVariableDecl tree) {
+                if ((tree.mods.flags & ENUM) != 0) {
+                    if (tree.init instanceof JCNewClass &&
+                        ((JCNewClass) tree.init).def != null) {
+                        specialized = true;
+                    }
+                }
+            }
+        }
+
+        SpecialTreeVisitor sts = new SpecialTreeVisitor();
+        JCClassDecl cdef = (JCClassDecl) tree;
+        for (JCTree defs: cdef.defs) {
+            defs.accept(sts);
+            if (sts.specialized) return 0;
+        }
+        return FINAL;
+    }
+
+/* *************************************************************************
+ * Type Validation
+ **************************************************************************/
+
+    /** Validate a type expression. That is,
+     *  check that all type arguments of a parametric type are within
+     *  their bounds. This must be done in a second phase after type attribution
+     *  since a class might have a subclass as type parameter bound. E.g:
+     *
+     *  <pre>{@code
+     *  class B<A extends C> { ... }
+     *  class C extends B<C> { ... }
+     *  }</pre>
+     *
+     *  and we can't make sure that the bound is already attributed because
+     *  of possible cycles.
+     *
+     * Visitor method: Validate a type expression, if it is not null, catching
+     *  and reporting any completion failures.
+     */
+    void validate(JCTree tree, Env<AttrContext> env) {
+        validate(tree, env, true);
+    }
+    void validate(JCTree tree, Env<AttrContext> env, boolean checkRaw) {
+        new Validator(env).validateTree(tree, checkRaw, true);
+    }
+
+    /** Visitor method: Validate a list of type expressions.
+     */
+    void validate(List<? extends JCTree> trees, Env<AttrContext> env) {
+        for (List<? extends JCTree> l = trees; l.nonEmpty(); l = l.tail)
+            validate(l.head, env);
+    }
+
+    /** A visitor class for type validation.
+     */
+    class Validator extends JCTree.Visitor {
+
+        boolean checkRaw;
+        boolean isOuter;
+        Env<AttrContext> env;
+
+        Validator(Env<AttrContext> env) {
+            this.env = env;
+        }
+
+        @Override
+        public void visitTypeArray(JCArrayTypeTree tree) {
+            validateTree(tree.elemtype, checkRaw, isOuter);
+        }
+
+        @Override
+        public void visitTypeApply(JCTypeApply tree) {
+            if (tree.type.hasTag(CLASS)) {
+                List<JCExpression> args = tree.arguments;
+                List<Type> forms = tree.type.tsym.type.getTypeArguments();
+
+                Type incompatibleArg = firstIncompatibleTypeArg(tree.type);
+                if (incompatibleArg != null) {
+                    for (JCTree arg : tree.arguments) {
+                        if (arg.type == incompatibleArg) {
+                            log.error(arg, "not.within.bounds", incompatibleArg, forms.head);
+                        }
+                        forms = forms.tail;
+                     }
+                 }
+
+                forms = tree.type.tsym.type.getTypeArguments();
+
+                boolean is_java_lang_Class = tree.type.tsym.flatName() == names.java_lang_Class;
+
+                // For matching pairs of actual argument types `a' and
+                // formal type parameters with declared bound `b' ...
+                while (args.nonEmpty() && forms.nonEmpty()) {
+                    validateTree(args.head,
+                            !(isOuter && is_java_lang_Class),
+                            false);
+                    args = args.tail;
+                    forms = forms.tail;
+                }
+
+                // Check that this type is either fully parameterized, or
+                // not parameterized at all.
+                if (tree.type.getEnclosingType().isRaw())
+                    log.error(tree.pos(), "improperly.formed.type.inner.raw.param");
+                if (tree.clazz.hasTag(SELECT))
+                    visitSelectInternal((JCFieldAccess)tree.clazz);
+            }
+        }
+
+        @Override
+        public void visitTypeParameter(JCTypeParameter tree) {
+            validateTrees(tree.bounds, true, isOuter);
+            checkClassBounds(tree.pos(), tree.type);
+        }
+
+        @Override
+        public void visitWildcard(JCWildcard tree) {
+            if (tree.inner != null)
+                validateTree(tree.inner, true, isOuter);
+        }
+
+        @Override
+        public void visitSelect(JCFieldAccess tree) {
+            if (tree.type.hasTag(CLASS)) {
+                visitSelectInternal(tree);
+
+                // Check that this type is either fully parameterized, or
+                // not parameterized at all.
+                if (tree.selected.type.isParameterized() && tree.type.tsym.type.getTypeArguments().nonEmpty())
+                    log.error(tree.pos(), "improperly.formed.type.param.missing");
+            }
+        }
+
+        public void visitSelectInternal(JCFieldAccess tree) {
+            if (tree.type.tsym.isStatic() &&
+                tree.selected.type.isParameterized()) {
+                // The enclosing type is not a class, so we are
+                // looking at a static member type.  However, the
+                // qualifying expression is parameterized.
+                log.error(tree.pos(), "cant.select.static.class.from.param.type");
+            } else {
+                // otherwise validate the rest of the expression
+                tree.selected.accept(this);
+            }
+        }
+
+        @Override
+        public void visitAnnotatedType(JCAnnotatedType tree) {
+            tree.underlyingType.accept(this);
+        }
+
+        @Override
+        public void visitTypeIdent(JCPrimitiveTypeTree that) {
+            if (that.type.hasTag(TypeTag.VOID)) {
+                log.error(that.pos(), "void.not.allowed.here");
+            }
+            super.visitTypeIdent(that);
+        }
+
+        /** Default visitor method: do nothing.
+         */
+        @Override
+        public void visitTree(JCTree tree) {
+        }
+
+        public void validateTree(JCTree tree, boolean checkRaw, boolean isOuter) {
+            if (tree != null) {
+                boolean prevCheckRaw = this.checkRaw;
+                this.checkRaw = checkRaw;
+                this.isOuter = isOuter;
+
+                try {
+                    tree.accept(this);
+                    if (checkRaw)
+                        checkRaw(tree, env);
+                } catch (CompletionFailure ex) {
+                    completionError(tree.pos(), ex);
+                } finally {
+                    this.checkRaw = prevCheckRaw;
+                }
+            }
+        }
+
+        public void validateTrees(List<? extends JCTree> trees, boolean checkRaw, boolean isOuter) {
+            for (List<? extends JCTree> l = trees; l.nonEmpty(); l = l.tail)
+                validateTree(l.head, checkRaw, isOuter);
+        }
+    }
+
+    void checkRaw(JCTree tree, Env<AttrContext> env) {
+        if (lint.isEnabled(LintCategory.RAW) &&
+            tree.type.hasTag(CLASS) &&
+            !TreeInfo.isDiamond(tree) &&
+            !withinAnonConstr(env) &&
+            tree.type.isRaw()) {
+            log.warning(LintCategory.RAW,
+                    tree.pos(), "raw.class.use", tree.type, tree.type.tsym.type);
+        }
+    }
+    //where
+        private boolean withinAnonConstr(Env<AttrContext> env) {
+            return env.enclClass.name.isEmpty() &&
+                    env.enclMethod != null && env.enclMethod.name == names.init;
+        }
+
+/* *************************************************************************
+ * Exception checking
+ **************************************************************************/
+
+    /* The following methods treat classes as sets that contain
+     * the class itself and all their subclasses
+     */
+
+    /** Is given type a subtype of some of the types in given list?
+     */
+    boolean subset(Type t, List<Type> ts) {
+        for (List<Type> l = ts; l.nonEmpty(); l = l.tail)
+            if (types.isSubtype(t, l.head)) return true;
+        return false;
+    }
+
+    /** Is given type a subtype or supertype of
+     *  some of the types in given list?
+     */
+    boolean intersects(Type t, List<Type> ts) {
+        for (List<Type> l = ts; l.nonEmpty(); l = l.tail)
+            if (types.isSubtype(t, l.head) || types.isSubtype(l.head, t)) return true;
+        return false;
+    }
+
+    /** Add type set to given type list, unless it is a subclass of some class
+     *  in the list.
+     */
+    List<Type> incl(Type t, List<Type> ts) {
+        return subset(t, ts) ? ts : excl(t, ts).prepend(t);
+    }
+
+    /** Remove type set from type set list.
+     */
+    List<Type> excl(Type t, List<Type> ts) {
+        if (ts.isEmpty()) {
+            return ts;
+        } else {
+            List<Type> ts1 = excl(t, ts.tail);
+            if (types.isSubtype(ts.head, t)) return ts1;
+            else if (ts1 == ts.tail) return ts;
+            else return ts1.prepend(ts.head);
+        }
+    }
+
+    /** Form the union of two type set lists.
+     */
+    List<Type> union(List<Type> ts1, List<Type> ts2) {
+        List<Type> ts = ts1;
+        for (List<Type> l = ts2; l.nonEmpty(); l = l.tail)
+            ts = incl(l.head, ts);
+        return ts;
+    }
+
+    /** Form the difference of two type lists.
+     */
+    List<Type> diff(List<Type> ts1, List<Type> ts2) {
+        List<Type> ts = ts1;
+        for (List<Type> l = ts2; l.nonEmpty(); l = l.tail)
+            ts = excl(l.head, ts);
+        return ts;
+    }
+
+    /** Form the intersection of two type lists.
+     */
+    public List<Type> intersect(List<Type> ts1, List<Type> ts2) {
+        List<Type> ts = List.nil();
+        for (List<Type> l = ts1; l.nonEmpty(); l = l.tail)
+            if (subset(l.head, ts2)) ts = incl(l.head, ts);
+        for (List<Type> l = ts2; l.nonEmpty(); l = l.tail)
+            if (subset(l.head, ts1)) ts = incl(l.head, ts);
+        return ts;
+    }
+
+    /** Is exc an exception symbol that need not be declared?
+     */
+    boolean isUnchecked(ClassSymbol exc) {
+        return
+            exc.kind == ERR ||
+            exc.isSubClass(syms.errorType.tsym, types) ||
+            exc.isSubClass(syms.runtimeExceptionType.tsym, types);
+    }
+
+    /** Is exc an exception type that need not be declared?
+     */
+    boolean isUnchecked(Type exc) {
+        return
+            (exc.hasTag(TYPEVAR)) ? isUnchecked(types.supertype(exc)) :
+            (exc.hasTag(CLASS)) ? isUnchecked((ClassSymbol)exc.tsym) :
+            exc.hasTag(BOT);
+    }
+
+    /** Same, but handling completion failures.
+     */
+    boolean isUnchecked(DiagnosticPosition pos, Type exc) {
+        try {
+            return isUnchecked(exc);
+        } catch (CompletionFailure ex) {
+            completionError(pos, ex);
+            return true;
+        }
+    }
+
+    /** Is exc handled by given exception list?
+     */
+    boolean isHandled(Type exc, List<Type> handled) {
+        return isUnchecked(exc) || subset(exc, handled);
+    }
+
+    /** Return all exceptions in thrown list that are not in handled list.
+     *  @param thrown     The list of thrown exceptions.
+     *  @param handled    The list of handled exceptions.
+     */
+    List<Type> unhandled(List<Type> thrown, List<Type> handled) {
+        List<Type> unhandled = List.nil();
+        for (List<Type> l = thrown; l.nonEmpty(); l = l.tail)
+            if (!isHandled(l.head, handled)) unhandled = unhandled.prepend(l.head);
+        return unhandled;
+    }
+
+/* *************************************************************************
+ * Overriding/Implementation checking
+ **************************************************************************/
+
+    /** The level of access protection given by a flag set,
+     *  where PRIVATE is highest and PUBLIC is lowest.
+     */
+    static int protection(long flags) {
+        switch ((short)(flags & AccessFlags)) {
+        case PRIVATE: return 3;
+        case PROTECTED: return 1;
+        default:
+        case PUBLIC: return 0;
+        case 0: return 2;
+        }
+    }
+
+    /** A customized "cannot override" error message.
+     *  @param m      The overriding method.
+     *  @param other  The overridden method.
+     *  @return       An internationalized string.
+     */
+    Object cannotOverride(MethodSymbol m, MethodSymbol other) {
+        String key;
+        if ((other.owner.flags() & INTERFACE) == 0)
+            key = "cant.override";
+        else if ((m.owner.flags() & INTERFACE) == 0)
+            key = "cant.implement";
+        else
+            key = "clashes.with";
+        return diags.fragment(key, m, m.location(), other, other.location());
+    }
+
+    /** A customized "override" warning message.
+     *  @param m      The overriding method.
+     *  @param other  The overridden method.
+     *  @return       An internationalized string.
+     */
+    Object uncheckedOverrides(MethodSymbol m, MethodSymbol other) {
+        String key;
+        if ((other.owner.flags() & INTERFACE) == 0)
+            key = "unchecked.override";
+        else if ((m.owner.flags() & INTERFACE) == 0)
+            key = "unchecked.implement";
+        else
+            key = "unchecked.clash.with";
+        return diags.fragment(key, m, m.location(), other, other.location());
+    }
+
+    /** A customized "override" warning message.
+     *  @param m      The overriding method.
+     *  @param other  The overridden method.
+     *  @return       An internationalized string.
+     */
+    Object varargsOverrides(MethodSymbol m, MethodSymbol other) {
+        String key;
+        if ((other.owner.flags() & INTERFACE) == 0)
+            key = "varargs.override";
+        else  if ((m.owner.flags() & INTERFACE) == 0)
+            key = "varargs.implement";
+        else
+            key = "varargs.clash.with";
+        return diags.fragment(key, m, m.location(), other, other.location());
+    }
+
+    /** Check that this method conforms with overridden method 'other'.
+     *  where `origin' is the class where checking started.
+     *  Complications:
+     *  (1) Do not check overriding of synthetic methods
+     *      (reason: they might be final).
+     *      todo: check whether this is still necessary.
+     *  (2) Admit the case where an interface proxy throws fewer exceptions
+     *      than the method it implements. Augment the proxy methods with the
+     *      undeclared exceptions in this case.
+     *  (3) When generics are enabled, admit the case where an interface proxy
+     *      has a result type
+     *      extended by the result type of the method it implements.
+     *      Change the proxies result type to the smaller type in this case.
+     *
+     *  @param tree         The tree from which positions
+     *                      are extracted for errors.
+     *  @param m            The overriding method.
+     *  @param other        The overridden method.
+     *  @param origin       The class of which the overriding method
+     *                      is a member.
+     */
+    void checkOverride(JCTree tree,
+                       MethodSymbol m,
+                       MethodSymbol other,
+                       ClassSymbol origin) {
+        // Don't check overriding of synthetic methods or by bridge methods.
+        if ((m.flags() & (SYNTHETIC|BRIDGE)) != 0 || (other.flags() & SYNTHETIC) != 0) {
+            return;
+        }
+
+        // Error if static method overrides instance method (JLS 8.4.6.2).
+        if ((m.flags() & STATIC) != 0 &&
+                   (other.flags() & STATIC) == 0) {
+            log.error(TreeInfo.diagnosticPositionFor(m, tree), "override.static",
+                      cannotOverride(m, other));
+            m.flags_field |= BAD_OVERRIDE;
+            return;
+        }
+
+        // Error if instance method overrides static or final
+        // method (JLS 8.4.6.1).
+        if ((other.flags() & FINAL) != 0 ||
+                 (m.flags() & STATIC) == 0 &&
+                 (other.flags() & STATIC) != 0) {
+            log.error(TreeInfo.diagnosticPositionFor(m, tree), "override.meth",
+                      cannotOverride(m, other),
+                      asFlagSet(other.flags() & (FINAL | STATIC)));
+            m.flags_field |= BAD_OVERRIDE;
+            return;
+        }
+
+        if ((m.owner.flags() & ANNOTATION) != 0) {
+            // handled in validateAnnotationMethod
+            return;
+        }
+
+        // Error if overriding method has weaker access (JLS 8.4.6.3).
+        if ((origin.flags() & INTERFACE) == 0 &&
+                 protection(m.flags()) > protection(other.flags())) {
+            log.error(TreeInfo.diagnosticPositionFor(m, tree), "override.weaker.access",
+                      cannotOverride(m, other),
+                      other.flags() == 0 ?
+                          "package" :
+                          asFlagSet(other.flags() & AccessFlags));
+            m.flags_field |= BAD_OVERRIDE;
+            return;
+        }
+
+        Type mt = types.memberType(origin.type, m);
+        Type ot = types.memberType(origin.type, other);
+        // Error if overriding result type is different
+        // (or, in the case of generics mode, not a subtype) of
+        // overridden result type. We have to rename any type parameters
+        // before comparing types.
+        List<Type> mtvars = mt.getTypeArguments();
+        List<Type> otvars = ot.getTypeArguments();
+        Type mtres = mt.getReturnType();
+        Type otres = types.subst(ot.getReturnType(), otvars, mtvars);
+
+        overrideWarner.clear();
+        boolean resultTypesOK =
+            types.returnTypeSubstitutable(mt, ot, otres, overrideWarner);
+        if (!resultTypesOK) {
+            if (!allowCovariantReturns &&
+                m.owner != origin &&
+                m.owner.isSubClass(other.owner, types)) {
+                // allow limited interoperability with covariant returns
+            } else {
+                log.error(TreeInfo.diagnosticPositionFor(m, tree),
+                          "override.incompatible.ret",
+                          cannotOverride(m, other),
+                          mtres, otres);
+                m.flags_field |= BAD_OVERRIDE;
+                return;
+            }
+        } else if (overrideWarner.hasNonSilentLint(LintCategory.UNCHECKED)) {
+            warnUnchecked(TreeInfo.diagnosticPositionFor(m, tree),
+                    "override.unchecked.ret",
+                    uncheckedOverrides(m, other),
+                    mtres, otres);
+        }
+
+        // Error if overriding method throws an exception not reported
+        // by overridden method.
+        List<Type> otthrown = types.subst(ot.getThrownTypes(), otvars, mtvars);
+        List<Type> unhandledErased = unhandled(mt.getThrownTypes(), types.erasure(otthrown));
+        List<Type> unhandledUnerased = unhandled(mt.getThrownTypes(), otthrown);
+        if (unhandledErased.nonEmpty()) {
+            log.error(TreeInfo.diagnosticPositionFor(m, tree),
+                      "override.meth.doesnt.throw",
+                      cannotOverride(m, other),
+                      unhandledUnerased.head);
+            m.flags_field |= BAD_OVERRIDE;
+            return;
+        }
+        else if (unhandledUnerased.nonEmpty()) {
+            warnUnchecked(TreeInfo.diagnosticPositionFor(m, tree),
+                          "override.unchecked.thrown",
+                         cannotOverride(m, other),
+                         unhandledUnerased.head);
+            return;
+        }
+
+        // Optional warning if varargs don't agree
+        if ((((m.flags() ^ other.flags()) & Flags.VARARGS) != 0)
+            && lint.isEnabled(LintCategory.OVERRIDES)) {
+            log.warning(TreeInfo.diagnosticPositionFor(m, tree),
+                        ((m.flags() & Flags.VARARGS) != 0)
+                        ? "override.varargs.missing"
+                        : "override.varargs.extra",
+                        varargsOverrides(m, other));
+        }
+
+        // Warn if instance method overrides bridge method (compiler spec ??)
+        if ((other.flags() & BRIDGE) != 0) {
+            log.warning(TreeInfo.diagnosticPositionFor(m, tree), "override.bridge",
+                        uncheckedOverrides(m, other));
+        }
+
+        // Warn if a deprecated method overridden by a non-deprecated one.
+        if (!isDeprecatedOverrideIgnorable(other, origin)) {
+            Lint prevLint = setLint(lint.augment(m));
+            try {
+                checkDeprecated(TreeInfo.diagnosticPositionFor(m, tree), m, other);
+            } finally {
+                setLint(prevLint);
+            }
+        }
+    }
+    // where
+        private boolean isDeprecatedOverrideIgnorable(MethodSymbol m, ClassSymbol origin) {
+            // If the method, m, is defined in an interface, then ignore the issue if the method
+            // is only inherited via a supertype and also implemented in the supertype,
+            // because in that case, we will rediscover the issue when examining the method
+            // in the supertype.
+            // If the method, m, is not defined in an interface, then the only time we need to
+            // address the issue is when the method is the supertype implemementation: any other
+            // case, we will have dealt with when examining the supertype classes
+            ClassSymbol mc = m.enclClass();
+            Type st = types.supertype(origin.type);
+            if (!st.hasTag(CLASS))
+                return true;
+            MethodSymbol stimpl = m.implementation((ClassSymbol)st.tsym, types, false);
+
+            if (mc != null && ((mc.flags() & INTERFACE) != 0)) {
+                List<Type> intfs = types.interfaces(origin.type);
+                return (intfs.contains(mc.type) ? false : (stimpl != null));
+            }
+            else
+                return (stimpl != m);
+        }
+
+
+    // used to check if there were any unchecked conversions
+    Warner overrideWarner = new Warner();
+
+    /** Check that a class does not inherit two concrete methods
+     *  with the same signature.
+     *  @param pos          Position to be used for error reporting.
+     *  @param site         The class type to be checked.
+     */
+    public void checkCompatibleConcretes(DiagnosticPosition pos, Type site) {
+        Type sup = types.supertype(site);
+        if (!sup.hasTag(CLASS)) return;
+
+        for (Type t1 = sup;
+             t1.hasTag(CLASS) && t1.tsym.type.isParameterized();
+             t1 = types.supertype(t1)) {
+            for (Scope.Entry e1 = t1.tsym.members().elems;
+                 e1 != null;
+                 e1 = e1.sibling) {
+                Symbol s1 = e1.sym;
+                if (s1.kind != MTH ||
+                    (s1.flags() & (STATIC|SYNTHETIC|BRIDGE)) != 0 ||
+                    !s1.isInheritedIn(site.tsym, types) ||
+                    ((MethodSymbol)s1).implementation(site.tsym,
+                                                      types,
+                                                      true) != s1)
+                    continue;
+                Type st1 = types.memberType(t1, s1);
+                int s1ArgsLength = st1.getParameterTypes().length();
+                if (st1 == s1.type) continue;
+
+                for (Type t2 = sup;
+                     t2.hasTag(CLASS);
+                     t2 = types.supertype(t2)) {
+                    for (Scope.Entry e2 = t2.tsym.members().lookup(s1.name);
+                         e2.scope != null;
+                         e2 = e2.next()) {
+                        Symbol s2 = e2.sym;
+                        if (s2 == s1 ||
+                            s2.kind != MTH ||
+                            (s2.flags() & (STATIC|SYNTHETIC|BRIDGE)) != 0 ||
+                            s2.type.getParameterTypes().length() != s1ArgsLength ||
+                            !s2.isInheritedIn(site.tsym, types) ||
+                            ((MethodSymbol)s2).implementation(site.tsym,
+                                                              types,
+                                                              true) != s2)
+                            continue;
+                        Type st2 = types.memberType(t2, s2);
+                        if (types.overrideEquivalent(st1, st2))
+                            log.error(pos, "concrete.inheritance.conflict",
+                                      s1, t1, s2, t2, sup);
+                    }
+                }
+            }
+        }
+    }
+
+    /** Check that classes (or interfaces) do not each define an abstract
+     *  method with same name and arguments but incompatible return types.
+     *  @param pos          Position to be used for error reporting.
+     *  @param t1           The first argument type.
+     *  @param t2           The second argument type.
+     */
+    public boolean checkCompatibleAbstracts(DiagnosticPosition pos,
+                                            Type t1,
+                                            Type t2) {
+        return checkCompatibleAbstracts(pos, t1, t2,
+                                        types.makeIntersectionType(t1, t2));
+    }
+
+    public boolean checkCompatibleAbstracts(DiagnosticPosition pos,
+                                            Type t1,
+                                            Type t2,
+                                            Type site) {
+        if ((site.tsym.flags() & COMPOUND) != 0) {
+            // special case for intersections: need to eliminate wildcards in supertypes
+            t1 = types.capture(t1);
+            t2 = types.capture(t2);
+        }
+        return firstIncompatibility(pos, t1, t2, site) == null;
+    }
+
+    /** Return the first method which is defined with same args
+     *  but different return types in two given interfaces, or null if none
+     *  exists.
+     *  @param t1     The first type.
+     *  @param t2     The second type.
+     *  @param site   The most derived type.
+     *  @returns symbol from t2 that conflicts with one in t1.
+     */
+    private Symbol firstIncompatibility(DiagnosticPosition pos, Type t1, Type t2, Type site) {
+        Map<TypeSymbol,Type> interfaces1 = new HashMap<TypeSymbol,Type>();
+        closure(t1, interfaces1);
+        Map<TypeSymbol,Type> interfaces2;
+        if (t1 == t2)
+            interfaces2 = interfaces1;
+        else
+            closure(t2, interfaces1, interfaces2 = new HashMap<TypeSymbol,Type>());
+
+        for (Type t3 : interfaces1.values()) {
+            for (Type t4 : interfaces2.values()) {
+                Symbol s = firstDirectIncompatibility(pos, t3, t4, site);
+                if (s != null) return s;
+            }
+        }
+        return null;
+    }
+
+    /** Compute all the supertypes of t, indexed by type symbol. */
+    private void closure(Type t, Map<TypeSymbol,Type> typeMap) {
+        if (!t.hasTag(CLASS)) return;
+        if (typeMap.put(t.tsym, t) == null) {
+            closure(types.supertype(t), typeMap);
+            for (Type i : types.interfaces(t))
+                closure(i, typeMap);
+        }
+    }
+
+    /** Compute all the supertypes of t, indexed by type symbol (except thise in typesSkip). */
+    private void closure(Type t, Map<TypeSymbol,Type> typesSkip, Map<TypeSymbol,Type> typeMap) {
+        if (!t.hasTag(CLASS)) return;
+        if (typesSkip.get(t.tsym) != null) return;
+        if (typeMap.put(t.tsym, t) == null) {
+            closure(types.supertype(t), typesSkip, typeMap);
+            for (Type i : types.interfaces(t))
+                closure(i, typesSkip, typeMap);
+        }
+    }
+
+    /** Return the first method in t2 that conflicts with a method from t1. */
+    private Symbol firstDirectIncompatibility(DiagnosticPosition pos, Type t1, Type t2, Type site) {
+        for (Scope.Entry e1 = t1.tsym.members().elems; e1 != null; e1 = e1.sibling) {
+            Symbol s1 = e1.sym;
+            Type st1 = null;
+            if (s1.kind != MTH || !s1.isInheritedIn(site.tsym, types) ||
+                    (s1.flags() & SYNTHETIC) != 0) continue;
+            Symbol impl = ((MethodSymbol)s1).implementation(site.tsym, types, false);
+            if (impl != null && (impl.flags() & ABSTRACT) == 0) continue;
+            for (Scope.Entry e2 = t2.tsym.members().lookup(s1.name); e2.scope != null; e2 = e2.next()) {
+                Symbol s2 = e2.sym;
+                if (s1 == s2) continue;
+                if (s2.kind != MTH || !s2.isInheritedIn(site.tsym, types) ||
+                        (s2.flags() & SYNTHETIC) != 0) continue;
+                if (st1 == null) st1 = types.memberType(t1, s1);
+                Type st2 = types.memberType(t2, s2);
+                if (types.overrideEquivalent(st1, st2)) {
+                    List<Type> tvars1 = st1.getTypeArguments();
+                    List<Type> tvars2 = st2.getTypeArguments();
+                    Type rt1 = st1.getReturnType();
+                    Type rt2 = types.subst(st2.getReturnType(), tvars2, tvars1);
+                    boolean compat =
+                        types.isSameType(rt1, rt2) ||
+                        !rt1.isPrimitiveOrVoid() &&
+                        !rt2.isPrimitiveOrVoid() &&
+                        (types.covariantReturnType(rt1, rt2, types.noWarnings) ||
+                         types.covariantReturnType(rt2, rt1, types.noWarnings)) ||
+                         checkCommonOverriderIn(s1,s2,site);
+                    if (!compat) {
+                        log.error(pos, "types.incompatible.diff.ret",
+                            t1, t2, s2.name +
+                            "(" + types.memberType(t2, s2).getParameterTypes() + ")");
+                        return s2;
+                    }
+                } else if (checkNameClash((ClassSymbol)site.tsym, s1, s2) &&
+                        !checkCommonOverriderIn(s1, s2, site)) {
+                    log.error(pos,
+                            "name.clash.same.erasure.no.override",
+                            s1, s1.location(),
+                            s2, s2.location());
+                    return s2;
+                }
+            }
+        }
+        return null;
+    }
+    //WHERE
+    boolean checkCommonOverriderIn(Symbol s1, Symbol s2, Type site) {
+        Map<TypeSymbol,Type> supertypes = new HashMap<TypeSymbol,Type>();
+        Type st1 = types.memberType(site, s1);
+        Type st2 = types.memberType(site, s2);
+        closure(site, supertypes);
+        for (Type t : supertypes.values()) {
+            for (Scope.Entry e = t.tsym.members().lookup(s1.name); e.scope != null; e = e.next()) {
+                Symbol s3 = e.sym;
+                if (s3 == s1 || s3 == s2 || s3.kind != MTH || (s3.flags() & (BRIDGE|SYNTHETIC)) != 0) continue;
+                Type st3 = types.memberType(site,s3);
+                if (types.overrideEquivalent(st3, st1) &&
+                        types.overrideEquivalent(st3, st2) &&
+                        types.returnTypeSubstitutable(st3, st1) &&
+                        types.returnTypeSubstitutable(st3, st2)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Check that a given method conforms with any method it overrides.
+     *  @param tree         The tree from which positions are extracted
+     *                      for errors.
+     *  @param m            The overriding method.
+     */
+    void checkOverride(JCMethodDecl tree, MethodSymbol m) {
+        ClassSymbol origin = (ClassSymbol)m.owner;
+        if ((origin.flags() & ENUM) != 0 && names.finalize.equals(m.name))
+            if (m.overrides(syms.enumFinalFinalize, origin, types, false)) {
+                log.error(tree.pos(), "enum.no.finalize");
+                return;
+            }
+        for (Type t = origin.type; t.hasTag(CLASS);
+             t = types.supertype(t)) {
+            if (t != origin.type) {
+                checkOverride(tree, t, origin, m);
+            }
+            for (Type t2 : types.interfaces(t)) {
+                checkOverride(tree, t2, origin, m);
+            }
+        }
+
+        if (m.attribute(syms.overrideType.tsym) != null && !isOverrider(m)) {
+            DiagnosticPosition pos = tree.pos();
+            for (JCAnnotation a : tree.getModifiers().annotations) {
+                if (a.annotationType.type.tsym == syms.overrideType.tsym) {
+                    pos = a.pos();
+                    break;
+                }
+            }
+            log.error(pos, "method.does.not.override.superclass");
+        }
+    }
+
+    void checkOverride(JCTree tree, Type site, ClassSymbol origin, MethodSymbol m) {
+        TypeSymbol c = site.tsym;
+        Scope.Entry e = c.members().lookup(m.name);
+        while (e.scope != null) {
+            if (m.overrides(e.sym, origin, types, false)) {
+                if ((e.sym.flags() & ABSTRACT) == 0) {
+                    checkOverride(tree, m, (MethodSymbol)e.sym, origin);
+                }
+            }
+            e = e.next();
+        }
+    }
+
+    private Filter<Symbol> equalsHasCodeFilter = new Filter<Symbol>() {
+        public boolean accepts(Symbol s) {
+            return MethodSymbol.implementation_filter.accepts(s) &&
+                    (s.flags() & BAD_OVERRIDE) == 0;
+
+        }
+    };
+
+    public void checkClassOverrideEqualsAndHashIfNeeded(DiagnosticPosition pos,
+            ClassSymbol someClass) {
+        /* At present, annotations cannot possibly have a method that is override
+         * equivalent with Object.equals(Object) but in any case the condition is
+         * fine for completeness.
+         */
+        if (someClass == (ClassSymbol)syms.objectType.tsym ||
+            someClass.isInterface() || someClass.isEnum() ||
+            (someClass.flags() & ANNOTATION) != 0 ||
+            (someClass.flags() & ABSTRACT) != 0) return;
+        //anonymous inner classes implementing interfaces need especial treatment
+        if (someClass.isAnonymous()) {
+            List<Type> interfaces =  types.interfaces(someClass.type);
+            if (interfaces != null && !interfaces.isEmpty() &&
+                interfaces.head.tsym == syms.comparatorType.tsym) return;
+        }
+        checkClassOverrideEqualsAndHash(pos, someClass);
+    }
+
+    private void checkClassOverrideEqualsAndHash(DiagnosticPosition pos,
+            ClassSymbol someClass) {
+        if (lint.isEnabled(LintCategory.OVERRIDES)) {
+            MethodSymbol equalsAtObject = (MethodSymbol)syms.objectType
+                    .tsym.members().lookup(names.equals).sym;
+            MethodSymbol hashCodeAtObject = (MethodSymbol)syms.objectType
+                    .tsym.members().lookup(names.hashCode).sym;
+            boolean overridesEquals = types.implementation(equalsAtObject,
+                someClass, false, equalsHasCodeFilter).owner == someClass;
+            boolean overridesHashCode = types.implementation(hashCodeAtObject,
+                someClass, false, equalsHasCodeFilter) != hashCodeAtObject;
+
+            if (overridesEquals && !overridesHashCode) {
+                log.warning(LintCategory.OVERRIDES, pos,
+                        "override.equals.but.not.hashcode", someClass);
+            }
+        }
+    }
+
+    private boolean checkNameClash(ClassSymbol origin, Symbol s1, Symbol s2) {
+        ClashFilter cf = new ClashFilter(origin.type);
+        return (cf.accepts(s1) &&
+                cf.accepts(s2) &&
+                types.hasSameArgs(s1.erasure(types), s2.erasure(types)));
+    }
+
+
+    /** Check that all abstract members of given class have definitions.
+     *  @param pos          Position to be used for error reporting.
+     *  @param c            The class.
+     */
+    void checkAllDefined(DiagnosticPosition pos, ClassSymbol c) {
+        MethodSymbol undef = types.firstUnimplementedAbstract(c);
+        if (undef != null) {
+            MethodSymbol undef1 =
+                new MethodSymbol(undef.flags(), undef.name,
+                                 types.memberType(c.type, undef), undef.owner);
+            log.error(pos, "does.not.override.abstract",
+                      c, undef1, undef1.location());
+        }
+    }
+
+    void checkNonCyclicDecl(JCClassDecl tree) {
+        CycleChecker cc = new CycleChecker();
+        cc.scan(tree);
+        if (!cc.errorFound && !cc.partialCheck) {
+            tree.sym.flags_field |= ACYCLIC;
+        }
+    }
+
+    class CycleChecker extends TreeScanner {
+
+        List<Symbol> seenClasses = List.nil();
+        boolean errorFound = false;
+        boolean partialCheck = false;
+
+        private void checkSymbol(DiagnosticPosition pos, Symbol sym) {
+            if (sym != null && sym.kind == TYP) {
+                Env<AttrContext> classEnv = enter.getEnv((TypeSymbol)sym);
+                if (classEnv != null) {
+                    DiagnosticSource prevSource = log.currentSource();
+                    try {
+                        log.useSource(classEnv.toplevel.sourcefile);
+                        scan(classEnv.tree);
+                    }
+                    finally {
+                        log.useSource(prevSource.getFile());
+                    }
+                } else if (sym.kind == TYP) {
+                    checkClass(pos, sym, List.<JCTree>nil());
+                }
+            } else {
+                //not completed yet
+                partialCheck = true;
+            }
+        }
+
+        @Override
+        public void visitSelect(JCFieldAccess tree) {
+            super.visitSelect(tree);
+            checkSymbol(tree.pos(), tree.sym);
+        }
+
+        @Override
+        public void visitIdent(JCIdent tree) {
+            checkSymbol(tree.pos(), tree.sym);
+        }
+
+        @Override
+        public void visitTypeApply(JCTypeApply tree) {
+            scan(tree.clazz);
+        }
+
+        @Override
+        public void visitTypeArray(JCArrayTypeTree tree) {
+            scan(tree.elemtype);
+        }
+
+        @Override
+        public void visitClassDef(JCClassDecl tree) {
+            List<JCTree> supertypes = List.nil();
+            if (tree.getExtendsClause() != null) {
+                supertypes = supertypes.prepend(tree.getExtendsClause());
+            }
+            if (tree.getImplementsClause() != null) {
+                for (JCTree intf : tree.getImplementsClause()) {
+                    supertypes = supertypes.prepend(intf);
+                }
+            }
+            checkClass(tree.pos(), tree.sym, supertypes);
+        }
+
+        void checkClass(DiagnosticPosition pos, Symbol c, List<JCTree> supertypes) {
+            if ((c.flags_field & ACYCLIC) != 0)
+                return;
+            if (seenClasses.contains(c)) {
+                errorFound = true;
+                noteCyclic(pos, (ClassSymbol)c);
+            } else if (!c.type.isErroneous()) {
+                try {
+                    seenClasses = seenClasses.prepend(c);
+                    if (c.type.hasTag(CLASS)) {
+                        if (supertypes.nonEmpty()) {
+                            scan(supertypes);
+                        }
+                        else {
+                            ClassType ct = (ClassType)c.type;
+                            if (ct.supertype_field == null ||
+                                    ct.interfaces_field == null) {
+                                //not completed yet
+                                partialCheck = true;
+                                return;
+                            }
+                            checkSymbol(pos, ct.supertype_field.tsym);
+                            for (Type intf : ct.interfaces_field) {
+                                checkSymbol(pos, intf.tsym);
+                            }
+                        }
+                        if (c.owner.kind == TYP) {
+                            checkSymbol(pos, c.owner);
+                        }
+                    }
+                } finally {
+                    seenClasses = seenClasses.tail;
+                }
+            }
+        }
+    }
+
+    /** Check for cyclic references. Issue an error if the
+     *  symbol of the type referred to has a LOCKED flag set.
+     *
+     *  @param pos      Position to be used for error reporting.
+     *  @param t        The type referred to.
+     */
+    void checkNonCyclic(DiagnosticPosition pos, Type t) {
+        checkNonCyclicInternal(pos, t);
+    }
+
+
+    void checkNonCyclic(DiagnosticPosition pos, TypeVar t) {
+        checkNonCyclic1(pos, t, List.<TypeVar>nil());
+    }
+
+    private void checkNonCyclic1(DiagnosticPosition pos, Type t, List<TypeVar> seen) {
+        final TypeVar tv;
+        if  (t.hasTag(TYPEVAR) && (t.tsym.flags() & UNATTRIBUTED) != 0)
+            return;
+        if (seen.contains(t)) {
+            tv = (TypeVar)t.unannotatedType();
+            tv.bound = types.createErrorType(t);
+            log.error(pos, "cyclic.inheritance", t);
+        } else if (t.hasTag(TYPEVAR)) {
+            tv = (TypeVar)t.unannotatedType();
+            seen = seen.prepend(tv);
+            for (Type b : types.getBounds(tv))
+                checkNonCyclic1(pos, b, seen);
+        }
+    }
+
+    /** Check for cyclic references. Issue an error if the
+     *  symbol of the type referred to has a LOCKED flag set.
+     *
+     *  @param pos      Position to be used for error reporting.
+     *  @param t        The type referred to.
+     *  @returns        True if the check completed on all attributed classes
+     */
+    private boolean checkNonCyclicInternal(DiagnosticPosition pos, Type t) {
+        boolean complete = true; // was the check complete?
+        //- System.err.println("checkNonCyclicInternal("+t+");");//DEBUG
+        Symbol c = t.tsym;
+        if ((c.flags_field & ACYCLIC) != 0) return true;
+
+        if ((c.flags_field & LOCKED) != 0) {
+            noteCyclic(pos, (ClassSymbol)c);
+        } else if (!c.type.isErroneous()) {
+            try {
+                c.flags_field |= LOCKED;
+                if (c.type.hasTag(CLASS)) {
+                    ClassType clazz = (ClassType)c.type;
+                    if (clazz.interfaces_field != null)
+                        for (List<Type> l=clazz.interfaces_field; l.nonEmpty(); l=l.tail)
+                            complete &= checkNonCyclicInternal(pos, l.head);
+                    if (clazz.supertype_field != null) {
+                        Type st = clazz.supertype_field;
+                        if (st != null && st.hasTag(CLASS))
+                            complete &= checkNonCyclicInternal(pos, st);
+                    }
+                    if (c.owner.kind == TYP)
+                        complete &= checkNonCyclicInternal(pos, c.owner.type);
+                }
+            } finally {
+                c.flags_field &= ~LOCKED;
+            }
+        }
+        if (complete)
+            complete = ((c.flags_field & UNATTRIBUTED) == 0) && c.completer == null;
+        if (complete) c.flags_field |= ACYCLIC;
+        return complete;
+    }
+
+    /** Note that we found an inheritance cycle. */
+    private void noteCyclic(DiagnosticPosition pos, ClassSymbol c) {
+        log.error(pos, "cyclic.inheritance", c);
+        for (List<Type> l=types.interfaces(c.type); l.nonEmpty(); l=l.tail)
+            l.head = types.createErrorType((ClassSymbol)l.head.tsym, Type.noType);
+        Type st = types.supertype(c.type);
+        if (st.hasTag(CLASS))
+            ((ClassType)c.type).supertype_field = types.createErrorType((ClassSymbol)st.tsym, Type.noType);
+        c.type = types.createErrorType(c, c.type);
+        c.flags_field |= ACYCLIC;
+    }
+
+    /** Check that all methods which implement some
+     *  method conform to the method they implement.
+     *  @param tree         The class definition whose members are checked.
+     */
+    void checkImplementations(JCClassDecl tree) {
+        checkImplementations(tree, tree.sym, tree.sym);
+    }
+    //where
+        /** Check that all methods which implement some
+         *  method in `ic' conform to the method they implement.
+         */
+        void checkImplementations(JCTree tree, ClassSymbol origin, ClassSymbol ic) {
+            for (List<Type> l = types.closure(ic.type); l.nonEmpty(); l = l.tail) {
+                ClassSymbol lc = (ClassSymbol)l.head.tsym;
+                if ((allowGenerics || origin != lc) && (lc.flags() & ABSTRACT) != 0) {
+                    for (Scope.Entry e=lc.members().elems; e != null; e=e.sibling) {
+                        if (e.sym.kind == MTH &&
+                            (e.sym.flags() & (STATIC|ABSTRACT)) == ABSTRACT) {
+                            MethodSymbol absmeth = (MethodSymbol)e.sym;
+                            MethodSymbol implmeth = absmeth.implementation(origin, types, false);
+                            if (implmeth != null && implmeth != absmeth &&
+                                (implmeth.owner.flags() & INTERFACE) ==
+                                (origin.flags() & INTERFACE)) {
+                                // don't check if implmeth is in a class, yet
+                                // origin is an interface. This case arises only
+                                // if implmeth is declared in Object. The reason is
+                                // that interfaces really don't inherit from
+                                // Object it's just that the compiler represents
+                                // things that way.
+                                checkOverride(tree, implmeth, absmeth, origin);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    /** Check that all abstract methods implemented by a class are
+     *  mutually compatible.
+     *  @param pos          Position to be used for error reporting.
+     *  @param c            The class whose interfaces are checked.
+     */
+    void checkCompatibleSupertypes(DiagnosticPosition pos, Type c) {
+        List<Type> supertypes = types.interfaces(c);
+        Type supertype = types.supertype(c);
+        if (supertype.hasTag(CLASS) &&
+            (supertype.tsym.flags() & ABSTRACT) != 0)
+            supertypes = supertypes.prepend(supertype);
+        for (List<Type> l = supertypes; l.nonEmpty(); l = l.tail) {
+            if (allowGenerics && !l.head.getTypeArguments().isEmpty() &&
+                !checkCompatibleAbstracts(pos, l.head, l.head, c))
+                return;
+            for (List<Type> m = supertypes; m != l; m = m.tail)
+                if (!checkCompatibleAbstracts(pos, l.head, m.head, c))
+                    return;
+        }
+        checkCompatibleConcretes(pos, c);
+    }
+
+    void checkConflicts(DiagnosticPosition pos, Symbol sym, TypeSymbol c) {
+        for (Type ct = c.type; ct != Type.noType ; ct = types.supertype(ct)) {
+            for (Scope.Entry e = ct.tsym.members().lookup(sym.name); e.scope == ct.tsym.members(); e = e.next()) {
+                // VM allows methods and variables with differing types
+                if (sym.kind == e.sym.kind &&
+                    types.isSameType(types.erasure(sym.type), types.erasure(e.sym.type)) &&
+                    sym != e.sym &&
+                    (sym.flags() & Flags.SYNTHETIC) != (e.sym.flags() & Flags.SYNTHETIC) &&
+                    (sym.flags() & IPROXY) == 0 && (e.sym.flags() & IPROXY) == 0 &&
+                    (sym.flags() & BRIDGE) == 0 && (e.sym.flags() & BRIDGE) == 0) {
+                    syntheticError(pos, (e.sym.flags() & SYNTHETIC) == 0 ? e.sym : sym);
+                    return;
+                }
+            }
+        }
+    }
+
+    /** Check that all non-override equivalent methods accessible from 'site'
+     *  are mutually compatible (JLS 8.4.8/9.4.1).
+     *
+     *  @param pos  Position to be used for error reporting.
+     *  @param site The class whose methods are checked.
+     *  @param sym  The method symbol to be checked.
+     */
+    void checkOverrideClashes(DiagnosticPosition pos, Type site, MethodSymbol sym) {
+         ClashFilter cf = new ClashFilter(site);
+        //for each method m1 that is overridden (directly or indirectly)
+        //by method 'sym' in 'site'...
+
+        List<MethodSymbol> potentiallyAmbiguousList = List.nil();
+        boolean overridesAny = false;
+        for (Symbol m1 : types.membersClosure(site, false).getElementsByName(sym.name, cf)) {
+            if (!sym.overrides(m1, site.tsym, types, false)) {
+                if (m1 == sym) {
+                    continue;
+                }
+
+                if (!overridesAny) {
+                    potentiallyAmbiguousList = potentiallyAmbiguousList.prepend((MethodSymbol)m1);
+                }
+                continue;
+            }
+
+            if (m1 != sym) {
+                overridesAny = true;
+                potentiallyAmbiguousList = List.nil();
+            }
+
+            //...check each method m2 that is a member of 'site'
+            for (Symbol m2 : types.membersClosure(site, false).getElementsByName(sym.name, cf)) {
+                if (m2 == m1) continue;
+                //if (i) the signature of 'sym' is not a subsignature of m1 (seen as
+                //a member of 'site') and (ii) m1 has the same erasure as m2, issue an error
+                if (!types.isSubSignature(sym.type, types.memberType(site, m2), allowStrictMethodClashCheck) &&
+                        types.hasSameArgs(m2.erasure(types), m1.erasure(types))) {
+                    sym.flags_field |= CLASH;
+                    String key = m1 == sym ?
+                            "name.clash.same.erasure.no.override" :
+                            "name.clash.same.erasure.no.override.1";
+                    log.error(pos,
+                            key,
+                            sym, sym.location(),
+                            m2, m2.location(),
+                            m1, m1.location());
+                    return;
+                }
+            }
+        }
+
+        if (!overridesAny) {
+            for (MethodSymbol m: potentiallyAmbiguousList) {
+                checkPotentiallyAmbiguousOverloads(pos, site, sym, m);
+            }
+        }
+    }
+
+    /** Check that all static methods accessible from 'site' are
+     *  mutually compatible (JLS 8.4.8).
+     *
+     *  @param pos  Position to be used for error reporting.
+     *  @param site The class whose methods are checked.
+     *  @param sym  The method symbol to be checked.
+     */
+    void checkHideClashes(DiagnosticPosition pos, Type site, MethodSymbol sym) {
+        ClashFilter cf = new ClashFilter(site);
+        //for each method m1 that is a member of 'site'...
+        for (Symbol s : types.membersClosure(site, true).getElementsByName(sym.name, cf)) {
+            //if (i) the signature of 'sym' is not a subsignature of m1 (seen as
+            //a member of 'site') and (ii) 'sym' has the same erasure as m1, issue an error
+            if (!types.isSubSignature(sym.type, types.memberType(site, s), allowStrictMethodClashCheck)) {
+                if (types.hasSameArgs(s.erasure(types), sym.erasure(types))) {
+                    log.error(pos,
+                            "name.clash.same.erasure.no.hide",
+                            sym, sym.location(),
+                            s, s.location());
+                    return;
+                } else {
+                    checkPotentiallyAmbiguousOverloads(pos, site, sym, (MethodSymbol)s);
+                }
+            }
+         }
+     }
+
+     //where
+     private class ClashFilter implements Filter<Symbol> {
+
+         Type site;
+
+         ClashFilter(Type site) {
+             this.site = site;
+         }
+
+         boolean shouldSkip(Symbol s) {
+             return (s.flags() & CLASH) != 0 &&
+                s.owner == site.tsym;
+         }
+
+         public boolean accepts(Symbol s) {
+             return s.kind == MTH &&
+                     (s.flags() & SYNTHETIC) == 0 &&
+                     !shouldSkip(s) &&
+                     s.isInheritedIn(site.tsym, types) &&
+                     !s.isConstructor();
+         }
+     }
+
+    void checkDefaultMethodClashes(DiagnosticPosition pos, Type site) {
+        DefaultMethodClashFilter dcf = new DefaultMethodClashFilter(site);
+        for (Symbol m : types.membersClosure(site, false).getElements(dcf)) {
+            Assert.check(m.kind == MTH);
+            List<MethodSymbol> prov = types.interfaceCandidates(site, (MethodSymbol)m);
+            if (prov.size() > 1) {
+                ListBuffer<Symbol> abstracts = new ListBuffer<>();
+                ListBuffer<Symbol> defaults = new ListBuffer<>();
+                for (MethodSymbol provSym : prov) {
+                    if ((provSym.flags() & DEFAULT) != 0) {
+                        defaults = defaults.append(provSym);
+                    } else if ((provSym.flags() & ABSTRACT) != 0) {
+                        abstracts = abstracts.append(provSym);
+                    }
+                    if (defaults.nonEmpty() && defaults.size() + abstracts.size() >= 2) {
+                        //strong semantics - issue an error if two sibling interfaces
+                        //have two override-equivalent defaults - or if one is abstract
+                        //and the other is default
+                        String errKey;
+                        Symbol s1 = defaults.first();
+                        Symbol s2;
+                        if (defaults.size() > 1) {
+                            errKey = "types.incompatible.unrelated.defaults";
+                            s2 = defaults.toList().tail.head;
+                        } else {
+                            errKey = "types.incompatible.abstract.default";
+                            s2 = abstracts.first();
+                        }
+                        log.error(pos, errKey,
+                                Kinds.kindName(site.tsym), site,
+                                m.name, types.memberType(site, m).getParameterTypes(),
+                                s1.location(), s2.location());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    //where
+     private class DefaultMethodClashFilter implements Filter<Symbol> {
+
+         Type site;
+
+         DefaultMethodClashFilter(Type site) {
+             this.site = site;
+         }
+
+         public boolean accepts(Symbol s) {
+             return s.kind == MTH &&
+                     (s.flags() & DEFAULT) != 0 &&
+                     s.isInheritedIn(site.tsym, types) &&
+                     !s.isConstructor();
+         }
+     }
+
+    /**
+      * Report warnings for potentially ambiguous method declarations. Two declarations
+      * are potentially ambiguous if they feature two unrelated functional interface
+      * in same argument position (in which case, a call site passing an implicit
+      * lambda would be ambiguous).
+      */
+    void checkPotentiallyAmbiguousOverloads(DiagnosticPosition pos, Type site,
+            MethodSymbol msym1, MethodSymbol msym2) {
+        if (msym1 != msym2 &&
+                allowDefaultMethods &&
+                lint.isEnabled(LintCategory.OVERLOADS) &&
+                (msym1.flags() & POTENTIALLY_AMBIGUOUS) == 0 &&
+                (msym2.flags() & POTENTIALLY_AMBIGUOUS) == 0) {
+            Type mt1 = types.memberType(site, msym1);
+            Type mt2 = types.memberType(site, msym2);
+            //if both generic methods, adjust type variables
+            if (mt1.hasTag(FORALL) && mt2.hasTag(FORALL) &&
+                    types.hasSameBounds((ForAll)mt1, (ForAll)mt2)) {
+                mt2 = types.subst(mt2, ((ForAll)mt2).tvars, ((ForAll)mt1).tvars);
+            }
+            //expand varargs methods if needed
+            int maxLength = Math.max(mt1.getParameterTypes().length(), mt2.getParameterTypes().length());
+            List<Type> args1 = rs.adjustArgs(mt1.getParameterTypes(), msym1, maxLength, true);
+            List<Type> args2 = rs.adjustArgs(mt2.getParameterTypes(), msym2, maxLength, true);
+            //if arities don't match, exit
+            if (args1.length() != args2.length()) return;
+            boolean potentiallyAmbiguous = false;
+            while (args1.nonEmpty() && args2.nonEmpty()) {
+                Type s = args1.head;
+                Type t = args2.head;
+                if (!types.isSubtype(t, s) && !types.isSubtype(s, t)) {
+                    if (types.isFunctionalInterface(s) && types.isFunctionalInterface(t) &&
+                            types.findDescriptorType(s).getParameterTypes().length() > 0 &&
+                            types.findDescriptorType(s).getParameterTypes().length() ==
+                            types.findDescriptorType(t).getParameterTypes().length()) {
+                        potentiallyAmbiguous = true;
+                    } else {
+                        break;
+                    }
+                }
+                args1 = args1.tail;
+                args2 = args2.tail;
+            }
+            if (potentiallyAmbiguous) {
+                //we found two incompatible functional interfaces with same arity
+                //this means a call site passing an implicit lambda would be ambigiuous
+                msym1.flags_field |= POTENTIALLY_AMBIGUOUS;
+                msym2.flags_field |= POTENTIALLY_AMBIGUOUS;
+                log.warning(LintCategory.OVERLOADS, pos, "potentially.ambiguous.overload",
+                            msym1, msym1.location(),
+                            msym2, msym2.location());
+                return;
+            }
+        }
+    }
+
+    void checkElemAccessFromSerializableLambda(final JCTree tree) {
+        if (warnOnAccessToSensitiveMembers) {
+            Symbol sym = TreeInfo.symbol(tree);
+            if ((sym.kind & (VAR | MTH)) == 0) {
+                return;
+            }
+
+            if (sym.kind == VAR) {
+                if ((sym.flags() & PARAMETER) != 0 ||
+                    sym.isLocal() ||
+                    sym.name == names._this ||
+                    sym.name == names._super) {
+                    return;
+                }
+            }
+
+            if (!types.isSubtype(sym.owner.type, syms.serializableType) &&
+                    isEffectivelyNonPublic(sym)) {
+                log.warning(tree.pos(),
+                        "access.to.sensitive.member.from.serializable.element", sym);
+            }
+        }
+    }
+
+    private boolean isEffectivelyNonPublic(Symbol sym) {
+        if (sym.packge() == syms.rootPackage) {
+            return false;
+        }
+
+        while (sym.kind != Kinds.PCK) {
+            if ((sym.flags() & PUBLIC) == 0) {
+                return true;
+            }
+            sym = sym.owner;
+        }
+        return false;
+    }
+
+    /** Report a conflict between a user symbol and a synthetic symbol.
+     */
+    private void syntheticError(DiagnosticPosition pos, Symbol sym) {
+        if (!sym.type.isErroneous()) {
+            if (warnOnSyntheticConflicts) {
+                log.warning(pos, "synthetic.name.conflict", sym, sym.location());
+            }
+            else {
+                log.error(pos, "synthetic.name.conflict", sym, sym.location());
+            }
+        }
+    }
+
+    /** Check that class c does not implement directly or indirectly
+     *  the same parameterized interface with two different argument lists.
+     *  @param pos          Position to be used for error reporting.
+     *  @param type         The type whose interfaces are checked.
+     */
+    void checkClassBounds(DiagnosticPosition pos, Type type) {
+        checkClassBounds(pos, new HashMap<TypeSymbol,Type>(), type);
+    }
+//where
+        /** Enter all interfaces of type `type' into the hash table `seensofar'
+         *  with their class symbol as key and their type as value. Make
+         *  sure no class is entered with two different types.
+         */
+        void checkClassBounds(DiagnosticPosition pos,
+                              Map<TypeSymbol,Type> seensofar,
+                              Type type) {
+            if (type.isErroneous()) return;
+            for (List<Type> l = types.interfaces(type); l.nonEmpty(); l = l.tail) {
+                Type it = l.head;
+                if (type.hasTag(CLASS) && !it.hasTag(CLASS)) continue; // JLS 8.1.5
+
+                Type oldit = seensofar.put(it.tsym, it);
+                if (oldit != null) {
+                    List<Type> oldparams = oldit.allparams();
+                    List<Type> newparams = it.allparams();
+                    if (!types.containsTypeEquivalent(oldparams, newparams))
+                        log.error(pos, "cant.inherit.diff.arg",
+                                  it.tsym, Type.toString(oldparams),
+                                  Type.toString(newparams));
+                }
+                checkClassBounds(pos, seensofar, it);
+            }
+            Type st = types.supertype(type);
+            if (type.hasTag(CLASS) && !st.hasTag(CLASS)) return; // JLS 8.1.4
+            if (st != Type.noType) checkClassBounds(pos, seensofar, st);
+        }
+
+    /** Enter interface into into set.
+     *  If it existed already, issue a "repeated interface" error.
+     */
+    void checkNotRepeated(DiagnosticPosition pos, Type it, Set<Type> its) {
+        if (its.contains(it))
+            log.error(pos, "repeated.interface");
+        else {
+            its.add(it);
+        }
+    }
+
+/* *************************************************************************
+ * Check annotations
+ **************************************************************************/
+
+    /**
+     * Recursively validate annotations values
+     */
+    void validateAnnotationTree(JCTree tree) {
+        class AnnotationValidator extends TreeScanner {
+            @Override
+            public void visitAnnotation(JCAnnotation tree) {
+                if (!tree.type.isErroneous()) {
+                    super.visitAnnotation(tree);
+                    validateAnnotation(tree);
+                }
+            }
+        }
+        tree.accept(new AnnotationValidator());
+    }
+
+    /**
+     *  {@literal
+     *  Annotation types are restricted to primitives, String, an
+     *  enum, an annotation, Class, Class<?>, Class<? extends
+     *  Anything>, arrays of the preceding.
+     *  }
+     */
+    void validateAnnotationType(JCTree restype) {
+        // restype may be null if an error occurred, so don't bother validating it
+        if (restype != null) {
+            validateAnnotationType(restype.pos(), restype.type);
+        }
+    }
+
+    void validateAnnotationType(DiagnosticPosition pos, Type type) {
+        if (type.isPrimitive()) return;
+        if (types.isSameType(type, syms.stringType)) return;
+        if ((type.tsym.flags() & Flags.ENUM) != 0) return;
+        if ((type.tsym.flags() & Flags.ANNOTATION) != 0) return;
+        if (types.cvarLowerBound(type).tsym == syms.classType.tsym) return;
+        if (types.isArray(type) && !types.isArray(types.elemtype(type))) {
+            validateAnnotationType(pos, types.elemtype(type));
+            return;
+        }
+        log.error(pos, "invalid.annotation.member.type");
+    }
+
+    /**
+     * "It is also a compile-time error if any method declared in an
+     * annotation type has a signature that is override-equivalent to
+     * that of any public or protected method declared in class Object
+     * or in the interface annotation.Annotation."
+     *
+     * @jls 9.6 Annotation Types
+     */
+    void validateAnnotationMethod(DiagnosticPosition pos, MethodSymbol m) {
+        for (Type sup = syms.annotationType; sup.hasTag(CLASS); sup = types.supertype(sup)) {
+            Scope s = sup.tsym.members();
+            for (Scope.Entry e = s.lookup(m.name); e.scope != null; e = e.next()) {
+                if (e.sym.kind == MTH &&
+                    (e.sym.flags() & (PUBLIC | PROTECTED)) != 0 &&
+                    types.overrideEquivalent(m.type, e.sym.type))
+                    log.error(pos, "intf.annotation.member.clash", e.sym, sup);
+            }
+        }
+    }
+
+    /** Check the annotations of a symbol.
+     */
+    public void validateAnnotations(List<JCAnnotation> annotations, Symbol s) {
+        for (JCAnnotation a : annotations)
+            validateAnnotation(a, s);
+    }
+
+    /** Check the type annotations.
+     */
+    public void validateTypeAnnotations(List<JCAnnotation> annotations, boolean isTypeParameter) {
+        for (JCAnnotation a : annotations)
+            validateTypeAnnotation(a, isTypeParameter);
+    }
+
+    /** Check an annotation of a symbol.
+     */
+    private void validateAnnotation(JCAnnotation a, Symbol s) {
+        validateAnnotationTree(a);
+
+        if (!annotationApplicable(a, s))
+            log.error(a.pos(), "annotation.type.not.applicable");
+
+        if (a.annotationType.type.tsym == syms.functionalInterfaceType.tsym) {
+            if (s.kind != TYP) {
+                log.error(a.pos(), "bad.functional.intf.anno");
+            } else if (!s.isInterface() || (s.flags() & ANNOTATION) != 0) {
+                log.error(a.pos(), "bad.functional.intf.anno.1", diags.fragment("not.a.functional.intf", s));
+            }
+        }
+    }
+
+    public void validateTypeAnnotation(JCAnnotation a, boolean isTypeParameter) {
+        Assert.checkNonNull(a.type, "annotation tree hasn't been attributed yet: " + a);
+        validateAnnotationTree(a);
+
+        if (a.hasTag(TYPE_ANNOTATION) &&
+                !a.annotationType.type.isErroneous() &&
+                !isTypeAnnotation(a, isTypeParameter)) {
+            log.error(a.pos(), "annotation.type.not.applicable");
+        }
+    }
+
+    /**
+     * Validate the proposed container 'repeatable' on the
+     * annotation type symbol 's'. Report errors at position
+     * 'pos'.
+     *
+     * @param s The (annotation)type declaration annotated with a @Repeatable
+     * @param repeatable the @Repeatable on 's'
+     * @param pos where to report errors
+     */
+    public void validateRepeatable(TypeSymbol s, Compound repeatable, DiagnosticPosition pos) {
+        Assert.check(types.isSameType(repeatable.type, syms.repeatableType));
+
+        Type t = null;
+        List<Pair<MethodSymbol,Attribute>> l = repeatable.values;
+        if (!l.isEmpty()) {
+            Assert.check(l.head.fst.name == names.value);
+            t = ((Attribute.Class)l.head.snd).getValue();
+        }
+
+        if (t == null) {
+            // errors should already have been reported during Annotate
+            return;
+        }
+
+        validateValue(t.tsym, s, pos);
+        validateRetention(t.tsym, s, pos);
+        validateDocumented(t.tsym, s, pos);
+        validateInherited(t.tsym, s, pos);
+        validateTarget(t.tsym, s, pos);
+        validateDefault(t.tsym, pos);
+    }
+
+    private void validateValue(TypeSymbol container, TypeSymbol contained, DiagnosticPosition pos) {
+        Scope.Entry e = container.members().lookup(names.value);
+        if (e.scope != null && e.sym.kind == MTH) {
+            MethodSymbol m = (MethodSymbol) e.sym;
+            Type ret = m.getReturnType();
+            if (!(ret.hasTag(ARRAY) && types.isSameType(((ArrayType)ret).elemtype, contained.type))) {
+                log.error(pos, "invalid.repeatable.annotation.value.return",
+                        container, ret, types.makeArrayType(contained.type));
+            }
+        } else {
+            log.error(pos, "invalid.repeatable.annotation.no.value", container);
+        }
+    }
+
+    private void validateRetention(Symbol container, Symbol contained, DiagnosticPosition pos) {
+        Attribute.RetentionPolicy containerRetention = types.getRetention(container);
+        Attribute.RetentionPolicy containedRetention = types.getRetention(contained);
+
+        boolean error = false;
+        switch (containedRetention) {
+        case RUNTIME:
+            if (containerRetention != Attribute.RetentionPolicy.RUNTIME) {
+                error = true;
+            }
+            break;
+        case CLASS:
+            if (containerRetention == Attribute.RetentionPolicy.SOURCE)  {
+                error = true;
+            }
+        }
+        if (error ) {
+            log.error(pos, "invalid.repeatable.annotation.retention",
+                      container, containerRetention,
+                      contained, containedRetention);
+        }
+    }
+
+    private void validateDocumented(Symbol container, Symbol contained, DiagnosticPosition pos) {
+        if (contained.attribute(syms.documentedType.tsym) != null) {
+            if (container.attribute(syms.documentedType.tsym) == null) {
+                log.error(pos, "invalid.repeatable.annotation.not.documented", container, contained);
+            }
+        }
+    }
+
+    private void validateInherited(Symbol container, Symbol contained, DiagnosticPosition pos) {
+        if (contained.attribute(syms.inheritedType.tsym) != null) {
+            if (container.attribute(syms.inheritedType.tsym) == null) {
+                log.error(pos, "invalid.repeatable.annotation.not.inherited", container, contained);
+            }
+        }
+    }
+
+    private void validateTarget(Symbol container, Symbol contained, DiagnosticPosition pos) {
+        // The set of targets the container is applicable to must be a subset
+        // (with respect to annotation target semantics) of the set of targets
+        // the contained is applicable to. The target sets may be implicit or
+        // explicit.
+
+        Set<Name> containerTargets;
+        Attribute.Array containerTarget = getAttributeTargetAttribute(container);
+        if (containerTarget == null) {
+            containerTargets = getDefaultTargetSet();
+        } else {
+            containerTargets = new HashSet<Name>();
+        for (Attribute app : containerTarget.values) {
+            if (!(app instanceof Attribute.Enum)) {
+                continue; // recovery
+            }
+            Attribute.Enum e = (Attribute.Enum)app;
+            containerTargets.add(e.value.name);
+        }
+        }
+
+        Set<Name> containedTargets;
+        Attribute.Array containedTarget = getAttributeTargetAttribute(contained);
+        if (containedTarget == null) {
+            containedTargets = getDefaultTargetSet();
+        } else {
+            containedTargets = new HashSet<Name>();
+        for (Attribute app : containedTarget.values) {
+            if (!(app instanceof Attribute.Enum)) {
+                continue; // recovery
+            }
+            Attribute.Enum e = (Attribute.Enum)app;
+            containedTargets.add(e.value.name);
+        }
+        }
+
+        if (!isTargetSubsetOf(containerTargets, containedTargets)) {
+            log.error(pos, "invalid.repeatable.annotation.incompatible.target", container, contained);
+        }
+    }
+
+    /* get a set of names for the default target */
+    private Set<Name> getDefaultTargetSet() {
+        if (defaultTargets == null) {
+            Set<Name> targets = new HashSet<Name>();
+            targets.add(names.ANNOTATION_TYPE);
+            targets.add(names.CONSTRUCTOR);
+            targets.add(names.FIELD);
+            targets.add(names.LOCAL_VARIABLE);
+            targets.add(names.METHOD);
+            targets.add(names.PACKAGE);
+            targets.add(names.PARAMETER);
+            targets.add(names.TYPE);
+
+            defaultTargets = Collections.unmodifiableSet(targets);
+        }
+
+        return defaultTargets;
+    }
+    private Set<Name> defaultTargets;
+
+
+    /** Checks that s is a subset of t, with respect to ElementType
+     * semantics, specifically {ANNOTATION_TYPE} is a subset of {TYPE},
+     * and {TYPE_USE} covers the set {ANNOTATION_TYPE, TYPE, TYPE_USE,
+     * TYPE_PARAMETER}.
+     */
+    private boolean isTargetSubsetOf(Set<Name> s, Set<Name> t) {
+        // Check that all elements in s are present in t
+        for (Name n2 : s) {
+            boolean currentElementOk = false;
+            for (Name n1 : t) {
+                if (n1 == n2) {
+                    currentElementOk = true;
+                    break;
+                } else if (n1 == names.TYPE && n2 == names.ANNOTATION_TYPE) {
+                    currentElementOk = true;
+                    break;
+                } else if (n1 == names.TYPE_USE &&
+                        (n2 == names.TYPE ||
+                         n2 == names.ANNOTATION_TYPE ||
+                         n2 == names.TYPE_PARAMETER)) {
+                    currentElementOk = true;
+                    break;
+                }
+            }
+            if (!currentElementOk)
+                return false;
+        }
+        return true;
+    }
+
+    private void validateDefault(Symbol container, DiagnosticPosition pos) {
+        // validate that all other elements of containing type has defaults
+        Scope scope = container.members();
+        for(Symbol elm : scope.getElements()) {
+            if (elm.name != names.value &&
+                elm.kind == Kinds.MTH &&
+                ((MethodSymbol)elm).defaultValue == null) {
+                log.error(pos,
+                          "invalid.repeatable.annotation.elem.nondefault",
+                          container,
+                          elm);
+            }
+        }
+    }
+
+    /** Is s a method symbol that overrides a method in a superclass? */
+    boolean isOverrider(Symbol s) {
+        if (s.kind != MTH || s.isStatic())
+            return false;
+        MethodSymbol m = (MethodSymbol)s;
+        TypeSymbol owner = (TypeSymbol)m.owner;
+        for (Type sup : types.closure(owner.type)) {
+            if (sup == owner.type)
+                continue; // skip "this"
+            Scope scope = sup.tsym.members();
+            for (Scope.Entry e = scope.lookup(m.name); e.scope != null; e = e.next()) {
+                if (!e.sym.isStatic() && m.overrides(e.sym, owner, types, true))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /** Is the annotation applicable to types? */
+    protected boolean isTypeAnnotation(JCAnnotation a, boolean isTypeParameter) {
+        Compound atTarget =
+            a.annotationType.type.tsym.attribute(syms.annotationTargetType.tsym);
+        if (atTarget == null) {
+            // An annotation without @Target is not a type annotation.
+            return false;
+        }
+
+        Attribute atValue = atTarget.member(names.value);
+        if (!(atValue instanceof Attribute.Array)) {
+            return false; // error recovery
+        }
+
+        Attribute.Array arr = (Attribute.Array) atValue;
+        for (Attribute app : arr.values) {
+            if (!(app instanceof Attribute.Enum)) {
+                return false; // recovery
+            }
+            Attribute.Enum e = (Attribute.Enum) app;
+
+            if (e.value.name == names.TYPE_USE)
+                return true;
+            else if (isTypeParameter && e.value.name == names.TYPE_PARAMETER)
+                return true;
+        }
+        return false;
+    }
+
+    /** Is the annotation applicable to the symbol? */
+    boolean annotationApplicable(JCAnnotation a, Symbol s) {
+        Attribute.Array arr = getAttributeTargetAttribute(a.annotationType.type.tsym);
+        Name[] targets;
+
+        if (arr == null) {
+            targets = defaultTargetMetaInfo(a, s);
+        } else {
+            // TODO: can we optimize this?
+            targets = new Name[arr.values.length];
+            for (int i=0; i<arr.values.length; ++i) {
+                Attribute app = arr.values[i];
+                if (!(app instanceof Attribute.Enum)) {
+                    return true; // recovery
+                }
+                Attribute.Enum e = (Attribute.Enum) app;
+                targets[i] = e.value.name;
+            }
+        }
+        for (Name target : targets) {
+            if (target == names.TYPE)
+                { if (s.kind == TYP) return true; }
+            else if (target == names.FIELD)
+                { if (s.kind == VAR && s.owner.kind != MTH) return true; }
+            else if (target == names.METHOD)
+                { if (s.kind == MTH && !s.isConstructor()) return true; }
+            else if (target == names.PARAMETER)
+                { if (s.kind == VAR &&
+                      s.owner.kind == MTH &&
+                      (s.flags() & PARAMETER) != 0)
+                    return true;
+                }
+            else if (target == names.CONSTRUCTOR)
+                { if (s.kind == MTH && s.isConstructor()) return true; }
+            else if (target == names.LOCAL_VARIABLE)
+                { if (s.kind == VAR && s.owner.kind == MTH &&
+                      (s.flags() & PARAMETER) == 0)
+                    return true;
+                }
+            else if (target == names.ANNOTATION_TYPE)
+                { if (s.kind == TYP && (s.flags() & ANNOTATION) != 0)
+                    return true;
+                }
+            else if (target == names.PACKAGE)
+                { if (s.kind == PCK) return true; }
+            else if (target == names.TYPE_USE)
+                { if (s.kind == TYP ||
+                      s.kind == VAR ||
+                      (s.kind == MTH && !s.isConstructor() &&
+                      !s.type.getReturnType().hasTag(VOID)) ||
+                      (s.kind == MTH && s.isConstructor()))
+                    return true;
+                }
+            else if (target == names.TYPE_PARAMETER)
+                { if (s.kind == TYP && s.type.hasTag(TYPEVAR))
+                    return true;
+                }
+            else
+                return true; // recovery
+        }
+        return false;
+    }
+
+
+    Attribute.Array getAttributeTargetAttribute(Symbol s) {
+        Compound atTarget =
+            s.attribute(syms.annotationTargetType.tsym);
+        if (atTarget == null) return null; // ok, is applicable
+        Attribute atValue = atTarget.member(names.value);
+        if (!(atValue instanceof Attribute.Array)) return null; // error recovery
+        return (Attribute.Array) atValue;
+    }
+
+    private final Name[] dfltTargetMeta;
+    private Name[] defaultTargetMetaInfo(JCAnnotation a, Symbol s) {
+        return dfltTargetMeta;
+    }
+
+    /** Check an annotation value.
+     *
+     * @param a The annotation tree to check
+     * @return true if this annotation tree is valid, otherwise false
+     */
+    public boolean validateAnnotationDeferErrors(JCAnnotation a) {
+        boolean res = false;
+        final Log.DiagnosticHandler diagHandler = new Log.DiscardDiagnosticHandler(log);
+        try {
+            res = validateAnnotation(a);
+        } finally {
+            log.popDiagnosticHandler(diagHandler);
+        }
+        return res;
+    }
+
+    private boolean validateAnnotation(JCAnnotation a) {
+        boolean isValid = true;
+        // collect an inventory of the annotation elements
+        Set<MethodSymbol> members = new LinkedHashSet<MethodSymbol>();
+        for (Scope.Entry e = a.annotationType.type.tsym.members().elems;
+                e != null;
+                e = e.sibling)
+            if (e.sym.kind == MTH && e.sym.name != names.clinit &&
+                    (e.sym.flags() & SYNTHETIC) == 0)
+                members.add((MethodSymbol) e.sym);
+
+        // remove the ones that are assigned values
+        for (JCTree arg : a.args) {
+            if (!arg.hasTag(ASSIGN)) continue; // recovery
+            JCAssign assign = (JCAssign) arg;
+            Symbol m = TreeInfo.symbol(assign.lhs);
+            if (m == null || m.type.isErroneous()) continue;
+            if (!members.remove(m)) {
+                isValid = false;
+                log.error(assign.lhs.pos(), "duplicate.annotation.member.value",
+                          m.name, a.type);
+            }
+        }
+
+        // all the remaining ones better have default values
+        List<Name> missingDefaults = List.nil();
+        for (MethodSymbol m : members) {
+            if (m.defaultValue == null && !m.type.isErroneous()) {
+                missingDefaults = missingDefaults.append(m.name);
+            }
+        }
+        missingDefaults = missingDefaults.reverse();
+        if (missingDefaults.nonEmpty()) {
+            isValid = false;
+            String key = (missingDefaults.size() > 1)
+                    ? "annotation.missing.default.value.1"
+                    : "annotation.missing.default.value";
+            log.error(a.pos(), key, a.type, missingDefaults);
+        }
+
+        // special case: java.lang.annotation.Target must not have
+        // repeated values in its value member
+        if (a.annotationType.type.tsym != syms.annotationTargetType.tsym ||
+            a.args.tail == null)
+            return isValid;
+
+        if (!a.args.head.hasTag(ASSIGN)) return false; // error recovery
+        JCAssign assign = (JCAssign) a.args.head;
+        Symbol m = TreeInfo.symbol(assign.lhs);
+        if (m.name != names.value) return false;
+        JCTree rhs = assign.rhs;
+        if (!rhs.hasTag(NEWARRAY)) return false;
+        JCNewArray na = (JCNewArray) rhs;
+        Set<Symbol> targets = new HashSet<Symbol>();
+        for (JCTree elem : na.elems) {
+            if (!targets.add(TreeInfo.symbol(elem))) {
+                isValid = false;
+                log.error(elem.pos(), "repeated.annotation.target");
+            }
+        }
+        return isValid;
+    }
+
+    void checkDeprecatedAnnotation(DiagnosticPosition pos, Symbol s) {
+        if (allowAnnotations &&
+            lint.isEnabled(LintCategory.DEP_ANN) &&
+            (s.flags() & DEPRECATED) != 0 &&
+            !syms.deprecatedType.isErroneous() &&
+            s.attribute(syms.deprecatedType.tsym) == null) {
+            log.warning(LintCategory.DEP_ANN,
+                    pos, "missing.deprecated.annotation");
+        }
+    }
+
+    void checkDeprecated(final DiagnosticPosition pos, final Symbol other, final Symbol s) {
+        if ((s.flags() & DEPRECATED) != 0 &&
+                (other.flags() & DEPRECATED) == 0 &&
+                s.outermostClass() != other.outermostClass()) {
+            deferredLintHandler.report(new DeferredLintHandler.LintLogger() {
+                @Override
+                public void report() {
+                    warnDeprecated(pos, s);
+                }
+            });
+        }
+    }
+
+    void checkSunAPI(final DiagnosticPosition pos, final Symbol s) {
+        if ((s.flags() & PROPRIETARY) != 0) {
+            deferredLintHandler.report(new DeferredLintHandler.LintLogger() {
+                public void report() {
+                    if (enableSunApiLintControl)
+                      warnSunApi(pos, "sun.proprietary", s);
+                    else
+                      log.mandatoryWarning(pos, "sun.proprietary", s);
+                }
+            });
+        }
+    }
+
+    void checkProfile(final DiagnosticPosition pos, final Symbol s) {
+        if (profile != Profile.DEFAULT && (s.flags() & NOT_IN_PROFILE) != 0) {
+            log.error(pos, "not.in.profile", s, profile);
+        }
+    }
+
+/* *************************************************************************
+ * Check for recursive annotation elements.
+ **************************************************************************/
+
+    /** Check for cycles in the graph of annotation elements.
+     */
+    void checkNonCyclicElements(JCClassDecl tree) {
+        if ((tree.sym.flags_field & ANNOTATION) == 0) return;
+        Assert.check((tree.sym.flags_field & LOCKED) == 0);
+        try {
+            tree.sym.flags_field |= LOCKED;
+            for (JCTree def : tree.defs) {
+                if (!def.hasTag(METHODDEF)) continue;
+                JCMethodDecl meth = (JCMethodDecl)def;
+                checkAnnotationResType(meth.pos(), meth.restype.type);
+            }
+        } finally {
+            tree.sym.flags_field &= ~LOCKED;
+            tree.sym.flags_field |= ACYCLIC_ANN;
+        }
+    }
+
+    void checkNonCyclicElementsInternal(DiagnosticPosition pos, TypeSymbol tsym) {
+        if ((tsym.flags_field & ACYCLIC_ANN) != 0)
+            return;
+        if ((tsym.flags_field & LOCKED) != 0) {
+            log.error(pos, "cyclic.annotation.element");
+            return;
+        }
+        try {
+            tsym.flags_field |= LOCKED;
+            for (Scope.Entry e = tsym.members().elems; e != null; e = e.sibling) {
+                Symbol s = e.sym;
+                if (s.kind != Kinds.MTH)
+                    continue;
+                checkAnnotationResType(pos, ((MethodSymbol)s).type.getReturnType());
+            }
+        } finally {
+            tsym.flags_field &= ~LOCKED;
+            tsym.flags_field |= ACYCLIC_ANN;
+        }
+    }
+
+    void checkAnnotationResType(DiagnosticPosition pos, Type type) {
+        switch (type.getTag()) {
+        case CLASS:
+            if ((type.tsym.flags() & ANNOTATION) != 0)
+                checkNonCyclicElementsInternal(pos, type.tsym);
+            break;
+        case ARRAY:
+            checkAnnotationResType(pos, types.elemtype(type));
+            break;
+        default:
+            break; // int etc
+        }
+    }
+
+/* *************************************************************************
+ * Check for cycles in the constructor call graph.
+ **************************************************************************/
+
+    /** Check for cycles in the graph of constructors calling other
+     *  constructors.
+     */
+    void checkCyclicConstructors(JCClassDecl tree) {
+        Map<Symbol,Symbol> callMap = new HashMap<Symbol, Symbol>();
+
+        // enter each constructor this-call into the map
+        for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
+            JCMethodInvocation app = TreeInfo.firstConstructorCall(l.head);
+            if (app == null) continue;
+            JCMethodDecl meth = (JCMethodDecl) l.head;
+            if (TreeInfo.name(app.meth) == names._this) {
+                callMap.put(meth.sym, TreeInfo.symbol(app.meth));
+            } else {
+                meth.sym.flags_field |= ACYCLIC;
+            }
+        }
+
+        // Check for cycles in the map
+        Symbol[] ctors = new Symbol[0];
+        ctors = callMap.keySet().toArray(ctors);
+        for (Symbol caller : ctors) {
+            checkCyclicConstructor(tree, caller, callMap);
+        }
+    }
+
+    /** Look in the map to see if the given constructor is part of a
+     *  call cycle.
+     */
+    private void checkCyclicConstructor(JCClassDecl tree, Symbol ctor,
+                                        Map<Symbol,Symbol> callMap) {
+        if (ctor != null && (ctor.flags_field & ACYCLIC) == 0) {
+            if ((ctor.flags_field & LOCKED) != 0) {
+                log.error(TreeInfo.diagnosticPositionFor(ctor, tree),
+                          "recursive.ctor.invocation");
+            } else {
+                ctor.flags_field |= LOCKED;
+                checkCyclicConstructor(tree, callMap.remove(ctor), callMap);
+                ctor.flags_field &= ~LOCKED;
+            }
+            ctor.flags_field |= ACYCLIC;
+        }
+    }
+
+/* *************************************************************************
+ * Miscellaneous
+ **************************************************************************/
+
+    /**
+     * Return the opcode of the operator but emit an error if it is an
+     * error.
+     * @param pos        position for error reporting.
+     * @param operator   an operator
+     * @param tag        a tree tag
+     * @param left       type of left hand side
+     * @param right      type of right hand side
+     */
+    int checkOperator(DiagnosticPosition pos,
+                       OperatorSymbol operator,
+                       Tag tag,
+                       Type left,
+                       Type right) {
+        if (operator.opcode == ByteCodes.error) {
+            log.error(pos,
+                      "operator.cant.be.applied.1",
+                      treeinfo.operatorName(tag),
+                      left, right);
+        }
+        return operator.opcode;
+    }
+
+
+    /**
+     *  Check for division by integer constant zero
+     *  @param pos           Position for error reporting.
+     *  @param operator      The operator for the expression
+     *  @param operand       The right hand operand for the expression
+     */
+    void checkDivZero(DiagnosticPosition pos, Symbol operator, Type operand) {
+        if (operand.constValue() != null
+            && lint.isEnabled(LintCategory.DIVZERO)
+            && operand.getTag().isSubRangeOf(LONG)
+            && ((Number) (operand.constValue())).longValue() == 0) {
+            int opc = ((OperatorSymbol)operator).opcode;
+            if (opc == ByteCodes.idiv || opc == ByteCodes.imod
+                || opc == ByteCodes.ldiv || opc == ByteCodes.lmod) {
+                log.warning(LintCategory.DIVZERO, pos, "div.zero");
+            }
+        }
+    }
+
+    /**
+     * Check for empty statements after if
+     */
+    void checkEmptyIf(JCIf tree) {
+        if (tree.thenpart.hasTag(SKIP) && tree.elsepart == null &&
+                lint.isEnabled(LintCategory.EMPTY))
+            log.warning(LintCategory.EMPTY, tree.thenpart.pos(), "empty.if");
+    }
+
+    /** Check that symbol is unique in given scope.
+     *  @param pos           Position for error reporting.
+     *  @param sym           The symbol.
+     *  @param s             The scope.
+     */
+    boolean checkUnique(DiagnosticPosition pos, Symbol sym, Scope s) {
+        if (sym.type.isErroneous())
+            return true;
+        if (sym.owner.name == names.any) return false;
+        for (Scope.Entry e = s.lookup(sym.name); e.scope == s; e = e.next()) {
+            if (sym != e.sym &&
+                    (e.sym.flags() & CLASH) == 0 &&
+                    sym.kind == e.sym.kind &&
+                    sym.name != names.error &&
+                    (sym.kind != MTH ||
+                     types.hasSameArgs(sym.type, e.sym.type) ||
+                     types.hasSameArgs(types.erasure(sym.type), types.erasure(e.sym.type)))) {
+                if ((sym.flags() & VARARGS) != (e.sym.flags() & VARARGS)) {
+                    varargsDuplicateError(pos, sym, e.sym);
+                    return true;
+                } else if (sym.kind == MTH && !types.hasSameArgs(sym.type, e.sym.type, false)) {
+                    duplicateErasureError(pos, sym, e.sym);
+                    sym.flags_field |= CLASH;
+                    return true;
+                } else {
+                    duplicateError(pos, e.sym);
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** Report duplicate declaration error.
+     */
+    void duplicateErasureError(DiagnosticPosition pos, Symbol sym1, Symbol sym2) {
+        if (!sym1.type.isErroneous() && !sym2.type.isErroneous()) {
+            log.error(pos, "name.clash.same.erasure", sym1, sym2);
+        }
+    }
+
+    /** Check that single-type import is not already imported or top-level defined,
+     *  but make an exception for two single-type imports which denote the same type.
+     *  @param pos           Position for error reporting.
+     *  @param sym           The symbol.
+     *  @param s             The scope
+     */
+    boolean checkUniqueImport(DiagnosticPosition pos, Symbol sym, Scope s) {
+        return checkUniqueImport(pos, sym, s, false);
+    }
+
+    /** Check that static single-type import is not already imported or top-level defined,
+     *  but make an exception for two single-type imports which denote the same type.
+     *  @param pos           Position for error reporting.
+     *  @param sym           The symbol.
+     *  @param s             The scope
+     */
+    boolean checkUniqueStaticImport(DiagnosticPosition pos, Symbol sym, Scope s) {
+        return checkUniqueImport(pos, sym, s, true);
+    }
+
+    /** Check that single-type import is not already imported or top-level defined,
+     *  but make an exception for two single-type imports which denote the same type.
+     *  @param pos           Position for error reporting.
+     *  @param sym           The symbol.
+     *  @param s             The scope.
+     *  @param staticImport  Whether or not this was a static import
+     */
+    private boolean checkUniqueImport(DiagnosticPosition pos, Symbol sym, Scope s, boolean staticImport) {
+        for (Scope.Entry e = s.lookup(sym.name); e.scope != null; e = e.next()) {
+            // is encountered class entered via a class declaration?
+            boolean isClassDecl = e.scope == s;
+            if ((isClassDecl || sym != e.sym) &&
+                sym.kind == e.sym.kind &&
+                sym.name != names.error &&
+                (!staticImport || !e.isStaticallyImported())) {
+                if (!e.sym.type.isErroneous()) {
+                    if (!isClassDecl) {
+                        if (staticImport)
+                            log.error(pos, "already.defined.static.single.import", e.sym);
+                        else
+                        log.error(pos, "already.defined.single.import", e.sym);
+                    }
+                    else if (sym != e.sym)
+                        log.error(pos, "already.defined.this.unit", e.sym);
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Check that a qualified name is in canonical form (for import decls).
+     */
+    public void checkCanonical(JCTree tree) {
+        if (!isCanonical(tree))
+            log.error(tree.pos(), "import.requires.canonical",
+                      TreeInfo.symbol(tree));
+    }
+        // where
+        private boolean isCanonical(JCTree tree) {
+            while (tree.hasTag(SELECT)) {
+                JCFieldAccess s = (JCFieldAccess) tree;
+                if (s.sym.owner != TreeInfo.symbol(s.selected))
+                    return false;
+                tree = s.selected;
+            }
+            return true;
+        }
+
+    /** Check that an auxiliary class is not accessed from any other file than its own.
+     */
+    void checkForBadAuxiliaryClassAccess(DiagnosticPosition pos, Env<AttrContext> env, ClassSymbol c) {
+        if (lint.isEnabled(LintCategory.AUXILIARYCLASS) &&
+            (c.flags() & AUXILIARY) != 0 &&
+            rs.isAccessible(env, c) &&
+            !fileManager.isSameFile(c.sourcefile, env.toplevel.sourcefile))
+        {
+            log.warning(pos, "auxiliary.class.accessed.from.outside.of.its.source.file",
+                        c, c.sourcefile);
+        }
+    }
+
+    private class ConversionWarner extends Warner {
+        final String uncheckedKey;
+        final Type found;
+        final Type expected;
+        public ConversionWarner(DiagnosticPosition pos, String uncheckedKey, Type found, Type expected) {
+            super(pos);
+            this.uncheckedKey = uncheckedKey;
+            this.found = found;
+            this.expected = expected;
+        }
+
+        @Override
+        public void warn(LintCategory lint) {
+            boolean warned = this.warned;
+            super.warn(lint);
+            if (warned) return; // suppress redundant diagnostics
+            switch (lint) {
+                case UNCHECKED:
+                    Check.this.warnUnchecked(pos(), "prob.found.req", diags.fragment(uncheckedKey), found, expected);
+                    break;
+                case VARARGS:
+                    if (method != null &&
+                            method.attribute(syms.trustMeType.tsym) != null &&
+                            isTrustMeAllowedOnMethod(method) &&
+                            !types.isReifiable(method.type.getParameterTypes().last())) {
+                        Check.this.warnUnsafeVararg(pos(), "varargs.unsafe.use.varargs.param", method.params.last());
+                    }
+                    break;
+                default:
+                    throw new AssertionError("Unexpected lint: " + lint);
+            }
+        }
+    }
+
+    public Warner castWarner(DiagnosticPosition pos, Type found, Type expected) {
+        return new ConversionWarner(pos, "unchecked.cast.to.type", found, expected);
+    }
+
+    public Warner convertWarner(DiagnosticPosition pos, Type found, Type expected) {
+        return new ConversionWarner(pos, "unchecked.assign", found, expected);
+    }
+
+    public void checkFunctionalInterface(JCClassDecl tree, ClassSymbol cs) {
+        Compound functionalType = cs.attribute(syms.functionalInterfaceType.tsym);
+
+        if (functionalType != null) {
+            try {
+                types.findDescriptorSymbol((TypeSymbol)cs);
+            } catch (Types.FunctionDescriptorLookupError ex) {
+                DiagnosticPosition pos = tree.pos();
+                for (JCAnnotation a : tree.getModifiers().annotations) {
+                    if (a.annotationType.type.tsym == syms.functionalInterfaceType.tsym) {
+                        pos = a.pos();
+                        break;
+                    }
+                }
+                log.error(pos, "bad.functional.intf.anno.1", ex.getDiagnostic());
+            }
+        }
+    }
+}

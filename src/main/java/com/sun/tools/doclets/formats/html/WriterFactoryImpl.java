@@ -1,241 +1,235 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.AnnotationTypeDoc;
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.javadoc.Type;
-/*     */ import com.sun.tools.doclets.internal.toolkit.AnnotationTypeFieldWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.AnnotationTypeOptionalMemberWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.AnnotationTypeRequiredMemberWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.AnnotationTypeWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.ClassWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.ConstantsSummaryWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.ConstructorWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.EnumConstantWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.FieldWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.MemberSummaryWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.MethodWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.PackageSummaryWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.ProfilePackageSummaryWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.ProfileSummaryWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.PropertyWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.SerializedFormWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.WriterFactory;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.ClassTree;
-/*     */ import com.sun.tools.javac.jvm.Profile;
-/*     */ import java.io.IOException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class WriterFactoryImpl
-/*     */   implements WriterFactory
-/*     */ {
-/*     */   private final ConfigurationImpl configuration;
-/*     */   
-/*     */   public WriterFactoryImpl(ConfigurationImpl paramConfigurationImpl) {
-/*  51 */     this.configuration = paramConfigurationImpl;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ConstantsSummaryWriter getConstantsSummaryWriter() throws Exception {
-/*  58 */     return new ConstantsSummaryWriterImpl(this.configuration);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public PackageSummaryWriter getPackageSummaryWriter(PackageDoc paramPackageDoc1, PackageDoc paramPackageDoc2, PackageDoc paramPackageDoc3) throws Exception {
-/*  66 */     return new PackageWriterImpl(this.configuration, paramPackageDoc1, paramPackageDoc2, paramPackageDoc3);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ProfileSummaryWriter getProfileSummaryWriter(Profile paramProfile1, Profile paramProfile2, Profile paramProfile3) throws Exception {
-/*  75 */     return new ProfileWriterImpl(this.configuration, paramProfile1, paramProfile2, paramProfile3);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ProfilePackageSummaryWriter getProfilePackageSummaryWriter(PackageDoc paramPackageDoc1, PackageDoc paramPackageDoc2, PackageDoc paramPackageDoc3, Profile paramProfile) throws Exception {
-/*  84 */     return new ProfilePackageWriterImpl(this.configuration, paramPackageDoc1, paramPackageDoc2, paramPackageDoc3, paramProfile);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassWriter getClassWriter(ClassDoc paramClassDoc1, ClassDoc paramClassDoc2, ClassDoc paramClassDoc3, ClassTree paramClassTree) throws IOException {
-/*  93 */     return new ClassWriterImpl(this.configuration, paramClassDoc1, paramClassDoc2, paramClassDoc3, paramClassTree);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AnnotationTypeWriter getAnnotationTypeWriter(AnnotationTypeDoc paramAnnotationTypeDoc, Type paramType1, Type paramType2) throws Exception {
-/* 103 */     return new AnnotationTypeWriterImpl(this.configuration, paramAnnotationTypeDoc, paramType1, paramType2);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AnnotationTypeFieldWriter getAnnotationTypeFieldWriter(AnnotationTypeWriter paramAnnotationTypeWriter) throws Exception {
-/* 112 */     return new AnnotationTypeFieldWriterImpl((SubWriterHolderWriter)paramAnnotationTypeWriter, paramAnnotationTypeWriter
-/*     */         
-/* 114 */         .getAnnotationTypeDoc());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AnnotationTypeOptionalMemberWriter getAnnotationTypeOptionalMemberWriter(AnnotationTypeWriter paramAnnotationTypeWriter) throws Exception {
-/* 123 */     return new AnnotationTypeOptionalMemberWriterImpl((SubWriterHolderWriter)paramAnnotationTypeWriter, paramAnnotationTypeWriter
-/*     */         
-/* 125 */         .getAnnotationTypeDoc());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AnnotationTypeRequiredMemberWriter getAnnotationTypeRequiredMemberWriter(AnnotationTypeWriter paramAnnotationTypeWriter) throws Exception {
-/* 133 */     return new AnnotationTypeRequiredMemberWriterImpl((SubWriterHolderWriter)paramAnnotationTypeWriter, paramAnnotationTypeWriter
-/*     */         
-/* 135 */         .getAnnotationTypeDoc());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public EnumConstantWriterImpl getEnumConstantWriter(ClassWriter paramClassWriter) throws Exception {
-/* 143 */     return new EnumConstantWriterImpl((SubWriterHolderWriter)paramClassWriter, paramClassWriter
-/* 144 */         .getClassDoc());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public FieldWriterImpl getFieldWriter(ClassWriter paramClassWriter) throws Exception {
-/* 152 */     return new FieldWriterImpl((SubWriterHolderWriter)paramClassWriter, paramClassWriter
-/* 153 */         .getClassDoc());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public PropertyWriterImpl getPropertyWriter(ClassWriter paramClassWriter) throws Exception {
-/* 161 */     return new PropertyWriterImpl((SubWriterHolderWriter)paramClassWriter, paramClassWriter
-/* 162 */         .getClassDoc());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public MethodWriterImpl getMethodWriter(ClassWriter paramClassWriter) throws Exception {
-/* 170 */     return new MethodWriterImpl((SubWriterHolderWriter)paramClassWriter, paramClassWriter
-/* 171 */         .getClassDoc());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ConstructorWriterImpl getConstructorWriter(ClassWriter paramClassWriter) throws Exception {
-/* 179 */     return new ConstructorWriterImpl((SubWriterHolderWriter)paramClassWriter, paramClassWriter
-/* 180 */         .getClassDoc());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public MemberSummaryWriter getMemberSummaryWriter(ClassWriter paramClassWriter, int paramInt) throws Exception {
-/* 189 */     switch (paramInt) {
-/*     */       case 3:
-/* 191 */         return getConstructorWriter(paramClassWriter);
-/*     */       case 1:
-/* 193 */         return getEnumConstantWriter(paramClassWriter);
-/*     */       case 2:
-/* 195 */         return getFieldWriter(paramClassWriter);
-/*     */       case 8:
-/* 197 */         return getPropertyWriter(paramClassWriter);
-/*     */       case 0:
-/* 199 */         return new NestedClassWriterImpl((SubWriterHolderWriter)paramClassWriter, paramClassWriter
-/* 200 */             .getClassDoc());
-/*     */       case 4:
-/* 202 */         return getMethodWriter(paramClassWriter);
-/*     */     } 
-/* 204 */     return null;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public MemberSummaryWriter getMemberSummaryWriter(AnnotationTypeWriter paramAnnotationTypeWriter, int paramInt) throws Exception {
-/* 214 */     switch (paramInt) {
-/*     */       case 5:
-/* 216 */         return (AnnotationTypeFieldWriterImpl)
-/* 217 */           getAnnotationTypeFieldWriter(paramAnnotationTypeWriter);
-/*     */       case 6:
-/* 219 */         return (AnnotationTypeOptionalMemberWriterImpl)
-/* 220 */           getAnnotationTypeOptionalMemberWriter(paramAnnotationTypeWriter);
-/*     */       case 7:
-/* 222 */         return (AnnotationTypeRequiredMemberWriterImpl)
-/* 223 */           getAnnotationTypeRequiredMemberWriter(paramAnnotationTypeWriter);
-/*     */     } 
-/* 225 */     return null;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public SerializedFormWriter getSerializedFormWriter() throws Exception {
-/* 233 */     return new SerializedFormWriterImpl(this.configuration);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\WriterFactoryImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.IOException;
+
+import com.sun.javadoc.*;
+import com.sun.tools.javac.jvm.Profile;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * The factory that returns HTML writers.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Jamie Ho
+ * @since 1.5
+ */
+public class WriterFactoryImpl implements WriterFactory {
+
+    private final ConfigurationImpl configuration;
+
+    public WriterFactoryImpl(ConfigurationImpl configuration) {
+        this.configuration = configuration;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public ConstantsSummaryWriter getConstantsSummaryWriter() throws Exception {
+        return new ConstantsSummaryWriterImpl(configuration);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public PackageSummaryWriter getPackageSummaryWriter(PackageDoc packageDoc,
+        PackageDoc prevPkg, PackageDoc nextPkg) throws Exception {
+        return new PackageWriterImpl(configuration, packageDoc,
+            prevPkg, nextPkg);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public ProfileSummaryWriter getProfileSummaryWriter(Profile profile,
+        Profile prevProfile, Profile nextProfile) throws Exception {
+        return new ProfileWriterImpl(configuration, profile,
+            prevProfile, nextProfile);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public ProfilePackageSummaryWriter getProfilePackageSummaryWriter(PackageDoc packageDoc,
+        PackageDoc prevPkg, PackageDoc nextPkg, Profile profile) throws Exception {
+        return new ProfilePackageWriterImpl(configuration, packageDoc,
+            prevPkg, nextPkg, profile);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public ClassWriter getClassWriter(ClassDoc classDoc, ClassDoc prevClass,
+            ClassDoc nextClass, ClassTree classTree) throws IOException {
+        return new ClassWriterImpl(configuration, classDoc,
+                prevClass, nextClass, classTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public AnnotationTypeWriter getAnnotationTypeWriter(
+        AnnotationTypeDoc annotationType, Type prevType, Type nextType)
+    throws Exception {
+        return new AnnotationTypeWriterImpl(configuration,
+                annotationType, prevType, nextType);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public AnnotationTypeFieldWriter
+            getAnnotationTypeFieldWriter(AnnotationTypeWriter annotationTypeWriter) throws Exception {
+        return new AnnotationTypeFieldWriterImpl(
+            (SubWriterHolderWriter) annotationTypeWriter,
+            annotationTypeWriter.getAnnotationTypeDoc());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public AnnotationTypeOptionalMemberWriter
+            getAnnotationTypeOptionalMemberWriter(
+        AnnotationTypeWriter annotationTypeWriter) throws Exception {
+        return new AnnotationTypeOptionalMemberWriterImpl(
+            (SubWriterHolderWriter) annotationTypeWriter,
+            annotationTypeWriter.getAnnotationTypeDoc());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public AnnotationTypeRequiredMemberWriter
+            getAnnotationTypeRequiredMemberWriter(AnnotationTypeWriter annotationTypeWriter) throws Exception {
+        return new AnnotationTypeRequiredMemberWriterImpl(
+            (SubWriterHolderWriter) annotationTypeWriter,
+            annotationTypeWriter.getAnnotationTypeDoc());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public EnumConstantWriterImpl getEnumConstantWriter(ClassWriter classWriter)
+            throws Exception {
+        return new EnumConstantWriterImpl((SubWriterHolderWriter) classWriter,
+            classWriter.getClassDoc());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public FieldWriterImpl getFieldWriter(ClassWriter classWriter)
+            throws Exception {
+        return new FieldWriterImpl((SubWriterHolderWriter) classWriter,
+            classWriter.getClassDoc());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public PropertyWriterImpl getPropertyWriter(ClassWriter classWriter)
+            throws Exception {
+        return new PropertyWriterImpl((SubWriterHolderWriter) classWriter,
+            classWriter.getClassDoc());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public MethodWriterImpl getMethodWriter(ClassWriter classWriter)
+            throws Exception {
+        return new MethodWriterImpl((SubWriterHolderWriter) classWriter,
+            classWriter.getClassDoc());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public ConstructorWriterImpl getConstructorWriter(ClassWriter classWriter)
+            throws Exception {
+        return new ConstructorWriterImpl((SubWriterHolderWriter) classWriter,
+            classWriter.getClassDoc());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public MemberSummaryWriter getMemberSummaryWriter(
+            ClassWriter classWriter, int memberType)
+            throws Exception {
+        switch (memberType) {
+            case VisibleMemberMap.CONSTRUCTORS:
+                return getConstructorWriter(classWriter);
+            case VisibleMemberMap.ENUM_CONSTANTS:
+                return getEnumConstantWriter(classWriter);
+            case VisibleMemberMap.FIELDS:
+                return getFieldWriter(classWriter);
+            case VisibleMemberMap.PROPERTIES:
+                return getPropertyWriter(classWriter);
+            case VisibleMemberMap.INNERCLASSES:
+                return new NestedClassWriterImpl((SubWriterHolderWriter)
+                    classWriter, classWriter.getClassDoc());
+            case VisibleMemberMap.METHODS:
+                return getMethodWriter(classWriter);
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public MemberSummaryWriter getMemberSummaryWriter(
+        AnnotationTypeWriter annotationTypeWriter, int memberType)
+    throws Exception {
+        switch (memberType) {
+            case VisibleMemberMap.ANNOTATION_TYPE_FIELDS:
+                return (AnnotationTypeFieldWriterImpl)
+                    getAnnotationTypeFieldWriter(annotationTypeWriter);
+            case VisibleMemberMap.ANNOTATION_TYPE_MEMBER_OPTIONAL:
+                return (AnnotationTypeOptionalMemberWriterImpl)
+                    getAnnotationTypeOptionalMemberWriter(annotationTypeWriter);
+            case VisibleMemberMap.ANNOTATION_TYPE_MEMBER_REQUIRED:
+                return (AnnotationTypeRequiredMemberWriterImpl)
+                    getAnnotationTypeRequiredMemberWriter(annotationTypeWriter);
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public SerializedFormWriter getSerializedFormWriter() throws Exception {
+        return new SerializedFormWriterImpl(configuration);
+    }
+}

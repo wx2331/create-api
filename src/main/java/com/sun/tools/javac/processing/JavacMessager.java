@@ -1,193 +1,187 @@
-/*     */ package com.sun.tools.javac.processing;
-/*     */ 
-/*     */ import com.sun.tools.javac.model.JavacElements;
-/*     */ import com.sun.tools.javac.tree.JCTree;
-/*     */ import com.sun.tools.javac.util.Context;
-/*     */ import com.sun.tools.javac.util.JCDiagnostic;
-/*     */ import com.sun.tools.javac.util.Log;
-/*     */ import com.sun.tools.javac.util.Pair;
-/*     */ import javax.annotation.processing.Messager;
-/*     */ import javax.lang.model.element.AnnotationMirror;
-/*     */ import javax.lang.model.element.AnnotationValue;
-/*     */ import javax.lang.model.element.Element;
-/*     */ import javax.tools.Diagnostic;
-/*     */ import javax.tools.JavaFileObject;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class JavacMessager
-/*     */   implements Messager
-/*     */ {
-/*     */   Log log;
-/*     */   JavacProcessingEnvironment processingEnv;
-/*  48 */   int errorCount = 0;
-/*  49 */   int warningCount = 0;
-/*     */   
-/*     */   JavacMessager(Context paramContext, JavacProcessingEnvironment paramJavacProcessingEnvironment) {
-/*  52 */     this.log = Log.instance(paramContext);
-/*  53 */     this.processingEnv = paramJavacProcessingEnvironment;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void printMessage(Diagnostic.Kind paramKind, CharSequence paramCharSequence) {
-/*  59 */     printMessage(paramKind, paramCharSequence, null, null, null);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public void printMessage(Diagnostic.Kind paramKind, CharSequence paramCharSequence, Element paramElement) {
-/*  64 */     printMessage(paramKind, paramCharSequence, paramElement, null, null);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void printMessage(Diagnostic.Kind paramKind, CharSequence paramCharSequence, Element paramElement, AnnotationMirror paramAnnotationMirror) {
-/*  78 */     printMessage(paramKind, paramCharSequence, paramElement, paramAnnotationMirror, null);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void printMessage(Diagnostic.Kind paramKind, CharSequence paramCharSequence, Element paramElement, AnnotationMirror paramAnnotationMirror, AnnotationValue paramAnnotationValue) {
-/*  94 */     JavaFileObject javaFileObject1 = null;
-/*  95 */     JavaFileObject javaFileObject2 = null;
-/*  96 */     JCDiagnostic.DiagnosticPosition diagnosticPosition = null;
-/*  97 */     JavacElements javacElements = this.processingEnv.getElementUtils();
-/*  98 */     Pair pair = javacElements.getTreeAndTopLevel(paramElement, paramAnnotationMirror, paramAnnotationValue);
-/*  99 */     if (pair != null) {
-/* 100 */       javaFileObject2 = ((JCTree.JCCompilationUnit)pair.snd).sourcefile;
-/* 101 */       if (javaFileObject2 != null) {
-/*     */         
-/* 103 */         javaFileObject1 = this.log.useSource(javaFileObject2);
-/* 104 */         diagnosticPosition = ((JCTree)pair.fst).pos();
-/*     */       } 
-/*     */     }  try {
-/*     */       boolean bool;
-/* 108 */       switch (paramKind) {
-/*     */         case ERROR:
-/* 110 */           this.errorCount++;
-/* 111 */           bool = this.log.multipleErrors;
-/* 112 */           this.log.multipleErrors = true;
-/*     */           try {
-/* 114 */             this.log.error(diagnosticPosition, "proc.messager", new Object[] { paramCharSequence.toString() });
-/*     */           } finally {
-/* 116 */             this.log.multipleErrors = bool;
-/*     */           } 
-/*     */           break;
-/*     */         
-/*     */         case WARNING:
-/* 121 */           this.warningCount++;
-/* 122 */           this.log.warning(diagnosticPosition, "proc.messager", new Object[] { paramCharSequence.toString() });
-/*     */           break;
-/*     */         
-/*     */         case MANDATORY_WARNING:
-/* 126 */           this.warningCount++;
-/* 127 */           this.log.mandatoryWarning(diagnosticPosition, "proc.messager", new Object[] { paramCharSequence.toString() });
-/*     */           break;
-/*     */         
-/*     */         default:
-/* 131 */           this.log.note(diagnosticPosition, "proc.messager", new Object[] { paramCharSequence.toString() });
-/*     */           break;
-/*     */       } 
-/*     */     
-/*     */     } finally {
-/* 136 */       if (javaFileObject2 != null) {
-/* 137 */         this.log.useSource(javaFileObject1);
-/*     */       }
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void printError(String paramString) {
-/* 147 */     printMessage(Diagnostic.Kind.ERROR, paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void printWarning(String paramString) {
-/* 156 */     printMessage(Diagnostic.Kind.WARNING, paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void printNotice(String paramString) {
-/* 164 */     printMessage(Diagnostic.Kind.NOTE, paramString);
-/*     */   }
-/*     */   
-/*     */   public boolean errorRaised() {
-/* 168 */     return (this.errorCount > 0);
-/*     */   }
-/*     */   
-/*     */   public int errorCount() {
-/* 172 */     return this.errorCount;
-/*     */   }
-/*     */   
-/*     */   public int warningCount() {
-/* 176 */     return this.warningCount;
-/*     */   }
-/*     */   
-/*     */   public void newRound(Context paramContext) {
-/* 180 */     this.log = Log.instance(paramContext);
-/* 181 */     this.errorCount = 0;
-/*     */   }
-/*     */   
-/*     */   public String toString() {
-/* 185 */     return "javac Messager";
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\processing\JavacMessager.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2005, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.processing;
+
+import com.sun.tools.javac.model.JavacElements;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.*;
+import javax.lang.model.element.*;
+import javax.tools.JavaFileObject;
+import javax.tools.Diagnostic;
+import javax.annotation.processing.*;
+
+/**
+ * An implementation of the Messager built on top of log.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own risk.
+ * This code and its internal interfaces are subject to change or
+ * deletion without notice.</b>
+ */
+public class JavacMessager implements Messager {
+    Log log;
+    JavacProcessingEnvironment processingEnv;
+    int errorCount = 0;
+    int warningCount = 0;
+
+    JavacMessager(Context context, JavacProcessingEnvironment processingEnv) {
+        log = Log.instance(context);
+        this.processingEnv = processingEnv;
+    }
+
+    // processingEnv.getElementUtils()
+
+    public void printMessage(Diagnostic.Kind kind, CharSequence msg) {
+        printMessage(kind, msg, null, null, null);
+    }
+
+    public void printMessage(Diagnostic.Kind kind, CharSequence msg,
+                      Element e) {
+        printMessage(kind, msg, e, null, null);
+    }
+
+    /**
+     * Prints a message of the specified kind at the location of the
+     * annotation mirror of the annotated element.
+     *
+     * @param kind the kind of message
+     * @param msg  the message, or an empty string if none
+     * @param e    the annotated element
+     * @param a    the annotation to use as a position hint
+     */
+    public void printMessage(Diagnostic.Kind kind, CharSequence msg,
+                      Element e, AnnotationMirror a) {
+        printMessage(kind, msg, e, a, null);
+    }
+
+    /**
+     * Prints a message of the specified kind at the location of the
+     * annotation value inside the annotation mirror of the annotated
+     * element.
+     *
+     * @param kind the kind of message
+     * @param msg  the message, or an empty string if none
+     * @param e    the annotated element
+     * @param a    the annotation containing the annotaiton value
+     * @param v    the annotation value to use as a position hint
+     */
+    public void printMessage(Diagnostic.Kind kind, CharSequence msg,
+                      Element e, AnnotationMirror a, AnnotationValue v) {
+        JavaFileObject oldSource = null;
+        JavaFileObject newSource = null;
+        JCDiagnostic.DiagnosticPosition pos = null;
+        JavacElements elemUtils = processingEnv.getElementUtils();
+        Pair<JCTree, JCCompilationUnit> treeTop = elemUtils.getTreeAndTopLevel(e, a, v);
+        if (treeTop != null) {
+            newSource = treeTop.snd.sourcefile;
+            if (newSource != null) {
+                // save the old version and reinstate it later
+                oldSource = log.useSource(newSource);
+                pos = treeTop.fst.pos();
+            }
+        }
+        try {
+            switch (kind) {
+            case ERROR:
+                errorCount++;
+                boolean prev = log.multipleErrors;
+                log.multipleErrors = true;
+                try {
+                    log.error(pos, "proc.messager", msg.toString());
+                } finally {
+                    log.multipleErrors = prev;
+                }
+                break;
+
+            case WARNING:
+                warningCount++;
+                log.warning(pos, "proc.messager", msg.toString());
+                break;
+
+            case MANDATORY_WARNING:
+                warningCount++;
+                log.mandatoryWarning(pos, "proc.messager", msg.toString());
+                break;
+
+            default:
+                log.note(pos, "proc.messager", msg.toString());
+                break;
+            }
+        } finally {
+            // reinstate the saved version, only if it was saved earlier
+            if (newSource != null)
+                log.useSource(oldSource);
+        }
+    }
+
+    /**
+     * Prints an error message.
+     * Equivalent to {@code printError(null, msg)}.
+     * @param msg  the message, or an empty string if none
+     */
+    public void printError(String msg) {
+        printMessage(Diagnostic.Kind.ERROR, msg);
+    }
+
+    /**
+     * Prints a warning message.
+     * Equivalent to {@code printWarning(null, msg)}.
+     * @param msg  the message, or an empty string if none
+     */
+    public void printWarning(String msg) {
+        printMessage(Diagnostic.Kind.WARNING, msg);
+    }
+
+    /**
+     * Prints a notice.
+     * @param msg  the message, or an empty string if none
+     */
+    public void printNotice(String msg) {
+        printMessage(Diagnostic.Kind.NOTE, msg);
+    }
+
+    public boolean errorRaised() {
+        return errorCount > 0;
+    }
+
+    public int errorCount() {
+        return errorCount;
+    }
+
+    public int warningCount() {
+        return warningCount;
+    }
+
+    public void newRound(Context context) {
+        log = Log.instance(context);
+        errorCount = 0;
+    }
+
+    public String toString() {
+        return "javac Messager";
+    }
+}

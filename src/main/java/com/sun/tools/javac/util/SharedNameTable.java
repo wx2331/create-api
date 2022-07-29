@@ -1,214 +1,210 @@
-/*     */ package com.sun.tools.javac.util;
-/*     */ 
-/*     */ import java.lang.ref.SoftReference;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class SharedNameTable
-/*     */   extends Name.Table
-/*     */ {
-/*  42 */   private static List<SoftReference<SharedNameTable>> freelist = List.nil(); private NameImpl[] hashes;
-/*     */   
-/*     */   public static synchronized SharedNameTable create(Names paramNames) {
-/*  45 */     while (freelist.nonEmpty()) {
-/*  46 */       SharedNameTable sharedNameTable = ((SoftReference<SharedNameTable>)freelist.head).get();
-/*  47 */       freelist = freelist.tail;
-/*  48 */       if (sharedNameTable != null) {
-/*  49 */         return sharedNameTable;
-/*     */       }
-/*     */     } 
-/*  52 */     return new SharedNameTable(paramNames);
-/*     */   }
-/*     */   public byte[] bytes; private int hashMask;
-/*     */   private static synchronized void dispose(SharedNameTable paramSharedNameTable) {
-/*  56 */     freelist = freelist.prepend(new SoftReference<>(paramSharedNameTable));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*  73 */   private int nc = 0;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public SharedNameTable(Names paramNames, int paramInt1, int paramInt2) {
-/*  82 */     super(paramNames);
-/*  83 */     this.hashMask = paramInt1 - 1;
-/*  84 */     this.hashes = new NameImpl[paramInt1];
-/*  85 */     this.bytes = new byte[paramInt2];
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public SharedNameTable(Names paramNames) {
-/*  90 */     this(paramNames, 32768, 131072);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public Name fromChars(char[] paramArrayOfchar, int paramInt1, int paramInt2) {
-/*  95 */     int i = this.nc;
-/*  96 */     byte[] arrayOfByte = this.bytes = ArrayUtils.ensureCapacity(this.bytes, i + paramInt2 * 3);
-/*  97 */     int j = Convert.chars2utf(paramArrayOfchar, paramInt1, arrayOfByte, i, paramInt2) - i;
-/*  98 */     int k = hashValue(arrayOfByte, i, j) & this.hashMask;
-/*  99 */     NameImpl nameImpl = this.hashes[k];
-/* 100 */     while (nameImpl != null && (nameImpl
-/* 101 */       .getByteLength() != j || 
-/* 102 */       !equals(arrayOfByte, nameImpl.index, arrayOfByte, i, j))) {
-/* 103 */       nameImpl = nameImpl.next;
-/*     */     }
-/* 105 */     if (nameImpl == null) {
-/* 106 */       nameImpl = new NameImpl(this);
-/* 107 */       nameImpl.index = i;
-/* 108 */       nameImpl.length = j;
-/* 109 */       nameImpl.next = this.hashes[k];
-/* 110 */       this.hashes[k] = nameImpl;
-/* 111 */       this.nc = i + j;
-/* 112 */       if (j == 0) {
-/* 113 */         this.nc++;
-/*     */       }
-/*     */     } 
-/* 116 */     return nameImpl;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public Name fromUtf(byte[] paramArrayOfbyte, int paramInt1, int paramInt2) {
-/* 121 */     int i = hashValue(paramArrayOfbyte, paramInt1, paramInt2) & this.hashMask;
-/* 122 */     NameImpl nameImpl = this.hashes[i];
-/* 123 */     byte[] arrayOfByte = this.bytes;
-/* 124 */     while (nameImpl != null && (nameImpl
-/* 125 */       .getByteLength() != paramInt2 || !equals(arrayOfByte, nameImpl.index, paramArrayOfbyte, paramInt1, paramInt2))) {
-/* 126 */       nameImpl = nameImpl.next;
-/*     */     }
-/* 128 */     if (nameImpl == null) {
-/* 129 */       int j = this.nc;
-/* 130 */       arrayOfByte = this.bytes = ArrayUtils.ensureCapacity(arrayOfByte, j + paramInt2);
-/* 131 */       System.arraycopy(paramArrayOfbyte, paramInt1, arrayOfByte, j, paramInt2);
-/* 132 */       nameImpl = new NameImpl(this);
-/* 133 */       nameImpl.index = j;
-/* 134 */       nameImpl.length = paramInt2;
-/* 135 */       nameImpl.next = this.hashes[i];
-/* 136 */       this.hashes[i] = nameImpl;
-/* 137 */       this.nc = j + paramInt2;
-/* 138 */       if (paramInt2 == 0) {
-/* 139 */         this.nc++;
-/*     */       }
-/*     */     } 
-/* 142 */     return nameImpl;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public void dispose() {
-/* 147 */     dispose(this);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   static class NameImpl
-/*     */     extends Name
-/*     */   {
-/*     */     NameImpl next;
-/*     */ 
-/*     */     
-/*     */     int index;
-/*     */ 
-/*     */     
-/*     */     int length;
-/*     */ 
-/*     */     
-/*     */     NameImpl(SharedNameTable param1SharedNameTable) {
-/* 165 */       super(param1SharedNameTable);
-/*     */     }
-/*     */ 
-/*     */     
-/*     */     public int getIndex() {
-/* 170 */       return this.index;
-/*     */     }
-/*     */ 
-/*     */     
-/*     */     public int getByteLength() {
-/* 175 */       return this.length;
-/*     */     }
-/*     */ 
-/*     */     
-/*     */     public byte getByteAt(int param1Int) {
-/* 180 */       return getByteArray()[this.index + param1Int];
-/*     */     }
-/*     */ 
-/*     */     
-/*     */     public byte[] getByteArray() {
-/* 185 */       return ((SharedNameTable)this.table).bytes;
-/*     */     }
-/*     */ 
-/*     */     
-/*     */     public int getByteOffset() {
-/* 190 */       return this.index;
-/*     */     }
-/*     */ 
-/*     */ 
-/*     */     
-/*     */     public int hashCode() {
-/* 196 */       return this.index;
-/*     */     }
-/*     */ 
-/*     */ 
-/*     */     
-/*     */     public boolean equals(Object param1Object) {
-/* 202 */       if (param1Object instanceof Name)
-/* 203 */         return (this.table == ((Name)param1Object).table && this.index == ((Name)param1Object)
-/* 204 */           .getIndex()); 
-/* 205 */       return false;
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\java\\util\SharedNameTable.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.util;
+
+import java.lang.ref.SoftReference;
+
+/**
+ * Implementation of Name.Table that stores all names in a single shared
+ * byte array, expanding it as needed. This avoids the overhead incurred
+ * by using an array of bytes for each name.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class SharedNameTable extends Name.Table {
+    // maintain a freelist of recently used name tables for reuse.
+    private static List<SoftReference<SharedNameTable>> freelist = List.nil();
+
+    static public synchronized SharedNameTable create(Names names) {
+        while (freelist.nonEmpty()) {
+            SharedNameTable t = freelist.head.get();
+            freelist = freelist.tail;
+            if (t != null) {
+                return t;
+            }
+        }
+        return new SharedNameTable(names);
+    }
+
+    static private synchronized void dispose(SharedNameTable t) {
+        freelist = freelist.prepend(new SoftReference<SharedNameTable>(t));
+    }
+
+    /** The hash table for names.
+     */
+    private NameImpl[] hashes;
+
+    /** The shared byte array holding all encountered names.
+     */
+    public byte[] bytes;
+
+    /** The mask to be used for hashing
+     */
+    private int hashMask;
+
+    /** The number of filled bytes in `names'.
+     */
+    private int nc = 0;
+
+    /** Allocator
+     *  @param names The main name table
+     *  @param hashSize the (constant) size to be used for the hash table
+     *                  needs to be a power of two.
+     *  @param nameSize the initial size of the name table.
+     */
+    public SharedNameTable(Names names, int hashSize, int nameSize) {
+        super(names);
+        hashMask = hashSize - 1;
+        hashes = new NameImpl[hashSize];
+        bytes = new byte[nameSize];
+
+    }
+
+    public SharedNameTable(Names names) {
+        this(names, 0x8000, 0x20000);
+    }
+
+    @Override
+    public Name fromChars(char[] cs, int start, int len) {
+        int nc = this.nc;
+        byte[] bytes = this.bytes = ArrayUtils.ensureCapacity(this.bytes, nc + len * 3);
+        int nbytes = Convert.chars2utf(cs, start, bytes, nc, len) - nc;
+        int h = hashValue(bytes, nc, nbytes) & hashMask;
+        NameImpl n = hashes[h];
+        while (n != null &&
+                (n.getByteLength() != nbytes ||
+                !equals(bytes, n.index, bytes, nc, nbytes))) {
+            n = n.next;
+        }
+        if (n == null) {
+            n = new NameImpl(this);
+            n.index = nc;
+            n.length = nbytes;
+            n.next = hashes[h];
+            hashes[h] = n;
+            this.nc = nc + nbytes;
+            if (nbytes == 0) {
+                this.nc++;
+            }
+        }
+        return n;
+    }
+
+    @Override
+    public Name fromUtf(byte[] cs, int start, int len) {
+        int h = hashValue(cs, start, len) & hashMask;
+        NameImpl n = hashes[h];
+        byte[] names = this.bytes;
+        while (n != null &&
+                (n.getByteLength() != len || !equals(names, n.index, cs, start, len))) {
+            n = n.next;
+        }
+        if (n == null) {
+            int nc = this.nc;
+            names = this.bytes = ArrayUtils.ensureCapacity(names, nc + len);
+            System.arraycopy(cs, start, names, nc, len);
+            n = new NameImpl(this);
+            n.index = nc;
+            n.length = len;
+            n.next = hashes[h];
+            hashes[h] = n;
+            this.nc = nc + len;
+            if (len == 0) {
+                this.nc++;
+            }
+        }
+        return n;
+    }
+
+    @Override
+    public void dispose() {
+        dispose(this);
+    }
+
+    static class NameImpl extends Name {
+        /** The next name occupying the same hash bucket.
+         */
+        NameImpl next;
+
+        /** The index where the bytes of this name are stored in the global name
+         *  buffer `byte'.
+         */
+        int index;
+
+        /** The number of bytes in this name.
+         */
+        int length;
+
+        NameImpl(SharedNameTable table) {
+            super(table);
+        }
+
+        @Override
+        public int getIndex() {
+            return index;
+        }
+
+        @Override
+        public int getByteLength() {
+            return length;
+        }
+
+        @Override
+        public byte getByteAt(int i) {
+            return getByteArray()[index + i];
+        }
+
+        @Override
+        public byte[] getByteArray() {
+            return ((SharedNameTable) table).bytes;
+        }
+
+        @Override
+        public int getByteOffset() {
+            return index;
+        }
+
+        /** Return the hash value of this name.
+         */
+        public int hashCode() {
+            return index;
+        }
+
+        /** Is this name equal to other?
+         */
+        public boolean equals(Object other) {
+            if (other instanceof Name)
+                return
+                    table == ((Name)other).table && index == ((Name) other).getIndex();
+            else return false;
+        }
+
+    }
+
+}

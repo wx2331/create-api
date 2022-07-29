@@ -1,75 +1,69 @@
-/*    */ package com.sun.tools.doclets.internal.toolkit.util;
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ public enum MethodTypes
-/*    */ {
-/* 34 */   ALL(65535, "doclet.All_Methods", "t0", true),
-/* 35 */   STATIC(1, "doclet.Static_Methods", "t1", false),
-/* 36 */   INSTANCE(2, "doclet.Instance_Methods", "t2", false),
-/* 37 */   ABSTRACT(4, "doclet.Abstract_Methods", "t3", false),
-/* 38 */   CONCRETE(8, "doclet.Concrete_Methods", "t4", false),
-/* 39 */   DEFAULT(16, "doclet.Default_Methods", "t5", false),
-/* 40 */   DEPRECATED(32, "doclet.Deprecated_Methods", "t6", false);
-/*    */   
-/*    */   private final int value;
-/*    */   private final String resourceKey;
-/*    */   private final String tabId;
-/*    */   private final boolean isDefaultTab;
-/*    */   
-/*    */   MethodTypes(int paramInt1, String paramString1, String paramString2, boolean paramBoolean) {
-/* 48 */     this.value = paramInt1;
-/* 49 */     this.resourceKey = paramString1;
-/* 50 */     this.tabId = paramString2;
-/* 51 */     this.isDefaultTab = paramBoolean;
-/*    */   }
-/*    */   
-/*    */   public int value() {
-/* 55 */     return this.value;
-/*    */   }
-/*    */   
-/*    */   public String resourceKey() {
-/* 59 */     return this.resourceKey;
-/*    */   }
-/*    */   
-/*    */   public String tabId() {
-/* 63 */     return this.tabId;
-/*    */   }
-/*    */   
-/*    */   public boolean isDefaultTab() {
-/* 67 */     return this.isDefaultTab;
-/*    */   }
-/*    */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolki\\util\MethodTypes.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2012, 2015, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.util;
+
+/**
+ * Enum representing method types.
+ *
+ * @author Bhavesh Patel
+ */
+public enum MethodTypes {
+    ALL(0xffff, "doclet.All_Methods", "t0", true),
+    STATIC(0x1, "doclet.Static_Methods", "t1", false),
+    INSTANCE(0x2, "doclet.Instance_Methods", "t2", false),
+    ABSTRACT(0x4, "doclet.Abstract_Methods", "t3", false),
+    CONCRETE(0x8, "doclet.Concrete_Methods", "t4", false),
+    DEFAULT(0x10, "doclet.Default_Methods", "t5", false),
+    DEPRECATED(0x20, "doclet.Deprecated_Methods", "t6", false);
+
+    private final int value;
+    private final String resourceKey;
+    private final String tabId;
+    private final boolean isDefaultTab;
+
+    MethodTypes(int v, String k, String id, boolean dt) {
+        this.value = v;
+        this.resourceKey = k;
+        this.tabId = id;
+        this.isDefaultTab = dt;
+    }
+
+    public int value() {
+        return value;
+    }
+
+    public String resourceKey() {
+        return resourceKey;
+    }
+
+    public String tabId() {
+        return tabId;
+    }
+
+    public boolean isDefaultTab() {
+        return isDefaultTab;
+    }
+}

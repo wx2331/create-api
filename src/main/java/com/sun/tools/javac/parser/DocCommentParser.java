@@ -1,1293 +1,1288 @@
-/*      */ package com.sun.tools.javac.parser;
-/*      */
-/*      */ import com.sun.source.doctree.AttributeTree;
-/*      */ import com.sun.source.doctree.DocTree;
-/*      */ import com.sun.tools.javac.tree.DCTree;
-/*      */ import com.sun.tools.javac.tree.DocTreeMaker;
-/*      */ import com.sun.tools.javac.tree.JCTree;
-/*      */ import com.sun.tools.javac.util.DiagnosticSource;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.Name;
-/*      */ import com.sun.tools.javac.util.Names;
-/*      */ import com.sun.tools.javac.util.Options;
-/*      */ import com.sun.tools.javac.util.StringUtils;
-/*      */ import java.text.BreakIterator;
-/*      */ import java.util.Arrays;
-/*      */ import java.util.HashMap;
-/*      */ import java.util.HashSet;
-/*      */ import java.util.Locale;
-/*      */ import java.util.Map;
-/*      */ import java.util.Set;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class DocCommentParser
-/*      */ {
-/*      */   final ParserFactory fac;
-/*      */   final DiagnosticSource diagSource;
-/*      */   final Tokens.Comment comment;
-/*      */   final DocTreeMaker m;
-/*      */   final Names names;
-/*      */   BreakIterator sentenceBreaker;
-/*      */   protected char[] buf;
-/*      */   protected int bp;
-/*      */   protected int buflen;
-/*      */   protected char ch;
-/*      */
-/*      */   static class ParseException
-/*      */     extends Exception
-/*      */   {
-/*      */     private static final long serialVersionUID = 0L;
-/*      */
-/*      */     ParseException(String param1String) {
-/*   74 */       super(param1String);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*   97 */   int textStart = -1;
-/*   98 */   int lastNonWhite = -1;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   boolean newline = true;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Map<Name, TagParser> tagParsers;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Set<String> htmlBlockTags;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   DCTree.DCDocComment parse() {
-/*  121 */     String str = this.comment.getText();
-/*  122 */     this.buf = new char[str.length() + 1];
-/*  123 */     str.getChars(0, str.length(), this.buf, 0);
-/*  124 */     this.buf[this.buf.length - 1] = '\032';
-/*  125 */     this.buflen = this.buf.length - 1;
-/*  126 */     this.bp = -1;
-/*  127 */     nextChar();
-/*      */
-/*  129 */     List<DCTree> list1 = blockContent();
-/*  130 */     List<DCTree> list2 = blockTags();
-/*      */
-/*      */
-/*  133 */     ListBuffer listBuffer = new ListBuffer();
-/*      */
-/*  135 */     for (; list1.nonEmpty(); list1 = list1.tail) {
-/*  136 */       String str1; int i; DCTree dCTree1 = (DCTree)list1.head;
-/*  137 */       switch (dCTree1.getKind()) {
-/*      */         case BLOCK:
-/*  139 */           str1 = ((DCTree.DCText)dCTree1).getBody();
-/*  140 */           i = getSentenceBreak(str1);
-/*  141 */           if (i > 0) {
-/*  142 */             int j = i;
-/*  143 */             while (j > 0 && isWhitespace(str1.charAt(j - 1)))
-/*  144 */               j--;
-/*  145 */             listBuffer.add(this.m.at(dCTree1.pos).Text(str1.substring(0, j)));
-/*  146 */             int k = i;
-/*  147 */             while (k < str1.length() && isWhitespace(str1.charAt(k)))
-/*  148 */               k++;
-/*  149 */             list1 = list1.tail;
-/*  150 */             if (k < str1.length())
-/*  151 */               list1 = list1.prepend(this.m.at(dCTree1.pos + k).Text(str1.substring(k)));  break;
-/*      */           }
-/*  153 */           if (list1.tail.nonEmpty() &&
-/*  154 */             isSentenceBreak((DCTree)list1.tail.head)) {
-/*  155 */             int j = str1.length() - 1;
-/*  156 */             while (j > 0 && isWhitespace(str1.charAt(j)))
-/*  157 */               j--;
-/*  158 */             listBuffer.add(this.m.at(dCTree1.pos).Text(str1.substring(0, j + 1)));
-/*  159 */             list1 = list1.tail;
-/*      */             break;
-/*      */           }
-/*      */           break;
-/*      */
-/*      */
-/*      */         case INLINE:
-/*      */         case null:
-/*  167 */           if (isSentenceBreak(dCTree1))
-/*      */             break;
-/*      */           break;
-/*      */       }
-/*  171 */       listBuffer.add(dCTree1);
-/*      */     }
-/*      */
-/*      */
-/*  175 */     DCTree dCTree = getFirst((List<DCTree>[])new List[] { listBuffer.toList(), list1, list2 });
-/*  176 */     boolean bool = (dCTree == null) ? true : dCTree.pos;
-/*      */
-/*  178 */     return this.m.at(bool).DocComment(this.comment, listBuffer.toList(), list1, list2);
-/*      */   }
-/*      */
-/*      */
-/*      */   void nextChar() {
-/*  183 */     this.ch = this.buf[(this.bp < this.buflen) ? ++this.bp : this.buflen];
-/*  184 */     switch (this.ch) { case '\n': case '\f':
-/*      */       case '\r':
-/*  186 */         this.newline = true;
-/*      */         break; }
-/*      */
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected List<DCTree> blockContent() {
-/*  197 */     ListBuffer<DCTree> listBuffer = new ListBuffer();
-/*  198 */     this.textStart = -1;
-/*      */
-/*      */
-/*  201 */     while (this.bp < this.buflen) {
-/*  202 */       switch (this.ch) { case '\n': case '\f':
-/*      */         case '\r':
-/*  204 */           this.newline = true;
-/*      */
-/*      */         case '\t':
-/*      */         case ' ':
-/*  208 */           nextChar();
-/*      */           continue;
-/*      */
-/*      */         case '&':
-/*  212 */           entity(listBuffer);
-/*      */           continue;
-/*      */
-/*      */         case '<':
-/*  216 */           this.newline = false;
-/*  217 */           addPendingText(listBuffer, this.bp - 1);
-/*  218 */           listBuffer.add(html());
-/*  219 */           if (this.textStart == -1) {
-/*  220 */             this.textStart = this.bp;
-/*  221 */             this.lastNonWhite = -1;
-/*      */           }
-/*      */           continue;
-/*      */
-/*      */         case '>':
-/*  226 */           this.newline = false;
-/*  227 */           addPendingText(listBuffer, this.bp - 1);
-/*  228 */           listBuffer.add(this.m.at(this.bp).Erroneous(newString(this.bp, this.bp + 1), this.diagSource, "dc.bad.gt", new Object[0]));
-/*  229 */           nextChar();
-/*  230 */           if (this.textStart == -1) {
-/*  231 */             this.textStart = this.bp;
-/*  232 */             this.lastNonWhite = -1;
-/*      */           }
-/*      */           continue;
-/*      */
-/*      */         case '{':
-/*  237 */           inlineTag(listBuffer);
-/*      */           continue;
-/*      */
-/*      */         case '@':
-/*  241 */           if (this.newline) {
-/*  242 */             addPendingText(listBuffer, this.lastNonWhite);
-/*      */             break;
-/*      */           }
-/*      */           break; }
-/*      */
-/*      */
-/*  248 */       this.newline = false;
-/*  249 */       if (this.textStart == -1)
-/*  250 */         this.textStart = this.bp;
-/*  251 */       this.lastNonWhite = this.bp;
-/*  252 */       nextChar();
-/*      */     }
-/*      */
-/*      */
-/*  256 */     if (this.lastNonWhite != -1) {
-/*  257 */       addPendingText(listBuffer, this.lastNonWhite);
-/*      */     }
-/*  259 */     return listBuffer.toList();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected List<DCTree> blockTags() {
-/*  268 */     ListBuffer listBuffer = new ListBuffer();
-/*  269 */     while (this.ch == '@')
-/*  270 */       listBuffer.add(blockTag());
-/*  271 */     return listBuffer.toList();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected DCTree blockTag() {
-/*  280 */     int i = this.bp;
-/*      */     try {
-/*  282 */       nextChar();
-/*  283 */       if (isIdentifierStart(this.ch)) {
-/*  284 */         Name name = readTagName();
-/*  285 */         TagParser tagParser = this.tagParsers.get(name);
-/*  286 */         if (tagParser == null) {
-/*  287 */           List<DCTree> list = blockContent();
-/*  288 */           return (DCTree)this.m.at(i).UnknownBlockTag(name, list);
-/*      */         }
-/*  290 */         switch (tagParser.getKind()) {
-/*      */           case BLOCK:
-/*  292 */             return tagParser.parse(i);
-/*      */           case INLINE:
-/*  294 */             return (DCTree)erroneous("dc.bad.inline.tag", i);
-/*      */         }
-/*      */
-/*      */       }
-/*  298 */       blockContent();
-/*      */
-/*  300 */       return (DCTree)erroneous("dc.no.tag.name", i);
-/*  301 */     } catch (ParseException parseException) {
-/*  302 */       blockContent();
-/*  303 */       return (DCTree)erroneous(parseException.getMessage(), i);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   protected void inlineTag(ListBuffer<DCTree> paramListBuffer) {
-/*  308 */     this.newline = false;
-/*  309 */     nextChar();
-/*  310 */     if (this.ch == '@') {
-/*  311 */       addPendingText(paramListBuffer, this.bp - 2);
-/*  312 */       paramListBuffer.add(inlineTag());
-/*  313 */       this.textStart = this.bp;
-/*  314 */       this.lastNonWhite = -1;
-/*      */     } else {
-/*  316 */       if (this.textStart == -1)
-/*  317 */         this.textStart = this.bp - 1;
-/*  318 */       this.lastNonWhite = this.bp;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected DCTree inlineTag() {
-/*  329 */     int i = this.bp - 1;
-/*      */     try {
-/*  331 */       nextChar();
-/*  332 */       if (isIdentifierStart(this.ch)) {
-/*  333 */         Name name = readTagName();
-/*  334 */         skipWhitespace();
-/*      */
-/*  336 */         TagParser tagParser = this.tagParsers.get(name);
-/*  337 */         if (tagParser == null) {
-/*  338 */           DCTree dCTree = inlineText();
-/*  339 */           if (dCTree != null) {
-/*  340 */             nextChar();
-/*  341 */             return (DCTree)this.m.at(i).UnknownInlineTag(name, List.of(dCTree)).setEndPos(this.bp);
-/*      */           }
-/*  343 */         } else if (tagParser.getKind() == TagParser.Kind.INLINE) {
-/*  344 */           DCTree.DCEndPosTree dCEndPosTree = (DCTree.DCEndPosTree)tagParser.parse(i);
-/*  345 */           if (dCEndPosTree != null) {
-/*  346 */             return (DCTree)dCEndPosTree.setEndPos(this.bp);
-/*      */           }
-/*      */         } else {
-/*  349 */           inlineText();
-/*  350 */           nextChar();
-/*      */         }
-/*      */       }
-/*  353 */       return (DCTree)erroneous("dc.no.tag.name", i);
-/*  354 */     } catch (ParseException parseException) {
-/*  355 */       return (DCTree)erroneous(parseException.getMessage(), i);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected DCTree inlineText() throws ParseException {
-/*  365 */     skipWhitespace();
-/*  366 */     int i = this.bp;
-/*  367 */     byte b = 1;
-/*      */
-/*      */
-/*  370 */     while (this.bp < this.buflen) {
-/*  371 */       switch (this.ch) { case '\n': case '\f':
-/*      */         case '\r':
-/*  373 */           this.newline = true;
-/*      */           break;
-/*      */
-/*      */         case '\t':
-/*      */         case ' ':
-/*      */           break;
-/*      */         case '{':
-/*  380 */           this.newline = false;
-/*  381 */           this.lastNonWhite = this.bp;
-/*  382 */           b++;
-/*      */           break;
-/*      */
-/*      */         case '}':
-/*  386 */           if (--b == 0) {
-/*  387 */             return (DCTree)this.m.at(i).Text(newString(i, this.bp));
-/*      */           }
-/*  389 */           this.newline = false;
-/*  390 */           this.lastNonWhite = this.bp;
-/*      */           break;
-/*      */
-/*      */         case '@':
-/*  394 */           if (this.newline)
-/*      */             break;
-/*  396 */           this.newline = false;
-/*  397 */           this.lastNonWhite = this.bp;
-/*      */           break;
-/*      */
-/*      */         default:
-/*  401 */           this.newline = false;
-/*  402 */           this.lastNonWhite = this.bp;
-/*      */           break; }
-/*      */
-/*  405 */       nextChar();
-/*      */     }
-/*  407 */     throw new ParseException("dc.unterminated.inline.tag");
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected DCTree.DCReference reference(boolean paramBoolean) throws ParseException {
-/*      */     JCTree jCTree;
-/*      */     Name name;
-/*      */     List<JCTree> list;
-/*  419 */     int i = this.bp;
-/*  420 */     byte b = 0;
-/*      */
-/*      */
-/*      */
-/*      */
-/*  425 */     while (this.bp < this.buflen) {
-/*  426 */       switch (this.ch) { case '\n': case '\f':
-/*      */         case '\r':
-/*  428 */           this.newline = true;
-/*      */
-/*      */         case '\t':
-/*      */         case ' ':
-/*  432 */           if (!b) {
-/*      */             break;
-/*      */           }
-/*      */           break;
-/*      */         case '(':
-/*      */         case '<':
-/*  438 */           this.newline = false;
-/*  439 */           b++;
-/*      */           break;
-/*      */
-/*      */         case ')':
-/*      */         case '>':
-/*  444 */           this.newline = false;
-/*  445 */           b--;
-/*      */           break;
-/*      */
-/*      */         case '}':
-/*  449 */           if (this.bp == i)
-/*  450 */             return null;
-/*  451 */           this.newline = false;
-/*      */           break;
-/*      */
-/*      */         case '@':
-/*  455 */           if (this.newline) {
-/*      */             break;
-/*      */           }
-/*      */
-/*      */         default:
-/*  460 */           this.newline = false;
-/*      */           break; }
-/*      */
-/*  463 */       nextChar();
-/*      */     }
-/*      */
-/*  466 */     if (b != 0) {
-/*  467 */       throw new ParseException("dc.unterminated.signature");
-/*      */     }
-/*  469 */     String str = newString(i, this.bp);
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  476 */     Log.DeferredDiagnosticHandler deferredDiagnosticHandler = new Log.DeferredDiagnosticHandler(this.fac.log);
-/*      */
-/*      */
-/*      */     try {
-/*  480 */       int j = str.indexOf("#");
-/*  481 */       int k = str.indexOf("(", j + 1);
-/*  482 */       if (j == -1) {
-/*  483 */         if (k == -1) {
-/*  484 */           jCTree = parseType(str);
-/*  485 */           name = null;
-/*      */         } else {
-/*  487 */           jCTree = null;
-/*  488 */           name = parseMember(str.substring(0, k));
-/*      */         }
-/*      */       } else {
-/*  491 */         jCTree = (j == 0) ? null : parseType(str.substring(0, j));
-/*  492 */         if (k == -1) {
-/*  493 */           name = parseMember(str.substring(j + 1));
-/*      */         } else {
-/*  495 */           name = parseMember(str.substring(j + 1, k));
-/*      */         }
-/*      */       }
-/*  498 */       if (k < 0) {
-/*  499 */         list = null;
-/*      */       } else {
-/*  501 */         int m = str.indexOf(")", k);
-/*  502 */         if (m != str.length() - 1)
-/*  503 */           throw new ParseException("dc.ref.bad.parens");
-/*  504 */         list = parseParams(str.substring(k + 1, m));
-/*      */       }
-/*      */
-/*  507 */       if (!deferredDiagnosticHandler.getDiagnostics().isEmpty()) {
-/*  508 */         throw new ParseException("dc.ref.syntax.error");
-/*      */       }
-/*      */     } finally {
-/*  511 */       this.fac.log.popDiagnosticHandler((Log.DiagnosticHandler)deferredDiagnosticHandler);
-/*      */     }
-/*      */
-/*  514 */     return (DCTree.DCReference)this.m.at(i).Reference(str, jCTree, name, list).setEndPos(this.bp);
-/*      */   }
-/*      */
-/*      */   JCTree parseType(String paramString) throws ParseException {
-/*  518 */     JavacParser javacParser = this.fac.newParser(paramString, false, false, false);
-/*  519 */     JCTree.JCExpression jCExpression = javacParser.parseType();
-/*  520 */     if ((javacParser.token()).kind != Tokens.TokenKind.EOF)
-/*  521 */       throw new ParseException("dc.ref.unexpected.input");
-/*  522 */     return (JCTree)jCExpression;
-/*      */   }
-/*      */
-/*      */   Name parseMember(String paramString) throws ParseException {
-/*  526 */     JavacParser javacParser = this.fac.newParser(paramString, false, false, false);
-/*  527 */     Name name = javacParser.ident();
-/*  528 */     if ((javacParser.token()).kind != Tokens.TokenKind.EOF)
-/*  529 */       throw new ParseException("dc.ref.unexpected.input");
-/*  530 */     return name;
-/*      */   }
-/*      */
-/*      */   List<JCTree> parseParams(String paramString) throws ParseException {
-/*  534 */     if (paramString.trim().isEmpty()) {
-/*  535 */       return List.nil();
-/*      */     }
-/*  537 */     JavacParser javacParser = this.fac.newParser(paramString.replace("...", "[]"), false, false, false);
-/*  538 */     ListBuffer listBuffer = new ListBuffer();
-/*  539 */     listBuffer.add(javacParser.parseType());
-/*      */
-/*  541 */     if ((javacParser.token()).kind == Tokens.TokenKind.IDENTIFIER) {
-/*  542 */       javacParser.nextToken();
-/*      */     }
-/*  544 */     while ((javacParser.token()).kind == Tokens.TokenKind.COMMA) {
-/*  545 */       javacParser.nextToken();
-/*  546 */       listBuffer.add(javacParser.parseType());
-/*      */
-/*  548 */       if ((javacParser.token()).kind == Tokens.TokenKind.IDENTIFIER) {
-/*  549 */         javacParser.nextToken();
-/*      */       }
-/*      */     }
-/*  552 */     if ((javacParser.token()).kind != Tokens.TokenKind.EOF) {
-/*  553 */       throw new ParseException("dc.ref.unexpected.input");
-/*      */     }
-/*  555 */     return listBuffer.toList();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected DCTree.DCIdentifier identifier() throws ParseException {
-/*  565 */     skipWhitespace();
-/*  566 */     int i = this.bp;
-/*      */
-/*  568 */     if (isJavaIdentifierStart(this.ch)) {
-/*  569 */       Name name = readJavaIdentifier();
-/*  570 */       return this.m.at(i).Identifier(name);
-/*      */     }
-/*      */
-/*  573 */     throw new ParseException("dc.identifier.expected");
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected DCTree.DCText quotedString() {
-/*  582 */     int i = this.bp;
-/*  583 */     nextChar();
-/*      */
-/*      */
-/*  586 */     while (this.bp < this.buflen) {
-/*  587 */       switch (this.ch) { case '\n': case '\f':
-/*      */         case '\r':
-/*  589 */           this.newline = true;
-/*      */           break;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */         case '"':
-/*  596 */           nextChar();
-/*      */
-/*  598 */           return this.m.at(i).Text(newString(i, this.bp));
-/*      */
-/*      */         case '@':
-/*  601 */           if (this.newline)
-/*      */             break;
-/*      */           break; }
-/*      */
-/*  605 */       nextChar();
-/*      */     }
-/*  607 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected List<DCTree> inlineContent() {
-/*  617 */     ListBuffer<DCTree> listBuffer = new ListBuffer();
-/*      */
-/*  619 */     skipWhitespace();
-/*  620 */     int i = this.bp;
-/*  621 */     byte b = 1;
-/*  622 */     this.textStart = -1;
-/*      */
-/*      */
-/*  625 */     while (this.bp < this.buflen) {
-/*      */
-/*  627 */       switch (this.ch) { case '\n': case '\f':
-/*      */         case '\r':
-/*  629 */           this.newline = true;
-/*      */
-/*      */         case '\t':
-/*      */         case ' ':
-/*  633 */           nextChar();
-/*      */           continue;
-/*      */
-/*      */         case '&':
-/*  637 */           entity(listBuffer);
-/*      */           continue;
-/*      */
-/*      */         case '<':
-/*  641 */           this.newline = false;
-/*  642 */           addPendingText(listBuffer, this.bp - 1);
-/*  643 */           listBuffer.add(html());
-/*      */           continue;
-/*      */
-/*      */         case '{':
-/*  647 */           this.newline = false;
-/*  648 */           b++;
-/*  649 */           nextChar();
-/*      */           continue;
-/*      */
-/*      */         case '}':
-/*  653 */           this.newline = false;
-/*  654 */           if (--b == 0) {
-/*  655 */             addPendingText(listBuffer, this.bp - 1);
-/*  656 */             nextChar();
-/*  657 */             return listBuffer.toList();
-/*      */           }
-/*  659 */           nextChar();
-/*      */           continue;
-/*      */
-/*      */         case '@':
-/*  663 */           if (this.newline) {
-/*      */             break;
-/*      */           }
-/*      */           break; }
-/*      */
-/*  668 */       if (this.textStart == -1)
-/*  669 */         this.textStart = this.bp;
-/*  670 */       nextChar();
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*  675 */     return List.of(erroneous("dc.unterminated.inline.tag", i));
-/*      */   }
-/*      */
-/*      */   protected void entity(ListBuffer<DCTree> paramListBuffer) {
-/*  679 */     this.newline = false;
-/*  680 */     addPendingText(paramListBuffer, this.bp - 1);
-/*  681 */     paramListBuffer.add(entity());
-/*  682 */     if (this.textStart == -1) {
-/*  683 */       this.textStart = this.bp;
-/*  684 */       this.lastNonWhite = -1;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected DCTree entity() {
-/*  693 */     int i = this.bp;
-/*  694 */     nextChar();
-/*  695 */     Name name = null;
-/*  696 */     boolean bool = false;
-/*  697 */     if (this.ch == '#') {
-/*  698 */       int j = this.bp;
-/*  699 */       nextChar();
-/*  700 */       if (isDecimalDigit(this.ch)) {
-/*  701 */         nextChar();
-/*  702 */         while (isDecimalDigit(this.ch))
-/*  703 */           nextChar();
-/*  704 */         name = this.names.fromChars(this.buf, j, this.bp - j);
-/*  705 */       } else if (this.ch == 'x' || this.ch == 'X') {
-/*  706 */         nextChar();
-/*  707 */         if (isHexDigit(this.ch)) {
-/*  708 */           nextChar();
-/*  709 */           while (isHexDigit(this.ch))
-/*  710 */             nextChar();
-/*  711 */           name = this.names.fromChars(this.buf, j, this.bp - j);
-/*      */         }
-/*      */       }
-/*  714 */     } else if (isIdentifierStart(this.ch)) {
-/*  715 */       name = readIdentifier();
-/*      */     }
-/*      */
-/*  718 */     if (name == null) {
-/*  719 */       return (DCTree)erroneous("dc.bad.entity", i);
-/*      */     }
-/*  721 */     if (this.ch != ';')
-/*  722 */       return (DCTree)erroneous("dc.missing.semicolon", i);
-/*  723 */     nextChar();
-/*  724 */     return (DCTree)this.m.at(i).Entity(name);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected DCTree html() {
-/*  733 */     int i = this.bp;
-/*  734 */     nextChar();
-/*  735 */     if (isIdentifierStart(this.ch)) {
-/*  736 */       Name name = readIdentifier();
-/*  737 */       List<DCTree> list = htmlAttrs();
-/*  738 */       if (list != null) {
-/*  739 */         boolean bool = false;
-/*  740 */         if (this.ch == '/') {
-/*  741 */           nextChar();
-/*  742 */           bool = true;
-/*      */         }
-/*  744 */         if (this.ch == '>') {
-/*  745 */           nextChar();
-/*  746 */           return (DCTree)this.m.at(i).StartElement(name, list, bool).setEndPos(this.bp);
-/*      */         }
-/*      */       }
-/*  749 */     } else if (this.ch == '/') {
-/*  750 */       nextChar();
-/*  751 */       if (isIdentifierStart(this.ch)) {
-/*  752 */         Name name = readIdentifier();
-/*  753 */         skipWhitespace();
-/*  754 */         if (this.ch == '>') {
-/*  755 */           nextChar();
-/*  756 */           return (DCTree)this.m.at(i).EndElement(name);
-/*      */         }
-/*      */       }
-/*  759 */     } else if (this.ch == '!') {
-/*  760 */       nextChar();
-/*  761 */       if (this.ch == '-') {
-/*  762 */         nextChar();
-/*  763 */         if (this.ch == '-') {
-/*  764 */           nextChar();
-/*  765 */           while (this.bp < this.buflen) {
-/*  766 */             byte b = 0;
-/*  767 */             while (this.ch == '-') {
-/*  768 */               b++;
-/*  769 */               nextChar();
-/*      */             }
-/*      */
-/*      */
-/*  773 */             if (b >= 2 && this.ch == '>') {
-/*  774 */               nextChar();
-/*  775 */               return (DCTree)this.m.at(i).Comment(newString(i, this.bp));
-/*      */             }
-/*      */
-/*  778 */             nextChar();
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*  784 */     this.bp = i + 1;
-/*  785 */     this.ch = this.buf[this.bp];
-/*  786 */     return (DCTree)erroneous("dc.malformed.html", i);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected List<DCTree> htmlAttrs() {
-/*  795 */     ListBuffer listBuffer = new ListBuffer();
-/*  796 */     skipWhitespace();
-/*      */
-/*      */
-/*  799 */     label35: while (isIdentifierStart(this.ch)) {
-/*  800 */       int i = this.bp;
-/*  801 */       Name name = readIdentifier();
-/*  802 */       skipWhitespace();
-/*  803 */       List list = null;
-/*  804 */       AttributeTree.ValueKind valueKind = AttributeTree.ValueKind.EMPTY;
-/*  805 */       if (this.ch == '=') {
-/*  806 */         ListBuffer<DCTree> listBuffer1 = new ListBuffer();
-/*  807 */         nextChar();
-/*  808 */         skipWhitespace();
-/*  809 */         if (this.ch == '\'' || this.ch == '"') {
-/*  810 */           valueKind = (this.ch == '\'') ? AttributeTree.ValueKind.SINGLE : AttributeTree.ValueKind.DOUBLE;
-/*  811 */           char c = this.ch;
-/*  812 */           nextChar();
-/*  813 */           this.textStart = this.bp;
-/*  814 */           while (this.bp < this.buflen && this.ch != c) {
-/*  815 */             if (this.newline && this.ch == '@') {
-/*  816 */               listBuffer.add(erroneous("dc.unterminated.string", i));
-/*      */
-/*      */
-/*      */               break label35;
-/*      */             }
-/*      */
-/*      */
-/*  823 */             attrValueChar(listBuffer1);
-/*      */           }
-/*  825 */           addPendingText(listBuffer1, this.bp - 1);
-/*  826 */           nextChar();
-/*      */         } else {
-/*  828 */           valueKind = AttributeTree.ValueKind.UNQUOTED;
-/*  829 */           this.textStart = this.bp;
-/*  830 */           while (this.bp < this.buflen && !isUnquotedAttrValueTerminator(this.ch)) {
-/*  831 */             attrValueChar(listBuffer1);
-/*      */           }
-/*  833 */           addPendingText(listBuffer1, this.bp - 1);
-/*      */         }
-/*  835 */         skipWhitespace();
-/*  836 */         list = listBuffer1.toList();
-/*      */       }
-/*  838 */       DCTree.DCAttribute dCAttribute = this.m.at(i).Attribute(name, valueKind, list);
-/*  839 */       listBuffer.add(dCAttribute);
-/*      */     }
-/*      */
-/*  842 */     return listBuffer.toList();
-/*      */   }
-/*      */
-/*      */   protected void attrValueChar(ListBuffer<DCTree> paramListBuffer) {
-/*  846 */     switch (this.ch) {
-/*      */       case '&':
-/*  848 */         entity(paramListBuffer);
-/*      */         return;
-/*      */
-/*      */       case '{':
-/*  852 */         inlineTag(paramListBuffer);
-/*      */         return;
-/*      */     }
-/*      */
-/*  856 */     nextChar();
-/*      */   }
-/*      */
-/*      */
-/*      */   protected void addPendingText(ListBuffer<DCTree> paramListBuffer, int paramInt) {
-/*  861 */     if (this.textStart != -1) {
-/*  862 */       if (this.textStart <= paramInt) {
-/*  863 */         paramListBuffer.add(this.m.at(this.textStart).Text(newString(this.textStart, paramInt + 1)));
-/*      */       }
-/*  865 */       this.textStart = -1;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   protected DCTree.DCErroneous erroneous(String paramString, int paramInt) {
-/*  870 */     int i = this.bp - 1;
-/*      */
-/*  872 */     while (i > paramInt) {
-/*  873 */       switch (this.buf[i]) { case '\n': case '\f':
-/*      */         case '\r':
-/*  875 */           this.newline = true; break;
-/*      */         case '\t':
-/*      */         case ' ':
-/*      */           break;
-/*      */         default:
-/*      */           break; }
-/*      */
-/*  882 */       i--;
-/*      */     }
-/*  884 */     this.textStart = -1;
-/*  885 */     return this.m.at(paramInt).Erroneous(newString(paramInt, i + 1), this.diagSource, paramString, new Object[0]);
-/*      */   }
-/*      */
-/*      */
-/*      */   <T> T getFirst(List<T>... paramVarArgs) {
-/*  890 */     for (List<T> list : paramVarArgs) {
-/*  891 */       if (list.nonEmpty())
-/*  892 */         return (T)list.head;
-/*      */     }
-/*  894 */     return null;
-/*      */   }
-/*      */
-/*      */   protected boolean isIdentifierStart(char paramChar) {
-/*  898 */     return Character.isUnicodeIdentifierStart(paramChar);
-/*      */   }
-/*      */
-/*      */   protected Name readIdentifier() {
-/*  902 */     int i = this.bp;
-/*  903 */     nextChar();
-/*  904 */     while (this.bp < this.buflen && Character.isUnicodeIdentifierPart(this.ch))
-/*  905 */       nextChar();
-/*  906 */     return this.names.fromChars(this.buf, i, this.bp - i);
-/*      */   }
-/*      */
-/*      */   protected Name readTagName() {
-/*  910 */     int i = this.bp;
-/*  911 */     nextChar();
-/*  912 */     while (this.bp < this.buflen && (Character.isUnicodeIdentifierPart(this.ch) || this.ch == '.'))
-/*  913 */       nextChar();
-/*  914 */     return this.names.fromChars(this.buf, i, this.bp - i);
-/*      */   }
-/*      */
-/*      */   protected boolean isJavaIdentifierStart(char paramChar) {
-/*  918 */     return Character.isJavaIdentifierStart(paramChar);
-/*      */   }
-/*      */
-/*      */   protected Name readJavaIdentifier() {
-/*  922 */     int i = this.bp;
-/*  923 */     nextChar();
-/*  924 */     while (this.bp < this.buflen && Character.isJavaIdentifierPart(this.ch))
-/*  925 */       nextChar();
-/*  926 */     return this.names.fromChars(this.buf, i, this.bp - i);
-/*      */   }
-/*      */
-/*      */   protected boolean isDecimalDigit(char paramChar) {
-/*  930 */     return ('0' <= paramChar && paramChar <= '9');
-/*      */   }
-/*      */
-/*      */   protected boolean isHexDigit(char paramChar) {
-/*  934 */     return (('0' <= paramChar && paramChar <= '9') || ('a' <= paramChar && paramChar <= 'f') || ('A' <= paramChar && paramChar <= 'F'));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   protected boolean isUnquotedAttrValueTerminator(char paramChar) {
-/*  940 */     switch (paramChar) { case '\t': case '\n': case '\f': case '\r': case ' ': case '"': case '\'':
-/*      */       case '<':
-/*      */       case '=':
-/*      */       case '>':
-/*      */       case '`':
-/*  945 */         return true; }
-/*      */
-/*  947 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */   protected boolean isWhitespace(char paramChar) {
-/*  952 */     return Character.isWhitespace(paramChar);
-/*      */   }
-/*      */
-/*      */   protected void skipWhitespace() {
-/*  956 */     while (isWhitespace(this.ch))
-/*  957 */       nextChar();
-/*      */   }
-/*      */
-/*      */   protected int getSentenceBreak(String paramString) {
-/*  961 */     if (this.sentenceBreaker != null) {
-/*  962 */       this.sentenceBreaker.setText(paramString);
-/*  963 */       int i = this.sentenceBreaker.next();
-/*  964 */       return (i == paramString.length()) ? -1 : i;
-/*      */     }
-/*      */
-/*      */
-/*  968 */     boolean bool = false;
-/*  969 */     for (byte b = 0; b < paramString.length(); b++) {
-/*  970 */       switch (paramString.charAt(b)) {
-/*      */         case '.':
-/*  972 */           bool = true;
-/*      */           break;
-/*      */
-/*      */         case '\t':
-/*      */         case '\n':
-/*      */         case '\f':
-/*      */         case '\r':
-/*      */         case ' ':
-/*  980 */           if (bool) {
-/*  981 */             return b;
-/*      */           }
-/*      */           break;
-/*      */         default:
-/*  985 */           bool = false;
-/*      */           break;
-/*      */       }
-/*      */     }
-/*  989 */     return -1;
-/*      */   }
-/*      */
-/*      */   DocCommentParser(ParserFactory paramParserFactory, DiagnosticSource paramDiagnosticSource, Tokens.Comment paramComment) {
-/*  993 */     this.htmlBlockTags = new HashSet<>(Arrays.asList(new String[] { "h1", "h2", "h3", "h4", "h5", "h6", "p", "pre" })); this.fac = paramParserFactory; this.diagSource = paramDiagnosticSource; this.comment = paramComment; this.names = paramParserFactory.names; this.m = paramParserFactory.docTreeMaker; Locale locale = (paramParserFactory.locale == null) ? Locale.getDefault() : paramParserFactory.locale; Options options = paramParserFactory.options;
-/*      */     boolean bool = options.isSet("breakIterator");
-/*      */     if (bool || !locale.getLanguage().equals(Locale.ENGLISH.getLanguage()))
-/*      */       this.sentenceBreaker = BreakIterator.getSentenceInstance(locale);
-/*  997 */     initTagParsers(); } protected boolean isSentenceBreak(Name paramName) { return this.htmlBlockTags.contains(StringUtils.toLowerCase(paramName.toString())); }
-/*      */
-/*      */
-/*      */   protected boolean isSentenceBreak(DCTree paramDCTree) {
-/* 1001 */     switch (paramDCTree.getKind()) {
-/*      */       case INLINE:
-/* 1003 */         return isSentenceBreak(((DCTree.DCStartElement)paramDCTree).getName());
-/*      */
-/*      */       case null:
-/* 1006 */         return isSentenceBreak(((DCTree.DCEndElement)paramDCTree).getName());
-/*      */     }
-/* 1008 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   String newString(int paramInt1, int paramInt2) {
-/* 1016 */     return new String(this.buf, paramInt1, paramInt2 - paramInt1);
-/*      */   }
-/*      */   static abstract class TagParser { Kind kind; DocTree.Kind treeKind;
-/*      */
-/* 1020 */     enum Kind { INLINE, BLOCK; }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     TagParser(Kind param1Kind, DocTree.Kind param1Kind1) {
-/* 1026 */       this.kind = param1Kind;
-/* 1027 */       this.treeKind = param1Kind1;
-/*      */     }
-/*      */
-/*      */     Kind getKind() {
-/* 1031 */       return this.kind;
-/*      */     }
-/*      */
-/*      */     DocTree.Kind getTreeKind() {
-/* 1035 */       return this.treeKind;
-/*      */     }
-/*      */
-/*      */     abstract DCTree parse(int param1Int) throws ParseException; }
-/*      */
-/*      */   enum Kind {
-/*      */     INLINE, BLOCK;
-/*      */   }
-/*      */
-/*      */   private void initTagParsers() {
-/* 1045 */     TagParser[] arrayOfTagParser = { new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.AUTHOR)
-/*      */         {
-/*      */           public DCTree parse(int param1Int)
-/*      */           {
-/* 1049 */             List<DCTree> list = DocCommentParser.this.blockContent();
-/* 1050 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Author(list);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.INLINE, DocTree.Kind.CODE)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int) throws ParseException
-/*      */           {
-/* 1057 */             DCTree dCTree = DocCommentParser.this.inlineText();
-/* 1058 */             DocCommentParser.this.nextChar();
-/* 1059 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Code((DCTree.DCText)dCTree);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.DEPRECATED)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int)
-/*      */           {
-/* 1066 */             List<DCTree> list = DocCommentParser.this.blockContent();
-/* 1067 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Deprecated(list);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.INLINE, DocTree.Kind.DOC_ROOT)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int) throws ParseException
-/*      */           {
-/* 1074 */             if (DocCommentParser.this.ch == '}') {
-/* 1075 */               DocCommentParser.this.nextChar();
-/* 1076 */               return (DCTree)DocCommentParser.this.m.at(param1Int).DocRoot();
-/*      */             }
-/* 1078 */             DocCommentParser.this.inlineText();
-/* 1079 */             DocCommentParser.this.nextChar();
-/* 1080 */             throw new ParseException("dc.unexpected.content");
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.EXCEPTION)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int) throws ParseException
-/*      */           {
-/* 1087 */             DocCommentParser.this.skipWhitespace();
-/* 1088 */             DCTree.DCReference dCReference = DocCommentParser.this.reference(false);
-/* 1089 */             List<DCTree> list = DocCommentParser.this.blockContent();
-/* 1090 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Exception(dCReference, list);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.INLINE, DocTree.Kind.INHERIT_DOC)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int) throws ParseException
-/*      */           {
-/* 1097 */             if (DocCommentParser.this.ch == '}') {
-/* 1098 */               DocCommentParser.this.nextChar();
-/* 1099 */               return (DCTree)DocCommentParser.this.m.at(param1Int).InheritDoc();
-/*      */             }
-/* 1101 */             DocCommentParser.this.inlineText();
-/* 1102 */             DocCommentParser.this.nextChar();
-/* 1103 */             throw new ParseException("dc.unexpected.content");
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.INLINE, DocTree.Kind.LINK)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int) throws ParseException
-/*      */           {
-/* 1110 */             DCTree.DCReference dCReference = DocCommentParser.this.reference(true);
-/* 1111 */             List<DCTree> list = DocCommentParser.this.inlineContent();
-/* 1112 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Link(dCReference, list);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.INLINE, DocTree.Kind.LINK_PLAIN)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int) throws ParseException
-/*      */           {
-/* 1119 */             DCTree.DCReference dCReference = DocCommentParser.this.reference(true);
-/* 1120 */             List<DCTree> list = DocCommentParser.this.inlineContent();
-/* 1121 */             return (DCTree)DocCommentParser.this.m.at(param1Int).LinkPlain(dCReference, list);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.INLINE, DocTree.Kind.LITERAL)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int) throws ParseException
-/*      */           {
-/* 1128 */             DCTree dCTree = DocCommentParser.this.inlineText();
-/* 1129 */             DocCommentParser.this.nextChar();
-/* 1130 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Literal((DCTree.DCText)dCTree);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.PARAM)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int) throws ParseException
-/*      */           {
-/* 1137 */             DocCommentParser.this.skipWhitespace();
-/*      */
-/* 1139 */             boolean bool = false;
-/* 1140 */             if (DocCommentParser.this.ch == '<') {
-/* 1141 */               bool = true;
-/* 1142 */               DocCommentParser.this.nextChar();
-/*      */             }
-/*      */
-/* 1145 */             DCTree.DCIdentifier dCIdentifier = DocCommentParser.this.identifier();
-/*      */
-/* 1147 */             if (bool) {
-/* 1148 */               if (DocCommentParser.this.ch != '>')
-/* 1149 */                 throw new ParseException("dc.gt.expected");
-/* 1150 */               DocCommentParser.this.nextChar();
-/*      */             }
-/*      */
-/* 1153 */             DocCommentParser.this.skipWhitespace();
-/* 1154 */             List<DCTree> list = DocCommentParser.this.blockContent();
-/* 1155 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Param(bool, dCIdentifier, list);
-/*      */           }
-/*      */         },
-/*      */         new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.RETURN)
-/*      */         {
-/*      */           public DCTree parse(int param1Int)
-/*      */           {
-/* 1162 */             List<DCTree> list = DocCommentParser.this.blockContent();
-/* 1163 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Return(list);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.SEE)
-/*      */         {
-/*      */           public DCTree parse(int param1Int) throws ParseException {
-/*      */             DCTree.DCText dCText;
-/*      */             List<DCTree> list;
-/* 1170 */             DocCommentParser.this.skipWhitespace();
-/* 1171 */             switch (DocCommentParser.this.ch)
-/*      */             { case '"':
-/* 1173 */                 dCText = DocCommentParser.this.quotedString();
-/* 1174 */                 if (dCText != null) {
-/* 1175 */                   DocCommentParser.this.skipWhitespace();
-/* 1176 */                   if (DocCommentParser.this.ch == '@' || (DocCommentParser.this.ch == '\032' && DocCommentParser.this.bp == DocCommentParser.this.buf.length - 1))
-/*      */                   {
-/* 1178 */                     return (DCTree)DocCommentParser.this.m.at(param1Int).See(List.of(dCText));
-/*      */                   }
-/*      */                 }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1206 */                 throw new ParseException("dc.unexpected.content");case '<': list = DocCommentParser.this.blockContent(); if (list != null) return (DCTree)DocCommentParser.this.m.at(param1Int).See(list);  throw new ParseException("dc.unexpected.content");case '@': if (DocCommentParser.this.newline) throw new ParseException("dc.no.content");  throw new ParseException("dc.unexpected.content");case '\032': if (DocCommentParser.this.bp == DocCommentParser.this.buf.length - 1) throw new ParseException("dc.no.content");  throw new ParseException("dc.unexpected.content"); }  if (DocCommentParser.this.isJavaIdentifierStart(DocCommentParser.this.ch) || DocCommentParser.this.ch == '#') { DCTree.DCReference dCReference = DocCommentParser.this.reference(true); List<DCTree> list1 = DocCommentParser.this.blockContent(); return (DCTree)DocCommentParser.this.m.at(param1Int).See(list1.prepend(dCReference)); }  throw new ParseException("dc.unexpected.content");
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.SERIAL_DATA)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int)
-/*      */           {
-/* 1213 */             List<DCTree> list = DocCommentParser.this.blockContent();
-/* 1214 */             return (DCTree)DocCommentParser.this.m.at(param1Int).SerialData(list);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.SERIAL_FIELD)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int) throws ParseException
-/*      */           {
-/* 1221 */             DocCommentParser.this.skipWhitespace();
-/* 1222 */             DCTree.DCIdentifier dCIdentifier = DocCommentParser.this.identifier();
-/* 1223 */             DocCommentParser.this.skipWhitespace();
-/* 1224 */             DCTree.DCReference dCReference = DocCommentParser.this.reference(false);
-/* 1225 */             List<DCTree> list = null;
-/* 1226 */             if (DocCommentParser.this.isWhitespace(DocCommentParser.this.ch)) {
-/* 1227 */               DocCommentParser.this.skipWhitespace();
-/* 1228 */               list = DocCommentParser.this.blockContent();
-/*      */             }
-/* 1230 */             return (DCTree)DocCommentParser.this.m.at(param1Int).SerialField(dCIdentifier, dCReference, list);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.SERIAL)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int)
-/*      */           {
-/* 1237 */             List<DCTree> list = DocCommentParser.this.blockContent();
-/* 1238 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Serial(list);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.SINCE)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int)
-/*      */           {
-/* 1245 */             List<DCTree> list = DocCommentParser.this.blockContent();
-/* 1246 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Since(list);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.THROWS)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int) throws ParseException
-/*      */           {
-/* 1253 */             DocCommentParser.this.skipWhitespace();
-/* 1254 */             DCTree.DCReference dCReference = DocCommentParser.this.reference(false);
-/* 1255 */             List<DCTree> list = DocCommentParser.this.blockContent();
-/* 1256 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Throws(dCReference, list);
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.INLINE, DocTree.Kind.VALUE)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int) throws ParseException
-/*      */           {
-/* 1263 */             DCTree.DCReference dCReference = DocCommentParser.this.reference(true);
-/* 1264 */             DocCommentParser.this.skipWhitespace();
-/* 1265 */             if (DocCommentParser.this.ch == '}') {
-/* 1266 */               DocCommentParser.this.nextChar();
-/* 1267 */               return (DCTree)DocCommentParser.this.m.at(param1Int).Value(dCReference);
-/*      */             }
-/* 1269 */             DocCommentParser.this.nextChar();
-/* 1270 */             throw new ParseException("dc.unexpected.content");
-/*      */           }
-/*      */         }, new TagParser(TagParser.Kind.BLOCK, DocTree.Kind.VERSION)
-/*      */         {
-/*      */
-/*      */           public DCTree parse(int param1Int)
-/*      */           {
-/* 1277 */             List<DCTree> list = DocCommentParser.this.blockContent();
-/* 1278 */             return (DCTree)DocCommentParser.this.m.at(param1Int).Version(list);
-/*      */           }
-/*      */         } };
-/*      */
-/*      */
-/* 1283 */     this.tagParsers = new HashMap<>();
-/* 1284 */     for (TagParser tagParser : arrayOfTagParser)
-/* 1285 */       this.tagParsers.put(this.names.fromString((tagParser.getTreeKind()).tagName), tagParser);
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\parser\DocCommentParser.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2012, 2014, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.parser;
+
+import java.text.BreakIterator;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+import com.sun.source.doctree.AttributeTree.ValueKind;
+import com.sun.tools.javac.parser.DocCommentParser.TagParser.Kind;
+import com.sun.tools.javac.parser.Tokens.Comment;
+import com.sun.tools.javac.parser.Tokens.TokenKind;
+import com.sun.tools.javac.tree.DCTree;
+import com.sun.tools.javac.tree.DCTree.DCAttribute;
+import com.sun.tools.javac.tree.DCTree.DCDocComment;
+import com.sun.tools.javac.tree.DCTree.DCEndElement;
+import com.sun.tools.javac.tree.DCTree.DCEndPosTree;
+import com.sun.tools.javac.tree.DCTree.DCErroneous;
+import com.sun.tools.javac.tree.DCTree.DCIdentifier;
+import com.sun.tools.javac.tree.DCTree.DCReference;
+import com.sun.tools.javac.tree.DCTree.DCStartElement;
+import com.sun.tools.javac.tree.DCTree.DCText;
+import com.sun.tools.javac.tree.DocTreeMaker;
+import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.util.DiagnosticSource;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.ListBuffer;
+import com.sun.tools.javac.util.Log;
+import com.sun.tools.javac.util.Name;
+import com.sun.tools.javac.util.Names;
+import com.sun.tools.javac.util.Options;
+import com.sun.tools.javac.util.Position;
+import com.sun.tools.javac.util.StringUtils;
+import static com.sun.tools.javac.util.LayoutCharacters.*;
+
+/**
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class DocCommentParser {
+    static class ParseException extends Exception {
+        private static final long serialVersionUID = 0;
+        ParseException(String key) {
+            super(key);
+        }
+    }
+
+    final ParserFactory fac;
+    final DiagnosticSource diagSource;
+    final Comment comment;
+    final DocTreeMaker m;
+    final Names names;
+
+    BreakIterator sentenceBreaker;
+
+    /** The input buffer, index of most recent character read,
+     *  index of one past last character in buffer.
+     */
+    protected char[] buf;
+    protected int bp;
+    protected int buflen;
+
+    /** The current character.
+     */
+    protected char ch;
+
+    int textStart = -1;
+    int lastNonWhite = -1;
+    boolean newline = true;
+
+    Map<Name, TagParser> tagParsers;
+
+    DocCommentParser(ParserFactory fac, DiagnosticSource diagSource, Comment comment) {
+        this.fac = fac;
+        this.diagSource = diagSource;
+        this.comment = comment;
+        names = fac.names;
+        m = fac.docTreeMaker;
+
+        Locale locale = (fac.locale == null) ? Locale.getDefault() : fac.locale;
+
+        Options options = fac.options;
+        boolean useBreakIterator = options.isSet("breakIterator");
+        if (useBreakIterator || !locale.getLanguage().equals(Locale.ENGLISH.getLanguage()))
+            sentenceBreaker = BreakIterator.getSentenceInstance(locale);
+
+        initTagParsers();
+    }
+
+    DCDocComment parse() {
+        String c = comment.getText();
+        buf = new char[c.length() + 1];
+        c.getChars(0, c.length(), buf, 0);
+        buf[buf.length - 1] = EOI;
+        buflen = buf.length - 1;
+        bp = -1;
+        nextChar();
+
+        List<DCTree> body = blockContent();
+        List<DCTree> tags = blockTags();
+
+        // split body into first sentence and body
+        ListBuffer<DCTree> fs = new ListBuffer<DCTree>();
+        loop:
+        for (; body.nonEmpty(); body = body.tail) {
+            DCTree t = body.head;
+            switch (t.getKind()) {
+                case TEXT:
+                    String s = ((DCText) t).getBody();
+                    int i = getSentenceBreak(s);
+                    if (i > 0) {
+                        int i0 = i;
+                        while (i0 > 0 && isWhitespace(s.charAt(i0 - 1)))
+                            i0--;
+                        fs.add(m.at(t.pos).Text(s.substring(0, i0)));
+                        int i1 = i;
+                        while (i1 < s.length() && isWhitespace(s.charAt(i1)))
+                            i1++;
+                        body = body.tail;
+                        if (i1 < s.length())
+                            body = body.prepend(m.at(t.pos + i1).Text(s.substring(i1)));
+                        break loop;
+                    } else if (body.tail.nonEmpty()) {
+                        if (isSentenceBreak(body.tail.head)) {
+                            int i0 = s.length() - 1;
+                            while (i0 > 0 && isWhitespace(s.charAt(i0)))
+                                i0--;
+                            fs.add(m.at(t.pos).Text(s.substring(0, i0 + 1)));
+                            body = body.tail;
+                            break loop;
+                        }
+                    }
+                    break;
+
+                case START_ELEMENT:
+                case END_ELEMENT:
+                    if (isSentenceBreak(t))
+                        break loop;
+                    break;
+            }
+            fs.add(t);
+        }
+
+        @SuppressWarnings("unchecked")
+        DCTree first = getFirst(fs.toList(), body, tags);
+        int pos = (first == null) ? Position.NOPOS : first.pos;
+
+        DCDocComment dc = m.at(pos).DocComment(comment, fs.toList(), body, tags);
+        return dc;
+    }
+
+    void nextChar() {
+        ch = buf[bp < buflen ? ++bp : buflen];
+        switch (ch) {
+            case '\f': case '\n': case '\r':
+                newline = true;
+        }
+    }
+
+    /**
+     * Read block content, consisting of text, html and inline tags.
+     * Terminated by the end of input, or the beginning of the next block tag:
+     * i.e. @ as the first non-whitespace character on a line.
+     */
+    @SuppressWarnings("fallthrough")
+    protected List<DCTree> blockContent() {
+        ListBuffer<DCTree> trees = new ListBuffer<DCTree>();
+        textStart = -1;
+
+        loop:
+        while (bp < buflen) {
+            switch (ch) {
+                case '\n': case '\r': case '\f':
+                    newline = true;
+                    // fallthrough
+
+                case ' ': case '\t':
+                    nextChar();
+                    break;
+
+                case '&':
+                    entity(trees);
+                    break;
+
+                case '<':
+                    newline = false;
+                    addPendingText(trees, bp - 1);
+                    trees.add(html());
+                    if (textStart == -1) {
+                        textStart = bp;
+                        lastNonWhite = -1;
+                    }
+                    break;
+
+                case '>':
+                    newline = false;
+                    addPendingText(trees, bp - 1);
+                    trees.add(m.at(bp).Erroneous(newString(bp, bp+1), diagSource, "dc.bad.gt"));
+                    nextChar();
+                    if (textStart == -1) {
+                        textStart = bp;
+                        lastNonWhite = -1;
+                    }
+                    break;
+
+                case '{':
+                    inlineTag(trees);
+                    break;
+
+                case '@':
+                    if (newline) {
+                        addPendingText(trees, lastNonWhite);
+                        break loop;
+                    }
+                    // fallthrough
+
+                default:
+                    newline = false;
+                    if (textStart == -1)
+                        textStart = bp;
+                    lastNonWhite = bp;
+                    nextChar();
+            }
+        }
+
+        if (lastNonWhite != -1)
+            addPendingText(trees, lastNonWhite);
+
+        return trees.toList();
+    }
+
+    /**
+     * Read a series of block tags, including their content.
+     * Standard tags parse their content appropriately.
+     * Non-standard tags are represented by {@link UnknownBlockTag}.
+     */
+    protected List<DCTree> blockTags() {
+        ListBuffer<DCTree> tags = new ListBuffer<DCTree>();
+        while (ch == '@')
+            tags.add(blockTag());
+        return tags.toList();
+    }
+
+    /**
+     * Read a single block tag, including its content.
+     * Standard tags parse their content appropriately.
+     * Non-standard tags are represented by {@link UnknownBlockTag}.
+     */
+    protected DCTree blockTag() {
+        int p = bp;
+        try {
+            nextChar();
+            if (isIdentifierStart(ch)) {
+                Name name = readTagName();
+                TagParser tp = tagParsers.get(name);
+                if (tp == null) {
+                    List<DCTree> content = blockContent();
+                    return m.at(p).UnknownBlockTag(name, content);
+                } else {
+                    switch (tp.getKind()) {
+                        case BLOCK:
+                            return tp.parse(p);
+                        case INLINE:
+                            return erroneous("dc.bad.inline.tag", p);
+                    }
+                }
+            }
+            blockContent();
+
+            return erroneous("dc.no.tag.name", p);
+        } catch (ParseException e) {
+            blockContent();
+            return erroneous(e.getMessage(), p);
+        }
+    }
+
+    protected void inlineTag(ListBuffer<DCTree> list) {
+        newline = false;
+        nextChar();
+        if (ch == '@') {
+            addPendingText(list, bp - 2);
+            list.add(inlineTag());
+            textStart = bp;
+            lastNonWhite = -1;
+        } else {
+            if (textStart == -1)
+                textStart = bp - 1;
+            lastNonWhite = bp;
+        }
+    }
+
+    /**
+     * Read a single inline tag, including its content.
+     * Standard tags parse their content appropriately.
+     * Non-standard tags are represented by {@link UnknownBlockTag}.
+     * Malformed tags may be returned as {@link Erroneous}.
+     */
+    protected DCTree inlineTag() {
+        int p = bp - 1;
+        try {
+            nextChar();
+            if (isIdentifierStart(ch)) {
+                Name name = readTagName();
+                skipWhitespace();
+
+                TagParser tp = tagParsers.get(name);
+                if (tp == null) {
+                    DCTree text = inlineText();
+                    if (text != null) {
+                        nextChar();
+                        return m.at(p).UnknownInlineTag(name, List.of(text)).setEndPos(bp);
+                    }
+                } else if (tp.getKind() == Kind.INLINE) {
+                    DCEndPosTree<?> tree = (DCEndPosTree<?>) tp.parse(p);
+                    if (tree != null) {
+                        return tree.setEndPos(bp);
+                    }
+                } else {
+                    inlineText(); // skip content
+                    nextChar();
+                }
+            }
+            return erroneous("dc.no.tag.name", p);
+        } catch (ParseException e) {
+            return erroneous(e.getMessage(), p);
+        }
+    }
+
+    /**
+     * Read plain text content of an inline tag.
+     * Matching pairs of { } are skipped; the text is terminated by the first
+     * unmatched }. It is an error if the beginning of the next tag is detected.
+     */
+    protected DCTree inlineText() throws ParseException {
+        skipWhitespace();
+        int pos = bp;
+        int depth = 1;
+
+        loop:
+        while (bp < buflen) {
+            switch (ch) {
+                case '\n': case '\r': case '\f':
+                    newline = true;
+                    break;
+
+                case ' ': case '\t':
+                    break;
+
+                case '{':
+                    newline = false;
+                    lastNonWhite = bp;
+                    depth++;
+                    break;
+
+                case '}':
+                    if (--depth == 0) {
+                        return m.at(pos).Text(newString(pos, bp));
+                    }
+                    newline = false;
+                    lastNonWhite = bp;
+                    break;
+
+                case '@':
+                    if (newline)
+                        break loop;
+                    newline = false;
+                    lastNonWhite = bp;
+                    break;
+
+                default:
+                    newline = false;
+                    lastNonWhite = bp;
+                    break;
+            }
+            nextChar();
+        }
+        throw new ParseException("dc.unterminated.inline.tag");
+    }
+
+    /**
+     * Read Java class name, possibly followed by member
+     * Matching pairs of < > are skipped. The text is terminated by the first
+     * unmatched }. It is an error if the beginning of the next tag is detected.
+     */
+    // TODO: boolean allowMember should be enum FORBID, ALLOW, REQUIRE
+    // TODO: improve quality of parse to forbid bad constructions.
+    @SuppressWarnings("fallthrough")
+    protected DCReference reference(boolean allowMember) throws ParseException {
+        int pos = bp;
+        int depth = 0;
+
+        // scan to find the end of the signature, by looking for the first
+        // whitespace not enclosed in () or <>, or the end of the tag
+        loop:
+        while (bp < buflen) {
+            switch (ch) {
+                case '\n': case '\r': case '\f':
+                    newline = true;
+                    // fallthrough
+
+                case ' ': case '\t':
+                    if (depth == 0)
+                        break loop;
+                    break;
+
+                case '(':
+                case '<':
+                    newline = false;
+                    depth++;
+                    break;
+
+                case ')':
+                case '>':
+                    newline = false;
+                    --depth;
+                    break;
+
+                case '}':
+                    if (bp == pos)
+                        return null;
+                    newline = false;
+                    break loop;
+
+                case '@':
+                    if (newline)
+                        break loop;
+                    // fallthrough
+
+                default:
+                    newline = false;
+
+            }
+            nextChar();
+        }
+
+        if (depth != 0)
+            throw new ParseException("dc.unterminated.signature");
+
+        String sig = newString(pos, bp);
+
+        // Break sig apart into qualifiedExpr member paramTypes.
+        JCTree qualExpr;
+        Name member;
+        List<JCTree> paramTypes;
+
+        Log.DeferredDiagnosticHandler deferredDiagnosticHandler
+                = new Log.DeferredDiagnosticHandler(fac.log);
+
+        try {
+            int hash = sig.indexOf("#");
+            int lparen = sig.indexOf("(", hash + 1);
+            if (hash == -1) {
+                if (lparen == -1) {
+                    qualExpr = parseType(sig);
+                    member = null;
+                } else {
+                    qualExpr = null;
+                    member = parseMember(sig.substring(0, lparen));
+                }
+            } else {
+                qualExpr = (hash == 0) ? null : parseType(sig.substring(0, hash));
+                if (lparen == -1)
+                    member = parseMember(sig.substring(hash + 1));
+                else
+                    member = parseMember(sig.substring(hash + 1, lparen));
+            }
+
+            if (lparen < 0) {
+                paramTypes = null;
+            } else {
+                int rparen = sig.indexOf(")", lparen);
+                if (rparen != sig.length() - 1)
+                    throw new ParseException("dc.ref.bad.parens");
+                paramTypes = parseParams(sig.substring(lparen + 1, rparen));
+            }
+
+            if (!deferredDiagnosticHandler.getDiagnostics().isEmpty())
+                throw new ParseException("dc.ref.syntax.error");
+
+        } finally {
+            fac.log.popDiagnosticHandler(deferredDiagnosticHandler);
+        }
+
+        return m.at(pos).Reference(sig, qualExpr, member, paramTypes).setEndPos(bp);
+    }
+
+    JCTree parseType(String s) throws ParseException {
+        JavacParser p = fac.newParser(s, false, false, false);
+        JCTree tree = p.parseType();
+        if (p.token().kind != TokenKind.EOF)
+            throw new ParseException("dc.ref.unexpected.input");
+        return tree;
+    }
+
+    Name parseMember(String s) throws ParseException {
+        JavacParser p = fac.newParser(s, false, false, false);
+        Name name = p.ident();
+        if (p.token().kind != TokenKind.EOF)
+            throw new ParseException("dc.ref.unexpected.input");
+        return name;
+    }
+
+    List<JCTree> parseParams(String s) throws ParseException {
+        if (s.trim().isEmpty())
+            return List.nil();
+
+        JavacParser p = fac.newParser(s.replace("...", "[]"), false, false, false);
+        ListBuffer<JCTree> paramTypes = new ListBuffer<JCTree>();
+        paramTypes.add(p.parseType());
+
+        if (p.token().kind == TokenKind.IDENTIFIER)
+            p.nextToken();
+
+        while (p.token().kind == TokenKind.COMMA) {
+            p.nextToken();
+            paramTypes.add(p.parseType());
+
+            if (p.token().kind == TokenKind.IDENTIFIER)
+                p.nextToken();
+        }
+
+        if (p.token().kind != TokenKind.EOF)
+            throw new ParseException("dc.ref.unexpected.input");
+
+        return paramTypes.toList();
+    }
+
+    /**
+     * Read Java identifier
+     * Matching pairs of { } are skipped; the text is terminated by the first
+     * unmatched }. It is an error if the beginning of the next tag is detected.
+     */
+    @SuppressWarnings("fallthrough")
+    protected DCIdentifier identifier() throws ParseException {
+        skipWhitespace();
+        int pos = bp;
+
+        if (isJavaIdentifierStart(ch)) {
+            Name name = readJavaIdentifier();
+            return m.at(pos).Identifier(name);
+        }
+
+        throw new ParseException("dc.identifier.expected");
+    }
+
+    /**
+     * Read a quoted string.
+     * It is an error if the beginning of the next tag is detected.
+     */
+    @SuppressWarnings("fallthrough")
+    protected DCText quotedString() {
+        int pos = bp;
+        nextChar();
+
+        loop:
+        while (bp < buflen) {
+            switch (ch) {
+                case '\n': case '\r': case '\f':
+                    newline = true;
+                    break;
+
+                case ' ': case '\t':
+                    break;
+
+                case '"':
+                    nextChar();
+                    // trim trailing white-space?
+                    return m.at(pos).Text(newString(pos, bp));
+
+                case '@':
+                    if (newline)
+                        break loop;
+
+            }
+            nextChar();
+        }
+        return null;
+    }
+
+    /**
+     * Read general text content of an inline tag, including HTML entities and elements.
+     * Matching pairs of { } are skipped; the text is terminated by the first
+     * unmatched }. It is an error if the beginning of the next tag is detected.
+     */
+    @SuppressWarnings("fallthrough")
+    protected List<DCTree> inlineContent() {
+        ListBuffer<DCTree> trees = new ListBuffer<DCTree>();
+
+        skipWhitespace();
+        int pos = bp;
+        int depth = 1;
+        textStart = -1;
+
+        loop:
+        while (bp < buflen) {
+
+            switch (ch) {
+                case '\n': case '\r': case '\f':
+                    newline = true;
+                    // fall through
+
+                case ' ': case '\t':
+                    nextChar();
+                    break;
+
+                case '&':
+                    entity(trees);
+                    break;
+
+                case '<':
+                    newline = false;
+                    addPendingText(trees, bp - 1);
+                    trees.add(html());
+                    break;
+
+                case '{':
+                    newline = false;
+                    depth++;
+                    nextChar();
+                    break;
+
+                case '}':
+                    newline = false;
+                    if (--depth == 0) {
+                        addPendingText(trees, bp - 1);
+                        nextChar();
+                        return trees.toList();
+                    }
+                    nextChar();
+                    break;
+
+                case '@':
+                    if (newline)
+                        break loop;
+                    // fallthrough
+
+                default:
+                    if (textStart == -1)
+                        textStart = bp;
+                    nextChar();
+                    break;
+            }
+        }
+
+        return List.<DCTree>of(erroneous("dc.unterminated.inline.tag", pos));
+    }
+
+    protected void entity(ListBuffer<DCTree> list) {
+        newline = false;
+        addPendingText(list, bp - 1);
+        list.add(entity());
+        if (textStart == -1) {
+            textStart = bp;
+            lastNonWhite = -1;
+        }
+    }
+
+    /**
+     * Read an HTML entity.
+     * {@literal &identifier; } or {@literal &#digits; } or {@literal &#xhex-digits; }
+     */
+    protected DCTree entity() {
+        int p = bp;
+        nextChar();
+        Name name = null;
+        boolean checkSemi = false;
+        if (ch == '#') {
+            int namep = bp;
+            nextChar();
+            if (isDecimalDigit(ch)) {
+                nextChar();
+                while (isDecimalDigit(ch))
+                    nextChar();
+                name = names.fromChars(buf, namep, bp - namep);
+            } else if (ch == 'x' || ch == 'X') {
+                nextChar();
+                if (isHexDigit(ch)) {
+                    nextChar();
+                    while (isHexDigit(ch))
+                        nextChar();
+                    name = names.fromChars(buf, namep, bp - namep);
+                }
+            }
+        } else if (isIdentifierStart(ch)) {
+            name = readIdentifier();
+        }
+
+        if (name == null)
+            return erroneous("dc.bad.entity", p);
+        else {
+            if (ch != ';')
+                return erroneous("dc.missing.semicolon", p);
+            nextChar();
+            return m.at(p).Entity(name);
+        }
+    }
+
+    /**
+     * Read the start or end of an HTML tag, or an HTML comment
+     * {@literal <identifier attrs> } or {@literal </identifier> }
+     */
+    protected DCTree html() {
+        int p = bp;
+        nextChar();
+        if (isIdentifierStart(ch)) {
+            Name name = readIdentifier();
+            List<DCTree> attrs = htmlAttrs();
+            if (attrs != null) {
+                boolean selfClosing = false;
+                if (ch == '/') {
+                    nextChar();
+                    selfClosing = true;
+                }
+                if (ch == '>') {
+                    nextChar();
+                    return m.at(p).StartElement(name, attrs, selfClosing).setEndPos(bp);
+                }
+            }
+        } else if (ch == '/') {
+            nextChar();
+            if (isIdentifierStart(ch)) {
+                Name name = readIdentifier();
+                skipWhitespace();
+                if (ch == '>') {
+                    nextChar();
+                    return m.at(p).EndElement(name);
+                }
+            }
+        } else if (ch == '!') {
+            nextChar();
+            if (ch == '-') {
+                nextChar();
+                if (ch == '-') {
+                    nextChar();
+                    while (bp < buflen) {
+                        int dash = 0;
+                        while (ch == '-') {
+                            dash++;
+                            nextChar();
+                        }
+                        // strictly speaking, a comment should not contain "--"
+                        // so dash > 2 is an error, dash == 2 implies ch == '>'
+                        if (dash >= 2 && ch == '>') {
+                            nextChar();
+                            return m.at(p).Comment(newString(p, bp));
+                        }
+
+                        nextChar();
+                    }
+                }
+            }
+        }
+
+        bp = p + 1;
+        ch = buf[bp];
+        return erroneous("dc.malformed.html", p);
+    }
+
+    /**
+     * Read a series of HTML attributes, terminated by {@literal > }.
+     * Each attribute is of the form {@literal identifier[=value] }.
+     * "value" may be unquoted, single-quoted, or double-quoted.
+     */
+    protected List<DCTree> htmlAttrs() {
+        ListBuffer<DCTree> attrs = new ListBuffer<DCTree>();
+        skipWhitespace();
+
+        loop:
+        while (isIdentifierStart(ch)) {
+            int namePos = bp;
+            Name name = readIdentifier();
+            skipWhitespace();
+            List<DCTree> value = null;
+            ValueKind vkind = ValueKind.EMPTY;
+            if (ch == '=') {
+                ListBuffer<DCTree> v = new ListBuffer<DCTree>();
+                nextChar();
+                skipWhitespace();
+                if (ch == '\'' || ch == '"') {
+                    vkind = (ch == '\'') ? ValueKind.SINGLE : ValueKind.DOUBLE;
+                    char quote = ch;
+                    nextChar();
+                    textStart = bp;
+                    while (bp < buflen && ch != quote) {
+                        if (newline && ch == '@') {
+                            attrs.add(erroneous("dc.unterminated.string", namePos));
+                            // No point trying to read more.
+                            // In fact, all attrs get discarded by the caller
+                            // and superseded by a malformed.html node because
+                            // the html tag itself is not terminated correctly.
+                            break loop;
+                        }
+                        attrValueChar(v);
+                    }
+                    addPendingText(v, bp - 1);
+                    nextChar();
+                } else {
+                    vkind = ValueKind.UNQUOTED;
+                    textStart = bp;
+                    while (bp < buflen && !isUnquotedAttrValueTerminator(ch)) {
+                        attrValueChar(v);
+                    }
+                    addPendingText(v, bp - 1);
+                }
+                skipWhitespace();
+                value = v.toList();
+            }
+            DCAttribute attr = m.at(namePos).Attribute(name, vkind, value);
+            attrs.add(attr);
+        }
+
+        return attrs.toList();
+    }
+
+    protected void attrValueChar(ListBuffer<DCTree> list) {
+        switch (ch) {
+            case '&':
+                entity(list);
+                break;
+
+            case '{':
+                inlineTag(list);
+                break;
+
+            default:
+                nextChar();
+        }
+    }
+
+    protected void addPendingText(ListBuffer<DCTree> list, int textEnd) {
+        if (textStart != -1) {
+            if (textStart <= textEnd) {
+                list.add(m.at(textStart).Text(newString(textStart, textEnd + 1)));
+            }
+            textStart = -1;
+        }
+    }
+
+    protected DCErroneous erroneous(String code, int pos) {
+        int i = bp - 1;
+        loop:
+        while (i > pos) {
+            switch (buf[i]) {
+                case '\f': case '\n': case '\r':
+                    newline = true;
+                    break;
+                case '\t': case ' ':
+                    break;
+                default:
+                    break loop;
+            }
+            i--;
+        }
+        textStart = -1;
+        return m.at(pos).Erroneous(newString(pos, i + 1), diagSource, code);
+    }
+
+    @SuppressWarnings("unchecked")
+    <T> T getFirst(List<T>... lists) {
+        for (List<T> list: lists) {
+            if (list.nonEmpty())
+                return list.head;
+        }
+        return null;
+    }
+
+    protected boolean isIdentifierStart(char ch) {
+        return Character.isUnicodeIdentifierStart(ch);
+    }
+
+    protected Name readIdentifier() {
+        int start = bp;
+        nextChar();
+        while (bp < buflen && Character.isUnicodeIdentifierPart(ch))
+            nextChar();
+        return names.fromChars(buf, start, bp - start);
+    }
+
+    protected Name readTagName() {
+        int start = bp;
+        nextChar();
+        while (bp < buflen && (Character.isUnicodeIdentifierPart(ch) || ch == '.'))
+            nextChar();
+        return names.fromChars(buf, start, bp - start);
+    }
+
+    protected boolean isJavaIdentifierStart(char ch) {
+        return Character.isJavaIdentifierStart(ch);
+    }
+
+    protected Name readJavaIdentifier() {
+        int start = bp;
+        nextChar();
+        while (bp < buflen && Character.isJavaIdentifierPart(ch))
+            nextChar();
+        return names.fromChars(buf, start, bp - start);
+    }
+
+    protected boolean isDecimalDigit(char ch) {
+        return ('0' <= ch && ch <= '9');
+    }
+
+    protected boolean isHexDigit(char ch) {
+        return ('0' <= ch && ch <= '9')
+                || ('a' <= ch && ch <= 'f')
+                || ('A' <= ch && ch <= 'F');
+    }
+
+    protected boolean isUnquotedAttrValueTerminator(char ch) {
+        switch (ch) {
+            case '\f': case '\n': case '\r': case '\t':
+            case ' ':
+            case '"': case '\'': case '`':
+            case '=': case '<': case '>':
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    protected boolean isWhitespace(char ch) {
+        return Character.isWhitespace(ch);
+    }
+
+    protected void skipWhitespace() {
+        while (isWhitespace(ch))
+            nextChar();
+    }
+
+    protected int getSentenceBreak(String s) {
+        if (sentenceBreaker != null) {
+            sentenceBreaker.setText(s);
+            int i = sentenceBreaker.next();
+            return (i == s.length()) ? -1 : i;
+        }
+
+        // scan for period followed by whitespace
+        boolean period = false;
+        for (int i = 0; i < s.length(); i++) {
+            switch (s.charAt(i)) {
+                case '.':
+                    period = true;
+                    break;
+
+                case ' ':
+                case '\f':
+                case '\n':
+                case '\r':
+                case '\t':
+                    if (period)
+                        return i;
+                    break;
+
+                default:
+                    period = false;
+                    break;
+            }
+        }
+        return -1;
+    }
+
+
+    Set<String> htmlBlockTags = new HashSet<String>(Arrays.asList(
+                    "h1", "h2", "h3", "h4", "h5", "h6", "p", "pre"));
+
+    protected boolean isSentenceBreak(Name n) {
+        return htmlBlockTags.contains(StringUtils.toLowerCase(n.toString()));
+    }
+
+    protected boolean isSentenceBreak(DCTree t) {
+        switch (t.getKind()) {
+            case START_ELEMENT:
+                return isSentenceBreak(((DCStartElement) t).getName());
+
+            case END_ELEMENT:
+                return isSentenceBreak(((DCEndElement) t).getName());
+        }
+        return false;
+    }
+
+    /**
+     * @param start position of first character of string
+     * @param end position of character beyond last character to be included
+     */
+    String newString(int start, int end) {
+        return new String(buf, start, end - start);
+    }
+
+    static abstract class TagParser {
+        enum Kind { INLINE, BLOCK }
+
+        Kind kind;
+        DCTree.Kind treeKind;
+
+        TagParser(Kind k, DCTree.Kind tk) {
+            kind = k;
+            treeKind = tk;
+        }
+
+        Kind getKind() {
+            return kind;
+        }
+
+        DCTree.Kind getTreeKind() {
+            return treeKind;
+        }
+
+        abstract DCTree parse(int pos) throws ParseException;
+    }
+
+    /**
+     * @see <a href="https://docs.oracle.com/javase/7/docs/technotes/tools/solaris/javadoc.html#javadoctags">Javadoc Tags</a>
+     */
+    private void initTagParsers() {
+        TagParser[] parsers = {
+            // @author name-text
+            new TagParser(Kind.BLOCK, DCTree.Kind.AUTHOR) {
+                public DCTree parse(int pos) {
+                    List<DCTree> name = blockContent();
+                    return m.at(pos).Author(name);
+                }
+            },
+
+            // {@code text}
+            new TagParser(Kind.INLINE, DCTree.Kind.CODE) {
+                public DCTree parse(int pos) throws ParseException {
+                    DCTree text = inlineText();
+                    nextChar();
+                    return m.at(pos).Code((DCText) text);
+                }
+            },
+
+            // @deprecated deprecated-text
+            new TagParser(Kind.BLOCK, DCTree.Kind.DEPRECATED) {
+                public DCTree parse(int pos) {
+                    List<DCTree> reason = blockContent();
+                    return m.at(pos).Deprecated(reason);
+                }
+            },
+
+            // {@docRoot}
+            new TagParser(Kind.INLINE, DCTree.Kind.DOC_ROOT) {
+                public DCTree parse(int pos) throws ParseException {
+                    if (ch == '}') {
+                        nextChar();
+                        return m.at(pos).DocRoot();
+                    }
+                    inlineText(); // skip unexpected content
+                    nextChar();
+                    throw new ParseException("dc.unexpected.content");
+                }
+            },
+
+            // @exception class-name description
+            new TagParser(Kind.BLOCK, DCTree.Kind.EXCEPTION) {
+                public DCTree parse(int pos) throws ParseException {
+                    skipWhitespace();
+                    DCReference ref = reference(false);
+                    List<DCTree> description = blockContent();
+                    return m.at(pos).Exception(ref, description);
+                }
+            },
+
+            // {@inheritDoc}
+            new TagParser(Kind.INLINE, DCTree.Kind.INHERIT_DOC) {
+                public DCTree parse(int pos) throws ParseException {
+                    if (ch == '}') {
+                        nextChar();
+                        return m.at(pos).InheritDoc();
+                    }
+                    inlineText(); // skip unexpected content
+                    nextChar();
+                    throw new ParseException("dc.unexpected.content");
+                }
+            },
+
+            // {@link package.class#member label}
+            new TagParser(Kind.INLINE, DCTree.Kind.LINK) {
+                public DCTree parse(int pos) throws ParseException {
+                    DCReference ref = reference(true);
+                    List<DCTree> label = inlineContent();
+                    return m.at(pos).Link(ref, label);
+                }
+            },
+
+            // {@linkplain package.class#member label}
+            new TagParser(Kind.INLINE, DCTree.Kind.LINK_PLAIN) {
+                public DCTree parse(int pos) throws ParseException {
+                    DCReference ref = reference(true);
+                    List<DCTree> label = inlineContent();
+                    return m.at(pos).LinkPlain(ref, label);
+                }
+            },
+
+            // {@literal text}
+            new TagParser(Kind.INLINE, DCTree.Kind.LITERAL) {
+                public DCTree parse(int pos) throws ParseException {
+                    DCTree text = inlineText();
+                    nextChar();
+                    return m.at(pos).Literal((DCText) text);
+                }
+            },
+
+            // @param parameter-name description
+            new TagParser(Kind.BLOCK, DCTree.Kind.PARAM) {
+                public DCTree parse(int pos) throws ParseException {
+                    skipWhitespace();
+
+                    boolean typaram = false;
+                    if (ch == '<') {
+                        typaram = true;
+                        nextChar();
+                    }
+
+                    DCIdentifier id = identifier();
+
+                    if (typaram) {
+                        if (ch != '>')
+                            throw new ParseException("dc.gt.expected");
+                        nextChar();
+                    }
+
+                    skipWhitespace();
+                    List<DCTree> desc = blockContent();
+                    return m.at(pos).Param(typaram, id, desc);
+                }
+            },
+
+            // @return description
+            new TagParser(Kind.BLOCK, DCTree.Kind.RETURN) {
+                public DCTree parse(int pos) {
+                    List<DCTree> description = blockContent();
+                    return m.at(pos).Return(description);
+                }
+            },
+
+            // @see reference | quoted-string | HTML
+            new TagParser(Kind.BLOCK, DCTree.Kind.SEE) {
+                public DCTree parse(int pos) throws ParseException {
+                    skipWhitespace();
+                    switch (ch) {
+                        case '"':
+                            DCText string = quotedString();
+                            if (string != null) {
+                                skipWhitespace();
+                                if (ch == '@'
+                                        || ch == EOI && bp == buf.length - 1) {
+                                    return m.at(pos).See(List.<DCTree>of(string));
+                                }
+                            }
+                            break;
+
+                        case '<':
+                            List<DCTree> html = blockContent();
+                            if (html != null)
+                                return m.at(pos).See(html);
+                            break;
+
+                        case '@':
+                            if (newline)
+                                throw new ParseException("dc.no.content");
+                            break;
+
+                        case EOI:
+                            if (bp == buf.length - 1)
+                                throw new ParseException("dc.no.content");
+                            break;
+
+                        default:
+                            if (isJavaIdentifierStart(ch) || ch == '#') {
+                                DCReference ref = reference(true);
+                                List<DCTree> description = blockContent();
+                                return m.at(pos).See(description.prepend(ref));
+                            }
+                    }
+                    throw new ParseException("dc.unexpected.content");
+                }
+            },
+
+            // @serialData data-description
+            new TagParser(Kind.BLOCK, DCTree.Kind.SERIAL_DATA) {
+                public DCTree parse(int pos) {
+                    List<DCTree> description = blockContent();
+                    return m.at(pos).SerialData(description);
+                }
+            },
+
+            // @serialField field-name field-type description
+            new TagParser(Kind.BLOCK, DCTree.Kind.SERIAL_FIELD) {
+                public DCTree parse(int pos) throws ParseException {
+                    skipWhitespace();
+                    DCIdentifier name = identifier();
+                    skipWhitespace();
+                    DCReference type = reference(false);
+                    List<DCTree> description = null;
+                    if (isWhitespace(ch)) {
+                        skipWhitespace();
+                        description = blockContent();
+                    }
+                    return m.at(pos).SerialField(name, type, description);
+                }
+            },
+
+            // @serial field-description | include | exclude
+            new TagParser(Kind.BLOCK, DCTree.Kind.SERIAL) {
+                public DCTree parse(int pos) {
+                    List<DCTree> description = blockContent();
+                    return m.at(pos).Serial(description);
+                }
+            },
+
+            // @since since-text
+            new TagParser(Kind.BLOCK, DCTree.Kind.SINCE) {
+                public DCTree parse(int pos) {
+                    List<DCTree> description = blockContent();
+                    return m.at(pos).Since(description);
+                }
+            },
+
+            // @throws class-name description
+            new TagParser(Kind.BLOCK, DCTree.Kind.THROWS) {
+                public DCTree parse(int pos) throws ParseException {
+                    skipWhitespace();
+                    DCReference ref = reference(false);
+                    List<DCTree> description = blockContent();
+                    return m.at(pos).Throws(ref, description);
+                }
+            },
+
+            // {@value package.class#field}
+            new TagParser(Kind.INLINE, DCTree.Kind.VALUE) {
+                public DCTree parse(int pos) throws ParseException {
+                    DCReference ref = reference(true);
+                    skipWhitespace();
+                    if (ch == '}') {
+                        nextChar();
+                        return m.at(pos).Value(ref);
+                    }
+                    nextChar();
+                    throw new ParseException("dc.unexpected.content");
+                }
+            },
+
+            // @version version-text
+            new TagParser(Kind.BLOCK, DCTree.Kind.VERSION) {
+                public DCTree parse(int pos) {
+                    List<DCTree> description = blockContent();
+                    return m.at(pos).Version(description);
+                }
+            },
+        };
+
+        tagParsers = new HashMap<Name,TagParser>();
+        for (TagParser p: parsers)
+            tagParsers.put(names.fromString(p.getTreeKind().tagName), p);
+
+    }
+}

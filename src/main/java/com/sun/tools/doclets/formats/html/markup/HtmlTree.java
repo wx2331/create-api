@@ -1,875 +1,869 @@
-/*     */ package com.sun.tools.doclets.formats.html.markup;
-/*     */ 
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocletConstants;
-/*     */ import java.io.IOException;
-/*     */ import java.io.Writer;
-/*     */ import java.nio.charset.Charset;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.BitSet;
-/*     */ import java.util.Collections;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.LinkedHashMap;
-/*     */ import java.util.List;
-/*     */ import java.util.Map;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class HtmlTree
-/*     */   extends Content
-/*     */ {
-/*     */   private HtmlTag htmlTag;
-/*  49 */   private Map<HtmlAttr, String> attrs = Collections.emptyMap();
-/*  50 */   private List<Content> content = Collections.emptyList();
-/*  51 */   public static final Content EMPTY = new StringContent("");
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public HtmlTree(HtmlTag paramHtmlTag) {
-/*  59 */     this.htmlTag = (HtmlTag)nullCheck(paramHtmlTag);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public HtmlTree(HtmlTag paramHtmlTag, Content... paramVarArgs) {
-/*  69 */     this(paramHtmlTag);
-/*  70 */     for (Content content : paramVarArgs) {
-/*  71 */       addContent(content);
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addAttr(HtmlAttr paramHtmlAttr, String paramString) {
-/*  81 */     if (this.attrs.isEmpty())
-/*  82 */       this.attrs = new LinkedHashMap<>(3); 
-/*  83 */     this.attrs.put(nullCheck(paramHtmlAttr), escapeHtmlChars(paramString));
-/*     */   }
-/*     */   
-/*     */   public void setTitle(Content paramContent) {
-/*  87 */     addAttr(HtmlAttr.TITLE, stripHtml(paramContent));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addStyle(HtmlStyle paramHtmlStyle) {
-/*  96 */     addAttr(HtmlAttr.CLASS, paramHtmlStyle.toString());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addContent(Content paramContent) {
-/* 105 */     if (paramContent instanceof ContentBuilder) {
-/* 106 */       for (Content content : ((ContentBuilder)paramContent).contents) {
-/* 107 */         addContent(content);
-/*     */       }
-/*     */     }
-/* 110 */     else if (paramContent == EMPTY || paramContent.isValid()) {
-/* 111 */       if (this.content.isEmpty())
-/* 112 */         this.content = new ArrayList<>(); 
-/* 113 */       this.content.add(paramContent);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addContent(String paramString) {
-/* 125 */     if (!this.content.isEmpty()) {
-/* 126 */       Content content = this.content.get(this.content.size() - 1);
-/* 127 */       if (content instanceof StringContent) {
-/* 128 */         content.addContent(paramString);
-/*     */       } else {
-/* 130 */         addContent(new StringContent(paramString));
-/*     */       } 
-/*     */     } else {
-/* 133 */       addContent(new StringContent(paramString));
-/*     */     } 
-/*     */   }
-/*     */   public int charCount() {
-/* 137 */     int i = 0;
-/* 138 */     for (Content content : this.content)
-/* 139 */       i += content.charCount(); 
-/* 140 */     return i;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static String escapeHtmlChars(String paramString) {
-/* 151 */     for (byte b = 0; b < paramString.length(); b++) {
-/* 152 */       StringBuilder stringBuilder; char c = paramString.charAt(b);
-/* 153 */       switch (c) { case '&':
-/*     */         case '<':
-/*     */         case '>':
-/* 156 */           stringBuilder = new StringBuilder(paramString.substring(0, b));
-/* 157 */           for (; b < paramString.length(); b++) {
-/* 158 */             c = paramString.charAt(b);
-/* 159 */             switch (c) { case '<':
-/* 160 */                 stringBuilder.append("&lt;"); break;
-/* 161 */               case '>': stringBuilder.append("&gt;"); break;
-/* 162 */               case '&': stringBuilder.append("&amp;"); break;
-/* 163 */               default: stringBuilder.append(c); break; }
-/*     */           
-/*     */           } 
-/* 166 */           return stringBuilder.toString(); }
-/*     */     
-/*     */     } 
-/* 169 */     return paramString;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 175 */   public static final BitSet NONENCODING_CHARS = new BitSet(256);
-/*     */   
-/*     */   static {
-/*     */     byte b1;
-/* 179 */     for (b1 = 97; b1 <= 122; b1++) {
-/* 180 */       NONENCODING_CHARS.set(b1);
-/*     */     }
-/* 182 */     for (b1 = 65; b1 <= 90; b1++) {
-/* 183 */       NONENCODING_CHARS.set(b1);
-/*     */     }
-/*     */     
-/* 186 */     for (b1 = 48; b1 <= 57; b1++) {
-/* 187 */       NONENCODING_CHARS.set(b1);
-/*     */     }
-/*     */     
-/* 190 */     String str = ":/?#[]@!$&'()*+,;=";
-/*     */     
-/* 192 */     str = str + "-._~";
-/* 193 */     for (byte b2 = 0; b2 < str.length(); b2++) {
-/* 194 */       NONENCODING_CHARS.set(str.charAt(b2));
-/*     */     }
-/*     */   }
-/*     */   
-/*     */   private static String encodeURL(String paramString) {
-/* 199 */     byte[] arrayOfByte = paramString.getBytes(Charset.forName("UTF-8"));
-/* 200 */     StringBuilder stringBuilder = new StringBuilder();
-/* 201 */     for (byte b = 0; b < arrayOfByte.length; b++) {
-/* 202 */       byte b1 = arrayOfByte[b];
-/* 203 */       if (NONENCODING_CHARS.get(b1 & 0xFF)) {
-/* 204 */         stringBuilder.append((char)b1);
-/*     */       } else {
-/* 206 */         stringBuilder.append(String.format("%%%02X", new Object[] { Integer.valueOf(b1 & 0xFF) }));
-/*     */       } 
-/*     */     } 
-/* 209 */     return stringBuilder.toString();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree A(String paramString, Content paramContent) {
-/* 220 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.A, new Content[] { (Content)nullCheck(paramContent) });
-/* 221 */     htmlTree.addAttr(HtmlAttr.HREF, encodeURL(paramString));
-/* 222 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree A_NAME(String paramString, Content paramContent) {
-/* 233 */     HtmlTree htmlTree = A_NAME(paramString);
-/* 234 */     htmlTree.addContent((Content)nullCheck(paramContent));
-/* 235 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree A_NAME(String paramString) {
-/* 245 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.A);
-/* 246 */     htmlTree.addAttr(HtmlAttr.NAME, (String)nullCheck(paramString));
-/* 247 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree CAPTION(Content paramContent) {
-/* 257 */     return new HtmlTree(HtmlTag.CAPTION, new Content[] { (Content)nullCheck(paramContent) });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree CODE(Content paramContent) {
-/* 268 */     return new HtmlTree(HtmlTag.CODE, new Content[] { (Content)nullCheck(paramContent) });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree DD(Content paramContent) {
-/* 279 */     return new HtmlTree(HtmlTag.DD, new Content[] { (Content)nullCheck(paramContent) });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree DL(Content paramContent) {
-/* 290 */     return new HtmlTree(HtmlTag.DL, new Content[] { (Content)nullCheck(paramContent) });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree DIV(HtmlStyle paramHtmlStyle, Content paramContent) {
-/* 303 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.DIV, new Content[] { (Content)nullCheck(paramContent) });
-/* 304 */     if (paramHtmlStyle != null)
-/* 305 */       htmlTree.addStyle(paramHtmlStyle); 
-/* 306 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree DIV(Content paramContent) {
-/* 316 */     return DIV((HtmlStyle)null, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree DT(Content paramContent) {
-/* 326 */     return new HtmlTree(HtmlTag.DT, new Content[] { (Content)nullCheck(paramContent) });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree FRAME(String paramString1, String paramString2, String paramString3, String paramString4) {
-/* 340 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.FRAME);
-/* 341 */     htmlTree.addAttr(HtmlAttr.SRC, (String)nullCheck(paramString1));
-/* 342 */     htmlTree.addAttr(HtmlAttr.NAME, (String)nullCheck(paramString2));
-/* 343 */     htmlTree.addAttr(HtmlAttr.TITLE, (String)nullCheck(paramString3));
-/* 344 */     if (paramString4 != null)
-/* 345 */       htmlTree.addAttr(HtmlAttr.SCROLLING, paramString4); 
-/* 346 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree FRAME(String paramString1, String paramString2, String paramString3) {
-/* 358 */     return FRAME(paramString1, paramString2, paramString3, (String)null);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree FRAMESET(String paramString1, String paramString2, String paramString3, String paramString4) {
-/* 371 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.FRAMESET);
-/* 372 */     if (paramString1 != null)
-/* 373 */       htmlTree.addAttr(HtmlAttr.COLS, paramString1); 
-/* 374 */     if (paramString2 != null)
-/* 375 */       htmlTree.addAttr(HtmlAttr.ROWS, paramString2); 
-/* 376 */     htmlTree.addAttr(HtmlAttr.TITLE, (String)nullCheck(paramString3));
-/* 377 */     htmlTree.addAttr(HtmlAttr.ONLOAD, (String)nullCheck(paramString4));
-/* 378 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree HEADING(HtmlTag paramHtmlTag, boolean paramBoolean, HtmlStyle paramHtmlStyle, Content paramContent) {
-/* 393 */     HtmlTree htmlTree = new HtmlTree(paramHtmlTag, new Content[] { (Content)nullCheck(paramContent) });
-/* 394 */     if (paramBoolean)
-/* 395 */       htmlTree.setTitle(paramContent); 
-/* 396 */     if (paramHtmlStyle != null)
-/* 397 */       htmlTree.addStyle(paramHtmlStyle); 
-/* 398 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree HEADING(HtmlTag paramHtmlTag, HtmlStyle paramHtmlStyle, Content paramContent) {
-/* 411 */     return HEADING(paramHtmlTag, false, paramHtmlStyle, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree HEADING(HtmlTag paramHtmlTag, boolean paramBoolean, Content paramContent) {
-/* 424 */     return HEADING(paramHtmlTag, paramBoolean, (HtmlStyle)null, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree HEADING(HtmlTag paramHtmlTag, Content paramContent) {
-/* 435 */     return HEADING(paramHtmlTag, false, (HtmlStyle)null, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree HTML(String paramString, Content paramContent1, Content paramContent2) {
-/* 448 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.HTML, new Content[] { (Content)nullCheck(paramContent1), (Content)nullCheck(paramContent2) });
-/* 449 */     htmlTree.addAttr(HtmlAttr.LANG, (String)nullCheck(paramString));
-/* 450 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree LI(Content paramContent) {
-/* 460 */     return LI((HtmlStyle)null, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree LI(HtmlStyle paramHtmlStyle, Content paramContent) {
-/* 471 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.LI, new Content[] { (Content)nullCheck(paramContent) });
-/* 472 */     if (paramHtmlStyle != null)
-/* 473 */       htmlTree.addStyle(paramHtmlStyle); 
-/* 474 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree LINK(String paramString1, String paramString2, String paramString3, String paramString4) {
-/* 487 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.LINK);
-/* 488 */     htmlTree.addAttr(HtmlAttr.REL, (String)nullCheck(paramString1));
-/* 489 */     htmlTree.addAttr(HtmlAttr.TYPE, (String)nullCheck(paramString2));
-/* 490 */     htmlTree.addAttr(HtmlAttr.HREF, (String)nullCheck(paramString3));
-/* 491 */     htmlTree.addAttr(HtmlAttr.TITLE, (String)nullCheck(paramString4));
-/* 492 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree META(String paramString1, String paramString2, String paramString3) {
-/* 504 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.META);
-/* 505 */     String str = paramString2 + "; charset=" + paramString3;
-/* 506 */     htmlTree.addAttr(HtmlAttr.HTTP_EQUIV, (String)nullCheck(paramString1));
-/* 507 */     htmlTree.addAttr(HtmlAttr.CONTENT, str);
-/* 508 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree META(String paramString1, String paramString2) {
-/* 519 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.META);
-/* 520 */     htmlTree.addAttr(HtmlAttr.NAME, (String)nullCheck(paramString1));
-/* 521 */     htmlTree.addAttr(HtmlAttr.CONTENT, (String)nullCheck(paramString2));
-/* 522 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree NOSCRIPT(Content paramContent) {
-/* 532 */     return new HtmlTree(HtmlTag.NOSCRIPT, new Content[] { (Content)nullCheck(paramContent) });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree P(Content paramContent) {
-/* 543 */     return P((HtmlStyle)null, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree P(HtmlStyle paramHtmlStyle, Content paramContent) {
-/* 554 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.P, new Content[] { (Content)nullCheck(paramContent) });
-/* 555 */     if (paramHtmlStyle != null)
-/* 556 */       htmlTree.addStyle(paramHtmlStyle); 
-/* 557 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree SCRIPT(String paramString1, String paramString2) {
-/* 568 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.SCRIPT);
-/* 569 */     htmlTree.addAttr(HtmlAttr.TYPE, (String)nullCheck(paramString1));
-/* 570 */     htmlTree.addAttr(HtmlAttr.SRC, (String)nullCheck(paramString2));
-/* 571 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree SMALL(Content paramContent) {
-/* 581 */     return new HtmlTree(HtmlTag.SMALL, new Content[] { (Content)nullCheck(paramContent) });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree SPAN(Content paramContent) {
-/* 592 */     return SPAN((HtmlStyle)null, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree SPAN(HtmlStyle paramHtmlStyle, Content paramContent) {
-/* 603 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.SPAN, new Content[] { (Content)nullCheck(paramContent) });
-/* 604 */     if (paramHtmlStyle != null)
-/* 605 */       htmlTree.addStyle(paramHtmlStyle); 
-/* 606 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree SPAN(String paramString, HtmlStyle paramHtmlStyle, Content paramContent) {
-/* 619 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.SPAN, new Content[] { (Content)nullCheck(paramContent) });
-/* 620 */     htmlTree.addAttr(HtmlAttr.ID, (String)nullCheck(paramString));
-/* 621 */     if (paramHtmlStyle != null)
-/* 622 */       htmlTree.addStyle(paramHtmlStyle); 
-/* 623 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree TABLE(HtmlStyle paramHtmlStyle, int paramInt1, int paramInt2, int paramInt3, String paramString, Content paramContent) {
-/* 640 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.TABLE, new Content[] { (Content)nullCheck(paramContent) });
-/* 641 */     if (paramHtmlStyle != null)
-/* 642 */       htmlTree.addStyle(paramHtmlStyle); 
-/* 643 */     htmlTree.addAttr(HtmlAttr.BORDER, Integer.toString(paramInt1));
-/* 644 */     htmlTree.addAttr(HtmlAttr.CELLPADDING, Integer.toString(paramInt2));
-/* 645 */     htmlTree.addAttr(HtmlAttr.CELLSPACING, Integer.toString(paramInt3));
-/* 646 */     htmlTree.addAttr(HtmlAttr.SUMMARY, (String)nullCheck(paramString));
-/* 647 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree TD(HtmlStyle paramHtmlStyle, Content paramContent) {
-/* 658 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.TD, new Content[] { (Content)nullCheck(paramContent) });
-/* 659 */     if (paramHtmlStyle != null)
-/* 660 */       htmlTree.addStyle(paramHtmlStyle); 
-/* 661 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree TD(Content paramContent) {
-/* 671 */     return TD((HtmlStyle)null, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree TH(HtmlStyle paramHtmlStyle, String paramString, Content paramContent) {
-/* 683 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.TH, new Content[] { (Content)nullCheck(paramContent) });
-/* 684 */     if (paramHtmlStyle != null)
-/* 685 */       htmlTree.addStyle(paramHtmlStyle); 
-/* 686 */     htmlTree.addAttr(HtmlAttr.SCOPE, (String)nullCheck(paramString));
-/* 687 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree TH(String paramString, Content paramContent) {
-/* 698 */     return TH((HtmlStyle)null, paramString, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree TITLE(Content paramContent) {
-/* 708 */     return new HtmlTree(HtmlTag.TITLE, new Content[] { (Content)nullCheck(paramContent) });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree TR(Content paramContent) {
-/* 719 */     return new HtmlTree(HtmlTag.TR, new Content[] { (Content)nullCheck(paramContent) });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static HtmlTree UL(HtmlStyle paramHtmlStyle, Content paramContent) {
-/* 731 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.UL, new Content[] { (Content)nullCheck(paramContent) });
-/* 732 */     htmlTree.addStyle((HtmlStyle)nullCheck(paramHtmlStyle));
-/* 733 */     return htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isEmpty() {
-/* 740 */     return (!hasContent() && !hasAttrs());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean hasContent() {
-/* 749 */     return !this.content.isEmpty();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean hasAttrs() {
-/* 758 */     return !this.attrs.isEmpty();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean hasAttr(HtmlAttr paramHtmlAttr) {
-/* 768 */     return this.attrs.containsKey(paramHtmlAttr);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isValid() {
-/* 779 */     switch (this.htmlTag) {
-/*     */       case A:
-/* 781 */         return (hasAttr(HtmlAttr.NAME) || (hasAttr(HtmlAttr.HREF) && hasContent()));
-/*     */       case BR:
-/* 783 */         return (!hasContent() && (!hasAttrs() || hasAttr(HtmlAttr.CLEAR)));
-/*     */       case FRAME:
-/* 785 */         return (hasAttr(HtmlAttr.SRC) && !hasContent());
-/*     */       case HR:
-/* 787 */         return !hasContent();
-/*     */       case IMG:
-/* 789 */         return (hasAttr(HtmlAttr.SRC) && hasAttr(HtmlAttr.ALT) && !hasContent());
-/*     */       case LINK:
-/* 791 */         return (hasAttr(HtmlAttr.HREF) && !hasContent());
-/*     */       case META:
-/* 793 */         return (hasAttr(HtmlAttr.CONTENT) && !hasContent());
-/*     */       case SCRIPT:
-/* 795 */         return ((hasAttr(HtmlAttr.TYPE) && hasAttr(HtmlAttr.SRC) && !hasContent()) || (
-/* 796 */           hasAttr(HtmlAttr.TYPE) && hasContent()));
-/*     */     } 
-/* 798 */     return hasContent();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isInline() {
-/* 808 */     return (this.htmlTag.blockType == HtmlTag.BlockType.INLINE);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean write(Writer paramWriter, boolean paramBoolean) throws IOException {
-/* 816 */     if (!isInline() && !paramBoolean)
-/* 817 */       paramWriter.write(DocletConstants.NL); 
-/* 818 */     String str = this.htmlTag.toString();
-/* 819 */     paramWriter.write("<");
-/* 820 */     paramWriter.write(str);
-/* 821 */     Iterator<HtmlAttr> iterator = this.attrs.keySet().iterator();
-/*     */ 
-/*     */     
-/* 824 */     while (iterator.hasNext()) {
-/* 825 */       HtmlAttr htmlAttr = iterator.next();
-/* 826 */       String str1 = this.attrs.get(htmlAttr);
-/* 827 */       paramWriter.write(" ");
-/* 828 */       paramWriter.write(htmlAttr.toString());
-/* 829 */       if (!str1.isEmpty()) {
-/* 830 */         paramWriter.write("=\"");
-/* 831 */         paramWriter.write(str1);
-/* 832 */         paramWriter.write("\"");
-/*     */       } 
-/*     */     } 
-/* 835 */     paramWriter.write(">");
-/* 836 */     boolean bool = false;
-/* 837 */     for (Content content : this.content)
-/* 838 */       bool = content.write(paramWriter, bool); 
-/* 839 */     if (this.htmlTag.endTagRequired()) {
-/* 840 */       paramWriter.write("</");
-/* 841 */       paramWriter.write(str);
-/* 842 */       paramWriter.write(">");
-/*     */     } 
-/* 844 */     if (!isInline()) {
-/* 845 */       paramWriter.write(DocletConstants.NL);
-/* 846 */       return true;
-/*     */     } 
-/* 848 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static String stripHtml(Content paramContent) {
-/* 861 */     String str = paramContent.toString();
-/*     */     
-/* 863 */     str = str.replaceAll("\\<.*?>", " ");
-/*     */     
-/* 865 */     str = str.replaceAll("\\b\\s{2,}\\b", " ");
-/*     */     
-/* 867 */     return str.trim();
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\markup\HtmlTree.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2010, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html.markup;
+
+import java.io.IOException;
+import java.io.Writer;
+import java.util.*;
+import java.nio.charset.*;
+
+import com.sun.tools.doclets.internal.toolkit.Content;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Class for generating HTML tree for javadoc output.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Bhavesh Patel
+ */
+public class HtmlTree extends Content {
+
+    private HtmlTag htmlTag;
+    private Map<HtmlAttr,String> attrs = Collections.<HtmlAttr,String>emptyMap();
+    private List<Content> content = Collections.<Content>emptyList();
+    public static final Content EMPTY = new StringContent("");
+
+    /**
+     * Constructor to construct HtmlTree object.
+     *
+     * @param tag HTML tag for the HtmlTree object
+     */
+    public HtmlTree(HtmlTag tag) {
+        htmlTag = nullCheck(tag);
+    }
+
+    /**
+     * Constructor to construct HtmlTree object.
+     *
+     * @param tag HTML tag for the HtmlTree object
+     * @param contents contents to be added to the tree
+     */
+    public HtmlTree(HtmlTag tag, Content... contents) {
+        this(tag);
+        for (Content content: contents)
+            addContent(content);
+    }
+
+    /**
+     * Adds an attribute for the HTML tag.
+     *
+     * @param attrName name of the attribute
+     * @param attrValue value of the attribute
+     */
+    public void addAttr(HtmlAttr attrName, String attrValue) {
+        if (attrs.isEmpty())
+            attrs = new LinkedHashMap<HtmlAttr,String>(3);
+        attrs.put(nullCheck(attrName), escapeHtmlChars(attrValue));
+    }
+
+    public void setTitle(Content body) {
+        addAttr(HtmlAttr.TITLE, stripHtml(body));
+    }
+
+    /**
+     * Adds a style for the HTML tag.
+     *
+     * @param style style to be added
+     */
+    public void addStyle(HtmlStyle style) {
+        addAttr(HtmlAttr.CLASS, style.toString());
+    }
+
+    /**
+     * Adds content for the HTML tag.
+     *
+     * @param tagContent tag content to be added
+     */
+    public void addContent(Content tagContent) {
+        if (tagContent instanceof ContentBuilder) {
+            for (Content content: ((ContentBuilder)tagContent).contents) {
+                addContent(content);
+            }
+        }
+        else if (tagContent == HtmlTree.EMPTY || tagContent.isValid()) {
+            if (content.isEmpty())
+                content = new ArrayList<Content>();
+            content.add(tagContent);
+        }
+    }
+
+    /**
+     * This method adds a string content to the htmltree. If the last content member
+     * added is a StringContent, append the string to that StringContent or else
+     * create a new StringContent and add it to the html tree.
+     *
+     * @param stringContent string content that needs to be added
+     */
+    public void addContent(String stringContent) {
+        if (!content.isEmpty()) {
+            Content lastContent = content.get(content.size() - 1);
+            if (lastContent instanceof StringContent)
+                lastContent.addContent(stringContent);
+            else
+                addContent(new StringContent(stringContent));
+        }
+        else
+            addContent(new StringContent(stringContent));
+    }
+
+    public int charCount() {
+        int n = 0;
+        for (Content c : content)
+            n += c.charCount();
+        return n;
+    }
+
+    /**
+     * Given a string, escape all special html characters and
+     * return the result.
+     *
+     * @param s The string to check.
+     * @return the original string with all of the HTML characters escaped.
+     */
+    private static String escapeHtmlChars(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            switch (ch) {
+                // only start building a new string if we need to
+                case '<': case '>': case '&':
+                    StringBuilder sb = new StringBuilder(s.substring(0, i));
+                    for ( ; i < s.length(); i++) {
+                        ch = s.charAt(i);
+                        switch (ch) {
+                            case '<': sb.append("&lt;");  break;
+                            case '>': sb.append("&gt;");  break;
+                            case '&': sb.append("&amp;"); break;
+                            default:  sb.append(ch);      break;
+                        }
+                    }
+                    return sb.toString();
+            }
+        }
+        return s;
+    }
+
+    /**
+     * A set of ASCII URI characters to be left unencoded.
+     */
+    public static final BitSet NONENCODING_CHARS = new BitSet(256);
+
+    static {
+        // alphabetic characters
+        for (int i = 'a'; i <= 'z'; i++) {
+            NONENCODING_CHARS.set(i);
+        }
+        for (int i = 'A'; i <= 'Z'; i++) {
+            NONENCODING_CHARS.set(i);
+        }
+        // numeric characters
+        for (int i = '0'; i <= '9'; i++) {
+            NONENCODING_CHARS.set(i);
+        }
+        // Reserved characters as per RFC 3986. These are set of delimiting characters.
+        String noEnc = ":/?#[]@!$&'()*+,;=";
+        // Unreserved characters as per RFC 3986 which should not be percent encoded.
+        noEnc += "-._~";
+        for (int i = 0; i < noEnc.length(); i++) {
+            NONENCODING_CHARS.set(noEnc.charAt(i));
+        }
+    }
+
+    private static String encodeURL(String url) {
+        byte[] urlBytes = url.getBytes(Charset.forName("UTF-8"));
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < urlBytes.length; i++) {
+            int c = urlBytes[i];
+            if (NONENCODING_CHARS.get(c & 0xFF)) {
+                sb.append((char) c);
+            } else {
+                sb.append(String.format("%%%02X", c & 0xFF));
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Generates an HTML anchor tag.
+     *
+     * @param ref reference url for the anchor tag
+     * @param body content for the anchor tag
+     * @return an HtmlTree object
+     */
+    public static HtmlTree A(String ref, Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.A, nullCheck(body));
+        htmltree.addAttr(HtmlAttr.HREF, encodeURL(ref));
+        return htmltree;
+    }
+
+    /**
+     * Generates an HTML anchor tag with name attribute and content.
+     *
+     * @param name name for the anchor tag
+     * @param body content for the anchor tag
+     * @return an HtmlTree object
+     */
+    public static HtmlTree A_NAME(String name, Content body) {
+        HtmlTree htmltree = HtmlTree.A_NAME(name);
+        htmltree.addContent(nullCheck(body));
+        return htmltree;
+    }
+
+    /**
+     * Generates an HTML anchor tag with name attribute.
+     *
+     * @param name name for the anchor tag
+     * @return an HtmlTree object
+     */
+    public static HtmlTree A_NAME(String name) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.A);
+        htmltree.addAttr(HtmlAttr.NAME, nullCheck(name));
+        return htmltree;
+    }
+
+    /**
+     * Generates a CAPTION tag with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the CAPTION tag
+     */
+    public static HtmlTree CAPTION(Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.CAPTION, nullCheck(body));
+        return htmltree;
+    }
+
+    /**
+     * Generates a CODE tag with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the CODE tag
+     */
+    public static HtmlTree CODE(Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.CODE, nullCheck(body));
+        return htmltree;
+    }
+
+    /**
+     * Generates a DD tag with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the DD tag
+     */
+    public static HtmlTree DD(Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.DD, nullCheck(body));
+        return htmltree;
+    }
+
+    /**
+     * Generates a DL tag with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the DL tag
+     */
+    public static HtmlTree DL(Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.DL, nullCheck(body));
+        return htmltree;
+    }
+
+    /**
+     * Generates a DIV tag with the style class attributes. It also encloses
+     * a content.
+     *
+     * @param styleClass stylesheet class for the tag
+     * @param body content for the tag
+     * @return an HtmlTree object for the DIV tag
+     */
+    public static HtmlTree DIV(HtmlStyle styleClass, Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.DIV, nullCheck(body));
+        if (styleClass != null)
+            htmltree.addStyle(styleClass);
+        return htmltree;
+    }
+
+    /**
+     * Generates a DIV tag with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the DIV tag
+     */
+    public static HtmlTree DIV(Content body) {
+        return DIV(null, body);
+    }
+
+    /**
+     * Generates a DT tag with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the DT tag
+     */
+    public static HtmlTree DT(Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.DT, nullCheck(body));
+        return htmltree;
+    }
+
+    /**
+     * Generates a FRAME tag.
+     *
+     * @param src the url of the document to be shown in the frame
+     * @param name specifies the name of the frame
+     * @param title the title for the frame
+     * @param scrolling specifies whether to display scrollbars in the frame
+     * @return an HtmlTree object for the FRAME tag
+     */
+    public static HtmlTree FRAME(String src, String name, String title, String scrolling) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.FRAME);
+        htmltree.addAttr(HtmlAttr.SRC, nullCheck(src));
+        htmltree.addAttr(HtmlAttr.NAME, nullCheck(name));
+        htmltree.addAttr(HtmlAttr.TITLE, nullCheck(title));
+        if (scrolling != null)
+            htmltree.addAttr(HtmlAttr.SCROLLING, scrolling);
+        return htmltree;
+    }
+
+    /**
+     * Generates a Frame tag.
+     *
+     * @param src the url of the document to be shown in the frame
+     * @param name specifies the name of the frame
+     * @param title the title for the frame
+     * @return an HtmlTree object for the SPAN tag
+     */
+    public static HtmlTree FRAME(String src, String name, String title) {
+        return FRAME(src, name, title, null);
+    }
+
+    /**
+     * Generates a FRAMESET tag.
+     *
+     * @param cols the size of columns in the frameset
+     * @param rows the size of rows in the frameset
+     * @param title the title for the frameset
+     * @param onload the script to run when the document loads
+     * @return an HtmlTree object for the FRAMESET tag
+     */
+    public static HtmlTree FRAMESET(String cols, String rows, String title, String onload) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.FRAMESET);
+        if (cols != null)
+            htmltree.addAttr(HtmlAttr.COLS, cols);
+        if (rows != null)
+            htmltree.addAttr(HtmlAttr.ROWS, rows);
+        htmltree.addAttr(HtmlAttr.TITLE, nullCheck(title));
+        htmltree.addAttr(HtmlAttr.ONLOAD, nullCheck(onload));
+        return htmltree;
+    }
+
+    /**
+     * Generates a heading tag (h1 to h6) with the title and style class attributes. It also encloses
+     * a content.
+     *
+     * @param headingTag the heading tag to be generated
+     * @param printTitle true if title for the tag needs to be printed else false
+     * @param styleClass stylesheet class for the tag
+     * @param body content for the tag
+     * @return an HtmlTree object for the tag
+     */
+    public static HtmlTree HEADING(HtmlTag headingTag, boolean printTitle,
+            HtmlStyle styleClass, Content body) {
+        HtmlTree htmltree = new HtmlTree(headingTag, nullCheck(body));
+        if (printTitle)
+            htmltree.setTitle(body);
+        if (styleClass != null)
+            htmltree.addStyle(styleClass);
+        return htmltree;
+    }
+
+    /**
+     * Generates a heading tag (h1 to h6) with style class attribute. It also encloses
+     * a content.
+     *
+     * @param headingTag the heading tag to be generated
+     * @param styleClass stylesheet class for the tag
+     * @param body content for the tag
+     * @return an HtmlTree object for the tag
+     */
+    public static HtmlTree HEADING(HtmlTag headingTag, HtmlStyle styleClass, Content body) {
+        return HEADING(headingTag, false, styleClass, body);
+    }
+
+    /**
+     * Generates a heading tag (h1 to h6) with the title attribute. It also encloses
+     * a content.
+     *
+     * @param headingTag the heading tag to be generated
+     * @param printTitle true if the title for the tag needs to be printed else false
+     * @param body content for the tag
+     * @return an HtmlTree object for the tag
+     */
+    public static HtmlTree HEADING(HtmlTag headingTag, boolean printTitle, Content body) {
+        return HEADING(headingTag, printTitle, null, body);
+    }
+
+    /**
+     * Generates a heading tag (h1 to h6)  with some content.
+     *
+     * @param headingTag the heading tag to be generated
+     * @param body content for the tag
+     * @return an HtmlTree object for the tag
+     */
+    public static HtmlTree HEADING(HtmlTag headingTag, Content body) {
+        return HEADING(headingTag, false, null, body);
+    }
+
+    /**
+     * Generates an HTML tag with lang attribute. It also adds head and body
+     * content to the HTML tree.
+     *
+     * @param lang language for the HTML document
+     * @param head head for the HTML tag
+     * @param body body for the HTML tag
+     * @return an HtmlTree object for the HTML tag
+     */
+    public static HtmlTree HTML(String lang, Content head, Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.HTML, nullCheck(head), nullCheck(body));
+        htmltree.addAttr(HtmlAttr.LANG, nullCheck(lang));
+        return htmltree;
+    }
+
+    /**
+     * Generates a LI tag with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the LI tag
+     */
+    public static HtmlTree LI(Content body) {
+        return LI(null, body);
+    }
+
+    /**
+     * Generates a LI tag with some content.
+     *
+     * @param styleClass style for the tag
+     * @param body content for the tag
+     * @return an HtmlTree object for the LI tag
+     */
+    public static HtmlTree LI(HtmlStyle styleClass, Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.LI, nullCheck(body));
+        if (styleClass != null)
+            htmltree.addStyle(styleClass);
+        return htmltree;
+    }
+
+    /**
+     * Generates a LINK tag with the rel, type, href and title attributes.
+     *
+     * @param rel relevance of the link
+     * @param type type of link
+     * @param href the path for the link
+     * @param title title for the link
+     * @return an HtmlTree object for the LINK tag
+     */
+    public static HtmlTree LINK(String rel, String type, String href, String title) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.LINK);
+        htmltree.addAttr(HtmlAttr.REL, nullCheck(rel));
+        htmltree.addAttr(HtmlAttr.TYPE, nullCheck(type));
+        htmltree.addAttr(HtmlAttr.HREF, nullCheck(href));
+        htmltree.addAttr(HtmlAttr.TITLE, nullCheck(title));
+        return htmltree;
+    }
+
+    /**
+     * Generates a META tag with the http-equiv, content and charset attributes.
+     *
+     * @param httpEquiv http equiv attribute for the META tag
+     * @param content type of content
+     * @param charSet character set used
+     * @return an HtmlTree object for the META tag
+     */
+    public static HtmlTree META(String httpEquiv, String content, String charSet) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.META);
+        String contentCharset = content + "; charset=" + charSet;
+        htmltree.addAttr(HtmlAttr.HTTP_EQUIV, nullCheck(httpEquiv));
+        htmltree.addAttr(HtmlAttr.CONTENT, contentCharset);
+        return htmltree;
+    }
+
+    /**
+     * Generates a META tag with the name and content attributes.
+     *
+     * @param name name attribute
+     * @param content type of content
+     * @return an HtmlTree object for the META tag
+     */
+    public static HtmlTree META(String name, String content) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.META);
+        htmltree.addAttr(HtmlAttr.NAME, nullCheck(name));
+        htmltree.addAttr(HtmlAttr.CONTENT, nullCheck(content));
+        return htmltree;
+    }
+
+    /**
+     * Generates a NOSCRIPT tag with some content.
+     *
+     * @param body content of the noscript tag
+     * @return an HtmlTree object for the NOSCRIPT tag
+     */
+    public static HtmlTree NOSCRIPT(Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.NOSCRIPT, nullCheck(body));
+        return htmltree;
+    }
+
+    /**
+     * Generates a P tag with some content.
+     *
+     * @param body content of the Paragraph tag
+     * @return an HtmlTree object for the P tag
+     */
+    public static HtmlTree P(Content body) {
+        return P(null, body);
+    }
+
+    /**
+     * Generates a P tag with some content.
+     *
+     * @param styleClass style of the Paragraph tag
+     * @param body content of the Paragraph tag
+     * @return an HtmlTree object for the P tag
+     */
+    public static HtmlTree P(HtmlStyle styleClass, Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.P, nullCheck(body));
+        if (styleClass != null)
+            htmltree.addStyle(styleClass);
+        return htmltree;
+    }
+
+    /**
+     * Generates a SCRIPT tag with the type and src attributes.
+     *
+     * @param type type of link
+     * @param src the path for the script
+     * @return an HtmlTree object for the SCRIPT tag
+     */
+    public static HtmlTree SCRIPT(String type, String src) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.SCRIPT);
+        htmltree.addAttr(HtmlAttr.TYPE, nullCheck(type));
+        htmltree.addAttr(HtmlAttr.SRC, nullCheck(src));
+        return htmltree;
+    }
+
+    /**
+     * Generates a SMALL tag with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the SMALL tag
+     */
+    public static HtmlTree SMALL(Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.SMALL, nullCheck(body));
+        return htmltree;
+    }
+
+    /**
+     * Generates a SPAN tag with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the SPAN tag
+     */
+    public static HtmlTree SPAN(Content body) {
+        return SPAN(null, body);
+    }
+
+    /**
+     * Generates a SPAN tag with style class attribute and some content.
+     *
+     * @param styleClass style class for the tag
+     * @param body content for the tag
+     * @return an HtmlTree object for the SPAN tag
+     */
+    public static HtmlTree SPAN(HtmlStyle styleClass, Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.SPAN, nullCheck(body));
+        if (styleClass != null)
+            htmltree.addStyle(styleClass);
+        return htmltree;
+    }
+
+    /**
+     * Generates a SPAN tag with id and style class attributes. It also encloses
+     * a content.
+     *
+     * @param id the id for the tag
+     * @param styleClass stylesheet class for the tag
+     * @param body content for the tag
+     * @return an HtmlTree object for the SPAN tag
+     */
+    public static HtmlTree SPAN(String id, HtmlStyle styleClass, Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.SPAN, nullCheck(body));
+        htmltree.addAttr(HtmlAttr.ID, nullCheck(id));
+        if (styleClass != null)
+            htmltree.addStyle(styleClass);
+        return htmltree;
+    }
+
+    /**
+     * Generates a Table tag with style class, border, cell padding,
+     * cellspacing and summary attributes and some content.
+     *
+     * @param styleClass style of the table
+     * @param border border for the table
+     * @param cellPadding cell padding for the table
+     * @param cellSpacing cell spacing for the table
+     * @param summary summary for the table
+     * @param body content for the table
+     * @return an HtmlTree object for the TABLE tag
+     */
+    public static HtmlTree TABLE(HtmlStyle styleClass, int border, int cellPadding,
+            int cellSpacing, String summary, Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.TABLE, nullCheck(body));
+        if (styleClass != null)
+            htmltree.addStyle(styleClass);
+        htmltree.addAttr(HtmlAttr.BORDER, Integer.toString(border));
+        htmltree.addAttr(HtmlAttr.CELLPADDING, Integer.toString(cellPadding));
+        htmltree.addAttr(HtmlAttr.CELLSPACING, Integer.toString(cellSpacing));
+        htmltree.addAttr(HtmlAttr.SUMMARY, nullCheck(summary));
+        return htmltree;
+    }
+
+    /**
+     * Generates a TD tag with style class attribute and some content.
+     *
+     * @param styleClass style for the tag
+     * @param body content for the tag
+     * @return an HtmlTree object for the TD tag
+     */
+    public static HtmlTree TD(HtmlStyle styleClass, Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.TD, nullCheck(body));
+        if (styleClass != null)
+            htmltree.addStyle(styleClass);
+        return htmltree;
+    }
+
+    /**
+     * Generates a TD tag for an HTML table with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the TD tag
+     */
+    public static HtmlTree TD(Content body) {
+        return TD(null, body);
+    }
+
+    /**
+     * Generates a TH tag with style class and scope attributes and some content.
+     *
+     * @param styleClass style for the tag
+     * @param scope scope of the tag
+     * @param body content for the tag
+     * @return an HtmlTree object for the TH tag
+     */
+    public static HtmlTree TH(HtmlStyle styleClass, String scope, Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.TH, nullCheck(body));
+        if (styleClass != null)
+            htmltree.addStyle(styleClass);
+        htmltree.addAttr(HtmlAttr.SCOPE, nullCheck(scope));
+        return htmltree;
+    }
+
+    /**
+     * Generates a TH tag with scope attribute and some content.
+     *
+     * @param scope scope of the tag
+     * @param body content for the tag
+     * @return an HtmlTree object for the TH tag
+     */
+    public static HtmlTree TH(String scope, Content body) {
+        return TH(null, scope, body);
+    }
+
+    /**
+     * Generates a TITLE tag with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the TITLE tag
+     */
+    public static HtmlTree TITLE(Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.TITLE, nullCheck(body));
+        return htmltree;
+    }
+
+    /**
+     * Generates a TR tag for an HTML table with some content.
+     *
+     * @param body content for the tag
+     * @return an HtmlTree object for the TR tag
+     */
+    public static HtmlTree TR(Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.TR, nullCheck(body));
+        return htmltree;
+    }
+
+    /**
+     * Generates a UL tag with the style class attribute and some content.
+     *
+     * @param styleClass style for the tag
+     * @param body content for the tag
+     * @return an HtmlTree object for the UL tag
+     */
+    public static HtmlTree UL(HtmlStyle styleClass, Content body) {
+        HtmlTree htmltree = new HtmlTree(HtmlTag.UL, nullCheck(body));
+        htmltree.addStyle(nullCheck(styleClass));
+        return htmltree;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean isEmpty() {
+        return (!hasContent() && !hasAttrs());
+    }
+
+    /**
+     * Returns true if the HTML tree has content.
+     *
+     * @return true if the HTML tree has content else return false
+     */
+    public boolean hasContent() {
+        return (!content.isEmpty());
+    }
+
+    /**
+     * Returns true if the HTML tree has attributes.
+     *
+     * @return true if the HTML tree has attributes else return false
+     */
+    public boolean hasAttrs() {
+        return (!attrs.isEmpty());
+    }
+
+    /**
+     * Returns true if the HTML tree has a specific attribute.
+     *
+     * @param attrName name of the attribute to check within the HTML tree
+     * @return true if the HTML tree has the specified attribute else return false
+     */
+    public boolean hasAttr(HtmlAttr attrName) {
+        return (attrs.containsKey(attrName));
+    }
+
+    /**
+     * Returns true if the HTML tree is valid. This check is more specific to
+     * standard doclet and not exactly similar to W3C specifications. But it
+     * ensures HTML validation.
+     *
+     * @return true if the HTML tree is valid
+     */
+    public boolean isValid() {
+        switch (htmlTag) {
+            case A :
+                return (hasAttr(HtmlAttr.NAME) || (hasAttr(HtmlAttr.HREF) && hasContent()));
+            case BR :
+                return (!hasContent() && (!hasAttrs() || hasAttr(HtmlAttr.CLEAR)));
+            case FRAME :
+                return (hasAttr(HtmlAttr.SRC) && !hasContent());
+            case HR :
+                return (!hasContent());
+            case IMG :
+                return (hasAttr(HtmlAttr.SRC) && hasAttr(HtmlAttr.ALT) && !hasContent());
+            case LINK :
+                return (hasAttr(HtmlAttr.HREF) && !hasContent());
+            case META :
+                return (hasAttr(HtmlAttr.CONTENT) && !hasContent());
+            case SCRIPT :
+                return ((hasAttr(HtmlAttr.TYPE) && hasAttr(HtmlAttr.SRC) && !hasContent()) ||
+                        (hasAttr(HtmlAttr.TYPE) && hasContent()));
+            default :
+                return hasContent();
+        }
+    }
+
+    /**
+     * Returns true if the element is an inline element.
+     *
+     * @return true if the HTML tag is an inline element
+     */
+    public boolean isInline() {
+        return (htmlTag.blockType == HtmlTag.BlockType.INLINE);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean write(Writer out, boolean atNewline) throws IOException {
+        if (!isInline() && !atNewline)
+            out.write(DocletConstants.NL);
+        String tagString = htmlTag.toString();
+        out.write("<");
+        out.write(tagString);
+        Iterator<HtmlAttr> iterator = attrs.keySet().iterator();
+        HtmlAttr key;
+        String value;
+        while (iterator.hasNext()) {
+            key = iterator.next();
+            value = attrs.get(key);
+            out.write(" ");
+            out.write(key.toString());
+            if (!value.isEmpty()) {
+                out.write("=\"");
+                out.write(value);
+                out.write("\"");
+            }
+        }
+        out.write(">");
+        boolean nl = false;
+        for (Content c : content)
+            nl = c.write(out, nl);
+        if (htmlTag.endTagRequired()) {
+            out.write("</");
+            out.write(tagString);
+            out.write(">");
+        }
+        if (!isInline()) {
+            out.write(DocletConstants.NL);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Given a Content node, strips all html characters and
+     * return the result.
+     *
+     * @param body The content node to check.
+     * @return the plain text from the content node
+     *
+     */
+    private static String stripHtml(Content body) {
+        String rawString = body.toString();
+        // remove HTML tags
+        rawString = rawString.replaceAll("\\<.*?>", " ");
+        // consolidate multiple spaces between a word to a single space
+        rawString = rawString.replaceAll("\\b\\s{2,}\\b", " ");
+        // remove extra whitespaces
+        return rawString.trim();
+    }
+}

@@ -1,256 +1,249 @@
-/*     */ package com.sun.tools.javac.code;
-/*     */ 
-/*     */ import com.sun.tools.javac.model.AnnotationProxyMaker;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import com.sun.tools.javac.util.ListBuffer;
-/*     */ import java.lang.annotation.Annotation;
-/*     */ import java.lang.annotation.Inherited;
-/*     */ import java.lang.reflect.Array;
-/*     */ import java.lang.reflect.Method;
-/*     */ import java.util.List;
-/*     */ import javax.lang.model.AnnotatedConstruct;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public abstract class AnnoConstruct
-/*     */   implements AnnotatedConstruct
-/*     */ {
-/*     */   protected <A extends Annotation> Attribute.Compound getAttribute(Class<A> paramClass) {
-/*  59 */     String str = paramClass.getName();
-/*     */     
-/*  61 */     for (Attribute.Compound compound : getAnnotationMirrors()) {
-/*  62 */       if (str.equals(compound.type.tsym.flatName().toString())) {
-/*  63 */         return compound;
-/*     */       }
-/*     */     } 
-/*  66 */     return null;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected <A extends Annotation> A[] getInheritedAnnotations(Class<A> paramClass) {
-/*  72 */     return (A[])Array.newInstance(paramClass, 0);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public <A extends Annotation> A[] getAnnotationsByType(Class<A> paramClass) {
-/*  79 */     if (!paramClass.isAnnotation()) {
-/*  80 */       throw new IllegalArgumentException("Not an annotation type: " + paramClass);
-/*     */     }
-/*     */ 
-/*     */     
-/*  84 */     Class<? extends Annotation> clazz = getContainer(paramClass);
-/*  85 */     if (clazz == null) {
-/*  86 */       Annotation annotation = (Annotation)getAnnotation((Class)paramClass);
-/*  87 */       boolean bool = (annotation == null) ? false : true;
-/*     */ 
-/*     */       
-/*  90 */       Annotation[] arrayOfAnnotation1 = (Annotation[])Array.newInstance(paramClass, bool);
-/*  91 */       if (annotation != null)
-/*  92 */         arrayOfAnnotation1[0] = annotation; 
-/*  93 */       return (A[])arrayOfAnnotation1;
-/*     */     } 
-/*     */ 
-/*     */     
-/*  97 */     String str1 = paramClass.getName();
-/*  98 */     String str2 = clazz.getName();
-/*  99 */     byte b1 = -1, b2 = -1;
-/* 100 */     Attribute.Compound compound1 = null, compound2 = null;
-/*     */     
-/* 102 */     byte b3 = -1;
-/* 103 */     for (Attribute.Compound compound : getAnnotationMirrors()) {
-/* 104 */       b3++;
-/* 105 */       if (compound.type.tsym.flatName().contentEquals(str1)) {
-/* 106 */         b1 = b3;
-/* 107 */         compound1 = compound; continue;
-/* 108 */       }  if (str2 != null && compound.type.tsym
-/* 109 */         .flatName().contentEquals(str2)) {
-/* 110 */         b2 = b3;
-/* 111 */         compound2 = compound;
-/*     */       } 
-/*     */     } 
-/*     */ 
-/*     */     
-/* 116 */     if (compound1 == null && compound2 == null && paramClass
-/* 117 */       .isAnnotationPresent((Class)Inherited.class)) {
-/* 118 */       return getInheritedAnnotations(paramClass);
-/*     */     }
-/* 120 */     Attribute.Compound[] arrayOfCompound = unpackContained(compound2);
-/*     */ 
-/*     */ 
-/*     */     
-/* 124 */     if (compound1 == null && arrayOfCompound.length == 0 && paramClass
-/* 125 */       .isAnnotationPresent((Class)Inherited.class)) {
-/* 126 */       return getInheritedAnnotations(paramClass);
-/*     */     }
-/* 128 */     int i = ((compound1 == null) ? 0 : 1) + arrayOfCompound.length;
-/*     */     
-/* 130 */     Annotation[] arrayOfAnnotation = (Annotation[])Array.newInstance(paramClass, i);
-/*     */ 
-/*     */     
-/* 133 */     byte b4 = -1;
-/* 134 */     int j = arrayOfAnnotation.length;
-/* 135 */     if (b1 >= 0 && b2 >= 0)
-/* 136 */     { if (b1 < b2) {
-/* 137 */         arrayOfAnnotation[0] = AnnotationProxyMaker.generateAnnotation(compound1, paramClass);
-/* 138 */         b4 = 1;
-/*     */       } else {
-/* 140 */         arrayOfAnnotation[arrayOfAnnotation.length - 1] = AnnotationProxyMaker.generateAnnotation(compound1, paramClass);
-/* 141 */         b4 = 0;
-/* 142 */         j--;
-/*     */       }  }
-/* 144 */     else { if (b1 >= 0) {
-/* 145 */         arrayOfAnnotation[0] = AnnotationProxyMaker.generateAnnotation(compound1, paramClass);
-/* 146 */         return (A[])arrayOfAnnotation;
-/*     */       } 
-/*     */       
-/* 149 */       b4 = 0; }
-/*     */ 
-/*     */     
-/* 152 */     for (byte b = 0; b + b4 < j; b++) {
-/* 153 */       arrayOfAnnotation[b4 + b] = AnnotationProxyMaker.generateAnnotation(arrayOfCompound[b], paramClass);
-/*     */     }
-/* 155 */     return (A[])arrayOfAnnotation;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   private Attribute.Compound[] unpackContained(Attribute.Compound paramCompound) {
-/* 160 */     Attribute[] arrayOfAttribute = null;
-/* 161 */     if (paramCompound != null)
-/* 162 */       arrayOfAttribute = unpackAttributes(paramCompound); 
-/* 163 */     ListBuffer listBuffer = new ListBuffer();
-/* 164 */     if (arrayOfAttribute != null)
-/* 165 */       for (Attribute attribute : arrayOfAttribute) {
-/* 166 */         if (attribute instanceof Attribute.Compound)
-/* 167 */           listBuffer = listBuffer.append(attribute); 
-/*     */       }  
-/* 169 */     return (Attribute.Compound[])listBuffer.toArray((Object[])new Attribute.Compound[listBuffer.size()]);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public <A extends Annotation> A getAnnotation(Class<A> paramClass) {
-/* 175 */     if (!paramClass.isAnnotation()) {
-/* 176 */       throw new IllegalArgumentException("Not an annotation type: " + paramClass);
-/*     */     }
-/* 178 */     Attribute.Compound compound = getAttribute(paramClass);
-/* 179 */     return (compound == null) ? null : (A)AnnotationProxyMaker.generateAnnotation(compound, paramClass);
-/*     */   }
-/*     */ 
-/*     */   
-/* 183 */   private static final Class<? extends Annotation> REPEATABLE_CLASS = initRepeatable();
-/* 184 */   private static final Method VALUE_ELEMENT_METHOD = initValueElementMethod();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static Class<? extends Annotation> initRepeatable() {
-/*     */     try {
-/* 191 */       return Class.forName("java.lang.annotation.Repeatable").asSubclass(Annotation.class);
-/* 192 */     } catch (ClassNotFoundException|SecurityException classNotFoundException) {
-/* 193 */       return null;
-/*     */     } 
-/*     */   }
-/*     */   
-/*     */   private static Method initValueElementMethod() {
-/* 198 */     if (REPEATABLE_CLASS == null) {
-/* 199 */       return null;
-/*     */     }
-/* 201 */     Method method = null;
-/*     */     try {
-/* 203 */       method = REPEATABLE_CLASS.getMethod("value", new Class[0]);
-/* 204 */       if (method != null)
-/* 205 */         method.setAccessible(true); 
-/* 206 */       return method;
-/* 207 */     } catch (NoSuchMethodException noSuchMethodException) {
-/* 208 */       return null;
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static Class<? extends Annotation> getContainer(Class<? extends Annotation> paramClass) {
-/* 218 */     if (REPEATABLE_CLASS != null && VALUE_ELEMENT_METHOD != null) {
-/*     */ 
-/*     */       
-/* 221 */       Object object = paramClass.getAnnotation((Class)REPEATABLE_CLASS);
-/* 222 */       if (object != null) {
-/*     */         
-/*     */         try {
-/*     */ 
-/*     */           
-/* 227 */           Class<? extends Annotation> clazz = (Class)VALUE_ELEMENT_METHOD.invoke(object, new Object[0]);
-/* 228 */           if (clazz == null) {
-/* 229 */             return null;
-/*     */           }
-/* 231 */           return clazz;
-/* 232 */         } catch (ClassCastException|IllegalAccessException|java.lang.reflect.InvocationTargetException classCastException) {
-/* 233 */           return null;
-/*     */         } 
-/*     */       }
-/*     */     } 
-/* 237 */     return null;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static Attribute[] unpackAttributes(Attribute.Compound paramCompound) {
-/* 246 */     return ((Attribute.Array)paramCompound.member(paramCompound.type.tsym.name.table.names.value)).values;
-/*     */   }
-/*     */   
-/*     */   public abstract List<? extends Attribute.Compound> getAnnotationMirrors();
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\code\AnnoConstruct.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2005, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+package com.sun.tools.javac.code;
+
+import java.lang.annotation.Annotation;
+import java.lang.annotation.Inherited;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
+import javax.lang.model.AnnotatedConstruct;
+
+import com.sun.tools.javac.model.AnnotationProxyMaker;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.ListBuffer;
+
+/**
+ * Common super type for annotated constructs such as Types and Symbols.
+ *
+ * This class should *not* contain any fields since it would have a significant
+ * impact on the javac memory footprint.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own
+ * risk.  This code and its internal interfaces are subject to change
+ * or deletion without notice.</b></p>
+ */
+public abstract class AnnoConstruct implements AnnotatedConstruct {
+
+
+    // Override to enforce a narrower return type.
+    @Override
+    public abstract List<? extends Attribute.Compound> getAnnotationMirrors();
+
+
+    // This method is part of the javax.lang.model API, do not use this in javac code.
+    protected <A extends Annotation> Attribute.Compound getAttribute(Class<A> annoType) {
+        String name = annoType.getName();
+
+        for (Attribute.Compound anno : getAnnotationMirrors()) {
+            if (name.equals(anno.type.tsym.flatName().toString()))
+                return anno;
+        }
+
+        return null;
+    }
+
+
+    @SuppressWarnings("unchecked")
+    protected <A extends Annotation> A[] getInheritedAnnotations(Class<A> annoType) {
+        return (A[]) java.lang.reflect.Array.newInstance(annoType, 0);  // annoType is the Class for A
+    }
+
+
+    // This method is part of the javax.lang.model API, do not use this in javac code.
+    public <A extends Annotation> A[] getAnnotationsByType(Class<A> annoType) {
+
+        if (!annoType.isAnnotation())
+            throw new IllegalArgumentException("Not an annotation type: "
+                                               + annoType);
+        // If annoType does not declare a container this is equivalent to wrapping
+        // getAnnotation(...) in an array.
+        Class <? extends Annotation> containerType = getContainer(annoType);
+        if (containerType == null) {
+            A res = getAnnotation(annoType);
+            int size = res == null ? 0 : 1;
+
+            @SuppressWarnings("unchecked") // annoType is the Class for A
+            A[] arr = (A[])java.lang.reflect.Array.newInstance(annoType, size);
+            if (res != null)
+                arr[0] = res;
+            return arr;
+        }
+
+        // So we have a containing type
+        String annoTypeName = annoType.getName();
+        String containerTypeName = containerType.getName();
+        int directIndex = -1, containerIndex = -1;
+        Attribute.Compound direct = null, container = null;
+        // Find directly (explicit or implicit) present annotations
+        int index = -1;
+        for (Attribute.Compound attribute : getAnnotationMirrors()) {
+            index++;
+            if (attribute.type.tsym.flatName().contentEquals(annoTypeName)) {
+                directIndex = index;
+                direct = attribute;
+            } else if(containerTypeName != null &&
+                      attribute.type.tsym.flatName().contentEquals(containerTypeName)) {
+                containerIndex = index;
+                container = attribute;
+            }
+        }
+
+        // Deal with inherited annotations
+        if (direct == null && container == null &&
+                annoType.isAnnotationPresent(Inherited.class))
+            return getInheritedAnnotations(annoType);
+
+        Attribute.Compound[] contained = unpackContained(container);
+
+        // In case of an empty legacy container we might need to look for
+        // inherited annos as well
+        if (direct == null && contained.length == 0 &&
+                annoType.isAnnotationPresent(Inherited.class))
+            return getInheritedAnnotations(annoType);
+
+        int size = (direct == null ? 0 : 1) + contained.length;
+        @SuppressWarnings("unchecked") // annoType is the Class for A
+        A[] arr = (A[])java.lang.reflect.Array.newInstance(annoType, size);
+
+        // if direct && container, which is first?
+        int insert = -1;
+        int length = arr.length;
+        if (directIndex >= 0 && containerIndex >= 0) {
+            if (directIndex < containerIndex) {
+                arr[0] = AnnotationProxyMaker.generateAnnotation(direct, annoType);
+                insert = 1;
+            } else {
+                arr[arr.length - 1] = AnnotationProxyMaker.generateAnnotation(direct, annoType);
+                insert = 0;
+                length--;
+            }
+        } else if (directIndex >= 0) {
+            arr[0] = AnnotationProxyMaker.generateAnnotation(direct, annoType);
+            return arr;
+        } else {
+            // Only container
+            insert = 0;
+        }
+
+        for (int i = 0; i + insert < length; i++)
+            arr[insert + i] = AnnotationProxyMaker.generateAnnotation(contained[i], annoType);
+
+        return arr;
+    }
+
+    private Attribute.Compound[] unpackContained(Attribute.Compound container) {
+        // Pack them in an array
+        Attribute[] contained0 = null;
+        if (container != null)
+            contained0 = unpackAttributes(container);
+        ListBuffer<Attribute.Compound> compounds = new ListBuffer<>();
+        if (contained0 != null) {
+            for (Attribute a : contained0)
+                if (a instanceof Attribute.Compound)
+                    compounds = compounds.append((Attribute.Compound)a);
+        }
+        return compounds.toArray(new Attribute.Compound[compounds.size()]);
+    }
+
+    // This method is part of the javax.lang.model API, do not use this in javac code.
+    public <A extends Annotation> A getAnnotation(Class<A> annoType) {
+
+        if (!annoType.isAnnotation())
+            throw new IllegalArgumentException("Not an annotation type: " + annoType);
+
+        Attribute.Compound c = getAttribute(annoType);
+        return c == null ? null : AnnotationProxyMaker.generateAnnotation(c, annoType);
+    }
+
+    // Needed to unpack the runtime view of containing annotations
+    private static final Class<? extends Annotation> REPEATABLE_CLASS = initRepeatable();
+    private static final Method VALUE_ELEMENT_METHOD = initValueElementMethod();
+
+    private static Class<? extends Annotation> initRepeatable() {
+        try {
+            // Repeatable will not be available when bootstrapping on
+            // JDK 7 so use a reflective lookup instead of a class
+            // literal for Repeatable.class.
+            return Class.forName("java.lang.annotation.Repeatable").asSubclass(Annotation.class);
+        } catch (ClassNotFoundException | SecurityException e) {
+            return null;
+        }
+    }
+
+    private static Method initValueElementMethod() {
+        if (REPEATABLE_CLASS == null)
+            return null;
+
+        Method m = null;
+        try {
+            m = REPEATABLE_CLASS.getMethod("value");
+            if (m != null)
+                m.setAccessible(true);
+            return m;
+        } catch (NoSuchMethodException e) {
+            return null;
+        }
+    }
+
+
+    // Helper to getAnnotationsByType
+    private static Class<? extends Annotation> getContainer(Class<? extends Annotation> annoType) {
+        // Since we can not refer to java.lang.annotation.Repeatable until we are
+        // bootstrapping with java 8 we need to get the Repeatable annotation using
+        // reflective invocations instead of just using its type and element method.
+        if (REPEATABLE_CLASS != null &&
+            VALUE_ELEMENT_METHOD != null) {
+            // Get the Repeatable instance on the annotations declaration
+            Annotation repeatable = (Annotation)annoType.getAnnotation(REPEATABLE_CLASS);
+            if (repeatable != null) {
+                try {
+                    // Get the value element, it should be a class
+                    // indicating the containing annotation type
+                    @SuppressWarnings("unchecked")
+                    Class<? extends Annotation> containerType = (Class)VALUE_ELEMENT_METHOD.invoke(repeatable);
+                    if (containerType == null)
+                        return null;
+
+                    return containerType;
+                } catch (ClassCastException | IllegalAccessException | InvocationTargetException e) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+
+    // Helper to getAnnotationsByType
+    private static Attribute[] unpackAttributes(Attribute.Compound container) {
+        // We now have an instance of the container,
+        // unpack it returning an instance of the
+        // contained type or null
+        return ((Attribute.Array)container.member(container.type.tsym.name.table.names.value)).values;
+    }
+
+}

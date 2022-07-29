@@ -1,546 +1,543 @@
-/*     */ package com.sun.tools.javac.nio;
-/*     */
-/*     */ import com.sun.tools.javac.main.Option;
-/*     */ import com.sun.tools.javac.util.BaseFileManager;
-/*     */ import com.sun.tools.javac.util.Context;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import com.sun.tools.javac.util.ListBuffer;
-/*     */ import java.io.File;
-/*     */ import java.io.IOException;
-/*     */ import java.net.MalformedURLException;
-/*     */ import java.net.URL;
-/*     */ import java.nio.charset.Charset;
-/*     */ import java.nio.file.FileSystem;
-/*     */ import java.nio.file.FileSystems;
-/*     */ import java.nio.file.FileVisitOption;
-/*     */ import java.nio.file.FileVisitResult;
-/*     */ import java.nio.file.Files;
-/*     */ import java.nio.file.Path;
-/*     */ import java.nio.file.SimpleFileVisitor;
-/*     */ import java.nio.file.attribute.BasicFileAttributes;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.Collection;
-/*     */ import java.util.Collections;
-/*     */ import java.util.EnumSet;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.LinkedHashSet;
-/*     */ import java.util.Map;
-/*     */ import java.util.Set;
-/*     */ import javax.lang.model.SourceVersion;
-/*     */ import javax.tools.FileObject;
-/*     */ import javax.tools.JavaFileManager;
-/*     */ import javax.tools.JavaFileObject;
-/*     */ import javax.tools.StandardLocation;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class JavacPathFileManager
-/*     */   extends BaseFileManager
-/*     */   implements PathFileManager
-/*     */ {
-/*     */   protected FileSystem defaultFileSystem;
-/*     */   private boolean inited;
-/*     */   private Map<Location, PathsForLocation> pathsForLocation;
-/*     */   private Map<Path, FileSystem> fileSystems;
-/*     */
-/*     */   public JavacPathFileManager(Context paramContext, boolean paramBoolean, Charset paramCharset) {
-/* 113 */     super(paramCharset);
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 269 */     this.inited = false; if (paramBoolean)
-/*     */       paramContext.put(JavaFileManager.class, this);  this.pathsForLocation = new HashMap<>(); this.fileSystems = new HashMap<>(); setContext(paramContext);
-/*     */   } public void setContext(Context paramContext) { super.setContext(paramContext); } public FileSystem getDefaultFileSystem() { if (this.defaultFileSystem == null)
-/*     */       this.defaultFileSystem = FileSystems.getDefault();  return this.defaultFileSystem; }
-/*     */   public void setDefaultFileSystem(FileSystem paramFileSystem) { this.defaultFileSystem = paramFileSystem; }
-/*     */   public void flush() throws IOException { this.contentCache.clear(); }
-/*     */   public void close() throws IOException { for (FileSystem fileSystem : this.fileSystems.values())
-/*     */       fileSystem.close();  }
-/*     */   public ClassLoader getClassLoader(Location paramLocation) { nullCheck(paramLocation); Iterable<? extends Path> iterable = getLocation(paramLocation); if (iterable == null)
-/*     */       return null;  ListBuffer listBuffer = new ListBuffer(); for (Path path : iterable) { try { listBuffer.append(path.toUri().toURL()); }
-/*     */       catch (MalformedURLException malformedURLException) { throw new AssertionError(malformedURLException); }
-/*     */        }
-/*     */      return getClassLoader((URL[])listBuffer.toArray((Object[])new URL[listBuffer.size()])); }
-/*     */   public boolean isDefaultBootClassPath() { return this.locations.isDefaultBootClassPath(); }
-/* 283 */   public Path getPath(FileObject paramFileObject) { nullCheck(paramFileObject);
-/* 284 */     if (!(paramFileObject instanceof PathFileObject))
-/* 285 */       throw new IllegalArgumentException();
-/* 286 */     return ((PathFileObject)paramFileObject).getPath(); } public boolean hasLocation(Location paramLocation) { return (getLocation(paramLocation) != null); }
-/*     */   public Iterable<? extends Path> getLocation(Location paramLocation) { nullCheck(paramLocation); lazyInitSearchPaths(); PathsForLocation pathsForLocation = this.pathsForLocation.get(paramLocation); if (pathsForLocation == null && !this.pathsForLocation.containsKey(paramLocation)) { setDefaultForLocation(paramLocation); pathsForLocation = this.pathsForLocation.get(paramLocation); }  return pathsForLocation; }
-/*     */   private Path getOutputLocation(Location paramLocation) { Iterable<? extends Path> iterable = getLocation(paramLocation); return (iterable == null) ? null : iterable.iterator().next(); }
-/*     */   public void setLocation(Location paramLocation, Iterable<? extends Path> paramIterable) throws IOException { nullCheck(paramLocation); lazyInitSearchPaths(); if (paramIterable == null) { setDefaultForLocation(paramLocation); } else { if (paramLocation.isOutputLocation()) checkOutputPath(paramIterable);  PathsForLocation pathsForLocation = new PathsForLocation(); for (Path path : paramIterable)
-/*     */         pathsForLocation.add(path);  this.pathsForLocation.put(paramLocation, pathsForLocation); }  }
-/* 291 */   public boolean isSameFile(FileObject paramFileObject1, FileObject paramFileObject2) { nullCheck(paramFileObject1);
-/* 292 */     nullCheck(paramFileObject2);
-/* 293 */     if (!(paramFileObject1 instanceof PathFileObject))
-/* 294 */       throw new IllegalArgumentException("Not supported: " + paramFileObject1);
-/* 295 */     if (!(paramFileObject2 instanceof PathFileObject))
-/* 296 */       throw new IllegalArgumentException("Not supported: " + paramFileObject2);
-/* 297 */     return ((PathFileObject)paramFileObject1).isSameFile((PathFileObject)paramFileObject2); }
-/*     */   private void checkOutputPath(Iterable<? extends Path> paramIterable) throws IOException { Iterator<? extends Path> iterator = paramIterable.iterator();
-/*     */     if (!iterator.hasNext())
-/*     */       throw new IllegalArgumentException("empty path for directory");
-/*     */     Path path = iterator.next();
-/*     */     if (iterator.hasNext())
-/*     */       throw new IllegalArgumentException("path too long for directory");
-/*     */     if (!isDirectory(path))
-/* 305 */       throw new IOException(path + ": not a directory");  } public Iterable<JavaFileObject> list(Location paramLocation, String paramString, Set<JavaFileObject.Kind> paramSet, boolean paramBoolean) throws IOException { nullCheck(paramString);
-/* 306 */     nullCheck(paramSet);
-/*     */
-/* 308 */     Iterable<? extends Path> iterable = getLocation(paramLocation);
-/* 309 */     if (iterable == null)
-/* 310 */       return (Iterable<JavaFileObject>)List.nil();
-/* 311 */     ListBuffer<JavaFileObject> listBuffer = new ListBuffer();
-/*     */
-/* 313 */     for (Path path : iterable) {
-/* 314 */       list(path, paramString, paramSet, paramBoolean, listBuffer);
-/*     */     }
-/* 316 */     return (Iterable<JavaFileObject>)listBuffer.toList(); }
-/*     */   private void setDefaultForLocation(Location paramLocation) { Collection<T> collection = null; if (paramLocation instanceof StandardLocation) { String str; switch ((StandardLocation)paramLocation) { case CLASS_PATH: collection = this.locations.userClassPath(); break;case PLATFORM_CLASS_PATH: collection = this.locations.bootClassPath(); break;case SOURCE_PATH: collection = this.locations.sourcePath(); break;case CLASS_OUTPUT: str = this.options.get(Option.D); collection = (str == null) ? null : Collections.<T>singleton((T)new File(str)); break;case SOURCE_OUTPUT: str = this.options.get(Option.S); collection = (str == null) ? null : Collections.<T>singleton((T)new File(str)); break; }  }  PathsForLocation pathsForLocation = new PathsForLocation(); if (collection != null)
-/*     */       for (File file : collection)
-/*     */         pathsForLocation.add(file.toPath());   if (!pathsForLocation.isEmpty())
-/*     */       this.pathsForLocation.put(paramLocation, pathsForLocation);  }
-/*     */   private void lazyInitSearchPaths() { if (!this.inited) { setDefaultForLocation(StandardLocation.PLATFORM_CLASS_PATH); setDefaultForLocation(StandardLocation.CLASS_PATH); setDefaultForLocation(StandardLocation.SOURCE_PATH); this.inited = true; }  } private static class PathsForLocation extends LinkedHashSet<Path> {
-/* 322 */     private static final long serialVersionUID = 6788510222394486733L; private PathsForLocation() {} } private void list(Path paramPath, String paramString, final Set<JavaFileObject.Kind> kinds, boolean paramBoolean, final ListBuffer<JavaFileObject> results) throws IOException { final Path pathDir; if (!Files.exists(paramPath, new java.nio.file.LinkOption[0])) {
-/*     */       return;
-/*     */     }
-/*     */
-/* 326 */     if (isDirectory(paramPath)) {
-/* 327 */       path1 = paramPath;
-/*     */     } else {
-/* 329 */       FileSystem fileSystem = getFileSystem(paramPath);
-/* 330 */       if (fileSystem == null)
-/*     */         return;
-/* 332 */       path1 = fileSystem.getRootDirectories().iterator().next();
-/*     */     }
-/* 334 */     String str = paramPath.getFileSystem().getSeparator();
-/*     */
-/* 336 */     Path path2 = paramString.isEmpty() ? path1 : path1.resolve(paramString.replace(".", str));
-/* 337 */     if (!Files.exists(path2, new java.nio.file.LinkOption[0])) {
-/*     */       return;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 366 */     boolean bool = paramBoolean ? true : true;
-/* 367 */     EnumSet<FileVisitOption> enumSet = EnumSet.of(FileVisitOption.FOLLOW_LINKS);
-/* 368 */     Files.walkFileTree(path2, enumSet, bool, new SimpleFileVisitor<Path>()
-/*     */         {
-/*     */           public FileVisitResult preVisitDirectory(Path param1Path, BasicFileAttributes param1BasicFileAttributes)
-/*     */           {
-/* 372 */             Path path = param1Path.getFileName();
-/* 373 */             if (path == null || SourceVersion.isIdentifier(path.toString())) {
-/* 374 */               return FileVisitResult.CONTINUE;
-/*     */             }
-/* 376 */             return FileVisitResult.SKIP_SUBTREE;
-/*     */           }
-/*     */
-/*     */
-/*     */           public FileVisitResult visitFile(Path param1Path, BasicFileAttributes param1BasicFileAttributes) {
-/* 381 */             if (param1BasicFileAttributes.isRegularFile() && kinds.contains(BaseFileManager.getKind(param1Path.getFileName().toString()))) {
-/*     */
-/* 383 */               PathFileObject pathFileObject = PathFileObject.createDirectoryPathFileObject(JavacPathFileManager.this, param1Path, pathDir);
-/*     */
-/* 385 */               results.append(pathFileObject);
-/*     */             }
-/* 387 */             return FileVisitResult.CONTINUE;
-/*     */           }
-/*     */         }); }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Iterable<? extends JavaFileObject> getJavaFileObjectsFromPaths(Iterable<? extends Path> paramIterable) {
-/*     */     ArrayList<PathFileObject> arrayList;
-/* 396 */     if (paramIterable instanceof Collection) {
-/* 397 */       arrayList = new ArrayList(((Collection)paramIterable).size());
-/*     */     } else {
-/* 399 */       arrayList = new ArrayList();
-/* 400 */     }  for (Path path : paramIterable)
-/* 401 */       arrayList.add(PathFileObject.createSimplePathFileObject(this, (Path)nullCheck(path)));
-/* 402 */     return (Iterable)arrayList;
-/*     */   }
-/*     */
-/*     */
-/*     */   public Iterable<? extends JavaFileObject> getJavaFileObjects(Path... paramVarArgs) {
-/* 407 */     return getJavaFileObjectsFromPaths(Arrays.asList((Object[])nullCheck(paramVarArgs)));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public JavaFileObject getJavaFileForInput(Location paramLocation, String paramString, JavaFileObject.Kind paramKind) throws IOException {
-/* 413 */     return getFileForInput(paramLocation, getRelativePath(paramString, paramKind));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public FileObject getFileForInput(Location paramLocation, String paramString1, String paramString2) throws IOException {
-/* 419 */     return getFileForInput(paramLocation, getRelativePath(paramString1, paramString2));
-/*     */   }
-/*     */
-/*     */
-/*     */   private JavaFileObject getFileForInput(Location paramLocation, String paramString) throws IOException {
-/* 424 */     for (Path path : getLocation(paramLocation)) {
-/* 425 */       if (isDirectory(path)) {
-/* 426 */         Path path1 = resolve(path, paramString);
-/* 427 */         if (Files.exists(path1, new java.nio.file.LinkOption[0]))
-/* 428 */           return PathFileObject.createDirectoryPathFileObject(this, path1, path);  continue;
-/*     */       }
-/* 430 */       FileSystem fileSystem = getFileSystem(path);
-/* 431 */       if (fileSystem != null) {
-/* 432 */         Path path1 = getPath(fileSystem, paramString);
-/* 433 */         if (Files.exists(path1, new java.nio.file.LinkOption[0])) {
-/* 434 */           return PathFileObject.createJarPathFileObject(this, path1);
-/*     */         }
-/*     */       }
-/*     */     }
-/* 438 */     return null;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public JavaFileObject getJavaFileForOutput(Location paramLocation, String paramString, JavaFileObject.Kind paramKind, FileObject paramFileObject) throws IOException {
-/* 444 */     return getFileForOutput(paramLocation, getRelativePath(paramString, paramKind), paramFileObject);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public FileObject getFileForOutput(Location paramLocation, String paramString1, String paramString2, FileObject paramFileObject) throws IOException {
-/* 451 */     return getFileForOutput(paramLocation, getRelativePath(paramString1, paramString2), paramFileObject);
-/*     */   }
-/*     */
-/*     */
-/*     */   private JavaFileObject getFileForOutput(Location paramLocation, String paramString, FileObject paramFileObject) {
-/* 456 */     Path path1 = getOutputLocation(paramLocation);
-/* 457 */     if (path1 == null) {
-/* 458 */       if (paramLocation == StandardLocation.CLASS_OUTPUT) {
-/* 459 */         Path path = null;
-/* 460 */         if (paramFileObject != null && paramFileObject instanceof PathFileObject) {
-/* 461 */           path = ((PathFileObject)paramFileObject).getPath().getParent();
-/*     */         }
-/* 463 */         return PathFileObject.createSiblingPathFileObject(this, path
-/* 464 */             .resolve(getBaseName(paramString)), paramString);
-/*     */       }
-/* 466 */       if (paramLocation == StandardLocation.SOURCE_OUTPUT) {
-/* 467 */         path1 = getOutputLocation(StandardLocation.CLASS_OUTPUT);
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/* 472 */     if (path1 != null) {
-/* 473 */       Path path = resolve(path1, paramString);
-/* 474 */       return PathFileObject.createDirectoryPathFileObject(this, path, path1);
-/*     */     }
-/* 476 */     Path path2 = getPath(getDefaultFileSystem(), paramString);
-/* 477 */     return PathFileObject.createSimplePathFileObject(this, path2);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public String inferBinaryName(Location paramLocation, JavaFileObject paramJavaFileObject) {
-/* 484 */     nullCheck(paramJavaFileObject);
-/*     */
-/* 486 */     Iterable<? extends Path> iterable = getLocation(paramLocation);
-/* 487 */     if (iterable == null) {
-/* 488 */       return null;
-/*     */     }
-/*     */
-/* 491 */     if (!(paramJavaFileObject instanceof PathFileObject)) {
-/* 492 */       throw new IllegalArgumentException(paramJavaFileObject.getClass().getName());
-/*     */     }
-/* 494 */     return ((PathFileObject)paramJavaFileObject).inferBinaryName(iterable);
-/*     */   }
-/*     */
-/*     */   private FileSystem getFileSystem(Path paramPath) throws IOException {
-/* 498 */     FileSystem fileSystem = this.fileSystems.get(paramPath);
-/* 499 */     if (fileSystem == null) {
-/* 500 */       fileSystem = FileSystems.newFileSystem(paramPath, (ClassLoader)null);
-/* 501 */       this.fileSystems.put(paramPath, fileSystem);
-/*     */     }
-/* 503 */     return fileSystem;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private static String getRelativePath(String paramString, JavaFileObject.Kind paramKind) {
-/* 513 */     return paramString.replace(".", "/") + paramKind.extension;
-/*     */   }
-/*     */
-/*     */   private static String getRelativePath(String paramString1, String paramString2) {
-/* 517 */     return paramString1.isEmpty() ? paramString2 : (paramString1
-/* 518 */       .replace(".", "/") + "/" + paramString2);
-/*     */   }
-/*     */
-/*     */   private static String getBaseName(String paramString) {
-/* 522 */     int i = paramString.lastIndexOf("/");
-/* 523 */     return paramString.substring(i + 1);
-/*     */   }
-/*     */
-/*     */   private static boolean isDirectory(Path paramPath) throws IOException {
-/* 527 */     BasicFileAttributes basicFileAttributes = (BasicFileAttributes)Files.readAttributes(paramPath, (Class)BasicFileAttributes.class, new java.nio.file.LinkOption[0]);
-/* 528 */     return basicFileAttributes.isDirectory();
-/*     */   }
-/*     */
-/*     */   private static Path getPath(FileSystem paramFileSystem, String paramString) {
-/* 532 */     return paramFileSystem.getPath(paramString.replace("/", paramFileSystem.getSeparator()), new String[0]);
-/*     */   }
-/*     */
-/*     */   private static Path resolve(Path paramPath, String paramString) {
-/* 536 */     FileSystem fileSystem = paramPath.getFileSystem();
-/* 537 */     Path path = fileSystem.getPath(paramString.replace("/", fileSystem.getSeparator()), new String[0]);
-/* 538 */     return paramPath.resolve(path);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\nio\JavacPathFileManager.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2009, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.nio;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.FileVisitOption;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+import javax.lang.model.SourceVersion;
+import javax.tools.FileObject;
+import javax.tools.JavaFileManager;
+import javax.tools.JavaFileObject;
+import javax.tools.JavaFileObject.Kind;
+import javax.tools.StandardLocation;
+
+import static java.nio.file.FileVisitOption.*;
+import static javax.tools.StandardLocation.*;
+
+import com.sun.tools.javac.util.BaseFileManager;
+import com.sun.tools.javac.util.Context;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.ListBuffer;
+
+import static com.sun.tools.javac.main.Option.*;
+
+
+// NOTE the imports carefully for this compilation unit.
+//
+// Path:  java.nio.file.Path -- the new NIO type for which this file manager exists
+//
+// Paths: com.sun.tools.javac.file.Paths -- legacy javac type for handling path options
+//      The other Paths (java.nio.file.Paths) is not used
+
+// NOTE this and related classes depend on new API in JDK 7.
+// This requires special handling while bootstrapping the JDK build,
+// when these classes might not yet have been compiled. To workaround
+// this, the build arranges to make stubs of these classes available
+// when compiling this and related classes. The set of stub files
+// is specified in make/build.properties.
+
+/**
+ *  Implementation of PathFileManager: a JavaFileManager based on the use
+ *  of java.nio.file.Path.
+ *
+ *  <p>Just as a Path is somewhat analagous to a File, so too is this
+ *  JavacPathFileManager analogous to JavacFileManager, as it relates to the
+ *  support of FileObjects based on File objects (i.e. just RegularFileObject,
+ *  not ZipFileObject and its variants.)
+ *
+ *  <p>The default values for the standard locations supported by this file
+ *  manager are the same as the default values provided by JavacFileManager --
+ *  i.e. as determined by the javac.file.Paths class. To override these values,
+ *  call {@link #setLocation}.
+ *
+ *  <p>To reduce confusion with Path objects, the locations such as "class path",
+ *  "source path", etc, are generically referred to here as "search paths".
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class JavacPathFileManager extends BaseFileManager implements PathFileManager {
+    protected FileSystem defaultFileSystem;
+
+    /**
+     * Create a JavacPathFileManager using a given context, optionally registering
+     * it as the JavaFileManager for that context.
+     */
+    public JavacPathFileManager(Context context, boolean register, Charset charset) {
+        super(charset);
+        if (register)
+            context.put(JavaFileManager.class, this);
+        pathsForLocation = new HashMap<Location, PathsForLocation>();
+        fileSystems = new HashMap<Path,FileSystem>();
+        setContext(context);
+    }
+
+    /**
+     * Set the context for JavacPathFileManager.
+     */
+    @Override
+    public void setContext(Context context) {
+        super.setContext(context);
+    }
+
+    @Override
+    public FileSystem getDefaultFileSystem() {
+        if (defaultFileSystem == null)
+            defaultFileSystem = FileSystems.getDefault();
+        return defaultFileSystem;
+    }
+
+    @Override
+    public void setDefaultFileSystem(FileSystem fs) {
+        defaultFileSystem = fs;
+    }
+
+    @Override
+    public void flush() throws IOException {
+        contentCache.clear();
+    }
+
+    @Override
+    public void close() throws IOException {
+        for (FileSystem fs: fileSystems.values())
+            fs.close();
+    }
+
+    @Override
+    public ClassLoader getClassLoader(Location location) {
+        nullCheck(location);
+        Iterable<? extends Path> path = getLocation(location);
+        if (path == null)
+            return null;
+        ListBuffer<URL> lb = new ListBuffer<URL>();
+        for (Path p: path) {
+            try {
+                lb.append(p.toUri().toURL());
+            } catch (MalformedURLException e) {
+                throw new AssertionError(e);
+            }
+        }
+
+        return getClassLoader(lb.toArray(new URL[lb.size()]));
+    }
+
+    @Override
+    public boolean isDefaultBootClassPath() {
+        return locations.isDefaultBootClassPath();
+    }
+
+    // <editor-fold defaultstate="collapsed" desc="Location handling">
+
+    public boolean hasLocation(Location location) {
+        return (getLocation(location) != null);
+    }
+
+    public Iterable<? extends Path> getLocation(Location location) {
+        nullCheck(location);
+        lazyInitSearchPaths();
+        PathsForLocation path = pathsForLocation.get(location);
+        if (path == null && !pathsForLocation.containsKey(location)) {
+            setDefaultForLocation(location);
+            path = pathsForLocation.get(location);
+        }
+        return path;
+    }
+
+    private Path getOutputLocation(Location location) {
+        Iterable<? extends Path> paths = getLocation(location);
+        return (paths == null ? null : paths.iterator().next());
+    }
+
+    public void setLocation(Location location, Iterable<? extends Path> searchPath)
+            throws IOException
+    {
+        nullCheck(location);
+        lazyInitSearchPaths();
+        if (searchPath == null) {
+            setDefaultForLocation(location);
+        } else {
+            if (location.isOutputLocation())
+                checkOutputPath(searchPath);
+            PathsForLocation pl = new PathsForLocation();
+            for (Path p: searchPath)
+                pl.add(p);  // TODO -Xlint:path warn if path not found
+            pathsForLocation.put(location, pl);
+        }
+    }
+
+    private void checkOutputPath(Iterable<? extends Path> searchPath) throws IOException {
+        Iterator<? extends Path> pathIter = searchPath.iterator();
+        if (!pathIter.hasNext())
+            throw new IllegalArgumentException("empty path for directory");
+        Path path = pathIter.next();
+        if (pathIter.hasNext())
+            throw new IllegalArgumentException("path too long for directory");
+        if (!isDirectory(path))
+            throw new IOException(path + ": not a directory");
+    }
+
+    private void setDefaultForLocation(Location locn) {
+        Collection<File> files = null;
+        if (locn instanceof StandardLocation) {
+            switch ((StandardLocation) locn) {
+                case CLASS_PATH:
+                    files = locations.userClassPath();
+                    break;
+                case PLATFORM_CLASS_PATH:
+                    files = locations.bootClassPath();
+                    break;
+                case SOURCE_PATH:
+                    files = locations.sourcePath();
+                    break;
+                case CLASS_OUTPUT: {
+                    String arg = options.get(D);
+                    files = (arg == null ? null : Collections.singleton(new File(arg)));
+                    break;
+                }
+                case SOURCE_OUTPUT: {
+                    String arg = options.get(S);
+                    files = (arg == null ? null : Collections.singleton(new File(arg)));
+                    break;
+                }
+            }
+        }
+
+        PathsForLocation pl = new PathsForLocation();
+        if (files != null) {
+            for (File f: files)
+                pl.add(f.toPath());
+        }
+        if (!pl.isEmpty())
+            pathsForLocation.put(locn, pl);
+    }
+
+    private void lazyInitSearchPaths() {
+        if (!inited) {
+            setDefaultForLocation(PLATFORM_CLASS_PATH);
+            setDefaultForLocation(CLASS_PATH);
+            setDefaultForLocation(SOURCE_PATH);
+            inited = true;
+        }
+    }
+    // where
+        private boolean inited = false;
+
+    private Map<Location, PathsForLocation> pathsForLocation;
+
+    private static class PathsForLocation extends LinkedHashSet<Path> {
+        private static final long serialVersionUID = 6788510222394486733L;
+    }
+
+    // </editor-fold>
+
+    // <editor-fold defaultstate="collapsed" desc="FileObject handling">
+
+    @Override
+    public Path getPath(FileObject fo) {
+        nullCheck(fo);
+        if (!(fo instanceof PathFileObject))
+            throw new IllegalArgumentException();
+        return ((PathFileObject) fo).getPath();
+    }
+
+    @Override
+    public boolean isSameFile(FileObject a, FileObject b) {
+        nullCheck(a);
+        nullCheck(b);
+        if (!(a instanceof PathFileObject))
+            throw new IllegalArgumentException("Not supported: " + a);
+        if (!(b instanceof PathFileObject))
+            throw new IllegalArgumentException("Not supported: " + b);
+        return ((PathFileObject) a).isSameFile((PathFileObject) b);
+    }
+
+    @Override
+    public Iterable<JavaFileObject> list(Location location,
+            String packageName, Set<Kind> kinds, boolean recurse)
+            throws IOException {
+        // validatePackageName(packageName);
+        nullCheck(packageName);
+        nullCheck(kinds);
+
+        Iterable<? extends Path> paths = getLocation(location);
+        if (paths == null)
+            return List.nil();
+        ListBuffer<JavaFileObject> results = new ListBuffer<JavaFileObject>();
+
+        for (Path path : paths)
+            list(path, packageName, kinds, recurse, results);
+
+        return results.toList();
+    }
+
+    private void list(Path path, String packageName, final Set<Kind> kinds,
+            boolean recurse, final ListBuffer<JavaFileObject> results)
+            throws IOException {
+        if (!Files.exists(path))
+            return;
+
+        final Path pathDir;
+        if (isDirectory(path))
+            pathDir = path;
+        else {
+            FileSystem fs = getFileSystem(path);
+            if (fs == null)
+                return;
+            pathDir = fs.getRootDirectories().iterator().next();
+        }
+        String sep = path.getFileSystem().getSeparator();
+        Path packageDir = packageName.isEmpty() ? pathDir
+                : pathDir.resolve(packageName.replace(".", sep));
+        if (!Files.exists(packageDir))
+            return;
+
+/* Alternate impl of list, superceded by use of Files.walkFileTree */
+//        Deque<Path> queue = new LinkedList<Path>();
+//        queue.add(packageDir);
+//
+//        Path dir;
+//        while ((dir = queue.poll()) != null) {
+//            DirectoryStream<Path> ds = dir.newDirectoryStream();
+//            try {
+//                for (Path p: ds) {
+//                    String name = p.getFileName().toString();
+//                    if (isDirectory(p)) {
+//                        if (recurse && SourceVersion.isIdentifier(name)) {
+//                            queue.add(p);
+//                        }
+//                    } else {
+//                        if (kinds.contains(getKind(name))) {
+//                            JavaFileObject fe =
+//                                PathFileObject.createDirectoryPathFileObject(this, p, pathDir);
+//                            results.append(fe);
+//                        }
+//                    }
+//                }
+//            } finally {
+//                ds.close();
+//            }
+//        }
+        int maxDepth = (recurse ? Integer.MAX_VALUE : 1);
+        Set<FileVisitOption> opts = EnumSet.of(FOLLOW_LINKS);
+        Files.walkFileTree(packageDir, opts, maxDepth,
+                new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                Path name = dir.getFileName();
+                if (name == null || SourceVersion.isIdentifier(name.toString())) // JSR 292?
+                    return FileVisitResult.CONTINUE;
+                else
+                    return FileVisitResult.SKIP_SUBTREE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                if (attrs.isRegularFile() && kinds.contains(getKind(file.getFileName().toString()))) {
+                    JavaFileObject fe =
+                        PathFileObject.createDirectoryPathFileObject(
+                            JavacPathFileManager.this, file, pathDir);
+                    results.append(fe);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    @Override
+    public Iterable<? extends JavaFileObject> getJavaFileObjectsFromPaths(
+        Iterable<? extends Path> paths) {
+        ArrayList<PathFileObject> result;
+        if (paths instanceof Collection<?>)
+            result = new ArrayList<PathFileObject>(((Collection<?>)paths).size());
+        else
+            result = new ArrayList<PathFileObject>();
+        for (Path p: paths)
+            result.add(PathFileObject.createSimplePathFileObject(this, nullCheck(p)));
+        return result;
+    }
+
+    @Override
+    public Iterable<? extends JavaFileObject> getJavaFileObjects(Path... paths) {
+        return getJavaFileObjectsFromPaths(Arrays.asList(nullCheck(paths)));
+    }
+
+    @Override
+    public JavaFileObject getJavaFileForInput(Location location,
+            String className, Kind kind) throws IOException {
+        return getFileForInput(location, getRelativePath(className, kind));
+    }
+
+    @Override
+    public FileObject getFileForInput(Location location,
+            String packageName, String relativeName) throws IOException {
+        return getFileForInput(location, getRelativePath(packageName, relativeName));
+    }
+
+    private JavaFileObject getFileForInput(Location location, String relativePath)
+            throws IOException {
+        for (Path p: getLocation(location)) {
+            if (isDirectory(p)) {
+                Path f = resolve(p, relativePath);
+                if (Files.exists(f))
+                    return PathFileObject.createDirectoryPathFileObject(this, f, p);
+            } else {
+                FileSystem fs = getFileSystem(p);
+                if (fs != null) {
+                    Path file = getPath(fs, relativePath);
+                    if (Files.exists(file))
+                        return PathFileObject.createJarPathFileObject(this, file);
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public JavaFileObject getJavaFileForOutput(Location location,
+            String className, Kind kind, FileObject sibling) throws IOException {
+        return getFileForOutput(location, getRelativePath(className, kind), sibling);
+    }
+
+    @Override
+    public FileObject getFileForOutput(Location location, String packageName,
+            String relativeName, FileObject sibling)
+            throws IOException {
+        return getFileForOutput(location, getRelativePath(packageName, relativeName), sibling);
+    }
+
+    private JavaFileObject getFileForOutput(Location location,
+            String relativePath, FileObject sibling) {
+        Path dir = getOutputLocation(location);
+        if (dir == null) {
+            if (location == CLASS_OUTPUT) {
+                Path siblingDir = null;
+                if (sibling != null && sibling instanceof PathFileObject) {
+                    siblingDir = ((PathFileObject) sibling).getPath().getParent();
+                }
+                return PathFileObject.createSiblingPathFileObject(this,
+                        siblingDir.resolve(getBaseName(relativePath)),
+                        relativePath);
+            } else if (location == SOURCE_OUTPUT) {
+                dir = getOutputLocation(CLASS_OUTPUT);
+            }
+        }
+
+        Path file;
+        if (dir != null) {
+            file = resolve(dir, relativePath);
+            return PathFileObject.createDirectoryPathFileObject(this, file, dir);
+        } else {
+            file = getPath(getDefaultFileSystem(), relativePath);
+            return PathFileObject.createSimplePathFileObject(this, file);
+        }
+
+    }
+
+    @Override
+    public String inferBinaryName(Location location, JavaFileObject fo) {
+        nullCheck(fo);
+        // Need to match the path semantics of list(location, ...)
+        Iterable<? extends Path> paths = getLocation(location);
+        if (paths == null) {
+            return null;
+        }
+
+        if (!(fo instanceof PathFileObject))
+            throw new IllegalArgumentException(fo.getClass().getName());
+
+        return ((PathFileObject) fo).inferBinaryName(paths);
+    }
+
+    private FileSystem getFileSystem(Path p) throws IOException {
+        FileSystem fs = fileSystems.get(p);
+        if (fs == null) {
+            fs = FileSystems.newFileSystem(p, null);
+            fileSystems.put(p, fs);
+        }
+        return fs;
+    }
+
+    private Map<Path,FileSystem> fileSystems;
+
+    // </editor-fold>
+
+    // <editor-fold defaultstate="collapsed" desc="Utility methods">
+
+    private static String getRelativePath(String className, Kind kind) {
+        return className.replace(".", "/") + kind.extension;
+    }
+
+    private static String getRelativePath(String packageName, String relativeName) {
+        return packageName.isEmpty()
+                ? relativeName : packageName.replace(".", "/") + "/" + relativeName;
+    }
+
+    private static String getBaseName(String relativePath) {
+        int lastSep = relativePath.lastIndexOf("/");
+        return relativePath.substring(lastSep + 1); // safe if "/" not found
+    }
+
+    private static boolean isDirectory(Path path) throws IOException {
+        BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
+        return attrs.isDirectory();
+    }
+
+    private static Path getPath(FileSystem fs, String relativePath) {
+        return fs.getPath(relativePath.replace("/", fs.getSeparator()));
+    }
+
+    private static Path resolve(Path base, String relativePath) {
+        FileSystem fs = base.getFileSystem();
+        Path rp = fs.getPath(relativePath.replace("/", fs.getSeparator()));
+        return base.resolve(rp);
+    }
+
+    // </editor-fold>
+
+}

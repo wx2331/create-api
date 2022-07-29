@@ -1,415 +1,410 @@
-/*     */ package com.sun.tools.classfile;
-/*     */ 
-/*     */ import java.util.Map;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class ClassTranslator
-/*     */   implements ConstantPool.Visitor<ConstantPool.CPInfo, Map<Object, Object>>
-/*     */ {
-/*     */   public ClassFile translate(ClassFile paramClassFile, Map<Object, Object> paramMap) {
-/*  66 */     ClassFile classFile = (ClassFile)paramMap.get(paramClassFile);
-/*  67 */     if (classFile == null) {
-/*  68 */       ConstantPool constantPool = translate(paramClassFile.constant_pool, paramMap);
-/*  69 */       Field[] arrayOfField = translate(paramClassFile.fields, paramClassFile.constant_pool, paramMap);
-/*  70 */       Method[] arrayOfMethod = translateMethods(paramClassFile.methods, paramClassFile.constant_pool, paramMap);
-/*  71 */       Attributes attributes = translateAttributes(paramClassFile.attributes, paramClassFile.constant_pool, paramMap);
-/*     */ 
-/*     */       
-/*  74 */       if (constantPool == paramClassFile.constant_pool && arrayOfField == paramClassFile.fields && arrayOfMethod == paramClassFile.methods && attributes == paramClassFile.attributes) {
-/*     */ 
-/*     */ 
-/*     */         
-/*  78 */         classFile = paramClassFile;
-/*     */       } else {
-/*  80 */         classFile = new ClassFile(paramClassFile.magic, paramClassFile.minor_version, paramClassFile.major_version, constantPool, paramClassFile.access_flags, paramClassFile.this_class, paramClassFile.super_class, paramClassFile.interfaces, arrayOfField, arrayOfMethod, attributes);
-/*     */       } 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */       
-/*  92 */       paramMap.put(paramClassFile, classFile);
-/*     */     } 
-/*  94 */     return classFile;
-/*     */   }
-/*     */   
-/*     */   ConstantPool translate(ConstantPool paramConstantPool, Map<Object, Object> paramMap) {
-/*  98 */     ConstantPool constantPool = (ConstantPool)paramMap.get(paramConstantPool);
-/*  99 */     if (constantPool == null) {
-/* 100 */       ConstantPool.CPInfo[] arrayOfCPInfo = new ConstantPool.CPInfo[paramConstantPool.size()];
-/* 101 */       int i = 1; int j;
-/* 102 */       for (j = 0; j < paramConstantPool.size(); ) {
-/*     */         ConstantPool.CPInfo cPInfo1;
-/*     */         try {
-/* 105 */           cPInfo1 = paramConstantPool.get(j);
-/* 106 */         } catch (InvalidIndex invalidIndex) {
-/* 107 */           throw new IllegalStateException(invalidIndex);
-/*     */         } 
-/* 109 */         ConstantPool.CPInfo cPInfo2 = translate(cPInfo1, paramMap);
-/* 110 */         i &= (cPInfo1 == cPInfo2) ? 1 : 0;
-/* 111 */         arrayOfCPInfo[j] = cPInfo2;
-/* 112 */         if (cPInfo1.getTag() != cPInfo2.getTag())
-/* 113 */           throw new IllegalStateException(); 
-/* 114 */         j += cPInfo1.size();
-/*     */       } 
-/*     */       
-/* 117 */       if (i != 0) {
-/* 118 */         constantPool = paramConstantPool;
-/*     */       } else {
-/* 120 */         constantPool = new ConstantPool(arrayOfCPInfo);
-/*     */       } 
-/* 122 */       paramMap.put(paramConstantPool, constantPool);
-/*     */     } 
-/* 124 */     return constantPool;
-/*     */   }
-/*     */   
-/*     */   ConstantPool.CPInfo translate(ConstantPool.CPInfo paramCPInfo, Map<Object, Object> paramMap) {
-/* 128 */     ConstantPool.CPInfo cPInfo = (ConstantPool.CPInfo)paramMap.get(paramCPInfo);
-/* 129 */     if (cPInfo == null) {
-/* 130 */       cPInfo = paramCPInfo.<ConstantPool.CPInfo, Map<Object, Object>>accept(this, paramMap);
-/* 131 */       paramMap.put(paramCPInfo, cPInfo);
-/*     */     } 
-/* 133 */     return cPInfo;
-/*     */   }
-/*     */   
-/*     */   Field[] translate(Field[] paramArrayOfField, ConstantPool paramConstantPool, Map<Object, Object> paramMap) {
-/* 137 */     Field[] arrayOfField = (Field[])paramMap.get(paramArrayOfField);
-/* 138 */     if (arrayOfField == null) {
-/* 139 */       arrayOfField = new Field[paramArrayOfField.length];
-/* 140 */       for (byte b = 0; b < paramArrayOfField.length; b++)
-/* 141 */         arrayOfField[b] = translate(paramArrayOfField[b], paramConstantPool, paramMap); 
-/* 142 */       if (equal(paramArrayOfField, arrayOfField))
-/* 143 */         arrayOfField = paramArrayOfField; 
-/* 144 */       paramMap.put(paramArrayOfField, arrayOfField);
-/*     */     } 
-/* 146 */     return arrayOfField;
-/*     */   }
-/*     */   
-/*     */   Field translate(Field paramField, ConstantPool paramConstantPool, Map<Object, Object> paramMap) {
-/* 150 */     Field field = (Field)paramMap.get(paramField);
-/* 151 */     if (field == null) {
-/* 152 */       Attributes attributes = translateAttributes(paramField.attributes, paramConstantPool, paramMap);
-/*     */ 
-/*     */       
-/* 155 */       if (attributes == paramField.attributes) {
-/* 156 */         field = paramField;
-/*     */       } else {
-/* 158 */         field = new Field(paramField.access_flags, paramField.name_index, paramField.descriptor, attributes);
-/*     */       } 
-/*     */ 
-/*     */ 
-/*     */       
-/* 163 */       paramMap.put(paramField, field);
-/*     */     } 
-/* 165 */     return field;
-/*     */   }
-/*     */   
-/*     */   Method[] translateMethods(Method[] paramArrayOfMethod, ConstantPool paramConstantPool, Map<Object, Object> paramMap) {
-/* 169 */     Method[] arrayOfMethod = (Method[])paramMap.get(paramArrayOfMethod);
-/* 170 */     if (arrayOfMethod == null) {
-/* 171 */       arrayOfMethod = new Method[paramArrayOfMethod.length];
-/* 172 */       for (byte b = 0; b < paramArrayOfMethod.length; b++)
-/* 173 */         arrayOfMethod[b] = translate(paramArrayOfMethod[b], paramConstantPool, paramMap); 
-/* 174 */       if (equal(paramArrayOfMethod, arrayOfMethod))
-/* 175 */         arrayOfMethod = paramArrayOfMethod; 
-/* 176 */       paramMap.put(paramArrayOfMethod, arrayOfMethod);
-/*     */     } 
-/* 178 */     return arrayOfMethod;
-/*     */   }
-/*     */   
-/*     */   Method translate(Method paramMethod, ConstantPool paramConstantPool, Map<Object, Object> paramMap) {
-/* 182 */     Method method = (Method)paramMap.get(paramMethod);
-/* 183 */     if (method == null) {
-/* 184 */       Attributes attributes = translateAttributes(paramMethod.attributes, paramConstantPool, paramMap);
-/*     */ 
-/*     */       
-/* 187 */       if (attributes == paramMethod.attributes) {
-/* 188 */         method = paramMethod;
-/*     */       } else {
-/* 190 */         method = new Method(paramMethod.access_flags, paramMethod.name_index, paramMethod.descriptor, attributes);
-/*     */       } 
-/*     */ 
-/*     */ 
-/*     */       
-/* 195 */       paramMap.put(paramMethod, method);
-/*     */     } 
-/* 197 */     return method;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   Attributes translateAttributes(Attributes paramAttributes, ConstantPool paramConstantPool, Map<Object, Object> paramMap) {
-/* 202 */     Attributes attributes = (Attributes)paramMap.get(paramAttributes);
-/* 203 */     if (attributes == null) {
-/* 204 */       Attribute[] arrayOfAttribute = new Attribute[paramAttributes.size()];
-/* 205 */       ConstantPool constantPool = translate(paramConstantPool, paramMap);
-/* 206 */       boolean bool = true;
-/* 207 */       for (byte b = 0; b < paramAttributes.size(); b++) {
-/* 208 */         Attribute attribute1 = paramAttributes.get(b);
-/* 209 */         Attribute attribute2 = translate(attribute1, paramMap);
-/* 210 */         if (attribute2 != attribute1)
-/* 211 */           bool = false; 
-/* 212 */         arrayOfAttribute[b] = attribute2;
-/*     */       } 
-/* 214 */       if (constantPool == paramConstantPool && bool) {
-/* 215 */         attributes = paramAttributes;
-/*     */       } else {
-/* 217 */         attributes = new Attributes(constantPool, arrayOfAttribute);
-/* 218 */       }  paramMap.put(paramAttributes, attributes);
-/*     */     } 
-/* 220 */     return attributes;
-/*     */   }
-/*     */   
-/*     */   Attribute translate(Attribute paramAttribute, Map<Object, Object> paramMap) {
-/* 224 */     Attribute attribute = (Attribute)paramMap.get(paramAttribute);
-/* 225 */     if (attribute == null) {
-/* 226 */       attribute = paramAttribute;
-/*     */       
-/* 228 */       paramMap.put(paramAttribute, attribute);
-/*     */     } 
-/* 230 */     return attribute;
-/*     */   }
-/*     */   
-/*     */   private static <T> boolean equal(T[] paramArrayOfT1, T[] paramArrayOfT2) {
-/* 234 */     if (paramArrayOfT1 == null || paramArrayOfT2 == null)
-/* 235 */       return (paramArrayOfT1 == paramArrayOfT2); 
-/* 236 */     if (paramArrayOfT1.length != paramArrayOfT2.length)
-/* 237 */       return false; 
-/* 238 */     for (byte b = 0; b < paramArrayOfT1.length; b++) {
-/* 239 */       if (paramArrayOfT1[b] != paramArrayOfT2[b])
-/* 240 */         return false; 
-/*     */     } 
-/* 242 */     return true;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitClass(ConstantPool.CONSTANT_Class_info paramCONSTANT_Class_info, Map<Object, Object> paramMap) {
-/* 246 */     ConstantPool.CONSTANT_Class_info cONSTANT_Class_info = (ConstantPool.CONSTANT_Class_info)paramMap.get(paramCONSTANT_Class_info);
-/* 247 */     if (cONSTANT_Class_info == null) {
-/* 248 */       ConstantPool constantPool = translate(paramCONSTANT_Class_info.cp, paramMap);
-/* 249 */       if (constantPool == paramCONSTANT_Class_info.cp) {
-/* 250 */         cONSTANT_Class_info = paramCONSTANT_Class_info;
-/*     */       } else {
-/* 252 */         cONSTANT_Class_info = new ConstantPool.CONSTANT_Class_info(constantPool, paramCONSTANT_Class_info.name_index);
-/* 253 */       }  paramMap.put(paramCONSTANT_Class_info, cONSTANT_Class_info);
-/*     */     } 
-/* 255 */     return paramCONSTANT_Class_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitDouble(ConstantPool.CONSTANT_Double_info paramCONSTANT_Double_info, Map<Object, Object> paramMap) {
-/* 259 */     ConstantPool.CONSTANT_Double_info cONSTANT_Double_info = (ConstantPool.CONSTANT_Double_info)paramMap.get(paramCONSTANT_Double_info);
-/* 260 */     if (cONSTANT_Double_info == null) {
-/* 261 */       cONSTANT_Double_info = paramCONSTANT_Double_info;
-/* 262 */       paramMap.put(paramCONSTANT_Double_info, cONSTANT_Double_info);
-/*     */     } 
-/* 264 */     return paramCONSTANT_Double_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitFieldref(ConstantPool.CONSTANT_Fieldref_info paramCONSTANT_Fieldref_info, Map<Object, Object> paramMap) {
-/* 268 */     ConstantPool.CONSTANT_Fieldref_info cONSTANT_Fieldref_info = (ConstantPool.CONSTANT_Fieldref_info)paramMap.get(paramCONSTANT_Fieldref_info);
-/* 269 */     if (cONSTANT_Fieldref_info == null) {
-/* 270 */       ConstantPool constantPool = translate(paramCONSTANT_Fieldref_info.cp, paramMap);
-/* 271 */       if (constantPool == paramCONSTANT_Fieldref_info.cp) {
-/* 272 */         cONSTANT_Fieldref_info = paramCONSTANT_Fieldref_info;
-/*     */       } else {
-/* 274 */         cONSTANT_Fieldref_info = new ConstantPool.CONSTANT_Fieldref_info(constantPool, paramCONSTANT_Fieldref_info.class_index, paramCONSTANT_Fieldref_info.name_and_type_index);
-/* 275 */       }  paramMap.put(paramCONSTANT_Fieldref_info, cONSTANT_Fieldref_info);
-/*     */     } 
-/* 277 */     return paramCONSTANT_Fieldref_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitFloat(ConstantPool.CONSTANT_Float_info paramCONSTANT_Float_info, Map<Object, Object> paramMap) {
-/* 281 */     ConstantPool.CONSTANT_Float_info cONSTANT_Float_info = (ConstantPool.CONSTANT_Float_info)paramMap.get(paramCONSTANT_Float_info);
-/* 282 */     if (cONSTANT_Float_info == null) {
-/* 283 */       cONSTANT_Float_info = paramCONSTANT_Float_info;
-/* 284 */       paramMap.put(paramCONSTANT_Float_info, cONSTANT_Float_info);
-/*     */     } 
-/* 286 */     return paramCONSTANT_Float_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitInteger(ConstantPool.CONSTANT_Integer_info paramCONSTANT_Integer_info, Map<Object, Object> paramMap) {
-/* 290 */     ConstantPool.CONSTANT_Integer_info cONSTANT_Integer_info = (ConstantPool.CONSTANT_Integer_info)paramMap.get(paramCONSTANT_Integer_info);
-/* 291 */     if (cONSTANT_Integer_info == null) {
-/* 292 */       cONSTANT_Integer_info = paramCONSTANT_Integer_info;
-/* 293 */       paramMap.put(paramCONSTANT_Integer_info, cONSTANT_Integer_info);
-/*     */     } 
-/* 295 */     return paramCONSTANT_Integer_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitInterfaceMethodref(ConstantPool.CONSTANT_InterfaceMethodref_info paramCONSTANT_InterfaceMethodref_info, Map<Object, Object> paramMap) {
-/* 299 */     ConstantPool.CONSTANT_InterfaceMethodref_info cONSTANT_InterfaceMethodref_info = (ConstantPool.CONSTANT_InterfaceMethodref_info)paramMap.get(paramCONSTANT_InterfaceMethodref_info);
-/* 300 */     if (cONSTANT_InterfaceMethodref_info == null) {
-/* 301 */       ConstantPool constantPool = translate(paramCONSTANT_InterfaceMethodref_info.cp, paramMap);
-/* 302 */       if (constantPool == paramCONSTANT_InterfaceMethodref_info.cp) {
-/* 303 */         cONSTANT_InterfaceMethodref_info = paramCONSTANT_InterfaceMethodref_info;
-/*     */       } else {
-/* 305 */         cONSTANT_InterfaceMethodref_info = new ConstantPool.CONSTANT_InterfaceMethodref_info(constantPool, paramCONSTANT_InterfaceMethodref_info.class_index, paramCONSTANT_InterfaceMethodref_info.name_and_type_index);
-/* 306 */       }  paramMap.put(paramCONSTANT_InterfaceMethodref_info, cONSTANT_InterfaceMethodref_info);
-/*     */     } 
-/* 308 */     return paramCONSTANT_InterfaceMethodref_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitInvokeDynamic(ConstantPool.CONSTANT_InvokeDynamic_info paramCONSTANT_InvokeDynamic_info, Map<Object, Object> paramMap) {
-/* 312 */     ConstantPool.CONSTANT_InvokeDynamic_info cONSTANT_InvokeDynamic_info = (ConstantPool.CONSTANT_InvokeDynamic_info)paramMap.get(paramCONSTANT_InvokeDynamic_info);
-/* 313 */     if (cONSTANT_InvokeDynamic_info == null) {
-/* 314 */       ConstantPool constantPool = translate(paramCONSTANT_InvokeDynamic_info.cp, paramMap);
-/* 315 */       if (constantPool == paramCONSTANT_InvokeDynamic_info.cp) {
-/* 316 */         cONSTANT_InvokeDynamic_info = paramCONSTANT_InvokeDynamic_info;
-/*     */       } else {
-/* 318 */         cONSTANT_InvokeDynamic_info = new ConstantPool.CONSTANT_InvokeDynamic_info(constantPool, paramCONSTANT_InvokeDynamic_info.bootstrap_method_attr_index, paramCONSTANT_InvokeDynamic_info.name_and_type_index);
-/*     */       } 
-/* 320 */       paramMap.put(paramCONSTANT_InvokeDynamic_info, cONSTANT_InvokeDynamic_info);
-/*     */     } 
-/* 322 */     return paramCONSTANT_InvokeDynamic_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitLong(ConstantPool.CONSTANT_Long_info paramCONSTANT_Long_info, Map<Object, Object> paramMap) {
-/* 326 */     ConstantPool.CONSTANT_Long_info cONSTANT_Long_info = (ConstantPool.CONSTANT_Long_info)paramMap.get(paramCONSTANT_Long_info);
-/* 327 */     if (cONSTANT_Long_info == null) {
-/* 328 */       cONSTANT_Long_info = paramCONSTANT_Long_info;
-/* 329 */       paramMap.put(paramCONSTANT_Long_info, cONSTANT_Long_info);
-/*     */     } 
-/* 331 */     return paramCONSTANT_Long_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitNameAndType(ConstantPool.CONSTANT_NameAndType_info paramCONSTANT_NameAndType_info, Map<Object, Object> paramMap) {
-/* 335 */     ConstantPool.CONSTANT_NameAndType_info cONSTANT_NameAndType_info = (ConstantPool.CONSTANT_NameAndType_info)paramMap.get(paramCONSTANT_NameAndType_info);
-/* 336 */     if (cONSTANT_NameAndType_info == null) {
-/* 337 */       ConstantPool constantPool = translate(paramCONSTANT_NameAndType_info.cp, paramMap);
-/* 338 */       if (constantPool == paramCONSTANT_NameAndType_info.cp) {
-/* 339 */         cONSTANT_NameAndType_info = paramCONSTANT_NameAndType_info;
-/*     */       } else {
-/* 341 */         cONSTANT_NameAndType_info = new ConstantPool.CONSTANT_NameAndType_info(constantPool, paramCONSTANT_NameAndType_info.name_index, paramCONSTANT_NameAndType_info.type_index);
-/* 342 */       }  paramMap.put(paramCONSTANT_NameAndType_info, cONSTANT_NameAndType_info);
-/*     */     } 
-/* 344 */     return paramCONSTANT_NameAndType_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitMethodref(ConstantPool.CONSTANT_Methodref_info paramCONSTANT_Methodref_info, Map<Object, Object> paramMap) {
-/* 348 */     ConstantPool.CONSTANT_Methodref_info cONSTANT_Methodref_info = (ConstantPool.CONSTANT_Methodref_info)paramMap.get(paramCONSTANT_Methodref_info);
-/* 349 */     if (cONSTANT_Methodref_info == null) {
-/* 350 */       ConstantPool constantPool = translate(paramCONSTANT_Methodref_info.cp, paramMap);
-/* 351 */       if (constantPool == paramCONSTANT_Methodref_info.cp) {
-/* 352 */         cONSTANT_Methodref_info = paramCONSTANT_Methodref_info;
-/*     */       } else {
-/* 354 */         cONSTANT_Methodref_info = new ConstantPool.CONSTANT_Methodref_info(constantPool, paramCONSTANT_Methodref_info.class_index, paramCONSTANT_Methodref_info.name_and_type_index);
-/* 355 */       }  paramMap.put(paramCONSTANT_Methodref_info, cONSTANT_Methodref_info);
-/*     */     } 
-/* 357 */     return paramCONSTANT_Methodref_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitMethodHandle(ConstantPool.CONSTANT_MethodHandle_info paramCONSTANT_MethodHandle_info, Map<Object, Object> paramMap) {
-/* 361 */     ConstantPool.CONSTANT_MethodHandle_info cONSTANT_MethodHandle_info = (ConstantPool.CONSTANT_MethodHandle_info)paramMap.get(paramCONSTANT_MethodHandle_info);
-/* 362 */     if (cONSTANT_MethodHandle_info == null) {
-/* 363 */       ConstantPool constantPool = translate(paramCONSTANT_MethodHandle_info.cp, paramMap);
-/* 364 */       if (constantPool == paramCONSTANT_MethodHandle_info.cp) {
-/* 365 */         cONSTANT_MethodHandle_info = paramCONSTANT_MethodHandle_info;
-/*     */       } else {
-/* 367 */         cONSTANT_MethodHandle_info = new ConstantPool.CONSTANT_MethodHandle_info(constantPool, paramCONSTANT_MethodHandle_info.reference_kind, paramCONSTANT_MethodHandle_info.reference_index);
-/*     */       } 
-/* 369 */       paramMap.put(paramCONSTANT_MethodHandle_info, cONSTANT_MethodHandle_info);
-/*     */     } 
-/* 371 */     return paramCONSTANT_MethodHandle_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitMethodType(ConstantPool.CONSTANT_MethodType_info paramCONSTANT_MethodType_info, Map<Object, Object> paramMap) {
-/* 375 */     ConstantPool.CONSTANT_MethodType_info cONSTANT_MethodType_info = (ConstantPool.CONSTANT_MethodType_info)paramMap.get(paramCONSTANT_MethodType_info);
-/* 376 */     if (cONSTANT_MethodType_info == null) {
-/* 377 */       ConstantPool constantPool = translate(paramCONSTANT_MethodType_info.cp, paramMap);
-/* 378 */       if (constantPool == paramCONSTANT_MethodType_info.cp) {
-/* 379 */         cONSTANT_MethodType_info = paramCONSTANT_MethodType_info;
-/*     */       } else {
-/* 381 */         cONSTANT_MethodType_info = new ConstantPool.CONSTANT_MethodType_info(constantPool, paramCONSTANT_MethodType_info.descriptor_index);
-/*     */       } 
-/* 383 */       paramMap.put(paramCONSTANT_MethodType_info, cONSTANT_MethodType_info);
-/*     */     } 
-/* 385 */     return paramCONSTANT_MethodType_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitString(ConstantPool.CONSTANT_String_info paramCONSTANT_String_info, Map<Object, Object> paramMap) {
-/* 389 */     ConstantPool.CONSTANT_String_info cONSTANT_String_info = (ConstantPool.CONSTANT_String_info)paramMap.get(paramCONSTANT_String_info);
-/* 390 */     if (cONSTANT_String_info == null) {
-/* 391 */       ConstantPool constantPool = translate(paramCONSTANT_String_info.cp, paramMap);
-/* 392 */       if (constantPool == paramCONSTANT_String_info.cp) {
-/* 393 */         cONSTANT_String_info = paramCONSTANT_String_info;
-/*     */       } else {
-/* 395 */         cONSTANT_String_info = new ConstantPool.CONSTANT_String_info(constantPool, paramCONSTANT_String_info.string_index);
-/* 396 */       }  paramMap.put(paramCONSTANT_String_info, cONSTANT_String_info);
-/*     */     } 
-/* 398 */     return paramCONSTANT_String_info;
-/*     */   }
-/*     */   
-/*     */   public ConstantPool.CPInfo visitUtf8(ConstantPool.CONSTANT_Utf8_info paramCONSTANT_Utf8_info, Map<Object, Object> paramMap) {
-/* 402 */     ConstantPool.CONSTANT_Utf8_info cONSTANT_Utf8_info = (ConstantPool.CONSTANT_Utf8_info)paramMap.get(paramCONSTANT_Utf8_info);
-/* 403 */     if (cONSTANT_Utf8_info == null) {
-/* 404 */       cONSTANT_Utf8_info = paramCONSTANT_Utf8_info;
-/* 405 */       paramMap.put(paramCONSTANT_Utf8_info, cONSTANT_Utf8_info);
-/*     */     } 
-/* 407 */     return paramCONSTANT_Utf8_info;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\classfile\ClassTranslator.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2008, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.classfile;
+
+import java.util.Map;
+
+import com.sun.tools.classfile.ConstantPool.CONSTANT_Class_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_Double_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_Fieldref_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_Float_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_Integer_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_InterfaceMethodref_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_InvokeDynamic_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_Long_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_MethodHandle_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_MethodType_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_Methodref_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_NameAndType_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_String_info;
+import com.sun.tools.classfile.ConstantPool.CONSTANT_Utf8_info;
+import com.sun.tools.classfile.ConstantPool.CPInfo;
+
+/**
+ * Rewrites a class file using a map of translations.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class ClassTranslator
+        implements ConstantPool.Visitor<CPInfo,Map<Object,Object>> {
+    /**
+     * Create a new ClassFile from {@code cf}, such that for all entries
+     * {@code k&nbsp;-\&gt;&nbsp;v} in {@code translations},
+     * each occurrence of {@code k} in {@code cf} will be replaced by {@code v}.
+     * in
+     * @param cf the class file to be processed
+     * @param translations the set of translations to be applied
+     * @return a copy of {@code} with the values in {@code translations} substituted
+     */
+    public ClassFile translate(ClassFile cf, Map<Object,Object> translations) {
+        ClassFile cf2 = (ClassFile) translations.get(cf);
+        if (cf2 == null) {
+            ConstantPool constant_pool2 = translate(cf.constant_pool, translations);
+            Field[] fields2 = translate(cf.fields, cf.constant_pool, translations);
+            Method[] methods2 = translateMethods(cf.methods, cf.constant_pool, translations);
+            Attributes attributes2 = translateAttributes(cf.attributes, cf.constant_pool,
+                    translations);
+
+            if (constant_pool2 == cf.constant_pool &&
+                    fields2 == cf.fields &&
+                    methods2 == cf.methods &&
+                    attributes2 == cf.attributes)
+                cf2 = cf;
+            else
+                cf2 = new ClassFile(
+                        cf.magic,
+                        cf.minor_version,
+                        cf.major_version,
+                        constant_pool2,
+                        cf.access_flags,
+                        cf.this_class,
+                        cf.super_class,
+                        cf.interfaces,
+                        fields2,
+                        methods2,
+                        attributes2);
+            translations.put(cf, cf2);
+        }
+        return cf2;
+    }
+
+    ConstantPool translate(ConstantPool cp, Map<Object,Object> translations) {
+        ConstantPool cp2 = (ConstantPool) translations.get(cp);
+        if (cp2 == null) {
+            CPInfo[] pool2 = new CPInfo[cp.size()];
+            boolean eq = true;
+            for (int i = 0; i < cp.size(); ) {
+                CPInfo cpInfo;
+                try {
+                    cpInfo = cp.get(i);
+                } catch (ConstantPool.InvalidIndex e) {
+                    throw new IllegalStateException(e);
+                }
+                CPInfo cpInfo2 = translate(cpInfo, translations);
+                eq &= (cpInfo == cpInfo2);
+                pool2[i] = cpInfo2;
+                if (cpInfo.getTag() != cpInfo2.getTag())
+                    throw new IllegalStateException();
+                i += cpInfo.size();
+            }
+
+            if (eq)
+                cp2 = cp;
+            else
+                cp2 = new ConstantPool(pool2);
+
+            translations.put(cp, cp2);
+        }
+        return cp2;
+    }
+
+    CPInfo translate(CPInfo cpInfo, Map<Object,Object> translations) {
+        CPInfo cpInfo2 = (CPInfo) translations.get(cpInfo);
+        if (cpInfo2 == null) {
+            cpInfo2 = cpInfo.accept(this, translations);
+            translations.put(cpInfo, cpInfo2);
+        }
+        return cpInfo2;
+    }
+
+    Field[] translate(Field[] fields, ConstantPool constant_pool, Map<Object,Object> translations) {
+        Field[] fields2 = (Field[]) translations.get(fields);
+        if (fields2 == null) {
+            fields2 = new Field[fields.length];
+            for (int i = 0; i < fields.length; i++)
+                fields2[i] = translate(fields[i], constant_pool, translations);
+            if (equal(fields, fields2))
+                fields2 = fields;
+            translations.put(fields, fields2);
+        }
+        return fields2;
+    }
+
+    Field translate(Field field, ConstantPool constant_pool, Map<Object,Object> translations) {
+        Field field2 = (Field) translations.get(field);
+        if (field2 == null) {
+            Attributes attributes2 = translateAttributes(field.attributes, constant_pool,
+                    translations);
+
+            if (attributes2 == field.attributes)
+                field2 = field;
+            else
+                field2 = new Field(
+                        field.access_flags,
+                        field.name_index,
+                        field.descriptor,
+                        attributes2);
+            translations.put(field, field2);
+        }
+        return field2;
+    }
+
+    Method[] translateMethods(Method[] methods, ConstantPool constant_pool, Map<Object,Object> translations) {
+        Method[] methods2 = (Method[]) translations.get(methods);
+        if (methods2 == null) {
+            methods2 = new Method[methods.length];
+            for (int i = 0; i < methods.length; i++)
+                methods2[i] = translate(methods[i], constant_pool, translations);
+            if (equal(methods, methods2))
+                methods2 = methods;
+            translations.put(methods, methods2);
+        }
+        return methods2;
+    }
+
+    Method translate(Method method, ConstantPool constant_pool, Map<Object,Object> translations) {
+        Method method2 = (Method) translations.get(method);
+        if (method2 == null) {
+            Attributes attributes2 = translateAttributes(method.attributes, constant_pool,
+                    translations);
+
+            if (attributes2 == method.attributes)
+                method2 = method;
+            else
+                method2 = new Method(
+                        method.access_flags,
+                        method.name_index,
+                        method.descriptor,
+                        attributes2);
+            translations.put(method, method2);
+        }
+        return method2;
+    }
+
+    Attributes translateAttributes(Attributes attributes,
+            ConstantPool constant_pool, Map<Object,Object> translations) {
+        Attributes attributes2 = (Attributes) translations.get(attributes);
+        if (attributes2 == null) {
+            Attribute[] attrArray2 = new Attribute[attributes.size()];
+            ConstantPool constant_pool2 = translate(constant_pool, translations);
+            boolean attrsEqual = true;
+            for (int i = 0; i < attributes.size(); i++) {
+                Attribute attr = attributes.get(i);
+                Attribute attr2 = translate(attr, translations);
+                if (attr2 != attr)
+                    attrsEqual = false;
+                attrArray2[i] = attr2;
+            }
+            if ((constant_pool2 == constant_pool) && attrsEqual)
+                attributes2 = attributes;
+            else
+                attributes2 = new Attributes(constant_pool2, attrArray2);
+            translations.put(attributes, attributes2);
+        }
+        return attributes2;
+    }
+
+    Attribute translate(Attribute attribute, Map<Object,Object> translations) {
+        Attribute attribute2 = (Attribute) translations.get(attribute);
+        if (attribute2 == null) {
+            attribute2 = attribute; // don't support translation within attributes yet
+                                    // (what about Code attribute)
+            translations.put(attribute, attribute2);
+        }
+        return attribute2;
+    }
+
+    private static <T> boolean equal(T[] a1, T[] a2) {
+        if (a1 == null || a2 == null)
+            return (a1 == a2);
+        if (a1.length != a2.length)
+            return false;
+        for (int i = 0; i < a1.length; i++) {
+            if (a1[i] != a2[i])
+                return false;
+        }
+        return true;
+    }
+
+    public CPInfo visitClass(CONSTANT_Class_info info, Map<Object, Object> translations) {
+        CONSTANT_Class_info info2 = (CONSTANT_Class_info) translations.get(info);
+        if (info2 == null) {
+            ConstantPool cp2 = translate(info.cp, translations);
+            if (cp2 == info.cp)
+                info2 = info;
+            else
+                info2 = new CONSTANT_Class_info(cp2, info.name_index);
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitDouble(CONSTANT_Double_info info, Map<Object, Object> translations) {
+        CONSTANT_Double_info info2 = (CONSTANT_Double_info) translations.get(info);
+        if (info2 == null) {
+            info2 = info;
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitFieldref(CONSTANT_Fieldref_info info, Map<Object, Object> translations) {
+        CONSTANT_Fieldref_info info2 = (CONSTANT_Fieldref_info) translations.get(info);
+        if (info2 == null) {
+            ConstantPool cp2 = translate(info.cp, translations);
+            if (cp2 == info.cp)
+                info2 = info;
+            else
+                info2 = new CONSTANT_Fieldref_info(cp2, info.class_index, info.name_and_type_index);
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitFloat(CONSTANT_Float_info info, Map<Object, Object> translations) {
+        CONSTANT_Float_info info2 = (CONSTANT_Float_info) translations.get(info);
+        if (info2 == null) {
+            info2 = info;
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitInteger(CONSTANT_Integer_info info, Map<Object, Object> translations) {
+        CONSTANT_Integer_info info2 = (CONSTANT_Integer_info) translations.get(info);
+        if (info2 == null) {
+            info2 = info;
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitInterfaceMethodref(CONSTANT_InterfaceMethodref_info info, Map<Object, Object> translations) {
+        CONSTANT_InterfaceMethodref_info info2 = (CONSTANT_InterfaceMethodref_info) translations.get(info);
+        if (info2 == null) {
+            ConstantPool cp2 = translate(info.cp, translations);
+            if (cp2 == info.cp)
+                info2 = info;
+            else
+                info2 = new CONSTANT_InterfaceMethodref_info(cp2, info.class_index, info.name_and_type_index);
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitInvokeDynamic(CONSTANT_InvokeDynamic_info info, Map<Object, Object> translations) {
+        CONSTANT_InvokeDynamic_info info2 = (CONSTANT_InvokeDynamic_info) translations.get(info);
+        if (info2 == null) {
+            ConstantPool cp2 = translate(info.cp, translations);
+            if (cp2 == info.cp) {
+                info2 = info;
+            } else {
+                info2 = new CONSTANT_InvokeDynamic_info(cp2, info.bootstrap_method_attr_index, info.name_and_type_index);
+            }
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitLong(CONSTANT_Long_info info, Map<Object, Object> translations) {
+        CONSTANT_Long_info info2 = (CONSTANT_Long_info) translations.get(info);
+        if (info2 == null) {
+            info2 = info;
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitNameAndType(CONSTANT_NameAndType_info info, Map<Object, Object> translations) {
+        CONSTANT_NameAndType_info info2 = (CONSTANT_NameAndType_info) translations.get(info);
+        if (info2 == null) {
+            ConstantPool cp2 = translate(info.cp, translations);
+            if (cp2 == info.cp)
+                info2 = info;
+            else
+                info2 = new CONSTANT_NameAndType_info(cp2, info.name_index, info.type_index);
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitMethodref(CONSTANT_Methodref_info info, Map<Object, Object> translations) {
+        CONSTANT_Methodref_info info2 = (CONSTANT_Methodref_info) translations.get(info);
+        if (info2 == null) {
+            ConstantPool cp2 = translate(info.cp, translations);
+            if (cp2 == info.cp)
+                info2 = info;
+            else
+                info2 = new CONSTANT_Methodref_info(cp2, info.class_index, info.name_and_type_index);
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitMethodHandle(CONSTANT_MethodHandle_info info, Map<Object, Object> translations) {
+        CONSTANT_MethodHandle_info info2 = (CONSTANT_MethodHandle_info) translations.get(info);
+        if (info2 == null) {
+            ConstantPool cp2 = translate(info.cp, translations);
+            if (cp2 == info.cp) {
+                info2 = info;
+            } else {
+                info2 = new CONSTANT_MethodHandle_info(cp2, info.reference_kind, info.reference_index);
+            }
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitMethodType(CONSTANT_MethodType_info info, Map<Object, Object> translations) {
+        CONSTANT_MethodType_info info2 = (CONSTANT_MethodType_info) translations.get(info);
+        if (info2 == null) {
+            ConstantPool cp2 = translate(info.cp, translations);
+            if (cp2 == info.cp) {
+                info2 = info;
+            } else {
+                info2 = new CONSTANT_MethodType_info(cp2, info.descriptor_index);
+            }
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitString(CONSTANT_String_info info, Map<Object, Object> translations) {
+        CONSTANT_String_info info2 = (CONSTANT_String_info) translations.get(info);
+        if (info2 == null) {
+            ConstantPool cp2 = translate(info.cp, translations);
+            if (cp2 == info.cp)
+                info2 = info;
+            else
+                info2 = new CONSTANT_String_info(cp2, info.string_index);
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+    public CPInfo visitUtf8(CONSTANT_Utf8_info info, Map<Object, Object> translations) {
+        CONSTANT_Utf8_info info2 = (CONSTANT_Utf8_info) translations.get(info);
+        if (info2 == null) {
+            info2 = info;
+            translations.put(info, info2);
+        }
+        return info;
+    }
+
+}

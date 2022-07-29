@@ -1,325 +1,320 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.util;
-/*     */
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import com.sun.tools.javac.nio.PathFileManager;
-/*     */ import java.io.BufferedInputStream;
-/*     */ import java.io.BufferedOutputStream;
-/*     */ import java.io.BufferedWriter;
-/*     */ import java.io.IOException;
-/*     */ import java.io.InputStream;
-/*     */ import java.io.OutputStream;
-/*     */ import java.io.OutputStreamWriter;
-/*     */ import java.io.UnsupportedEncodingException;
-/*     */ import java.io.Writer;
-/*     */ import java.nio.file.DirectoryStream;
-/*     */ import java.nio.file.Files;
-/*     */ import java.nio.file.Path;
-/*     */ import java.nio.file.attribute.FileAttribute;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.LinkedHashSet;
-/*     */ import javax.tools.DocumentationTool;
-/*     */ import javax.tools.FileObject;
-/*     */ import javax.tools.JavaFileManager;
-/*     */ import javax.tools.JavaFileObject;
-/*     */ import javax.tools.StandardLocation;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ class PathDocFileFactory
-/*     */   extends DocFileFactory
-/*     */ {
-/*     */   private final PathFileManager fileManager;
-/*     */   private final Path destDir;
-/*     */
-/*     */   public PathDocFileFactory(Configuration paramConfiguration) {
-/*  71 */     super(paramConfiguration);
-/*  72 */     this.fileManager = (PathFileManager)paramConfiguration.getFileManager();
-/*     */
-/*  74 */     if (!paramConfiguration.destDirName.isEmpty() ||
-/*  75 */       !this.fileManager.hasLocation(DocumentationTool.Location.DOCUMENTATION_OUTPUT)) {
-/*     */       try {
-/*  77 */         String str = paramConfiguration.destDirName.isEmpty() ? "." : paramConfiguration.destDirName;
-/*  78 */         Path path = this.fileManager.getDefaultFileSystem().getPath(str, new String[0]);
-/*  79 */         this.fileManager.setLocation(DocumentationTool.Location.DOCUMENTATION_OUTPUT, Arrays.asList(new Path[] { path }));
-/*  80 */       } catch (IOException iOException) {
-/*  81 */         throw new DocletAbortException(iOException);
-/*     */       }
-/*     */     }
-/*     */
-/*  85 */     this.destDir = this.fileManager.getLocation(DocumentationTool.Location.DOCUMENTATION_OUTPUT).iterator().next();
-/*     */   }
-/*     */
-/*     */   public DocFile createFileForDirectory(String paramString) {
-/*  89 */     return new StandardDocFile(this.fileManager.getDefaultFileSystem().getPath(paramString, new String[0]));
-/*     */   }
-/*     */
-/*     */   public DocFile createFileForInput(String paramString) {
-/*  93 */     return new StandardDocFile(this.fileManager.getDefaultFileSystem().getPath(paramString, new String[0]));
-/*     */   }
-/*     */
-/*     */   public DocFile createFileForOutput(DocPath paramDocPath) {
-/*  97 */     return new StandardDocFile(DocumentationTool.Location.DOCUMENTATION_OUTPUT, paramDocPath);
-/*     */   }
-/*     */
-/*     */
-/*     */   Iterable<DocFile> list(JavaFileManager.Location paramLocation, DocPath paramDocPath) {
-/* 102 */     if (paramLocation != StandardLocation.SOURCE_PATH) {
-/* 103 */       throw new IllegalArgumentException();
-/*     */     }
-/* 105 */     LinkedHashSet<StandardDocFile> linkedHashSet = new LinkedHashSet();
-/* 106 */     if (this.fileManager.hasLocation(paramLocation))
-/* 107 */       for (Path path : this.fileManager.getLocation(paramLocation)) {
-/* 108 */         if (Files.isDirectory(path, new java.nio.file.LinkOption[0])) {
-/* 109 */           path = path.resolve(paramDocPath.getPath());
-/* 110 */           if (Files.exists(path, new java.nio.file.LinkOption[0])) {
-/* 111 */             linkedHashSet.add(new StandardDocFile(path));
-/*     */           }
-/*     */         }
-/*     */       }
-/* 115 */     return (Iterable)linkedHashSet;
-/*     */   }
-/*     */
-/*     */   class StandardDocFile
-/*     */     extends DocFile {
-/*     */     private Path file;
-/*     */
-/*     */     private StandardDocFile(Path param1Path) {
-/* 123 */       super(PathDocFileFactory.this.configuration);
-/* 124 */       this.file = param1Path;
-/*     */     }
-/*     */
-/*     */
-/*     */     private StandardDocFile(JavaFileManager.Location param1Location, DocPath param1DocPath) {
-/* 129 */       super(PathDocFileFactory.this.configuration, param1Location, param1DocPath);
-/* 130 */       this.file = PathDocFileFactory.this.destDir.resolve(param1DocPath.getPath());
-/*     */     }
-/*     */
-/*     */
-/*     */     public InputStream openInputStream() throws IOException {
-/* 135 */       JavaFileObject javaFileObject = getJavaFileObjectForInput(this.file);
-/* 136 */       return new BufferedInputStream(javaFileObject.openInputStream());
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public OutputStream openOutputStream() throws IOException, UnsupportedEncodingException {
-/* 145 */       if (this.location != DocumentationTool.Location.DOCUMENTATION_OUTPUT) {
-/* 146 */         throw new IllegalStateException();
-/*     */       }
-/* 148 */       OutputStream outputStream = getFileObjectForOutput(this.path).openOutputStream();
-/* 149 */       return new BufferedOutputStream(outputStream);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public Writer openWriter() throws IOException, UnsupportedEncodingException {
-/* 159 */       if (this.location != DocumentationTool.Location.DOCUMENTATION_OUTPUT) {
-/* 160 */         throw new IllegalStateException();
-/*     */       }
-/* 162 */       OutputStream outputStream = getFileObjectForOutput(this.path).openOutputStream();
-/* 163 */       if (PathDocFileFactory.this.configuration.docencoding == null) {
-/* 164 */         return new BufferedWriter(new OutputStreamWriter(outputStream));
-/*     */       }
-/* 166 */       return new BufferedWriter(new OutputStreamWriter(outputStream, PathDocFileFactory.this.configuration.docencoding));
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */     public boolean canRead() {
-/* 172 */       return Files.isReadable(this.file);
-/*     */     }
-/*     */
-/*     */
-/*     */     public boolean canWrite() {
-/* 177 */       return Files.isWritable(this.file);
-/*     */     }
-/*     */
-/*     */
-/*     */     public boolean exists() {
-/* 182 */       return Files.exists(this.file, new java.nio.file.LinkOption[0]);
-/*     */     }
-/*     */
-/*     */
-/*     */     public String getName() {
-/* 187 */       return this.file.getFileName().toString();
-/*     */     }
-/*     */
-/*     */
-/*     */     public String getPath() {
-/* 192 */       return this.file.toString();
-/*     */     }
-/*     */
-/*     */
-/*     */     public boolean isAbsolute() {
-/* 197 */       return this.file.isAbsolute();
-/*     */     }
-/*     */
-/*     */
-/*     */     public boolean isDirectory() {
-/* 202 */       return Files.isDirectory(this.file, new java.nio.file.LinkOption[0]);
-/*     */     }
-/*     */
-/*     */
-/*     */     public boolean isFile() {
-/* 207 */       return Files.isRegularFile(this.file, new java.nio.file.LinkOption[0]);
-/*     */     }
-/*     */
-/*     */
-/*     */     public boolean isSameFile(DocFile param1DocFile) {
-/* 212 */       if (!(param1DocFile instanceof StandardDocFile)) {
-/* 213 */         return false;
-/*     */       }
-/*     */       try {
-/* 216 */         return Files.isSameFile(this.file, ((StandardDocFile)param1DocFile).file);
-/* 217 */       } catch (IOException iOException) {
-/* 218 */         return false;
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */     public Iterable<DocFile> list() throws IOException {
-/* 224 */       ArrayList<StandardDocFile> arrayList = new ArrayList();
-/* 225 */       try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(this.file)) {
-/* 226 */         for (Path path : directoryStream) {
-/* 227 */           arrayList.add(new StandardDocFile(path));
-/*     */         }
-/*     */       }
-/* 230 */       return (Iterable)arrayList;
-/*     */     }
-/*     */
-/*     */
-/*     */     public boolean mkdirs() {
-/*     */       try {
-/* 236 */         Files.createDirectories(this.file, (FileAttribute<?>[])new FileAttribute[0]);
-/* 237 */         return true;
-/* 238 */       } catch (IOException iOException) {
-/* 239 */         return false;
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public DocFile resolve(DocPath param1DocPath) {
-/* 250 */       return resolve(param1DocPath.getPath());
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public DocFile resolve(String param1String) {
-/* 260 */       if (this.location == null && this.path == null) {
-/* 261 */         return new StandardDocFile(this.file.resolve(param1String));
-/*     */       }
-/* 263 */       return new StandardDocFile(this.location, this.path.resolve(param1String));
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public DocFile resolveAgainst(JavaFileManager.Location param1Location) {
-/* 273 */       if (param1Location != DocumentationTool.Location.DOCUMENTATION_OUTPUT)
-/* 274 */         throw new IllegalArgumentException();
-/* 275 */       return new StandardDocFile(PathDocFileFactory.this.destDir.resolve(this.file));
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public String toString() {
-/* 283 */       StringBuilder stringBuilder = new StringBuilder();
-/* 284 */       stringBuilder.append("PathDocFile[");
-/* 285 */       if (this.location != null)
-/* 286 */         stringBuilder.append("locn:").append(this.location).append(",");
-/* 287 */       if (this.path != null)
-/* 288 */         stringBuilder.append("path:").append(this.path.getPath()).append(",");
-/* 289 */       stringBuilder.append("file:").append(this.file);
-/* 290 */       stringBuilder.append("]");
-/* 291 */       return stringBuilder.toString();
-/*     */     }
-/*     */
-/*     */     private JavaFileObject getJavaFileObjectForInput(Path param1Path) {
-/* 295 */       return PathDocFileFactory.this.fileManager.getJavaFileObjects(new Path[] { param1Path }).iterator().next();
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     private FileObject getFileObjectForOutput(DocPath param1DocPath) throws IOException {
-/* 303 */       String str1 = param1DocPath.getPath();
-/* 304 */       byte b = -1;
-/* 305 */       for (byte b1 = 0; b1 < str1.length(); b1++) {
-/* 306 */         char c = str1.charAt(b1);
-/* 307 */         if (c == '/') {
-/* 308 */           b = b1;
-/* 309 */         } else if ((b1 == b + 1 && !Character.isJavaIdentifierStart(c)) ||
-/* 310 */           !Character.isJavaIdentifierPart(c)) {
-/*     */           break;
-/*     */         }
-/*     */       }
-/* 314 */       String str2 = (b == -1) ? "" : str1.substring(0, b);
-/* 315 */       String str3 = str1.substring(b + 1);
-/* 316 */       return PathDocFileFactory.this.fileManager.getFileForOutput(this.location, str2, str3, null);
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolki\\util\PathDocFileFactory.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1998, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+package com.sun.tools.doclets.internal.toolkit.util;
+
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
+import java.io.Writer;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+import javax.tools.DocumentationTool;
+import javax.tools.FileObject;
+import javax.tools.JavaFileManager.Location;
+import javax.tools.JavaFileObject;
+import javax.tools.StandardLocation;
+
+import com.sun.tools.doclets.internal.toolkit.Configuration;
+import com.sun.tools.javac.nio.PathFileManager;
+
+
+/**
+ * Implementation of DocFileFactory using a {@link PathFileManager}.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @since 1.8
+ */
+class PathDocFileFactory extends DocFileFactory {
+    private final PathFileManager fileManager;
+    private final Path destDir;
+
+    public PathDocFileFactory(Configuration configuration) {
+        super(configuration);
+        fileManager = (PathFileManager) configuration.getFileManager();
+
+        if (!configuration.destDirName.isEmpty()
+                || !fileManager.hasLocation(DocumentationTool.Location.DOCUMENTATION_OUTPUT)) {
+            try {
+                String dirName = configuration.destDirName.isEmpty() ? "." : configuration.destDirName;
+                Path dir = fileManager.getDefaultFileSystem().getPath(dirName);
+                fileManager.setLocation(DocumentationTool.Location.DOCUMENTATION_OUTPUT, Arrays.asList(dir));
+            } catch (IOException e) {
+                throw new DocletAbortException(e);
+            }
+        }
+
+        destDir = fileManager.getLocation(DocumentationTool.Location.DOCUMENTATION_OUTPUT).iterator().next();
+    }
+
+    public DocFile createFileForDirectory(String file) {
+        return new StandardDocFile(fileManager.getDefaultFileSystem().getPath(file));
+    }
+
+    public DocFile createFileForInput(String file) {
+        return new StandardDocFile(fileManager.getDefaultFileSystem().getPath(file));
+    }
+
+    public DocFile createFileForOutput(DocPath path) {
+        return new StandardDocFile(DocumentationTool.Location.DOCUMENTATION_OUTPUT, path);
+    }
+
+    @Override
+    Iterable<DocFile> list(Location location, DocPath path) {
+        if (location != StandardLocation.SOURCE_PATH)
+            throw new IllegalArgumentException();
+
+        Set<DocFile> files = new LinkedHashSet<DocFile>();
+        if (fileManager.hasLocation(location)) {
+            for (Path f: fileManager.getLocation(location)) {
+                if (Files.isDirectory(f)) {
+                    f = f.resolve(path.getPath());
+                    if (Files.exists(f))
+                        files.add(new StandardDocFile(f));
+                }
+            }
+        }
+        return files;
+    }
+
+    class StandardDocFile extends DocFile {
+        private Path file;
+
+        /** Create a StandardDocFile for a given file. */
+        private StandardDocFile(Path file) {
+            super(configuration);
+            this.file = file;
+        }
+
+        /** Create a StandardDocFile for a given location and relative path. */
+        private StandardDocFile(Location location, DocPath path) {
+            super(configuration, location, path);
+            this.file = destDir.resolve(path.getPath());
+        }
+
+        /** Open an input stream for the file. */
+        public InputStream openInputStream() throws IOException {
+            JavaFileObject fo = getJavaFileObjectForInput(file);
+            return new BufferedInputStream(fo.openInputStream());
+        }
+
+        /**
+         * Open an output stream for the file.
+         * The file must have been created with a location of
+         * {@link DocumentationTool.Location#DOCUMENTATION_OUTPUT} and a corresponding relative path.
+         */
+        public OutputStream openOutputStream() throws IOException, UnsupportedEncodingException {
+            if (location != DocumentationTool.Location.DOCUMENTATION_OUTPUT)
+                throw new IllegalStateException();
+
+            OutputStream out = getFileObjectForOutput(path).openOutputStream();
+            return new BufferedOutputStream(out);
+        }
+
+        /**
+         * Open an writer for the file, using the encoding (if any) given in the
+         * doclet configuration.
+         * The file must have been created with a location of
+         * {@link DocumentationTool.Location#DOCUMENTATION_OUTPUT} and a corresponding relative path.
+         */
+        public Writer openWriter() throws IOException, UnsupportedEncodingException {
+            if (location != DocumentationTool.Location.DOCUMENTATION_OUTPUT)
+                throw new IllegalStateException();
+
+            OutputStream out = getFileObjectForOutput(path).openOutputStream();
+            if (configuration.docencoding == null) {
+                return new BufferedWriter(new OutputStreamWriter(out));
+            } else {
+                return new BufferedWriter(new OutputStreamWriter(out, configuration.docencoding));
+            }
+        }
+
+        /** Return true if the file can be read. */
+        public boolean canRead() {
+            return Files.isReadable(file);
+        }
+
+        /** Return true if the file can be written. */
+        public boolean canWrite() {
+            return Files.isWritable(file);
+        }
+
+        /** Return true if the file exists. */
+        public boolean exists() {
+            return Files.exists(file);
+        }
+
+        /** Return the base name (last component) of the file name. */
+        public String getName() {
+            return file.getFileName().toString();
+        }
+
+        /** Return the file system path for this file. */
+        public String getPath() {
+            return file.toString();
+        }
+
+        /** Return true is file has an absolute path name. */
+        public boolean isAbsolute() {
+            return file.isAbsolute();
+        }
+
+        /** Return true is file identifies a directory. */
+        public boolean isDirectory() {
+            return Files.isDirectory(file);
+        }
+
+        /** Return true is file identifies a file. */
+        public boolean isFile() {
+            return Files.isRegularFile(file);
+        }
+
+        /** Return true if this file is the same as another. */
+        public boolean isSameFile(DocFile other) {
+            if (!(other instanceof StandardDocFile))
+                return false;
+
+            try {
+                return Files.isSameFile(file, ((StandardDocFile) other).file);
+            } catch (IOException e) {
+                return false;
+            }
+        }
+
+        /** If the file is a directory, list its contents. */
+        public Iterable<DocFile> list() throws IOException {
+            List<DocFile> files = new ArrayList<DocFile>();
+            try (DirectoryStream<Path> ds = Files.newDirectoryStream(file)) {
+                for (Path f: ds) {
+                    files.add(new StandardDocFile(f));
+                }
+            }
+            return files;
+        }
+
+        /** Create the file as a directory, including any parent directories. */
+        public boolean mkdirs() {
+            try {
+                Files.createDirectories(file);
+                return true;
+            } catch (IOException e) {
+                return false;
+            }
+        }
+
+        /**
+         * Derive a new file by resolving a relative path against this file.
+         * The new file will inherit the configuration and location of this file
+         * If this file has a path set, the new file will have a corresponding
+         * new path.
+         */
+        public DocFile resolve(DocPath p) {
+            return resolve(p.getPath());
+        }
+
+        /**
+         * Derive a new file by resolving a relative path against this file.
+         * The new file will inherit the configuration and location of this file
+         * If this file has a path set, the new file will have a corresponding
+         * new path.
+         */
+        public DocFile resolve(String p) {
+            if (location == null && path == null) {
+                return new StandardDocFile(file.resolve(p));
+            } else {
+                return new StandardDocFile(location, path.resolve(p));
+            }
+        }
+
+        /**
+         * Resolve a relative file against the given output location.
+         * @param locn Currently, only
+         * {@link DocumentationTool.Location.DOCUMENTATION_OUTPUT} is supported.
+         */
+        public DocFile resolveAgainst(Location locn) {
+            if (locn != DocumentationTool.Location.DOCUMENTATION_OUTPUT)
+                throw new IllegalArgumentException();
+            return new StandardDocFile(destDir.resolve(file));
+        }
+
+        /** Return a string to identify the contents of this object,
+         * for debugging purposes.
+         */
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("PathDocFile[");
+            if (location != null)
+                sb.append("locn:").append(location).append(",");
+            if (path != null)
+                sb.append("path:").append(path.getPath()).append(",");
+            sb.append("file:").append(file);
+            sb.append("]");
+            return sb.toString();
+        }
+
+        private JavaFileObject getJavaFileObjectForInput(Path file) {
+            return fileManager.getJavaFileObjects(file).iterator().next();
+        }
+
+        private FileObject getFileObjectForOutput(DocPath path) throws IOException {
+            // break the path into a package-part and the rest, by finding
+            // the position of the last '/' before an invalid character for a
+            // package name, such as the "." before an extension or the "-"
+            // in filenames like package-summary.html, doc-files or src-html.
+            String p = path.getPath();
+            int lastSep = -1;
+            for (int i = 0; i < p.length(); i++) {
+                char ch = p.charAt(i);
+                if (ch == '/') {
+                    lastSep = i;
+                } else if (i == lastSep + 1 && !Character.isJavaIdentifierStart(ch)
+                        || !Character.isJavaIdentifierPart(ch)) {
+                    break;
+                }
+            }
+            String pkg = (lastSep == -1) ? "" : p.substring(0, lastSep);
+            String rest = p.substring(lastSep + 1);
+            return fileManager.getFileForOutput(location, pkg, rest, null);
+        }
+    }
+
+}

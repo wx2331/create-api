@@ -1,3912 +1,2376 @@
-/*      */ package com.sun.tools.javac.comp;
-/*      */
-/*      */ import com.sun.tools.javac.code.Lint;
-/*      */ import com.sun.tools.javac.code.Source;
-/*      */ import com.sun.tools.javac.code.Symbol;
-/*      */ import com.sun.tools.javac.code.Symtab;
-/*      */ import com.sun.tools.javac.code.Type;
-/*      */ import com.sun.tools.javac.code.TypeTag;
-/*      */ import com.sun.tools.javac.code.Types;
-/*      */ import com.sun.tools.javac.tree.JCTree;
-/*      */ import com.sun.tools.javac.tree.TreeInfo;
-/*      */ import com.sun.tools.javac.util.Assert;
-/*      */ import com.sun.tools.javac.util.Context;
-/*      */ import com.sun.tools.javac.util.Filter;
-/*      */ import com.sun.tools.javac.util.GraphUtils;
-/*      */ import com.sun.tools.javac.util.JCDiagnostic;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.Options;
-/*      */ import com.sun.tools.javac.util.Pair;
-/*      */ import com.sun.tools.javac.util.Warner;
-/*      */ import java.util.ArrayList;
-/*      */ import java.util.Collection;
-/*      */ import java.util.Collections;
-/*      */ import java.util.EnumMap;
-/*      */ import java.util.EnumSet;
-/*      */ import java.util.HashMap;
-/*      */ import java.util.HashSet;
-/*      */ import java.util.LinkedHashSet;
-/*      */ import java.util.Map;
-/*      */ import java.util.Set;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class Infer
-/*      */ {
-/*   65 */   protected static final Context.Key<Infer> inferKey = new Context.Key();
-/*      */
-/*      */   Resolve rs;
-/*      */
-/*      */   Check chk;
-/*      */
-/*      */   Symtab syms;
-/*      */
-/*      */   Types types;
-/*      */   JCDiagnostic.Factory diags;
-/*      */   Log log;
-/*      */   boolean allowGraphInference;
-/*      */
-/*      */   public static Infer instance(Context paramContext) {
-/*   79 */     Infer infer = (Infer)paramContext.get(inferKey);
-/*   80 */     if (infer == null)
-/*   81 */       infer = new Infer(paramContext);
-/*   82 */     return infer;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected Infer(Context paramContext) {
-/*  965 */     this.incorporationStepsLegacy = EnumSet.of(IncorporationStep.EQ_CHECK_LEGACY);
-/*      */
-/*      */
-/*  968 */     this
-/*  969 */       .incorporationStepsGraph = EnumSet.complementOf(EnumSet.of(IncorporationStep.EQ_CHECK_LEGACY));
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1064 */     this.incorporationCache = new HashMap<>();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2326 */     this.emptyContext = new InferenceContext(List.nil());
-/*      */     paramContext.put(inferKey, this);
-/*      */     this.rs = Resolve.instance(paramContext);
-/*      */     this.chk = Check.instance(paramContext);
-/*      */     this.syms = Symtab.instance(paramContext);
-/*      */     this.types = Types.instance(paramContext);
-/*      */     this.diags = JCDiagnostic.Factory.instance(paramContext);
-/*      */     this.log = Log.instance(paramContext);
-/*      */     this.inferenceException = new InferenceException(this.diags);
-/*      */     Options options = Options.instance(paramContext);
-/*      */     this.allowGraphInference = (Source.instance(paramContext).allowGraphInference() && options.isUnset("useLegacyInference"));
-/*      */   }
-/*      */
-/*      */   public static final Type anyPoly = (Type)new Type.JCNoType();
-/*      */   protected final InferenceException inferenceException;
-/*      */   static final int MAX_INCORPORATION_STEPS = 100;
-/*      */   EnumSet<IncorporationStep> incorporationStepsLegacy;
-/*      */   EnumSet<IncorporationStep> incorporationStepsGraph;
-/*      */   Map<IncorporationBinaryOp, Boolean> incorporationCache;
-/*      */   final InferenceContext emptyContext;
-/*      */
-/*      */   public static class InferenceException extends Resolve.InapplicableMethodException {
-/*      */     private static final long serialVersionUID = 0L;
-/*      */     List<JCDiagnostic> messages = List.nil();
-/*      */
-/*      */     InferenceException(JCDiagnostic.Factory param1Factory) {
-/*      */       super(param1Factory);
-/*      */     }
-/*      */
-/*      */     Resolve.InapplicableMethodException setMessage() {
-/*      */       return this;
-/*      */     }
-/*      */
-/*      */     Resolve.InapplicableMethodException setMessage(JCDiagnostic param1JCDiagnostic) {
-/*      */       this.messages = this.messages.append(param1JCDiagnostic);
-/*      */       return this;
-/*      */     }
-/*      */
-/*      */     public JCDiagnostic getDiagnostic() {
-/*      */       return (JCDiagnostic)this.messages.head;
-/*      */     }
-/*      */
-/*      */     void clear() {
-/*      */       this.messages = List.nil();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   Type instantiateMethod(Env<AttrContext> paramEnv, List<Type> paramList1, Type.MethodType paramMethodType, Attr.ResultInfo paramResultInfo, Symbol.MethodSymbol paramMethodSymbol, List<Type> paramList2, boolean paramBoolean1, boolean paramBoolean2, Resolve.MethodResolutionContext paramMethodResolutionContext, Warner paramWarner) throws InferenceException {
-/*      */     InferenceContext inferenceContext = new InferenceContext(paramList1);
-/*      */     this.inferenceException.clear();
-/*      */     try {
-/*      */       DeferredAttr.DeferredAttrContext deferredAttrContext = paramMethodResolutionContext.deferredAttrContext((Symbol)paramMethodSymbol, inferenceContext, paramResultInfo, paramWarner);
-/*      */       paramMethodResolutionContext.methodCheck.argumentsAcceptable(paramEnv, deferredAttrContext, paramList2, paramMethodType.getParameterTypes(), paramWarner);
-/*      */       if (this.allowGraphInference && paramResultInfo != null && !paramWarner.hasNonSilentLint(Lint.LintCategory.UNCHECKED)) {
-/*      */         checkWithinBounds(inferenceContext, paramWarner);
-/*      */         Type type = generateReturnConstraints(paramEnv.tree, paramResultInfo, paramMethodType, inferenceContext);
-/*      */         paramMethodType = (Type.MethodType)this.types.createMethodTypeWithReturn((Type)paramMethodType, type);
-/*      */         if (paramResultInfo.checkContext.inferenceContext().free(paramResultInfo.pt)) {
-/*      */           inferenceContext.dupTo(paramResultInfo.checkContext.inferenceContext());
-/*      */           deferredAttrContext.complete();
-/*      */           return (Type)paramMethodType;
-/*      */         }
-/*      */       }
-/*      */       deferredAttrContext.complete();
-/*      */       if (this.allowGraphInference) {
-/*      */         inferenceContext.solve(paramWarner);
-/*      */       } else {
-/*      */         inferenceContext.solveLegacy(true, paramWarner, LegacyInferenceSteps.EQ_LOWER.steps);
-/*      */       }
-/*      */       paramMethodType = (Type.MethodType)inferenceContext.asInstType((Type)paramMethodType);
-/*      */       if (!this.allowGraphInference && inferenceContext.restvars().nonEmpty() && paramResultInfo != null && !paramWarner.hasNonSilentLint(Lint.LintCategory.UNCHECKED)) {
-/*      */         generateReturnConstraints(paramEnv.tree, paramResultInfo, paramMethodType, inferenceContext);
-/*      */         inferenceContext.solveLegacy(false, paramWarner, LegacyInferenceSteps.EQ_UPPER.steps);
-/*      */         paramMethodType = (Type.MethodType)inferenceContext.asInstType((Type)paramMethodType);
-/*      */       }
-/*      */       if (paramResultInfo != null && this.rs.verboseResolutionMode.contains(Resolve.VerboseResolutionMode.DEFERRED_INST))
-/*      */         this.log.note(paramEnv.tree.pos, "deferred.method.inst", new Object[] { paramMethodSymbol, paramMethodType, paramResultInfo.pt });
-/*      */       return (Type)paramMethodType;
-/*      */     } finally {
-/*      */       if (paramResultInfo != null || !this.allowGraphInference) {
-/*      */         inferenceContext.notifyChange();
-/*      */       } else {
-/*      */         inferenceContext.notifyChange(inferenceContext.boundedVars());
-/*      */       }
-/*      */       if (paramResultInfo == null)
-/*      */         inferenceContext.captureTypeCache.clear();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   Type generateReturnConstraints(JCTree paramJCTree, Attr.ResultInfo paramResultInfo, Type.MethodType paramMethodType, InferenceContext paramInferenceContext) {
-/*      */     Type.JCVoidType jCVoidType;
-/*      */     Type type3;
-/*      */     InferenceContext inferenceContext = paramResultInfo.checkContext.inferenceContext();
-/*      */     Type type1 = paramMethodType.getReturnType();
-/*      */     if (paramMethodType.getReturnType().containsAny(paramInferenceContext.inferencevars) && inferenceContext != this.emptyContext) {
-/*      */       type1 = this.types.capture(type1);
-/*      */       for (Type null : type1.getTypeArguments()) {
-/*      */         if (type3.hasTag(TypeTag.TYPEVAR) && ((Type.TypeVar)type3).isCaptured())
-/*      */           paramInferenceContext.addVar((Type.TypeVar)type3);
-/*      */       }
-/*      */     }
-/*      */     Type type2 = paramInferenceContext.asUndetVar(type1);
-/*      */     Type type4 = paramResultInfo.pt;
-/*      */     if (type2.hasTag(TypeTag.VOID)) {
-/*      */       jCVoidType = this.syms.voidType;
-/*      */     } else if (jCVoidType.hasTag(TypeTag.NONE)) {
-/*      */       type3 = type1.isPrimitive() ? type1 : this.syms.objectType;
-/*      */     } else if (type2.hasTag(TypeTag.UNDETVAR)) {
-/*      */       if (paramResultInfo.pt.isReference()) {
-/*      */         type3 = generateReturnConstraintsUndetVarToReference(paramJCTree, (Type.UndetVar)type2, type3, paramResultInfo, paramInferenceContext);
-/*      */       } else if (type3.isPrimitive()) {
-/*      */         type3 = generateReturnConstraintsPrimitive(paramJCTree, (Type.UndetVar)type2, type3, paramResultInfo, paramInferenceContext);
-/*      */       }
-/*      */     }
-/*      */     Assert.check((this.allowGraphInference || !inferenceContext.free(type3)), "legacy inference engine cannot handle constraints on both sides of a subtyping assertion");
-/*      */     Warner warner = new Warner();
-/*      */     if (!paramResultInfo.checkContext.compatible(type2, inferenceContext.asUndetVar(type3), warner) || (!this.allowGraphInference && warner.hasLint(Lint.LintCategory.UNCHECKED)))
-/*      */       throw this.inferenceException.setMessage("infer.no.conforming.instance.exists", new Object[] { paramInferenceContext.restvars(), paramMethodType.getReturnType(), type3 });
-/*      */     return type1;
-/*      */   }
-/*      */
-/*      */   private Type generateReturnConstraintsPrimitive(JCTree paramJCTree, Type.UndetVar paramUndetVar, Type paramType, Attr.ResultInfo paramResultInfo, InferenceContext paramInferenceContext) {
-/*      */     if (!this.allowGraphInference)
-/*      */       return (this.types.boxedClass(paramType)).type;
-/*      */     for (Type type1 : paramUndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ, Type.UndetVar.InferenceBound.UPPER, Type.UndetVar.InferenceBound.LOWER })) {
-/*      */       Type type2 = this.types.unboxedType(type1);
-/*      */       if (type2 == null || type2.hasTag(TypeTag.NONE))
-/*      */         continue;
-/*      */       return generateReferenceToTargetConstraint(paramJCTree, paramUndetVar, paramType, paramResultInfo, paramInferenceContext);
-/*      */     }
-/*      */     return (this.types.boxedClass(paramType)).type;
-/*      */   }
-/*      */
-/*      */   private Type generateReturnConstraintsUndetVarToReference(JCTree paramJCTree, Type.UndetVar paramUndetVar, Type paramType, Attr.ResultInfo paramResultInfo, InferenceContext paramInferenceContext) {
-/*      */     Type type = this.types.capture(paramType);
-/*      */     if (type == paramType) {
-/*      */       for (Type type1 : paramUndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ, Type.UndetVar.InferenceBound.LOWER })) {
-/*      */         Type type2 = this.types.capture(type1);
-/*      */         if (type2 != type1)
-/*      */           return generateReferenceToTargetConstraint(paramJCTree, paramUndetVar, paramType, paramResultInfo, paramInferenceContext);
-/*      */       }
-/*      */       for (Type type1 : paramUndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER })) {
-/*      */         for (Type type2 : paramUndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER })) {
-/*      */           if (type1 != type2 && !paramInferenceContext.free(type1) && !paramInferenceContext.free(type2) && commonSuperWithDiffParameterization(type1, type2))
-/*      */             return generateReferenceToTargetConstraint(paramJCTree, paramUndetVar, paramType, paramResultInfo, paramInferenceContext);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */     if (paramType.isParameterized())
-/*      */       for (Type type1 : paramUndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ, Type.UndetVar.InferenceBound.LOWER })) {
-/*      */         Type type2 = this.types.asSuper(type1, (Symbol)paramType.tsym);
-/*      */         if (type2 != null && type2.isRaw())
-/*      */           return generateReferenceToTargetConstraint(paramJCTree, paramUndetVar, paramType, paramResultInfo, paramInferenceContext);
-/*      */       }
-/*      */     return paramType;
-/*      */   }
-/*      */
-/*      */   private boolean commonSuperWithDiffParameterization(Type paramType1, Type paramType2) {
-/*      */     Pair<Type, Type> pair = getParameterizedSupers(paramType1, paramType2);
-/*      */     return (pair != null && !this.types.isSameType((Type)pair.fst, (Type)pair.snd));
-/*      */   }
-/*      */
-/*      */   private Type generateReferenceToTargetConstraint(JCTree paramJCTree, Type.UndetVar paramUndetVar, Type paramType, Attr.ResultInfo paramResultInfo, InferenceContext paramInferenceContext) {
-/*      */     paramInferenceContext.solve(List.of(paramUndetVar.qtype), new Warner());
-/*      */     paramInferenceContext.notifyChange();
-/*      */     Type type = paramResultInfo.checkContext.inferenceContext().cachedCapture(paramJCTree, paramUndetVar.inst, false);
-/*      */     if (this.types.isConvertible(type, paramResultInfo.checkContext.inferenceContext().asUndetVar(paramType)))
-/*      */       return this.syms.objectType;
-/*      */     return paramType;
-/*      */   }
-/*      */
-/*      */   private void instantiateAsUninferredVars(List<Type> paramList, InferenceContext paramInferenceContext) {
-/*      */     ListBuffer listBuffer = new ListBuffer();
-/*      */     for (Type type : paramList) {
-/*      */       Type.UndetVar undetVar = (Type.UndetVar)paramInferenceContext.asUndetVar(type);
-/*      */       List list1 = undetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER });
-/*      */       if (Type.containsAny(list1, paramList)) {
-/*      */         Symbol.TypeVariableSymbol typeVariableSymbol = new Symbol.TypeVariableSymbol(4096L, undetVar.qtype.tsym.name, null, undetVar.qtype.tsym.owner);
-/*      */         ((Symbol.TypeSymbol)typeVariableSymbol).type = (Type)new Type.TypeVar((Symbol.TypeSymbol)typeVariableSymbol, (Type)this.types.makeIntersectionType(undetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER }, )), null);
-/*      */         listBuffer.append(undetVar);
-/*      */         undetVar.inst = ((Symbol.TypeSymbol)typeVariableSymbol).type;
-/*      */         continue;
-/*      */       }
-/*      */       if (list1.nonEmpty()) {
-/*      */         undetVar.inst = this.types.glb(list1);
-/*      */         continue;
-/*      */       }
-/*      */       undetVar.inst = this.syms.objectType;
-/*      */     }
-/*      */     List<Type> list = paramList;
-/*      */     for (Type type : listBuffer) {
-/*      */       Type.UndetVar undetVar = (Type.UndetVar)type;
-/*      */       Type.TypeVar typeVar = (Type.TypeVar)undetVar.inst;
-/*      */       typeVar.bound = this.types.glb(paramInferenceContext.asInstTypes(this.types.getBounds(typeVar)));
-/*      */       if (typeVar.bound.isErroneous())
-/*      */         reportBoundError(undetVar, BoundErrorKind.BAD_UPPER);
-/*      */       list = list.tail;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   Type instantiatePolymorphicSignatureInstance(Env<AttrContext> paramEnv, Symbol.MethodSymbol paramMethodSymbol, Resolve.MethodResolutionContext paramMethodResolutionContext, List<Type> paramList) {
-/*      */     Type type;
-/*      */     JCTree.JCTypeCast jCTypeCast;
-/*      */     JCTree.JCExpressionStatement jCExpressionStatement;
-/*      */     switch (paramEnv.next.tree.getTag()) {
-/*      */       case EQ:
-/*      */         jCTypeCast = (JCTree.JCTypeCast)paramEnv.next.tree;
-/*      */         type = (TreeInfo.skipParens(jCTypeCast.expr) == paramEnv.tree) ? jCTypeCast.clazz.type : this.syms.objectType;
-/*      */         break;
-/*      */       case LOWER:
-/*      */         jCExpressionStatement = (JCTree.JCExpressionStatement)paramEnv.next.tree;
-/*      */         type = (TreeInfo.skipParens(jCExpressionStatement.expr) == paramEnv.tree) ? (Type)this.syms.voidType : this.syms.objectType;
-/*      */         break;
-/*      */       default:
-/*      */         type = this.syms.objectType;
-/*      */         break;
-/*      */     }
-/*      */     List list1 = Type.map(paramList, new ImplicitArgType((Symbol)paramMethodSymbol, paramMethodResolutionContext.step));
-/*      */     List list2 = (paramMethodSymbol != null) ? paramMethodSymbol.getThrownTypes() : List.of(this.syms.throwableType);
-/*      */     return (Type)new Type.MethodType(list1, type, list2, (Symbol.TypeSymbol)this.syms.methodClass);
-/*      */   }
-/*      */
-/*      */   class ImplicitArgType extends DeferredAttr.DeferredTypeMap {
-/*      */     public ImplicitArgType(Symbol param1Symbol, Resolve.MethodResolutionPhase param1MethodResolutionPhase) {
-/*      */       super(DeferredAttr.AttrMode.SPECULATIVE, param1Symbol, param1MethodResolutionPhase);
-/*      */     }
-/*      */
-/*      */     public Type apply(Type param1Type) {
-/*      */       param1Type = Infer.this.types.erasure(super.apply(param1Type));
-/*      */       if (param1Type.hasTag(TypeTag.BOT))
-/*      */         param1Type = (Infer.this.types.boxedClass((Type)Infer.this.syms.voidType)).type;
-/*      */       return param1Type;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public Type instantiateFunctionalInterface(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType, List<Type> paramList, Check.CheckContext paramCheckContext) {
-/*      */     if (this.types.capture(paramType) == paramType)
-/*      */       return paramType;
-/*      */     Type type1 = paramType.tsym.type;
-/*      */     InferenceContext inferenceContext = new InferenceContext(paramType.tsym.type.getTypeArguments());
-/*      */     Assert.check((paramList != null));
-/*      */     List list1 = this.types.findDescriptorType(type1).getParameterTypes();
-/*      */     if (list1.size() != paramList.size()) {
-/*      */       paramCheckContext.report(paramDiagnosticPosition, this.diags.fragment("incompatible.arg.types.in.lambda", new Object[0]));
-/*      */       return this.types.createErrorType(paramType);
-/*      */     }
-/*      */     for (Type type : list1) {
-/*      */       if (!this.types.isSameType(inferenceContext.asUndetVar(type), (Type)paramList.head)) {
-/*      */         paramCheckContext.report(paramDiagnosticPosition, this.diags.fragment("no.suitable.functional.intf.inst", new Object[] { paramType }));
-/*      */         return this.types.createErrorType(paramType);
-/*      */       }
-/*      */       paramList = paramList.tail;
-/*      */     }
-/*      */     try {
-/*      */       inferenceContext.solve(inferenceContext.boundedVars(), this.types.noWarnings);
-/*      */     } catch (InferenceException inferenceException) {
-/*      */       paramCheckContext.report(paramDiagnosticPosition, this.diags.fragment("no.suitable.functional.intf.inst", new Object[] { paramType }));
-/*      */     }
-/*      */     List list2 = paramType.getTypeArguments();
-/*      */     for (Type type : inferenceContext.undetvars) {
-/*      */       Type.UndetVar undetVar = (Type.UndetVar)type;
-/*      */       if (undetVar.inst == null)
-/*      */         undetVar.inst = (Type)list2.head;
-/*      */       list2 = list2.tail;
-/*      */     }
-/*      */     Type type2 = inferenceContext.asInstType(type1);
-/*      */     if (!this.chk.checkValidGenericType(type2))
-/*      */       paramCheckContext.report(paramDiagnosticPosition, this.diags.fragment("no.suitable.functional.intf.inst", new Object[] { paramType }));
-/*      */     paramCheckContext.compatible(type2, paramType, this.types.noWarnings);
-/*      */     return type2;
-/*      */   }
-/*      */
-/*      */   void checkWithinBounds(InferenceContext paramInferenceContext, Warner paramWarner) throws InferenceException {
-/*      */     MultiUndetVarListener multiUndetVarListener = new MultiUndetVarListener(paramInferenceContext.undetvars);
-/*      */     List<Type> list = paramInferenceContext.save();
-/*      */     try {
-/*      */       do {
-/*      */         multiUndetVarListener.reset();
-/*      */         if (!this.allowGraphInference)
-/*      */           for (Type type : paramInferenceContext.undetvars) {
-/*      */             Type.UndetVar undetVar = (Type.UndetVar)type;
-/*      */             IncorporationStep.CHECK_BOUNDS.apply(undetVar, paramInferenceContext, paramWarner);
-/*      */           }
-/*      */         for (Type type : paramInferenceContext.undetvars) {
-/*      */           Type.UndetVar undetVar = (Type.UndetVar)type;
-/*      */           EnumSet<IncorporationStep> enumSet = this.allowGraphInference ? this.incorporationStepsGraph : this.incorporationStepsLegacy;
-/*      */           for (IncorporationStep incorporationStep : enumSet) {
-/*      */             if (incorporationStep.accepts(undetVar, paramInferenceContext))
-/*      */               incorporationStep.apply(undetVar, paramInferenceContext, paramWarner);
-/*      */           }
-/*      */         }
-/*      */       } while (multiUndetVarListener.changed && this.allowGraphInference);
-/*      */     } finally {
-/*      */       multiUndetVarListener.detach();
-/*      */       if (this.incorporationCache.size() == 100)
-/*      */         paramInferenceContext.rollback(list);
-/*      */       this.incorporationCache.clear();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   class MultiUndetVarListener implements Type.UndetVar.UndetVarListener {
-/*      */     boolean changed;
-/*      */     List<Type> undetvars;
-/*      */
-/*      */     public MultiUndetVarListener(List<Type> param1List) {
-/*      */       this.undetvars = param1List;
-/*      */       for (Type type : param1List) {
-/*      */         Type.UndetVar undetVar = (Type.UndetVar)type;
-/*      */         undetVar.listener = this;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void varChanged(Type.UndetVar param1UndetVar, Set<Type.UndetVar.InferenceBound> param1Set) {
-/*      */       if (Infer.this.incorporationCache.size() < 100)
-/*      */         this.changed = true;
-/*      */     }
-/*      */
-/*      */     void reset() {
-/*      */       this.changed = false;
-/*      */     }
-/*      */
-/*      */     void detach() {
-/*      */       for (Type type : this.undetvars) {
-/*      */         Type.UndetVar undetVar = (Type.UndetVar)type;
-/*      */         undetVar.listener = null;
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private Pair<Type, Type> getParameterizedSupers(Type paramType1, Type paramType2) {
-/*      */     Type type1 = this.types.lub(new Type[] { paramType1, paramType2 });
-/*      */     if (type1 == this.syms.errType || type1 == this.syms.botType || !type1.isParameterized())
-/*      */       return null;
-/*      */     Type type2 = this.types.asSuper(paramType1, (Symbol)type1.tsym);
-/*      */     Type type3 = this.types.asSuper(paramType2, (Symbol)type1.tsym);
-/*      */     return new Pair(type2, type3);
-/*      */   }
-/*      */
-/*      */   enum IncorporationStep {
-/*      */     CHECK_BOUNDS {
-/*      */       public void apply(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext, Warner param2Warner) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         param2UndetVar.substBounds(param2InferenceContext.inferenceVars(), param2InferenceContext.instTypes(), infer.types);
-/*      */         infer.checkCompatibleUpperBounds(param2UndetVar, param2InferenceContext);
-/*      */         if (param2UndetVar.inst != null) {
-/*      */           Type type = param2UndetVar.inst;
-/*      */           for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER })) {
-/*      */             if (!isSubtype(type, param2InferenceContext.asUndetVar(type1), param2Warner, infer))
-/*      */               infer.reportBoundError(param2UndetVar, BoundErrorKind.UPPER);
-/*      */           }
-/*      */           for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER })) {
-/*      */             if (!isSubtype(param2InferenceContext.asUndetVar(type1), type, param2Warner, infer))
-/*      */               infer.reportBoundError(param2UndetVar, BoundErrorKind.LOWER);
-/*      */           }
-/*      */           for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ })) {
-/*      */             if (!isSameType(type, param2InferenceContext.asUndetVar(type1), infer))
-/*      */               infer.reportBoundError(param2UndetVar, BoundErrorKind.EQ);
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */
-/*      */       boolean accepts(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext) {
-/*      */         return true;
-/*      */       }
-/*      */     },
-/*      */     EQ_CHECK_LEGACY {
-/*      */       public void apply(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext, Warner param2Warner) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         Type type = null;
-/*      */         for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ })) {
-/*      */           Assert.check(!param2InferenceContext.free(type1));
-/*      */           if (type != null && !isSameType(type1, type, infer))
-/*      */             infer.reportBoundError(param2UndetVar, BoundErrorKind.EQ);
-/*      */           type = type1;
-/*      */           for (Type type2 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER })) {
-/*      */             Assert.check(!param2InferenceContext.free(type2));
-/*      */             if (!isSubtype(type2, type1, param2Warner, infer))
-/*      */               infer.reportBoundError(param2UndetVar, BoundErrorKind.BAD_EQ_LOWER);
-/*      */           }
-/*      */           for (Type type2 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER })) {
-/*      */             if (!param2InferenceContext.free(type2) && !isSubtype(type1, type2, param2Warner, infer))
-/*      */               infer.reportBoundError(param2UndetVar, BoundErrorKind.BAD_EQ_UPPER);
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     },
-/*      */     EQ_CHECK {
-/*      */       public void apply(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext, Warner param2Warner) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         for (Type type : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ })) {
-/*      */           if (type.containsAny(param2InferenceContext.inferenceVars()))
-/*      */             continue;
-/*      */           for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER })) {
-/*      */             if (!isSubtype(type, param2InferenceContext.asUndetVar(type1), param2Warner, infer))
-/*      */               infer.reportBoundError(param2UndetVar, BoundErrorKind.BAD_EQ_UPPER);
-/*      */           }
-/*      */           for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER })) {
-/*      */             if (!isSubtype(param2InferenceContext.asUndetVar(type1), type, param2Warner, infer))
-/*      */               infer.reportBoundError(param2UndetVar, BoundErrorKind.BAD_EQ_LOWER);
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     },
-/*      */     CROSS_UPPER_LOWER {
-/*      */       public void apply(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext, Warner param2Warner) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         for (Type type : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER })) {
-/*      */           for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER }))
-/*      */             isSubtype(param2InferenceContext.asUndetVar(type1), param2InferenceContext.asUndetVar(type), param2Warner, infer);
-/*      */         }
-/*      */       }
-/*      */     },
-/*      */     CROSS_UPPER_EQ {
-/*      */       public void apply(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext, Warner param2Warner) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         for (Type type : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER })) {
-/*      */           for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ }))
-/*      */             isSubtype(param2InferenceContext.asUndetVar(type1), param2InferenceContext.asUndetVar(type), param2Warner, infer);
-/*      */         }
-/*      */       }
-/*      */     },
-/*      */     CROSS_EQ_LOWER {
-/*      */       public void apply(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext, Warner param2Warner) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         for (Type type : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ })) {
-/*      */           for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER }))
-/*      */             isSubtype(param2InferenceContext.asUndetVar(type1), param2InferenceContext.asUndetVar(type), param2Warner, infer);
-/*      */         }
-/*      */       }
-/*      */     },
-/*      */     CROSS_UPPER_UPPER {
-/*      */       public void apply(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext, Warner param2Warner) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         List list1 = param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER });
-/*      */         List list2 = list1.tail;
-/*      */         while (list1.nonEmpty()) {
-/*      */           List list = list2;
-/*      */           while (list.nonEmpty()) {
-/*      */             Type type1 = (Type)list1.head;
-/*      */             Type type2 = (Type)list.head;
-/*      */             if (type1 != type2 && !type1.hasTag(TypeTag.WILDCARD) && !type2.hasTag(TypeTag.WILDCARD)) {
-/*      */               Pair pair = infer.getParameterizedSupers(type1, type2);
-/*      */               if (pair != null) {
-/*      */                 List list3 = ((Type)pair.fst).allparams();
-/*      */                 List list4 = ((Type)pair.snd).allparams();
-/*      */                 while (list3.nonEmpty() && list4.nonEmpty()) {
-/*      */                   if (!((Type)list3.head).hasTag(TypeTag.WILDCARD) && !((Type)list4.head).hasTag(TypeTag.WILDCARD))
-/*      */                     isSameType(param2InferenceContext.asUndetVar((Type)list3.head), param2InferenceContext.asUndetVar((Type)list4.head), infer);
-/*      */                   list3 = list3.tail;
-/*      */                   list4 = list4.tail;
-/*      */                 }
-/*      */                 Assert.check((list3.isEmpty() && list4.isEmpty()));
-/*      */               }
-/*      */             }
-/*      */             list = list.tail;
-/*      */           }
-/*      */           list1 = list1.tail;
-/*      */           list2 = list1.tail;
-/*      */         }
-/*      */       }
-/*      */
-/*      */       boolean accepts(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext) {
-/*      */         return (!param2UndetVar.isCaptured() && param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER }).nonEmpty());
-/*      */       }
-/*      */     },
-/*      */     CROSS_EQ_EQ {
-/*      */       public void apply(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext, Warner param2Warner) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         for (Type type : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ })) {
-/*      */           for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ })) {
-/*      */             if (type != type1)
-/*      */               isSameType(param2InferenceContext.asUndetVar(type1), param2InferenceContext.asUndetVar(type), infer);
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     },
-/*      */     PROP_UPPER {
-/*      */       public void apply(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext, Warner param2Warner) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         for (Type type : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER })) {
-/*      */           if (param2InferenceContext.inferenceVars().contains(type)) {
-/*      */             Type.UndetVar undetVar = (Type.UndetVar)param2InferenceContext.asUndetVar(type);
-/*      */             if (undetVar.isCaptured())
-/*      */               continue;
-/*      */             addBound(Type.UndetVar.InferenceBound.LOWER, undetVar, param2InferenceContext.asInstType(param2UndetVar.qtype), infer);
-/*      */             for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER }))
-/*      */               addBound(Type.UndetVar.InferenceBound.LOWER, undetVar, param2InferenceContext.asInstType(type1), infer);
-/*      */             for (Type type1 : undetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER }))
-/*      */               addBound(Type.UndetVar.InferenceBound.UPPER, param2UndetVar, param2InferenceContext.asInstType(type1), infer);
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     },
-/*      */     PROP_LOWER {
-/*      */       public void apply(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext, Warner param2Warner) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         for (Type type : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER })) {
-/*      */           if (param2InferenceContext.inferenceVars().contains(type)) {
-/*      */             Type.UndetVar undetVar = (Type.UndetVar)param2InferenceContext.asUndetVar(type);
-/*      */             if (undetVar.isCaptured())
-/*      */               continue;
-/*      */             addBound(Type.UndetVar.InferenceBound.UPPER, undetVar, param2InferenceContext.asInstType(param2UndetVar.qtype), infer);
-/*      */             for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER }))
-/*      */               addBound(Type.UndetVar.InferenceBound.UPPER, undetVar, param2InferenceContext.asInstType(type1), infer);
-/*      */             for (Type type1 : undetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER }))
-/*      */               addBound(Type.UndetVar.InferenceBound.LOWER, param2UndetVar, param2InferenceContext.asInstType(type1), infer);
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     },
-/*      */     PROP_EQ {
-/*      */       public void apply(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext, Warner param2Warner) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         for (Type type : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ })) {
-/*      */           if (param2InferenceContext.inferenceVars().contains(type)) {
-/*      */             Type.UndetVar undetVar = (Type.UndetVar)param2InferenceContext.asUndetVar(type);
-/*      */             if (undetVar.isCaptured())
-/*      */               continue;
-/*      */             addBound(Type.UndetVar.InferenceBound.EQ, undetVar, param2InferenceContext.asInstType(param2UndetVar.qtype), infer);
-/*      */             for (Type.UndetVar.InferenceBound inferenceBound : Type.UndetVar.InferenceBound.values()) {
-/*      */               for (Type type1 : param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { inferenceBound })) {
-/*      */                 if (type1 != undetVar)
-/*      */                   addBound(inferenceBound, undetVar, param2InferenceContext.asInstType(type1), infer);
-/*      */               }
-/*      */             }
-/*      */             for (Type.UndetVar.InferenceBound inferenceBound : Type.UndetVar.InferenceBound.values()) {
-/*      */               for (Type type1 : undetVar.getBounds(new Type.UndetVar.InferenceBound[] { inferenceBound })) {
-/*      */                 if (type1 != param2UndetVar)
-/*      */                   addBound(inferenceBound, param2UndetVar, param2InferenceContext.asInstType(type1), infer);
-/*      */               }
-/*      */             }
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     };
-/*      */
-/*      */     boolean accepts(Type.UndetVar param1UndetVar, InferenceContext param1InferenceContext) {
-/*      */       return !param1UndetVar.isCaptured();
-/*      */     }
-/*      */
-/*      */     boolean isSubtype(Type param1Type1, Type param1Type2, Warner param1Warner, Infer param1Infer) {
-/*      */       return doIncorporationOp(IncorporationBinaryOpKind.IS_SUBTYPE, param1Type1, param1Type2, param1Warner, param1Infer);
-/*      */     }
-/*      */
-/*      */     boolean isSameType(Type param1Type1, Type param1Type2, Infer param1Infer) {
-/*      */       return doIncorporationOp(IncorporationBinaryOpKind.IS_SAME_TYPE, param1Type1, param1Type2, null, param1Infer);
-/*      */     }
-/*      */
-/*      */     void addBound(Type.UndetVar.InferenceBound param1InferenceBound, Type.UndetVar param1UndetVar, Type param1Type, Infer param1Infer) {
-/*      */       doIncorporationOp(opFor(param1InferenceBound), (Type)param1UndetVar, param1Type, null, param1Infer);
-/*      */     }
-/*      */
-/*      */     IncorporationBinaryOpKind opFor(Type.UndetVar.InferenceBound param1InferenceBound) {
-/*      */       switch (param1InferenceBound) {
-/*      */         case EQ:
-/*      */           return IncorporationBinaryOpKind.ADD_EQ_BOUND;
-/*      */         case LOWER:
-/*      */           return IncorporationBinaryOpKind.ADD_LOWER_BOUND;
-/*      */         case UPPER:
-/*      */           return IncorporationBinaryOpKind.ADD_UPPER_BOUND;
-/*      */       }
-/*      */       Assert.error("Can't get here!");
-/*      */       return null;
-/*      */     }
-/*      */
-/*      */     boolean doIncorporationOp(IncorporationBinaryOpKind param1IncorporationBinaryOpKind, Type param1Type1, Type param1Type2, Warner param1Warner, Infer param1Infer) {
-/*      */       param1Infer.getClass();
-/*      */       IncorporationBinaryOp incorporationBinaryOp = new IncorporationBinaryOp(param1IncorporationBinaryOpKind, param1Type1, param1Type2);
-/*      */       Boolean bool = param1Infer.incorporationCache.get(incorporationBinaryOp);
-/*      */       if (bool == null)
-/*      */         param1Infer.incorporationCache.put(incorporationBinaryOp, bool = Boolean.valueOf(incorporationBinaryOp.apply(param1Warner)));
-/*      */       return bool.booleanValue();
-/*      */     }
-/*      */
-/*      */     abstract void apply(Type.UndetVar param1UndetVar, InferenceContext param1InferenceContext, Warner param1Warner);
-/*      */   }
-/*      */
-/*      */   enum IncorporationBinaryOpKind {
-/*      */     IS_SUBTYPE {
-/*      */       boolean apply(Type param2Type1, Type param2Type2, Warner param2Warner, Types param2Types) {
-/*      */         return param2Types.isSubtypeUnchecked(param2Type1, param2Type2, param2Warner);
-/*      */       }
-/*      */     },
-/*      */     IS_SAME_TYPE {
-/*      */       boolean apply(Type param2Type1, Type param2Type2, Warner param2Warner, Types param2Types) {
-/*      */         return param2Types.isSameType(param2Type1, param2Type2);
-/*      */       }
-/*      */     },
-/*      */     ADD_UPPER_BOUND {
-/*      */       boolean apply(Type param2Type1, Type param2Type2, Warner param2Warner, Types param2Types) {
-/*      */         Type.UndetVar undetVar = (Type.UndetVar)param2Type1;
-/*      */         undetVar.addBound(Type.UndetVar.InferenceBound.UPPER, param2Type2, param2Types);
-/*      */         return true;
-/*      */       }
-/*      */     },
-/*      */     ADD_LOWER_BOUND {
-/*      */       boolean apply(Type param2Type1, Type param2Type2, Warner param2Warner, Types param2Types) {
-/*      */         Type.UndetVar undetVar = (Type.UndetVar)param2Type1;
-/*      */         undetVar.addBound(Type.UndetVar.InferenceBound.LOWER, param2Type2, param2Types);
-/*      */         return true;
-/*      */       }
-/*      */     },
-/*      */     ADD_EQ_BOUND {
-/*      */       boolean apply(Type param2Type1, Type param2Type2, Warner param2Warner, Types param2Types) {
-/*      */         Type.UndetVar undetVar = (Type.UndetVar)param2Type1;
-/*      */         undetVar.addBound(Type.UndetVar.InferenceBound.EQ, param2Type2, param2Types);
-/*      */         return true;
-/*      */       }
-/*      */     };
-/*      */
-/*      */     abstract boolean apply(Type param1Type1, Type param1Type2, Warner param1Warner, Types param1Types);
-/*      */   }
-/*      */
-/*      */   class IncorporationBinaryOp {
-/*      */     IncorporationBinaryOpKind opKind;
-/*      */     Type op1;
-/*      */     Type op2;
-/*      */
-/*      */     IncorporationBinaryOp(IncorporationBinaryOpKind param1IncorporationBinaryOpKind, Type param1Type1, Type param1Type2) {
-/*      */       this.opKind = param1IncorporationBinaryOpKind;
-/*      */       this.op1 = param1Type1;
-/*      */       this.op2 = param1Type2;
-/*      */     }
-/*      */
-/*      */     public boolean equals(Object param1Object) {
-/*      */       if (!(param1Object instanceof IncorporationBinaryOp))
-/*      */         return false;
-/*      */       IncorporationBinaryOp incorporationBinaryOp = (IncorporationBinaryOp)param1Object;
-/*      */       return (this.opKind == incorporationBinaryOp.opKind && Infer.this.types.isSameType(this.op1, incorporationBinaryOp.op1, true) && Infer.this.types.isSameType(this.op2, incorporationBinaryOp.op2, true));
-/*      */     }
-/*      */
-/*      */     public int hashCode() {
-/*      */       int i = this.opKind.hashCode();
-/*      */       i *= 127;
-/*      */       i += Infer.this.types.hashCode(this.op1);
-/*      */       i *= 127;
-/*      */       i += Infer.this.types.hashCode(this.op2);
-/*      */       return i;
-/*      */     }
-/*      */
-/*      */     boolean apply(Warner param1Warner) {
-/*      */       return this.opKind.apply(this.op1, this.op2, param1Warner, Infer.this.types);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   void checkCompatibleUpperBounds(Type.UndetVar paramUndetVar, InferenceContext paramInferenceContext) {
-/*      */     List list = Type.filter(paramUndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER }, ), new BoundFilter(paramInferenceContext));
-/*      */     Type type = null;
-/*      */     if (list.isEmpty()) {
-/*      */       type = this.syms.objectType;
-/*      */     } else if (list.tail.isEmpty()) {
-/*      */       type = (Type)list.head;
-/*      */     } else {
-/*      */       type = this.types.glb(list);
-/*      */     }
-/*      */     if (type == null || type.isErroneous())
-/*      */       reportBoundError(paramUndetVar, BoundErrorKind.BAD_UPPER);
-/*      */   }
-/*      */
-/*      */   protected static class BoundFilter implements Filter<Type> {
-/*      */     InferenceContext inferenceContext;
-/*      */
-/*      */     public BoundFilter(InferenceContext param1InferenceContext) {
-/*      */       this.inferenceContext = param1InferenceContext;
-/*      */     }
-/*      */
-/*      */     public boolean accepts(Type param1Type) {
-/*      */       return (!param1Type.isErroneous() && !this.inferenceContext.free(param1Type) && !param1Type.hasTag(TypeTag.BOT));
-/*      */     }
-/*      */   }
-/*      */
-/*      */   enum BoundErrorKind {
-/*      */     BAD_UPPER {
-/*      */       Resolve.InapplicableMethodException setMessage(InferenceException param2InferenceException, Type.UndetVar param2UndetVar) {
-/*      */         return param2InferenceException.setMessage("incompatible.upper.bounds", new Object[] { param2UndetVar.qtype, param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER }) });
-/*      */       }
-/*      */     },
-/*      */     BAD_EQ_UPPER {
-/*      */       Resolve.InapplicableMethodException setMessage(InferenceException param2InferenceException, Type.UndetVar param2UndetVar) {
-/*      */         return param2InferenceException.setMessage("incompatible.eq.upper.bounds", new Object[] { param2UndetVar.qtype, param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ }), param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER }) });
-/*      */       }
-/*      */     },
-/*      */     BAD_EQ_LOWER {
-/*      */       Resolve.InapplicableMethodException setMessage(InferenceException param2InferenceException, Type.UndetVar param2UndetVar) {
-/*      */         return param2InferenceException.setMessage("incompatible.eq.lower.bounds", new Object[] { param2UndetVar.qtype, param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ }), param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER }) });
-/*      */       }
-/*      */     },
-/*      */     UPPER {
-/*      */       Resolve.InapplicableMethodException setMessage(InferenceException param2InferenceException, Type.UndetVar param2UndetVar) {
-/*      */         return param2InferenceException.setMessage("inferred.do.not.conform.to.upper.bounds", new Object[] { param2UndetVar.inst, param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER }) });
-/*      */       }
-/*      */     },
-/*      */     LOWER {
-/*      */       Resolve.InapplicableMethodException setMessage(InferenceException param2InferenceException, Type.UndetVar param2UndetVar) {
-/*      */         return param2InferenceException.setMessage("inferred.do.not.conform.to.lower.bounds", new Object[] { param2UndetVar.inst, param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER }) });
-/*      */       }
-/*      */     },
-/*      */     EQ {
-/*      */       Resolve.InapplicableMethodException setMessage(InferenceException param2InferenceException, Type.UndetVar param2UndetVar) {
-/*      */         return param2InferenceException.setMessage("inferred.do.not.conform.to.eq.bounds", new Object[] { param2UndetVar.inst, param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ }) });
-/*      */       }
-/*      */     };
-/*      */
-/*      */     abstract Resolve.InapplicableMethodException setMessage(InferenceException param1InferenceException, Type.UndetVar param1UndetVar);
-/*      */   }
-/*      */
-/*      */   void reportBoundError(Type.UndetVar paramUndetVar, BoundErrorKind paramBoundErrorKind) {
-/*      */     throw paramBoundErrorKind.setMessage(this.inferenceException, paramUndetVar);
-/*      */   }
-/*      */
-/*      */   static interface GraphStrategy {
-/*      */     GraphSolver.InferenceGraph.Node pickNode(GraphSolver.InferenceGraph param1InferenceGraph) throws NodeNotFoundException;
-/*      */
-/*      */     boolean done();
-/*      */
-/*      */     public static class NodeNotFoundException extends RuntimeException {
-/*      */       private static final long serialVersionUID = 0L;
-/*      */       GraphSolver.InferenceGraph graph;
-/*      */
-/*      */       public NodeNotFoundException(GraphSolver.InferenceGraph param2InferenceGraph) {
-/*      */         this.graph = param2InferenceGraph;
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */   abstract class LeafSolver implements GraphStrategy {
-/*      */     public GraphSolver.InferenceGraph.Node pickNode(GraphSolver.InferenceGraph param1InferenceGraph) {
-/*      */       if (param1InferenceGraph.nodes.isEmpty())
-/*      */         throw new NodeNotFoundException(param1InferenceGraph);
-/*      */       return param1InferenceGraph.nodes.get(0);
-/*      */     }
-/*      */
-/*      */     boolean isSubtype(Type param1Type1, Type param1Type2, Warner param1Warner, Infer param1Infer) {
-/*      */       return doIncorporationOp(IncorporationBinaryOpKind.IS_SUBTYPE, param1Type1, param1Type2, param1Warner, param1Infer);
-/*      */     }
-/*      */
-/*      */     boolean isSameType(Type param1Type1, Type param1Type2, Infer param1Infer) {
-/*      */       return doIncorporationOp(IncorporationBinaryOpKind.IS_SAME_TYPE, param1Type1, param1Type2, null, param1Infer);
-/*      */     }
-/*      */
-/*      */     void addBound(Type.UndetVar.InferenceBound param1InferenceBound, Type.UndetVar param1UndetVar, Type param1Type, Infer param1Infer) {
-/*      */       doIncorporationOp(opFor(param1InferenceBound), (Type)param1UndetVar, param1Type, null, param1Infer);
-/*      */     }
-/*      */
-/*      */     IncorporationBinaryOpKind opFor(Type.UndetVar.InferenceBound param1InferenceBound) {
-/*      */       switch (param1InferenceBound) {
-/*      */         case EQ:
-/*      */           return IncorporationBinaryOpKind.ADD_EQ_BOUND;
-/*      */         case LOWER:
-/*      */           return IncorporationBinaryOpKind.ADD_LOWER_BOUND;
-/*      */         case UPPER:
-/*      */           return IncorporationBinaryOpKind.ADD_UPPER_BOUND;
-/*      */       }
-/*      */       Assert.error("Can't get here!");
-/*      */       return null;
-/*      */     }
-/*      */
-/*      */     boolean doIncorporationOp(IncorporationBinaryOpKind param1IncorporationBinaryOpKind, Type param1Type1, Type param1Type2, Warner param1Warner, Infer param1Infer) {
-/*      */       param1Infer.getClass();
-/*      */       IncorporationBinaryOp incorporationBinaryOp = new IncorporationBinaryOp(param1IncorporationBinaryOpKind, param1Type1, param1Type2);
-/*      */       Boolean bool = param1Infer.incorporationCache.get(incorporationBinaryOp);
-/*      */       if (bool == null)
-/*      */         param1Infer.incorporationCache.put(incorporationBinaryOp, bool = Boolean.valueOf(incorporationBinaryOp.apply(param1Warner)));
-/*      */       return bool.booleanValue();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   abstract class BestLeafSolver extends LeafSolver {
-/*      */     List<Type> varsToSolve;
-/*      */     final Map<GraphSolver.InferenceGraph.Node, Pair<List<GraphSolver.InferenceGraph.Node>, Integer>> treeCache;
-/*      */     final Pair<List<GraphSolver.InferenceGraph.Node>, Integer> noPath;
-/*      */
-/*      */     BestLeafSolver(List<Type> param1List) {
-/*      */       this.treeCache = new HashMap<>();
-/*      */       this.noPath = new Pair(null, Integer.valueOf(2147483647));
-/*      */       this.varsToSolve = param1List;
-/*      */     }
-/*      */
-/*      */     Pair<List<GraphSolver.InferenceGraph.Node>, Integer> computeTreeToLeafs(GraphSolver.InferenceGraph.Node param1Node) {
-/*      */       Pair<List<GraphSolver.InferenceGraph.Node>, Integer> pair = this.treeCache.get(param1Node);
-/*      */       if (pair == null) {
-/*      */         if (param1Node.isLeaf()) {
-/*      */           pair = new Pair(List.of(param1Node), Integer.valueOf(((ListBuffer)param1Node.data).length()));
-/*      */         } else {
-/*      */           Pair<List<GraphSolver.InferenceGraph.Node>, Integer> pair1 = new Pair(List.of(param1Node), Integer.valueOf(((ListBuffer)param1Node.data).length()));
-/*      */           for (GraphSolver.InferenceGraph.Node node : param1Node.getAllDependencies()) {
-/*      */             if (node == param1Node)
-/*      */               continue;
-/*      */             Pair<List<GraphSolver.InferenceGraph.Node>, Integer> pair2 = computeTreeToLeafs(node);
-/*      */             pair1 = new Pair(((List)pair1.fst).prependList((List)pair2.fst), Integer.valueOf(((Integer)pair1.snd).intValue() + ((Integer)pair2.snd).intValue()));
-/*      */           }
-/*      */           pair = pair1;
-/*      */         }
-/*      */         this.treeCache.put(param1Node, pair);
-/*      */       }
-/*      */       return pair;
-/*      */     }
-/*      */
-/*      */     public GraphSolver.InferenceGraph.Node pickNode(GraphSolver.InferenceGraph param1InferenceGraph) {
-/*      */       this.treeCache.clear();
-/*      */       Pair<List<GraphSolver.InferenceGraph.Node>, Integer> pair = this.noPath;
-/*      */       for (GraphSolver.InferenceGraph.Node node : param1InferenceGraph.nodes) {
-/*      */         if (!Collections.disjoint((Collection)node.data, (Collection<?>)this.varsToSolve)) {
-/*      */           Pair<List<GraphSolver.InferenceGraph.Node>, Integer> pair1 = computeTreeToLeafs(node);
-/*      */           if (((Integer)pair1.snd).intValue() < ((Integer)pair.snd).intValue())
-/*      */             pair = pair1;
-/*      */         }
-/*      */       }
-/*      */       if (pair == this.noPath)
-/*      */         throw new NodeNotFoundException(param1InferenceGraph);
-/*      */       return (GraphSolver.InferenceGraph.Node)((List)pair.fst).head;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   enum InferenceStep {
-/*      */     EQ((String)Type.UndetVar.InferenceBound.EQ) {
-/*      */       Type solve(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext) {
-/*      */         return (Type)(filterBounds(param2UndetVar, param2InferenceContext)).head;
-/*      */       }
-/*      */     },
-/*      */     LOWER((String)Type.UndetVar.InferenceBound.LOWER) {
-/*      */       Type solve(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         List<Type> list = filterBounds(param2UndetVar, param2InferenceContext);
-/*      */         Type type = (list.tail.tail == null) ? (Type)list.head : infer.types.lub(list);
-/*      */         if (type.isPrimitive() || type.hasTag(TypeTag.ERROR))
-/*      */           throw infer.inferenceException.setMessage("no.unique.minimal.instance.exists", new Object[] { param2UndetVar.qtype, list });
-/*      */         return type;
-/*      */       }
-/*      */     },
-/*      */     THROWS((String)Type.UndetVar.InferenceBound.UPPER) {
-/*      */       public boolean accepts(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext) {
-/*      */         if ((param2UndetVar.qtype.tsym.flags() & 0x800000000000L) == 0L)
-/*      */           return false;
-/*      */         if (param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ, Type.UndetVar.InferenceBound.LOWER, Type.UndetVar.InferenceBound.UPPER }).diff(param2UndetVar.getDeclaredBounds()).nonEmpty())
-/*      */           return false;
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         for (Type type : param2UndetVar.getDeclaredBounds()) {
-/*      */           if (!param2UndetVar.isInterface() && infer.types.asSuper(infer.syms.runtimeExceptionType, (Symbol)type.tsym) != null)
-/*      */             return true;
-/*      */         }
-/*      */         return false;
-/*      */       }
-/*      */
-/*      */       Type solve(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext) {
-/*      */         return (param2InferenceContext.infer()).syms.runtimeExceptionType;
-/*      */       }
-/*      */     },
-/*      */     UPPER((String)Type.UndetVar.InferenceBound.UPPER) {
-/*      */       Type solve(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         List<Type> list = filterBounds(param2UndetVar, param2InferenceContext);
-/*      */         Type type = (list.tail.tail == null) ? (Type)list.head : infer.types.glb(list);
-/*      */         if (type.isPrimitive() || type.hasTag(TypeTag.ERROR))
-/*      */           throw infer.inferenceException.setMessage("no.unique.maximal.instance.exists", new Object[] { param2UndetVar.qtype, list });
-/*      */         return type;
-/*      */       }
-/*      */     },
-/*      */     UPPER_LEGACY((String)Type.UndetVar.InferenceBound.UPPER) {
-/*      */       public boolean accepts(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext) {
-/*      */         return (!param2InferenceContext.free(param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { this.ib })) && !param2UndetVar.isCaptured());
-/*      */       }
-/*      */
-/*      */       Type solve(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext) {
-/*      */         return UPPER.solve(param2UndetVar, param2InferenceContext);
-/*      */       }
-/*      */     },
-/*      */     CAPTURED((String)Type.UndetVar.InferenceBound.UPPER) {
-/*      */       public boolean accepts(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext) {
-/*      */         return (param2UndetVar.isCaptured() && !param2InferenceContext.free(param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER, Type.UndetVar.InferenceBound.LOWER })));
-/*      */       }
-/*      */
-/*      */       Type solve(Type.UndetVar param2UndetVar, InferenceContext param2InferenceContext) {
-/*      */         Infer infer = param2InferenceContext.infer();
-/*      */         Type type1 = UPPER.filterBounds(param2UndetVar, param2InferenceContext).nonEmpty() ? UPPER.solve(param2UndetVar, param2InferenceContext) : infer.syms.objectType;
-/*      */         Type type2 = LOWER.filterBounds(param2UndetVar, param2InferenceContext).nonEmpty() ? LOWER.solve(param2UndetVar, param2InferenceContext) : infer.syms.botType;
-/*      */         Type.CapturedType capturedType = (Type.CapturedType)param2UndetVar.qtype;
-/*      */         return (Type)new Type.CapturedType(capturedType.tsym.name, capturedType.tsym.owner, type1, type2, capturedType.wildcard);
-/*      */       }
-/*      */     };
-/*      */
-/*      */     final Type.UndetVar.InferenceBound ib;
-/*      */
-/*      */     InferenceStep(Type.UndetVar.InferenceBound param1InferenceBound) {
-/*      */       this.ib = param1InferenceBound;
-/*      */     }
-/*      */
-/*      */     public boolean accepts(Type.UndetVar param1UndetVar, InferenceContext param1InferenceContext) {
-/*      */       return (filterBounds(param1UndetVar, param1InferenceContext).nonEmpty() && !param1UndetVar.isCaptured());
-/*      */     }
-/*      */
-/*      */     List<Type> filterBounds(Type.UndetVar param1UndetVar, InferenceContext param1InferenceContext) {
-/*      */       return Type.filter(param1UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { this.ib }, ), new BoundFilter(param1InferenceContext));
-/*      */     }
-/*      */
-/*      */     abstract Type solve(Type.UndetVar param1UndetVar, InferenceContext param1InferenceContext);
-/*      */   }
-/*      */
-/*      */   enum LegacyInferenceSteps {
-/*      */     EQ_LOWER((String)EnumSet.of(InferenceStep.EQ, InferenceStep.LOWER)),
-/*      */     EQ_UPPER((String)EnumSet.of(InferenceStep.EQ, InferenceStep.UPPER_LEGACY));
-/*      */     final EnumSet<InferenceStep> steps;
-/*      */
-/*      */     LegacyInferenceSteps(EnumSet<InferenceStep> param1EnumSet) {
-/*      */       this.steps = param1EnumSet;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   enum GraphInferenceSteps {
-/*      */     EQ((String)EnumSet.of(InferenceStep.EQ)),
-/*      */     EQ_LOWER((String)EnumSet.of(InferenceStep.EQ, InferenceStep.LOWER)),
-/*      */     EQ_LOWER_THROWS_UPPER_CAPTURED((String)EnumSet.of(InferenceStep.EQ, InferenceStep.LOWER, InferenceStep.UPPER, InferenceStep.THROWS, InferenceStep.CAPTURED));
-/*      */     final EnumSet<InferenceStep> steps;
-/*      */
-/*      */     GraphInferenceSteps(EnumSet<InferenceStep> param1EnumSet) {
-/*      */       this.steps = param1EnumSet;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   enum DependencyKind implements GraphUtils.DependencyKind {
-/*      */     BOUND("dotted"),
-/*      */     STUCK("dashed");
-/*      */     final String dotSyle;
-/*      */
-/*      */     DependencyKind(String param1String1) {
-/*      */       this.dotSyle = param1String1;
-/*      */     }
-/*      */
-/*      */     public String getDotStyle() {
-/*      */       return this.dotSyle;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   class GraphSolver {
-/*      */     InferenceContext inferenceContext;
-/*      */     Map<Type, Set<Type>> stuckDeps;
-/*      */     Warner warn;
-/*      */
-/*      */     GraphSolver(InferenceContext param1InferenceContext, Map<Type, Set<Type>> param1Map, Warner param1Warner) {
-/*      */       this.inferenceContext = param1InferenceContext;
-/*      */       this.stuckDeps = param1Map;
-/*      */       this.warn = param1Warner;
-/*      */     }
-/*      */
-/*      */     void solve(GraphStrategy param1GraphStrategy) {
-/*      */       Infer.this.checkWithinBounds(this.inferenceContext, this.warn);
-/*      */       InferenceGraph inferenceGraph = new InferenceGraph(this.stuckDeps);
-/*      */       while (!param1GraphStrategy.done()) {
-/*      */         InferenceGraph.Node node = param1GraphStrategy.pickNode(inferenceGraph);
-/*      */         List list = List.from((Iterable)node.data);
-/*      */         List<Type> list1 = this.inferenceContext.save();
-/*      */         try {
-/*      */           label22: while (Type.containsAny(this.inferenceContext.restvars(), list)) {
-/*      */             for (GraphInferenceSteps graphInferenceSteps : GraphInferenceSteps.values()) {
-/*      */               if (this.inferenceContext.solveBasic(list, graphInferenceSteps.steps)) {
-/*      */                 Infer.this.checkWithinBounds(this.inferenceContext, this.warn);
-/*      */                 continue label22;
-/*      */               }
-/*      */             }
-/*      */             throw Infer.this.inferenceException.setMessage();
-/*      */           }
-/*      */         } catch (InferenceException inferenceException) {
-/*      */           this.inferenceContext.rollback(list1);
-/*      */           Infer.this.instantiateAsUninferredVars(list, this.inferenceContext);
-/*      */           Infer.this.checkWithinBounds(this.inferenceContext, this.warn);
-/*      */         }
-/*      */         inferenceGraph.deleteNode(node);
-/*      */       }
-/*      */     }
-/*      */
-/*      */     class InferenceGraph {
-/*      */       ArrayList<Node> nodes;
-/*      */
-/*      */       class Node extends GraphUtils.TarjanNode<ListBuffer<Type>> {
-/*      */         EnumMap<DependencyKind, Set<Node>> deps;
-/*      */
-/*      */         Node(Type param3Type) {
-/*      */           super(ListBuffer.of(param3Type));
-/*      */           this.deps = new EnumMap<>(DependencyKind.class);
-/*      */         }
-/*      */
-/*      */         public GraphUtils.DependencyKind[] getSupportedDependencyKinds() {
-/*      */           return (GraphUtils.DependencyKind[]) DependencyKind.values();
-/*      */         }
-/*      */
-/*      */         public String getDependencyName(GraphUtils.Node<ListBuffer<Type>> param3Node, GraphUtils.DependencyKind param3DependencyKind) {
-/*      */           if (param3DependencyKind == DependencyKind.STUCK)
-/*      */             return "";
-/*      */           StringBuilder stringBuilder = new StringBuilder();
-/*      */           String str = "";
-/*      */           for (Type type : this.data) {
-/*      */             Type.UndetVar undetVar = (Type.UndetVar) GraphSolver.this.inferenceContext.asUndetVar(type);
-/*      */             for (Type type1 : undetVar.getBounds(Type.UndetVar.InferenceBound.values())) {
-/*      */               if (type1.containsAny(List.from((Iterable)param3Node.data))) {
-/*      */                 stringBuilder.append(str);
-/*      */                 stringBuilder.append(type1);
-/*      */                 str = ",";
-/*      */               }
-/*      */             }
-/*      */           }
-/*      */           return stringBuilder.toString();
-/*      */         }
-/*      */
-/*      */         public Iterable<? extends Node> getAllDependencies() {
-/*      */           return getDependencies(DependencyKind.values());
-/*      */         }
-/*      */
-/*      */         public Iterable<? extends GraphUtils.TarjanNode<ListBuffer<Type>>> getDependenciesByKind(GraphUtils.DependencyKind param3DependencyKind) {
-/*      */           return (Iterable)getDependencies(new DependencyKind[] { (DependencyKind)param3DependencyKind });
-/*      */         }
-/*      */
-/*      */         protected Set<Node> getDependencies(DependencyKind... param3VarArgs) {
-/*      */           LinkedHashSet<Node> linkedHashSet = new LinkedHashSet();
-/*      */           for (DependencyKind dependencyKind : param3VarArgs) {
-/*      */             Set set = this.deps.get(dependencyKind);
-/*      */             if (set != null)
-/*      */               linkedHashSet.addAll(set);
-/*      */           }
-/*      */           return linkedHashSet;
-/*      */         }
-/*      */
-/*      */         protected void addDependency(DependencyKind param3DependencyKind, Node param3Node) {
-/*      */           Set<Node> set = this.deps.get(param3DependencyKind);
-/*      */           if (set == null) {
-/*      */             set = new LinkedHashSet();
-/*      */             this.deps.put(param3DependencyKind, set);
-/*      */           }
-/*      */           set.add(param3Node);
-/*      */         }
-/*      */
-/*      */         protected void addDependencies(DependencyKind param3DependencyKind, Set<Node> param3Set) {
-/*      */           for (Node node : param3Set)
-/*      */             addDependency(param3DependencyKind, node);
-/*      */         }
-/*      */
-/*      */         protected Set<DependencyKind> removeDependency(Node param3Node) {
-/*      */           HashSet<DependencyKind> hashSet = new HashSet();
-/*      */           for (DependencyKind dependencyKind : DependencyKind.values()) {
-/*      */             Set set = this.deps.get(dependencyKind);
-/*      */             if (set != null && set.remove(param3Node))
-/*      */               hashSet.add(dependencyKind);
-/*      */           }
-/*      */           return hashSet;
-/*      */         }
-/*      */
-/*      */         protected Set<Node> closure(DependencyKind... param3VarArgs) {
-/*      */           boolean bool = true;
-/*      */           HashSet<Node> hashSet = new HashSet();
-/*      */           hashSet.add(this);
-/*      */           while (bool) {
-/*      */             bool = false;
-/*      */             for (Node node : new HashSet(hashSet))
-/*      */               bool = hashSet.addAll(node.getDependencies(param3VarArgs));
-/*      */           }
-/*      */           return hashSet;
-/*      */         }
-/*      */
-/*      */         protected boolean isLeaf() {
-/*      */           Set<Node> set = getDependencies(new DependencyKind[] { DependencyKind.BOUND, DependencyKind.STUCK });
-/*      */           if (set.isEmpty())
-/*      */             return true;
-/*      */           for (Node node : set) {
-/*      */             if (node != this)
-/*      */               return false;
-/*      */           }
-/*      */           return true;
-/*      */         }
-/*      */
-/*      */         protected void mergeWith(List<? extends Node> param3List) {
-/*      */           for (Node node : param3List) {
-/*      */             Assert.check((((ListBuffer)node.data).length() == 1), "Attempt to merge a compound node!");
-/*      */             ((ListBuffer)this.data).appendList((ListBuffer)node.data);
-/*      */             for (DependencyKind dependencyKind : DependencyKind.values()) {
-/*      */               addDependencies(dependencyKind, node.getDependencies(new DependencyKind[] { dependencyKind }));
-/*      */             }
-/*      */           }
-/*      */           EnumMap<DependencyKind, Object> enumMap = new EnumMap<>(DependencyKind.class);
-/*      */           for (DependencyKind dependencyKind : DependencyKind.values()) {
-/*      */             for (Node node : getDependencies(new DependencyKind[] { dependencyKind })) {
-/*      */               Set<Node> set = (Set)enumMap.get(dependencyKind);
-/*      */               if (set == null) {
-/*      */                 set = new LinkedHashSet();
-/*      */                 enumMap.put(dependencyKind, set);
-/*      */               }
-/*      */               if (((ListBuffer)this.data).contains(((ListBuffer)node.data).first())) {
-/*      */                 set.add(this);
-/*      */                 continue;
-/*      */               }
-/*      */               set.add(node);
-/*      */             }
-/*      */           }
-/*      */           this.deps = (EnumMap)enumMap;
-/*      */         }
-/*      */
-/*      */         private void graphChanged(Node param3Node1, Node param3Node2) {
-/*      */           for (DependencyKind dependencyKind : removeDependency(param3Node1)) {
-/*      */             if (param3Node2 != null)
-/*      */               addDependency(dependencyKind, param3Node2);
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */
-/*      */       InferenceGraph(Map<Type, Set<Type>> param2Map) {
-/*      */         initNodes(param2Map);
-/*      */       }
-/*      */
-/*      */       public Node findNode(Type param2Type) {
-/*      */         for (Node node : this.nodes) {
-/*      */           if (((ListBuffer)node.data).contains(param2Type))
-/*      */             return node;
-/*      */         }
-/*      */         return null;
-/*      */       }
-/*      */
-/*      */       public void deleteNode(Node param2Node) {
-/*      */         Assert.check(this.nodes.contains(param2Node));
-/*      */         this.nodes.remove(param2Node);
-/*      */         notifyUpdate(param2Node, null);
-/*      */       }
-/*      */
-/*      */       void notifyUpdate(Node param2Node1, Node param2Node2) {
-/*      */         for (Node node : this.nodes)
-/*      */           node.graphChanged(param2Node1, param2Node2);
-/*      */       }
-/*      */
-/*      */       void initNodes(Map<Type, Set<Type>> param2Map) {
-/*      */         this.nodes = new ArrayList<>();
-/*      */         for (Type type : GraphSolver.this.inferenceContext.restvars())
-/*      */           this.nodes.add(new Node(type));
-/*      */         for (Node node : this.nodes) {
-/*      */           Type type = (Type)((ListBuffer)node.data).first();
-/*      */           Set set = param2Map.get(type);
-/*      */           for (Node node1 : this.nodes) {
-/*      */             Type type1 = (Type)((ListBuffer)node1.data).first();
-/*      */             Type.UndetVar undetVar = (Type.UndetVar) GraphSolver.this.inferenceContext.asUndetVar(type);
-/*      */             if (Type.containsAny(undetVar.getBounds(Type.UndetVar.InferenceBound.values()), List.of(type1)))
-/*      */               node.addDependency(DependencyKind.BOUND, node1);
-/*      */             if (set != null && set.contains(type1))
-/*      */               node.addDependency(DependencyKind.STUCK, node1);
-/*      */           }
-/*      */         }
-/*      */         ArrayList<Object> arrayList = new ArrayList();
-/*      */         for (List list : GraphUtils.tarjan(this.nodes)) {
-/*      */           if (list.length() > 1) {
-/*      */             Node node = (Node)list.head;
-/*      */             node.mergeWith(list.tail);
-/*      */             for (Node node1 : list)
-/*      */               notifyUpdate(node1, node);
-/*      */           }
-/*      */           arrayList.add(list.head);
-/*      */         }
-/*      */         this.nodes = (ArrayList)arrayList;
-/*      */       }
-/*      */
-/*      */       String toDot() {
-/*      */         StringBuilder stringBuilder = new StringBuilder();
-/*      */         for (Type type : GraphSolver.this.inferenceContext.undetvars) {
-/*      */           Type.UndetVar undetVar = (Type.UndetVar)type;
-/*      */           stringBuilder.append(String.format("var %s - upper bounds = %s, lower bounds = %s, eq bounds = %s\\n", new Object[] { undetVar.qtype, undetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER }), undetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.LOWER }), undetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ }) }));
-/*      */         }
-/*      */         return GraphUtils.toDot(this.nodes, "inferenceGraph" + hashCode(), stringBuilder.toString());
-/*      */       }
-/*      */     }
-/*      */
-/*      */     class Node extends GraphUtils.TarjanNode<ListBuffer<Type>> {
-/*      */       EnumMap<DependencyKind, Set<Node>> deps;
-/*      */
-/*      */       Node(Type param2Type) {
-/*      */         super(ListBuffer.of(param2Type));
-/*      */         this.deps = new EnumMap<>(DependencyKind.class);
-/*      */       }
-/*      */
-/*      */       public GraphUtils.DependencyKind[] getSupportedDependencyKinds() {
-/*      */         return (GraphUtils.DependencyKind[]) DependencyKind.values();
-/*      */       }
-/*      */
-/*      */       public String getDependencyName(GraphUtils.Node<ListBuffer<Type>> param2Node, GraphUtils.DependencyKind param2DependencyKind) {
-/*      */         if (param2DependencyKind == DependencyKind.STUCK)
-/*      */           return "";
-/*      */         StringBuilder stringBuilder = new StringBuilder();
-/*      */         String str = "";
-/*      */         for (Type type : this.data) {
-/*      */           Type.UndetVar undetVar = (Type.UndetVar) GraphSolver.this.inferenceContext.asUndetVar(type);
-/*      */           for (Type type1 : undetVar.getBounds(Type.UndetVar.InferenceBound.values())) {
-/*      */             if (type1.containsAny(List.from((Iterable)param2Node.data))) {
-/*      */               stringBuilder.append(str);
-/*      */               stringBuilder.append(type1);
-/*      */               str = ",";
-/*      */             }
-/*      */           }
-/*      */         }
-/*      */         return stringBuilder.toString();
-/*      */       }
-/*      */
-/*      */       public Iterable<? extends Node> getAllDependencies() {
-/*      */         return getDependencies(DependencyKind.values());
-/*      */       }
-/*      */
-/*      */       public Iterable<? extends GraphUtils.TarjanNode<ListBuffer<Type>>> getDependenciesByKind(GraphUtils.DependencyKind param2DependencyKind) {
-/*      */         return (Iterable)getDependencies(new DependencyKind[] { (DependencyKind)param2DependencyKind });
-/*      */       }
-/*      */
-/*      */       protected Set<Node> getDependencies(DependencyKind... param2VarArgs) {
-/*      */         LinkedHashSet<Node> linkedHashSet = new LinkedHashSet();
-/*      */         for (DependencyKind dependencyKind : param2VarArgs) {
-/*      */           Set set = this.deps.get(dependencyKind);
-/*      */           if (set != null)
-/*      */             linkedHashSet.addAll(set);
-/*      */         }
-/*      */         return linkedHashSet;
-/*      */       }
-/*      */
-/*      */       protected void addDependency(DependencyKind param2DependencyKind, Node param2Node) {
-/*      */         Set<Node> set = this.deps.get(param2DependencyKind);
-/*      */         if (set == null) {
-/*      */           set = new LinkedHashSet();
-/*      */           this.deps.put(param2DependencyKind, set);
-/*      */         }
-/*      */         set.add(param2Node);
-/*      */       }
-/*      */
-/*      */       protected void addDependencies(DependencyKind param2DependencyKind, Set<Node> param2Set) {
-/*      */         for (Node node : param2Set)
-/*      */           addDependency(param2DependencyKind, node);
-/*      */       }
-/*      */
-/*      */       protected Set<DependencyKind> removeDependency(Node param2Node) {
-/*      */         HashSet<DependencyKind> hashSet = new HashSet();
-/*      */         for (DependencyKind dependencyKind : DependencyKind.values()) {
-/*      */           Set set = this.deps.get(dependencyKind);
-/*      */           if (set != null && set.remove(param2Node))
-/*      */             hashSet.add(dependencyKind);
-/*      */         }
-/*      */         return hashSet;
-/*      */       }
-/*      */
-/*      */       protected Set<Node> closure(DependencyKind... param2VarArgs) {
-/*      */         boolean bool = true;
-/*      */         HashSet<Node> hashSet = new HashSet();
-/*      */         hashSet.add(this);
-/*      */         while (bool) {
-/*      */           bool = false;
-/*      */           for (Node node : new HashSet(hashSet))
-/*      */             bool = hashSet.addAll(node.getDependencies(param2VarArgs));
-/*      */         }
-/*      */         return hashSet;
-/*      */       }
-/*      */
-/*      */       protected boolean isLeaf() {
-/*      */         Set<Node> set = getDependencies(new DependencyKind[] { DependencyKind.BOUND, DependencyKind.STUCK });
-/*      */         if (set.isEmpty())
-/*      */           return true;
-/*      */         for (Node node : set) {
-/*      */           if (node != this)
-/*      */             return false;
-/*      */         }
-/*      */         return true;
-/*      */       }
-/*      */
-/*      */       protected void mergeWith(List<? extends Node> param2List) {
-/*      */         for (Node node : param2List) {
-/*      */           Assert.check((((ListBuffer)node.data).length() == 1), "Attempt to merge a compound node!");
-/*      */           ((ListBuffer)this.data).appendList((ListBuffer)node.data);
-/*      */           for (DependencyKind dependencyKind : DependencyKind.values()) {
-/*      */             addDependencies(dependencyKind, node.getDependencies(new DependencyKind[] { dependencyKind }));
-/*      */           }
-/*      */         }
-/*      */         EnumMap<DependencyKind, Object> enumMap = new EnumMap<>(DependencyKind.class);
-/*      */         for (DependencyKind dependencyKind : DependencyKind.values()) {
-/*      */           for (Node node : getDependencies(new DependencyKind[] { dependencyKind })) {
-/*      */             Set<Node> set = (Set)enumMap.get(dependencyKind);
-/*      */             if (set == null) {
-/*      */               set = new LinkedHashSet();
-/*      */               enumMap.put(dependencyKind, set);
-/*      */             }
-/*      */             if (((ListBuffer)this.data).contains(((ListBuffer)node.data).first())) {
-/*      */               set.add(this);
-/*      */               continue;
-/*      */             }
-/*      */             set.add(node);
-/*      */           }
-/*      */         }
-/*      */         this.deps = (EnumMap)enumMap;
-/*      */       }
-/*      */
-/*      */       private void graphChanged(Node param2Node1, Node param2Node2) {
-/*      */         for (DependencyKind dependencyKind : removeDependency(param2Node1)) {
-/*      */           if (param2Node2 != null)
-/*      */             addDependency(dependencyKind, param2Node2);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */   class InferenceContext {
-/*      */     List<Type> undetvars;
-/*      */     List<Type> inferencevars;
-/*      */     Map<FreeTypeListener, List<Type>> freeTypeListeners = new HashMap<>();
-/*      */     List<FreeTypeListener> freetypeListeners = List.nil();
-/*      */     Type.Mapping fromTypeVarFun;
-/*      */     Map<JCTree, Type> captureTypeCache;
-/*      */
-/*      */     public InferenceContext(List<Type> param1List) {
-/*      */       this.fromTypeVarFun = new Type.Mapping("fromTypeVarFunWithBounds") {
-/*      */           public Type apply(Type param2Type) {
-/*      */             if (param2Type.hasTag(TypeTag.TYPEVAR)) {
-/*      */               Type.TypeVar typeVar = (Type.TypeVar)param2Type;
-/*      */               if (typeVar.isCaptured())
-/*      */                 return (Type)new Type.CapturedUndetVar((Type.CapturedType)typeVar, Infer.this.types);
-/*      */               return (Type)new Type.UndetVar(typeVar, Infer.this.types);
-/*      */             }
-/*      */             return param2Type.map(this);
-/*      */           }
-/*      */         };
-/*      */       this.captureTypeCache = new HashMap<>();
-/*      */       this.undetvars = Type.map(param1List, this.fromTypeVarFun);
-/*      */       this.inferencevars = param1List;
-/*      */     }
-/*      */
-/*      */     void addVar(Type.TypeVar param1TypeVar) {
-/*      */       this.undetvars = this.undetvars.prepend(this.fromTypeVarFun.apply((Type)param1TypeVar));
-/*      */       this.inferencevars = this.inferencevars.prepend(param1TypeVar);
-/*      */     }
-/*      */
-/*      */     List<Type> inferenceVars() {
-/*      */       return this.inferencevars;
-/*      */     }
-/*      */
-/*      */     List<Type> restvars() {
-/*      */       return filterVars(new Filter<Type.UndetVar>() {
-/*      */             public boolean accepts(Type.UndetVar param2UndetVar) {
-/*      */               return (param2UndetVar.inst == null);
-/*      */             }
-/*      */           });
-/*      */     }
-/*      */
-/*      */     List<Type> instvars() {
-/*      */       return filterVars(new Filter<Type.UndetVar>() {
-/*      */             public boolean accepts(Type.UndetVar param2UndetVar) {
-/*      */               return (param2UndetVar.inst != null);
-/*      */             }
-/*      */           });
-/*      */     }
-/*      */
-/*      */     final List<Type> boundedVars() {
-/*      */       return filterVars(new Filter<Type.UndetVar>() {
-/*      */             public boolean accepts(Type.UndetVar param2UndetVar) {
-/*      */               return param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.UPPER }).diff(param2UndetVar.getDeclaredBounds()).appendList(param2UndetVar.getBounds(new Type.UndetVar.InferenceBound[] { Type.UndetVar.InferenceBound.EQ, Type.UndetVar.InferenceBound.LOWER })).nonEmpty();
-/*      */             }
-/*      */           });
-/*      */     }
-/*      */
-/*      */     private List<Type> filterVars(Filter<Type.UndetVar> param1Filter) {
-/*      */       ListBuffer listBuffer = new ListBuffer();
-/*      */       for (Type type : this.undetvars) {
-/*      */         Type.UndetVar undetVar = (Type.UndetVar)type;
-/*      */         if (param1Filter.accepts(undetVar))
-/*      */           listBuffer.append(undetVar.qtype);
-/*      */       }
-/*      */       return listBuffer.toList();
-/*      */     }
-/*      */
-/*      */     final boolean free(Type param1Type) {
-/*      */       return param1Type.containsAny(this.inferencevars);
-/*      */     }
-/*      */
-/*      */     final boolean free(List<Type> param1List) {
-/*      */       for (Type type : param1List) {
-/*      */         if (free(type))
-/*      */           return true;
-/*      */       }
-/*      */       return false;
-/*      */     }
-/*      */
-/*      */     final List<Type> freeVarsIn(Type param1Type) {
-/*      */       ListBuffer listBuffer = new ListBuffer();
-/*      */       for (Type type : inferenceVars()) {
-/*      */         if (param1Type.contains(type))
-/*      */           listBuffer.add(type);
-/*      */       }
-/*      */       return listBuffer.toList();
-/*      */     }
-/*      */
-/*      */     final List<Type> freeVarsIn(List<Type> param1List) {
-/*      */       ListBuffer listBuffer1 = new ListBuffer();
-/*      */       for (Type type : param1List)
-/*      */         listBuffer1.appendList(freeVarsIn(type));
-/*      */       ListBuffer listBuffer2 = new ListBuffer();
-/*      */       for (Type type : listBuffer1) {
-/*      */         if (!listBuffer2.contains(type))
-/*      */           listBuffer2.add(type);
-/*      */       }
-/*      */       return listBuffer2.toList();
-/*      */     }
-/*      */
-/*      */     final Type asUndetVar(Type param1Type) {
-/*      */       return Infer.this.types.subst(param1Type, this.inferencevars, this.undetvars);
-/*      */     }
-/*      */
-/*      */     final List<Type> asUndetVars(List<Type> param1List) {
-/*      */       ListBuffer listBuffer = new ListBuffer();
-/*      */       for (Type type : param1List)
-/*      */         listBuffer.append(asUndetVar(type));
-/*      */       return listBuffer.toList();
-/*      */     }
-/*      */
-/*      */     List<Type> instTypes() {
-/*      */       ListBuffer listBuffer = new ListBuffer();
-/*      */       for (Type type : this.undetvars) {
-/*      */         Type.UndetVar undetVar = (Type.UndetVar)type;
-/*      */         listBuffer.append((undetVar.inst != null) ? undetVar.inst : undetVar.qtype);
-/*      */       }
-/*      */       return listBuffer.toList();
-/*      */     }
-/*      */
-/*      */     Type asInstType(Type param1Type) {
-/*      */       return Infer.this.types.subst(param1Type, this.inferencevars, instTypes());
-/*      */     }
-/*      */
-/*      */     List<Type> asInstTypes(List<Type> param1List) {
-/*      */       ListBuffer listBuffer = new ListBuffer();
-/*      */       for (Type type : param1List)
-/*      */         listBuffer.append(asInstType(type));
-/*      */       return listBuffer.toList();
-/*      */     }
-/*      */
-/*      */     void addFreeTypeListener(List<Type> param1List, FreeTypeListener param1FreeTypeListener) {
-/*      */       this.freeTypeListeners.put(param1FreeTypeListener, freeVarsIn(param1List));
-/*      */     }
-/*      */
-/*      */     void notifyChange() {
-/*      */       notifyChange(this.inferencevars.diff(restvars()));
-/*      */     }
-/*      */
-/*      */     void notifyChange(List<Type> param1List) {
-/*      */       InferenceException inferenceException = null;
-/*      */       for (Map.Entry<?, ?> entry : (new HashMap<>(this.freeTypeListeners)).entrySet()) {
-/*      */         if (!Type.containsAny((List)entry.getValue(), this.inferencevars.diff(param1List)))
-/*      */           try {
-/*      */             ((FreeTypeListener)entry.getKey()).typesInferred(this);
-/*      */             this.freeTypeListeners.remove(entry.getKey());
-/*      */           } catch (InferenceException inferenceException1) {
-/*      */             if (inferenceException == null)
-/*      */               inferenceException = inferenceException1;
-/*      */           }
-/*      */       }
-/*      */       if (inferenceException != null)
-/*      */         throw inferenceException;
-/*      */     }
-/*      */
-/*      */     List<Type> save() {
-/*      */       ListBuffer listBuffer = new ListBuffer();
-/*      */       for (Type type : this.undetvars) {
-/*      */         Type.UndetVar undetVar1 = (Type.UndetVar)type;
-/*      */         Type.UndetVar undetVar2 = new Type.UndetVar((Type.TypeVar)undetVar1.qtype, Infer.this.types);
-/*      */         for (Type.UndetVar.InferenceBound inferenceBound : Type.UndetVar.InferenceBound.values()) {
-/*      */           for (Type type1 : undetVar1.getBounds(new Type.UndetVar.InferenceBound[] { inferenceBound }))
-/*      */             undetVar2.addBound(inferenceBound, type1, Infer.this.types);
-/*      */         }
-/*      */         undetVar2.inst = undetVar1.inst;
-/*      */         listBuffer.add(undetVar2);
-/*      */       }
-/*      */       return listBuffer.toList();
-/*      */     }
-/*      */
-/*      */     void rollback(List<Type> param1List) {
-/*      */       Assert.check((param1List != null && param1List.length() == this.undetvars.length()));
-/*      */       for (Type type : this.undetvars) {
-/*      */         Type.UndetVar undetVar1 = (Type.UndetVar)type;
-/*      */         Type.UndetVar undetVar2 = (Type.UndetVar)param1List.head;
-/*      */         for (Type.UndetVar.InferenceBound inferenceBound : Type.UndetVar.InferenceBound.values()) {
-/*      */           undetVar1.setBounds(inferenceBound, undetVar2.getBounds(new Type.UndetVar.InferenceBound[] { inferenceBound }));
-/*      */         }
-/*      */         undetVar1.inst = undetVar2.inst;
-/*      */         param1List = param1List.tail;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     void dupTo(InferenceContext param1InferenceContext) {
-/*      */       param1InferenceContext.inferencevars = param1InferenceContext.inferencevars.appendList(this.inferencevars.diff(param1InferenceContext.inferencevars));
-/*      */       param1InferenceContext.undetvars = param1InferenceContext.undetvars.appendList(this.undetvars.diff(param1InferenceContext.undetvars));
-/*      */       for (Type type : this.inferencevars) {
-/*      */         param1InferenceContext.freeTypeListeners.put(new FreeTypeListener() {
-/*      */               public void typesInferred(InferenceContext param2InferenceContext) {
-/*      */                 InferenceContext.this.notifyChange();
-/*      */               }
-/*      */             },  List.of(type));
-/*      */       }
-/*      */     }
-/*      */
-/*      */     private void solve(GraphStrategy param1GraphStrategy, Warner param1Warner) {
-/*      */       solve(param1GraphStrategy, new HashMap<>(), param1Warner);
-/*      */     }
-/*      */
-/*      */     private void solve(GraphStrategy param1GraphStrategy, Map<Type, Set<Type>> param1Map, Warner param1Warner) {
-/*      */       GraphSolver graphSolver = new GraphSolver(this, param1Map, param1Warner);
-/*      */       graphSolver.solve(param1GraphStrategy);
-/*      */     }
-/*      */
-/*      */     public void solve(Warner param1Warner) {
-/*      */       solve(new LeafSolver() {
-/*      */             public boolean done() {
-/*      */               return InferenceContext.this.restvars().isEmpty();
-/*      */             }
-/*      */           },  param1Warner);
-/*      */     }
-/*      */
-/*      */     public void solve(final List<Type> vars, Warner param1Warner) {
-/*      */       solve(new BestLeafSolver(vars) {
-/*      */             public boolean done() {
-/*      */               return !InferenceContext.this.free(InferenceContext.this.asInstTypes(vars));
-/*      */             }
-/*      */           }param1Warner);
-/*      */     }
-/*      */
-/*      */     public void solveAny(List<Type> param1List, Map<Type, Set<Type>> param1Map, Warner param1Warner) {
-/*      */       solve(new BestLeafSolver(param1List.intersect(restvars())) {
-/*      */             public boolean done() {
-/*      */               return InferenceContext.this.instvars().intersect(this.varsToSolve).nonEmpty();
-/*      */             }
-/*      */           }param1Map, param1Warner);
-/*      */     }
-/*      */
-/*      */     private boolean solveBasic(EnumSet<InferenceStep> param1EnumSet) {
-/*      */       return solveBasic(this.inferencevars, param1EnumSet);
-/*      */     }
-/*      */
-/*      */     private boolean solveBasic(List<Type> param1List, EnumSet<InferenceStep> param1EnumSet) {
-/*      */       boolean bool = false;
-/*      */       for (Type type : param1List.intersect(restvars())) {
-/*      */         Type.UndetVar undetVar = (Type.UndetVar)asUndetVar(type);
-/*      */         for (InferenceStep inferenceStep : param1EnumSet) {
-/*      */           if (inferenceStep.accepts(undetVar, this)) {
-/*      */             undetVar.inst = inferenceStep.solve(undetVar, this);
-/*      */             bool = true;
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */       return bool;
-/*      */     }
-/*      */
-/*      */     public void solveLegacy(boolean param1Boolean, Warner param1Warner, EnumSet<InferenceStep> param1EnumSet) {
-/*      */       while (true) {
-/*      */         boolean bool = !solveBasic(param1EnumSet) ? true : false;
-/*      */         if (restvars().isEmpty() || param1Boolean)
-/*      */           break;
-/*      */         if (bool) {
-/*      */           Infer.this.instantiateAsUninferredVars(restvars(), this);
-/*      */           break;
-/*      */         }
-/*      */         for (Type type : this.undetvars) {
-/*      */           Type.UndetVar undetVar = (Type.UndetVar)type;
-/*      */           undetVar.substBounds(inferenceVars(), instTypes(), Infer.this.types);
-/*      */         }
-/*      */       }
-/*      */       Infer.this.checkWithinBounds(this, param1Warner);
-/*      */     }
-/*      */
-/*      */     private Infer infer() {
-/*      */       return Infer.this;
-/*      */     }
-/*      */
-/*      */     public String toString() {
-/*      */       return "Inference vars: " + this.inferencevars + '\n' + "Undet vars: " + this.undetvars;
-/*      */     }
-/*      */
-/*      */     Type cachedCapture(JCTree param1JCTree, Type param1Type, boolean param1Boolean) {
-/*      */       Type type1 = this.captureTypeCache.get(param1JCTree);
-/*      */       if (type1 != null)
-/*      */         return type1;
-/*      */       Type type2 = Infer.this.types.capture(param1Type);
-/*      */       if (type2 != param1Type && !param1Boolean)
-/*      */         this.captureTypeCache.put(param1JCTree, type2);
-/*      */       return type2;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   static interface FreeTypeListener {
-/*      */     void typesInferred(InferenceContext param1InferenceContext);
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\comp\Infer.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2015, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.comp;
+
+import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.JCTypeCast;
+import com.sun.tools.javac.tree.TreeInfo;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.code.Type.*;
+import com.sun.tools.javac.code.Type.UndetVar.InferenceBound;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.comp.DeferredAttr.AttrMode;
+import com.sun.tools.javac.comp.Infer.GraphSolver.InferenceGraph;
+import com.sun.tools.javac.comp.Infer.GraphSolver.InferenceGraph.Node;
+import com.sun.tools.javac.comp.Resolve.InapplicableMethodException;
+import com.sun.tools.javac.comp.Resolve.VerboseResolutionMode;
+import com.sun.tools.javac.util.GraphUtils.TarjanNode;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+
+import static com.sun.tools.javac.code.TypeTag.*;
+
+/** Helper class for type parameter inference, used by the attribution phase.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Infer {
+    protected static final Context.Key<Infer> inferKey =
+        new Context.Key<Infer>();
+
+    Resolve rs;
+    Check chk;
+    Symtab syms;
+    Types types;
+    JCDiagnostic.Factory diags;
+    Log log;
+
+    /** should the graph solver be used? */
+    boolean allowGraphInference;
+
+    public static Infer instance(Context context) {
+        Infer instance = context.get(inferKey);
+        if (instance == null)
+            instance = new Infer(context);
+        return instance;
+    }
+
+    protected Infer(Context context) {
+        context.put(inferKey, this);
+
+        rs = Resolve.instance(context);
+        chk = Check.instance(context);
+        syms = Symtab.instance(context);
+        types = Types.instance(context);
+        diags = JCDiagnostic.Factory.instance(context);
+        log = Log.instance(context);
+        inferenceException = new InferenceException(diags);
+        Options options = Options.instance(context);
+        allowGraphInference = Source.instance(context).allowGraphInference()
+                && options.isUnset("useLegacyInference");
+    }
+
+    /** A value for prototypes that admit any type, including polymorphic ones. */
+    public static final Type anyPoly = new JCNoType();
+
+   /**
+    * This exception class is design to store a list of diagnostics corresponding
+    * to inference errors that can arise during a method applicability check.
+    */
+    public static class InferenceException extends InapplicableMethodException {
+        private static final long serialVersionUID = 0;
+
+        List<JCDiagnostic> messages = List.nil();
+
+        InferenceException(JCDiagnostic.Factory diags) {
+            super(diags);
+        }
+
+        @Override
+        InapplicableMethodException setMessage() {
+            //no message to set
+            return this;
+        }
+
+        @Override
+        InapplicableMethodException setMessage(JCDiagnostic diag) {
+            messages = messages.append(diag);
+            return this;
+        }
+
+        @Override
+        public JCDiagnostic getDiagnostic() {
+            return messages.head;
+        }
+
+        void clear() {
+            messages = List.nil();
+        }
+    }
+
+    protected final InferenceException inferenceException;
+
+    // <editor-fold defaultstate="collapsed" desc="Inference routines">
+    /**
+     * Main inference entry point - instantiate a generic method type
+     * using given argument types and (possibly) an expected target-type.
+     */
+    Type instantiateMethod( Env<AttrContext> env,
+                            List<Type> tvars,
+                            MethodType mt,
+                            Attr.ResultInfo resultInfo,
+                            MethodSymbol msym,
+                            List<Type> argtypes,
+                            boolean allowBoxing,
+                            boolean useVarargs,
+                            Resolve.MethodResolutionContext resolveContext,
+                            Warner warn) throws InferenceException {
+        //-System.err.println("instantiateMethod(" + tvars + ", " + mt + ", " + argtypes + ")"); //DEBUG
+        final InferenceContext inferenceContext = new InferenceContext(tvars);  //B0
+        inferenceException.clear();
+        try {
+            DeferredAttr.DeferredAttrContext deferredAttrContext =
+                        resolveContext.deferredAttrContext(msym, inferenceContext, resultInfo, warn);
+
+            resolveContext.methodCheck.argumentsAcceptable(env, deferredAttrContext,   //B2
+                    argtypes, mt.getParameterTypes(), warn);
+
+            if (allowGraphInference &&
+                    resultInfo != null &&
+                    !warn.hasNonSilentLint(Lint.LintCategory.UNCHECKED)) {
+                //inject return constraints earlier
+                checkWithinBounds(inferenceContext, warn); //propagation
+                Type newRestype = generateReturnConstraints(env.tree, resultInfo,  //B3
+                        mt, inferenceContext);
+                mt = (MethodType)types.createMethodTypeWithReturn(mt, newRestype);
+                //propagate outwards if needed
+                if (resultInfo.checkContext.inferenceContext().free(resultInfo.pt)) {
+                    //propagate inference context outwards and exit
+                    inferenceContext.dupTo(resultInfo.checkContext.inferenceContext());
+                    deferredAttrContext.complete();
+                    return mt;
+                }
+            }
+
+            deferredAttrContext.complete();
+
+            // minimize as yet undetermined type variables
+            if (allowGraphInference) {
+                inferenceContext.solve(warn);
+            } else {
+                inferenceContext.solveLegacy(true, warn, LegacyInferenceSteps.EQ_LOWER.steps); //minimizeInst
+            }
+
+            mt = (MethodType)inferenceContext.asInstType(mt);
+
+            if (!allowGraphInference &&
+                    inferenceContext.restvars().nonEmpty() &&
+                    resultInfo != null &&
+                    !warn.hasNonSilentLint(Lint.LintCategory.UNCHECKED)) {
+                generateReturnConstraints(env.tree, resultInfo, mt, inferenceContext);
+                inferenceContext.solveLegacy(false, warn, LegacyInferenceSteps.EQ_UPPER.steps); //maximizeInst
+                mt = (MethodType)inferenceContext.asInstType(mt);
+            }
+
+            if (resultInfo != null && rs.verboseResolutionMode.contains(VerboseResolutionMode.DEFERRED_INST)) {
+                log.note(env.tree.pos, "deferred.method.inst", msym, mt, resultInfo.pt);
+            }
+
+            // return instantiated version of method type
+            return mt;
+        } finally {
+            if (resultInfo != null || !allowGraphInference) {
+                inferenceContext.notifyChange();
+            } else {
+                inferenceContext.notifyChange(inferenceContext.boundedVars());
+            }
+            if (resultInfo == null) {
+                /* if the is no result info then we can clear the capture types
+                 * cache without affecting any result info check
+                 */
+                inferenceContext.captureTypeCache.clear();
+            }
+        }
+    }
+
+    /**
+     * Generate constraints from the generic method's return type. If the method
+     * call occurs in a context where a type T is expected, use the expected
+     * type to derive more constraints on the generic method inference variables.
+     */
+    Type generateReturnConstraints(JCTree tree, Attr.ResultInfo resultInfo,
+            MethodType mt, InferenceContext inferenceContext) {
+        InferenceContext rsInfoInfContext = resultInfo.checkContext.inferenceContext();
+        Type from = mt.getReturnType();
+        if (mt.getReturnType().containsAny(inferenceContext.inferencevars) &&
+                rsInfoInfContext != emptyContext) {
+            from = types.capture(from);
+            //add synthetic captured ivars
+            for (Type t : from.getTypeArguments()) {
+                if (t.hasTag(TYPEVAR) && ((TypeVar)t).isCaptured()) {
+                    inferenceContext.addVar((TypeVar)t);
+                }
+            }
+        }
+        Type qtype = inferenceContext.asUndetVar(from);
+        Type to = resultInfo.pt;
+
+        if (qtype.hasTag(VOID)) {
+            to = syms.voidType;
+        } else if (to.hasTag(NONE)) {
+            to = from.isPrimitive() ? from : syms.objectType;
+        } else if (qtype.hasTag(UNDETVAR)) {
+            if (resultInfo.pt.isReference()) {
+                to = generateReturnConstraintsUndetVarToReference(
+                        tree, (UndetVar)qtype, to, resultInfo, inferenceContext);
+            } else {
+                if (to.isPrimitive()) {
+                    to = generateReturnConstraintsPrimitive(tree, (UndetVar)qtype, to,
+                        resultInfo, inferenceContext);
+                }
+            }
+        }
+        Assert.check(allowGraphInference || !rsInfoInfContext.free(to),
+                "legacy inference engine cannot handle constraints on both sides of a subtyping assertion");
+        //we need to skip capture?
+        Warner retWarn = new Warner();
+        if (!resultInfo.checkContext.compatible(qtype, rsInfoInfContext.asUndetVar(to), retWarn) ||
+                //unchecked conversion is not allowed in source 7 mode
+                (!allowGraphInference && retWarn.hasLint(Lint.LintCategory.UNCHECKED))) {
+            throw inferenceException
+                    .setMessage("infer.no.conforming.instance.exists",
+                    inferenceContext.restvars(), mt.getReturnType(), to);
+        }
+        return from;
+    }
+
+    private Type generateReturnConstraintsPrimitive(JCTree tree, UndetVar from,
+            Type to, Attr.ResultInfo resultInfo, InferenceContext inferenceContext) {
+        if (!allowGraphInference) {
+            //if legacy, just return boxed type
+            return types.boxedClass(to).type;
+        }
+        //if graph inference we need to skip conflicting boxed bounds...
+        for (Type t : from.getBounds(InferenceBound.EQ, InferenceBound.UPPER,
+                InferenceBound.LOWER)) {
+            Type boundAsPrimitive = types.unboxedType(t);
+            if (boundAsPrimitive == null || boundAsPrimitive.hasTag(NONE)) {
+                continue;
+            }
+            return generateReferenceToTargetConstraint(tree, from, to,
+                    resultInfo, inferenceContext);
+        }
+        return types.boxedClass(to).type;
+    }
+
+    private Type generateReturnConstraintsUndetVarToReference(JCTree tree,
+            UndetVar from, Type to, Attr.ResultInfo resultInfo,
+            InferenceContext inferenceContext) {
+        Type captureOfTo = types.capture(to);
+        /* T is a reference type, but is not a wildcard-parameterized type, and either
+         */
+        if (captureOfTo == to) { //not a wildcard parameterized type
+            /* i) B2 contains a bound of one of the forms alpha = S or S <: alpha,
+             *      where S is a wildcard-parameterized type, or
+             */
+            for (Type t : from.getBounds(InferenceBound.EQ, InferenceBound.LOWER)) {
+                Type captureOfBound = types.capture(t);
+                if (captureOfBound != t) {
+                    return generateReferenceToTargetConstraint(tree, from, to,
+                            resultInfo, inferenceContext);
+                }
+            }
+
+            /* ii) B2 contains two bounds of the forms S1 <: alpha and S2 <: alpha,
+             * where S1 and S2 have supertypes that are two different
+             * parameterizations of the same generic class or interface.
+             */
+            for (Type aLowerBound : from.getBounds(InferenceBound.LOWER)) {
+                for (Type anotherLowerBound : from.getBounds(InferenceBound.LOWER)) {
+                    if (aLowerBound != anotherLowerBound &&
+                            !inferenceContext.free(aLowerBound) &&
+                            !inferenceContext.free(anotherLowerBound) &&
+                            commonSuperWithDiffParameterization(aLowerBound, anotherLowerBound)) {
+                        return generateReferenceToTargetConstraint(tree, from, to,
+                            resultInfo, inferenceContext);
+                    }
+                }
+            }
+        }
+
+        /* T is a parameterization of a generic class or interface, G,
+         * and B2 contains a bound of one of the forms alpha = S or S <: alpha,
+         * where there exists no type of the form G<...> that is a
+         * supertype of S, but the raw type G is a supertype of S
+         */
+        if (to.isParameterized()) {
+            for (Type t : from.getBounds(InferenceBound.EQ, InferenceBound.LOWER)) {
+                Type sup = types.asSuper(t, to.tsym);
+                if (sup != null && sup.isRaw()) {
+                    return generateReferenceToTargetConstraint(tree, from, to,
+                            resultInfo, inferenceContext);
+                }
+            }
+        }
+        return to;
+    }
+
+    private boolean commonSuperWithDiffParameterization(Type t, Type s) {
+        Pair<Type, Type> supers = getParameterizedSupers(t, s);
+        return (supers != null && !types.isSameType(supers.fst, supers.snd));
+    }
+
+    private Type generateReferenceToTargetConstraint(JCTree tree, UndetVar from,
+            Type to, Attr.ResultInfo resultInfo,
+            InferenceContext inferenceContext) {
+        inferenceContext.solve(List.of(from.qtype), new Warner());
+        inferenceContext.notifyChange();
+        Type capturedType = resultInfo.checkContext.inferenceContext()
+                .cachedCapture(tree, from.inst, false);
+        if (types.isConvertible(capturedType,
+                resultInfo.checkContext.inferenceContext().asUndetVar(to))) {
+            //effectively skip additional return-type constraint generation (compatibility)
+            return syms.objectType;
+        }
+        return to;
+    }
+
+    /**
+      * Infer cyclic inference variables as described in 15.12.2.8.
+      */
+    private void instantiateAsUninferredVars(List<Type> vars, InferenceContext inferenceContext) {
+        ListBuffer<Type> todo = new ListBuffer<>();
+        //step 1 - create fresh tvars
+        for (Type t : vars) {
+            UndetVar uv = (UndetVar)inferenceContext.asUndetVar(t);
+            List<Type> upperBounds = uv.getBounds(InferenceBound.UPPER);
+            if (Type.containsAny(upperBounds, vars)) {
+                TypeSymbol fresh_tvar = new TypeVariableSymbol(Flags.SYNTHETIC, uv.qtype.tsym.name, null, uv.qtype.tsym.owner);
+                fresh_tvar.type = new TypeVar(fresh_tvar, types.makeIntersectionType(uv.getBounds(InferenceBound.UPPER)), null);
+                todo.append(uv);
+                uv.inst = fresh_tvar.type;
+            } else if (upperBounds.nonEmpty()) {
+                uv.inst = types.glb(upperBounds);
+            } else {
+                uv.inst = syms.objectType;
+            }
+        }
+        //step 2 - replace fresh tvars in their bounds
+        List<Type> formals = vars;
+        for (Type t : todo) {
+            UndetVar uv = (UndetVar)t;
+            TypeVar ct = (TypeVar)uv.inst;
+            ct.bound = types.glb(inferenceContext.asInstTypes(types.getBounds(ct)));
+            if (ct.bound.isErroneous()) {
+                //report inference error if glb fails
+                reportBoundError(uv, BoundErrorKind.BAD_UPPER);
+            }
+            formals = formals.tail;
+        }
+    }
+
+    /**
+     * Compute a synthetic method type corresponding to the requested polymorphic
+     * method signature. The target return type is computed from the immediately
+     * enclosing scope surrounding the polymorphic-signature call.
+     */
+    Type instantiatePolymorphicSignatureInstance(Env<AttrContext> env,
+                                            MethodSymbol spMethod,  // sig. poly. method or null if none
+                                            Resolve.MethodResolutionContext resolveContext,
+                                            List<Type> argtypes) {
+        final Type restype;
+
+        //The return type for a polymorphic signature call is computed from
+        //the enclosing tree E, as follows: if E is a cast, then use the
+        //target type of the cast expression as a return type; if E is an
+        //expression statement, the return type is 'void' - otherwise the
+        //return type is simply 'Object'. A correctness check ensures that
+        //env.next refers to the lexically enclosing environment in which
+        //the polymorphic signature call environment is nested.
+
+        switch (env.next.tree.getTag()) {
+            case TYPECAST:
+                JCTypeCast castTree = (JCTypeCast)env.next.tree;
+                restype = (TreeInfo.skipParens(castTree.expr) == env.tree) ?
+                    castTree.clazz.type :
+                    syms.objectType;
+                break;
+            case EXEC:
+                JCTree.JCExpressionStatement execTree =
+                        (JCTree.JCExpressionStatement)env.next.tree;
+                restype = (TreeInfo.skipParens(execTree.expr) == env.tree) ?
+                    syms.voidType :
+                    syms.objectType;
+                break;
+            default:
+                restype = syms.objectType;
+        }
+
+        List<Type> paramtypes = Type.map(argtypes, new ImplicitArgType(spMethod, resolveContext.step));
+        List<Type> exType = spMethod != null ?
+            spMethod.getThrownTypes() :
+            List.of(syms.throwableType); // make it throw all exceptions
+
+        MethodType mtype = new MethodType(paramtypes,
+                                          restype,
+                                          exType,
+                                          syms.methodClass);
+        return mtype;
+    }
+    //where
+        class ImplicitArgType extends DeferredAttr.DeferredTypeMap {
+
+            public ImplicitArgType(Symbol msym, Resolve.MethodResolutionPhase phase) {
+                (rs.deferredAttr).super(AttrMode.SPECULATIVE, msym, phase);
+            }
+
+            public Type apply(Type t) {
+                t = types.erasure(super.apply(t));
+                if (t.hasTag(BOT))
+                    // nulls type as the marker type Null (which has no instances)
+                    // infer as java.lang.Void for now
+                    t = types.boxedClass(syms.voidType).type;
+                return t;
+            }
+        }
+
+    /**
+      * This method is used to infer a suitable target SAM in case the original
+      * SAM type contains one or more wildcards. An inference process is applied
+      * so that wildcard bounds, as well as explicit lambda/method ref parameters
+      * (where applicable) are used to constraint the solution.
+      */
+    public Type instantiateFunctionalInterface(DiagnosticPosition pos, Type funcInterface,
+            List<Type> paramTypes, Check.CheckContext checkContext) {
+        if (types.capture(funcInterface) == funcInterface) {
+            //if capture doesn't change the type then return the target unchanged
+            //(this means the target contains no wildcards!)
+            return funcInterface;
+        } else {
+            Type formalInterface = funcInterface.tsym.type;
+            InferenceContext funcInterfaceContext =
+                    new InferenceContext(funcInterface.tsym.type.getTypeArguments());
+
+            Assert.check(paramTypes != null);
+            //get constraints from explicit params (this is done by
+            //checking that explicit param types are equal to the ones
+            //in the functional interface descriptors)
+            List<Type> descParameterTypes = types.findDescriptorType(formalInterface).getParameterTypes();
+            if (descParameterTypes.size() != paramTypes.size()) {
+                checkContext.report(pos, diags.fragment("incompatible.arg.types.in.lambda"));
+                return types.createErrorType(funcInterface);
+            }
+            for (Type p : descParameterTypes) {
+                if (!types.isSameType(funcInterfaceContext.asUndetVar(p), paramTypes.head)) {
+                    checkContext.report(pos, diags.fragment("no.suitable.functional.intf.inst", funcInterface));
+                    return types.createErrorType(funcInterface);
+                }
+                paramTypes = paramTypes.tail;
+            }
+
+            try {
+                funcInterfaceContext.solve(funcInterfaceContext.boundedVars(), types.noWarnings);
+            } catch (InferenceException ex) {
+                checkContext.report(pos, diags.fragment("no.suitable.functional.intf.inst", funcInterface));
+            }
+
+            List<Type> actualTypeargs = funcInterface.getTypeArguments();
+            for (Type t : funcInterfaceContext.undetvars) {
+                UndetVar uv = (UndetVar)t;
+                if (uv.inst == null) {
+                    uv.inst = actualTypeargs.head;
+                }
+                actualTypeargs = actualTypeargs.tail;
+            }
+
+            Type owntype = funcInterfaceContext.asInstType(formalInterface);
+            if (!chk.checkValidGenericType(owntype)) {
+                //if the inferred functional interface type is not well-formed,
+                //or if it's not a subtype of the original target, issue an error
+                checkContext.report(pos, diags.fragment("no.suitable.functional.intf.inst", funcInterface));
+            }
+            //propagate constraints as per JLS 18.2.1
+            checkContext.compatible(owntype, funcInterface, types.noWarnings);
+            return owntype;
+        }
+    }
+    // </editor-fold>
+
+    // <editor-fold defaultstate="collapsed" desc="Bound checking">
+    /**
+     * Check bounds and perform incorporation
+     */
+    void checkWithinBounds(InferenceContext inferenceContext,
+                             Warner warn) throws InferenceException {
+        MultiUndetVarListener mlistener = new MultiUndetVarListener(inferenceContext.undetvars);
+        List<Type> saved_undet = inferenceContext.save();
+        try {
+            while (true) {
+                mlistener.reset();
+                if (!allowGraphInference) {
+                    //in legacy mode we lack of transitivity, so bound check
+                    //cannot be run in parallel with other incoprporation rounds
+                    for (Type t : inferenceContext.undetvars) {
+                        UndetVar uv = (UndetVar)t;
+                        IncorporationStep.CHECK_BOUNDS.apply(uv, inferenceContext, warn);
+                    }
+                }
+                for (Type t : inferenceContext.undetvars) {
+                    UndetVar uv = (UndetVar)t;
+                    //bound incorporation
+                    EnumSet<IncorporationStep> incorporationSteps = allowGraphInference ?
+                            incorporationStepsGraph : incorporationStepsLegacy;
+                    for (IncorporationStep is : incorporationSteps) {
+                        if (is.accepts(uv, inferenceContext)) {
+                            is.apply(uv, inferenceContext, warn);
+                        }
+                    }
+                }
+                if (!mlistener.changed || !allowGraphInference) break;
+            }
+        }
+        finally {
+            mlistener.detach();
+            if (incorporationCache.size() == MAX_INCORPORATION_STEPS) {
+                inferenceContext.rollback(saved_undet);
+            }
+            incorporationCache.clear();
+        }
+    }
+    //where
+        /**
+         * This listener keeps track of changes on a group of inference variable
+         * bounds. Note: the listener must be detached (calling corresponding
+         * method) to make sure that the underlying inference variable is
+         * left in a clean state.
+         */
+        class MultiUndetVarListener implements UndetVar.UndetVarListener {
+
+            boolean changed;
+            List<Type> undetvars;
+
+            public MultiUndetVarListener(List<Type> undetvars) {
+                this.undetvars = undetvars;
+                for (Type t : undetvars) {
+                    UndetVar uv = (UndetVar)t;
+                    uv.listener = this;
+                }
+            }
+
+            public void varChanged(UndetVar uv, Set<InferenceBound> ibs) {
+                //avoid non-termination
+                if (incorporationCache.size() < MAX_INCORPORATION_STEPS) {
+                    changed = true;
+                }
+            }
+
+            void reset() {
+                changed = false;
+            }
+
+            void detach() {
+                for (Type t : undetvars) {
+                    UndetVar uv = (UndetVar)t;
+                    uv.listener = null;
+                }
+            }
+        };
+
+        /** max number of incorporation rounds */
+        static final int MAX_INCORPORATION_STEPS = 100;
+
+    /* If for two types t and s there is a least upper bound that is a
+     * parameterized type G, then there exists a supertype of 't' of the form
+     * G<T1, ..., Tn> and a supertype of 's' of the form G<S1, ..., Sn>
+     * which will be returned by this method. If no such supertypes exists then
+     * null is returned.
+     *
+     * As an example for the following input:
+     *
+     * t = java.util.ArrayList<java.lang.String>
+     * s = java.util.List<T>
+     *
+     * we get this ouput:
+     *
+     * Pair[java.util.List<java.lang.String>,java.util.List<T>]
+     */
+    private Pair<Type, Type> getParameterizedSupers(Type t, Type s) {
+        Type lubResult = types.lub(t, s);
+        if (lubResult == syms.errType || lubResult == syms.botType ||
+                !lubResult.isParameterized()) {
+            return null;
+        }
+        Type asSuperOfT = types.asSuper(t, lubResult.tsym);
+        Type asSuperOfS = types.asSuper(s, lubResult.tsym);
+        return new Pair<>(asSuperOfT, asSuperOfS);
+    }
+
+    /**
+     * This enumeration defines an entry point for doing inference variable
+     * bound incorporation - it can be used to inject custom incorporation
+     * logic into the basic bound checking routine
+     */
+    enum IncorporationStep {
+        /**
+         * Performs basic bound checking - i.e. is the instantiated type for a given
+         * inference variable compatible with its bounds?
+         */
+        CHECK_BOUNDS() {
+            public void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn) {
+                Infer infer = inferenceContext.infer();
+                uv.substBounds(inferenceContext.inferenceVars(), inferenceContext.instTypes(), infer.types);
+                infer.checkCompatibleUpperBounds(uv, inferenceContext);
+                if (uv.inst != null) {
+                    Type inst = uv.inst;
+                    for (Type u : uv.getBounds(InferenceBound.UPPER)) {
+                        if (!isSubtype(inst, inferenceContext.asUndetVar(u), warn, infer)) {
+                            infer.reportBoundError(uv, BoundErrorKind.UPPER);
+                        }
+                    }
+                    for (Type l : uv.getBounds(InferenceBound.LOWER)) {
+                        if (!isSubtype(inferenceContext.asUndetVar(l), inst, warn, infer)) {
+                            infer.reportBoundError(uv, BoundErrorKind.LOWER);
+                        }
+                    }
+                    for (Type e : uv.getBounds(InferenceBound.EQ)) {
+                        if (!isSameType(inst, inferenceContext.asUndetVar(e), infer)) {
+                            infer.reportBoundError(uv, BoundErrorKind.EQ);
+                        }
+                    }
+                }
+            }
+
+            @Override
+            boolean accepts(UndetVar uv, InferenceContext inferenceContext) {
+                //applies to all undetvars
+                return true;
+            }
+        },
+        /**
+         * Check consistency of equality constraints. This is a slightly more aggressive
+         * inference routine that is designed as to maximize compatibility with JDK 7.
+         * Note: this is not used in graph mode.
+         */
+        EQ_CHECK_LEGACY() {
+            public void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn) {
+                Infer infer = inferenceContext.infer();
+                Type eq = null;
+                for (Type e : uv.getBounds(InferenceBound.EQ)) {
+                    Assert.check(!inferenceContext.free(e));
+                    if (eq != null && !isSameType(e, eq, infer)) {
+                        infer.reportBoundError(uv, BoundErrorKind.EQ);
+                    }
+                    eq = e;
+                    for (Type l : uv.getBounds(InferenceBound.LOWER)) {
+                        Assert.check(!inferenceContext.free(l));
+                        if (!isSubtype(l, e, warn, infer)) {
+                            infer.reportBoundError(uv, BoundErrorKind.BAD_EQ_LOWER);
+                        }
+                    }
+                    for (Type u : uv.getBounds(InferenceBound.UPPER)) {
+                        if (inferenceContext.free(u)) continue;
+                        if (!isSubtype(e, u, warn, infer)) {
+                            infer.reportBoundError(uv, BoundErrorKind.BAD_EQ_UPPER);
+                        }
+                    }
+                }
+            }
+        },
+        /**
+         * Check consistency of equality constraints.
+         */
+        EQ_CHECK() {
+            public void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn) {
+                Infer infer = inferenceContext.infer();
+                for (Type e : uv.getBounds(InferenceBound.EQ)) {
+                    if (e.containsAny(inferenceContext.inferenceVars())) continue;
+                    for (Type u : uv.getBounds(InferenceBound.UPPER)) {
+                        if (!isSubtype(e, inferenceContext.asUndetVar(u), warn, infer)) {
+                            infer.reportBoundError(uv, BoundErrorKind.BAD_EQ_UPPER);
+                        }
+                    }
+                    for (Type l : uv.getBounds(InferenceBound.LOWER)) {
+                        if (!isSubtype(inferenceContext.asUndetVar(l), e, warn, infer)) {
+                            infer.reportBoundError(uv, BoundErrorKind.BAD_EQ_LOWER);
+                        }
+                    }
+                }
+            }
+        },
+        /**
+         * Given a bound set containing {@code alpha <: T} and {@code alpha :> S}
+         * perform {@code S <: T} (which could lead to new bounds).
+         */
+        CROSS_UPPER_LOWER() {
+            public void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn) {
+                Infer infer = inferenceContext.infer();
+                for (Type b1 : uv.getBounds(InferenceBound.UPPER)) {
+                    for (Type b2 : uv.getBounds(InferenceBound.LOWER)) {
+                        if (!isSubtype(inferenceContext.asUndetVar(b2), inferenceContext.asUndetVar(b1), warn , infer)) {
+                            infer.reportBoundError(uv, BoundErrorKind.BAD_UPPER_LOWER);
+                        }
+                    }
+                }
+            }
+        },
+        /**
+         * Given a bound set containing {@code alpha <: T} and {@code alpha == S}
+         * perform {@code S <: T} (which could lead to new bounds).
+         */
+        CROSS_UPPER_EQ() {
+            public void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn) {
+                Infer infer = inferenceContext.infer();
+                for (Type b1 : uv.getBounds(InferenceBound.UPPER)) {
+                    for (Type b2 : uv.getBounds(InferenceBound.EQ)) {
+                        if (!isSubtype(inferenceContext.asUndetVar(b2), inferenceContext.asUndetVar(b1), warn, infer)) {
+                            infer.reportBoundError(uv, BoundErrorKind.BAD_UPPER_EQUAL);
+                        }
+                    }
+                }
+            }
+        },
+        /**
+         * Given a bound set containing {@code alpha :> S} and {@code alpha == T}
+         * perform {@code S <: T} (which could lead to new bounds).
+         */
+        CROSS_EQ_LOWER() {
+            public void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn) {
+                Infer infer = inferenceContext.infer();
+                for (Type b1 : uv.getBounds(InferenceBound.EQ)) {
+                    for (Type b2 : uv.getBounds(InferenceBound.LOWER)) {
+                        if (!isSubtype(inferenceContext.asUndetVar(b2), inferenceContext.asUndetVar(b1), warn, infer)) {
+                            infer.reportBoundError(uv, BoundErrorKind.BAD_EQUAL_LOWER);
+                        }
+                    }
+                }
+            }
+        },
+        /**
+         * Given a bound set containing {@code alpha <: P<T>} and
+         * {@code alpha <: P<S>} where P is a parameterized type,
+         * perform {@code T = S} (which could lead to new bounds).
+         */
+        CROSS_UPPER_UPPER() {
+            @Override
+            public void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn) {
+                Infer infer = inferenceContext.infer();
+                List<Type> boundList = uv.getBounds(InferenceBound.UPPER);
+                List<Type> boundListTail = boundList.tail;
+                while (boundList.nonEmpty()) {
+                    List<Type> tmpTail = boundListTail;
+                    while (tmpTail.nonEmpty()) {
+                        Type b1 = boundList.head;
+                        Type b2 = tmpTail.head;
+                        /* This wildcard check is temporary workaround. This code may need to be
+                         * revisited once spec bug JDK-7034922 is fixed.
+                         */
+                        if (b1 != b2 && !b1.hasTag(WILDCARD) && !b2.hasTag(WILDCARD)) {
+                            Pair<Type, Type> commonSupers = infer.getParameterizedSupers(b1, b2);
+                            if (commonSupers != null) {
+                                List<Type> allParamsSuperBound1 = commonSupers.fst.allparams();
+                                List<Type> allParamsSuperBound2 = commonSupers.snd.allparams();
+                                while (allParamsSuperBound1.nonEmpty() && allParamsSuperBound2.nonEmpty()) {
+                                    //traverse the list of all params comparing them
+                                    if (!allParamsSuperBound1.head.hasTag(WILDCARD) &&
+                                        !allParamsSuperBound2.head.hasTag(WILDCARD)) {
+                                        isSameType(inferenceContext.asUndetVar(allParamsSuperBound1.head),
+                                            inferenceContext.asUndetVar(allParamsSuperBound2.head), infer);
+                                    }
+                                    allParamsSuperBound1 = allParamsSuperBound1.tail;
+                                    allParamsSuperBound2 = allParamsSuperBound2.tail;
+                                }
+                                Assert.check(allParamsSuperBound1.isEmpty() && allParamsSuperBound2.isEmpty());
+                            }
+                        }
+                        tmpTail = tmpTail.tail;
+                    }
+                    boundList = boundList.tail;
+                    boundListTail = boundList.tail;
+                }
+            }
+
+            @Override
+            boolean accepts(UndetVar uv, InferenceContext inferenceContext) {
+                return !uv.isCaptured() &&
+                        uv.getBounds(InferenceBound.UPPER).nonEmpty();
+            }
+        },
+        /**
+         * Given a bound set containing {@code alpha == S} and {@code alpha == T}
+         * perform {@code S == T} (which could lead to new bounds).
+         */
+        CROSS_EQ_EQ() {
+            public void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn) {
+                Infer infer = inferenceContext.infer();
+                for (Type b1 : uv.getBounds(InferenceBound.EQ)) {
+                    for (Type b2 : uv.getBounds(InferenceBound.EQ)) {
+                        if (b1 != b2) {
+                            if (!isSameType(inferenceContext.asUndetVar(b2), inferenceContext.asUndetVar(b1), infer)) {
+                                infer.reportBoundError(uv, BoundErrorKind.BAD_EQ);
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        /**
+         * Given a bound set containing {@code alpha <: beta} propagate lower bounds
+         * from alpha to beta; also propagate upper bounds from beta to alpha.
+         */
+        PROP_UPPER() {
+            public void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn) {
+                Infer infer = inferenceContext.infer();
+                for (Type b : uv.getBounds(InferenceBound.UPPER)) {
+                    if (inferenceContext.inferenceVars().contains(b)) {
+                        UndetVar uv2 = (UndetVar)inferenceContext.asUndetVar(b);
+                        if (uv2.isCaptured()) continue;
+                        //alpha <: beta
+                        //0. set beta :> alpha
+                        addBound(InferenceBound.LOWER, uv2, inferenceContext.asInstType(uv.qtype), infer);
+                        //1. copy alpha's lower to beta's
+                        for (Type l : uv.getBounds(InferenceBound.LOWER)) {
+                            addBound(InferenceBound.LOWER, uv2, inferenceContext.asInstType(l), infer);
+                        }
+                        //2. copy beta's upper to alpha's
+                        for (Type u : uv2.getBounds(InferenceBound.UPPER)) {
+                            addBound(InferenceBound.UPPER, uv, inferenceContext.asInstType(u), infer);
+                        }
+                    }
+                }
+            }
+        },
+        /**
+         * Given a bound set containing {@code alpha :> beta} propagate lower bounds
+         * from beta to alpha; also propagate upper bounds from alpha to beta.
+         */
+        PROP_LOWER() {
+            public void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn) {
+                Infer infer = inferenceContext.infer();
+                for (Type b : uv.getBounds(InferenceBound.LOWER)) {
+                    if (inferenceContext.inferenceVars().contains(b)) {
+                        UndetVar uv2 = (UndetVar)inferenceContext.asUndetVar(b);
+                        if (uv2.isCaptured()) continue;
+                        //alpha :> beta
+                        //0. set beta <: alpha
+                        addBound(InferenceBound.UPPER, uv2, inferenceContext.asInstType(uv.qtype), infer);
+                        //1. copy alpha's upper to beta's
+                        for (Type u : uv.getBounds(InferenceBound.UPPER)) {
+                            addBound(InferenceBound.UPPER, uv2, inferenceContext.asInstType(u), infer);
+                        }
+                        //2. copy beta's lower to alpha's
+                        for (Type l : uv2.getBounds(InferenceBound.LOWER)) {
+                            addBound(InferenceBound.LOWER, uv, inferenceContext.asInstType(l), infer);
+                        }
+                    }
+                }
+            }
+        },
+        /**
+         * Given a bound set containing {@code alpha == beta} propagate lower/upper
+         * bounds from alpha to beta and back.
+         */
+        PROP_EQ() {
+            public void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn) {
+                Infer infer = inferenceContext.infer();
+                for (Type b : uv.getBounds(InferenceBound.EQ)) {
+                    if (inferenceContext.inferenceVars().contains(b)) {
+                        UndetVar uv2 = (UndetVar)inferenceContext.asUndetVar(b);
+                        if (uv2.isCaptured()) continue;
+                        //alpha == beta
+                        //0. set beta == alpha
+                        addBound(InferenceBound.EQ, uv2, inferenceContext.asInstType(uv.qtype), infer);
+                        //1. copy all alpha's bounds to beta's
+                        for (InferenceBound ib : InferenceBound.values()) {
+                            for (Type b2 : uv.getBounds(ib)) {
+                                if (b2 != uv2) {
+                                    addBound(ib, uv2, inferenceContext.asInstType(b2), infer);
+                                }
+                            }
+                        }
+                        //2. copy all beta's bounds to alpha's
+                        for (InferenceBound ib : InferenceBound.values()) {
+                            for (Type b2 : uv2.getBounds(ib)) {
+                                if (b2 != uv) {
+                                    addBound(ib, uv, inferenceContext.asInstType(b2), infer);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        abstract void apply(UndetVar uv, InferenceContext inferenceContext, Warner warn);
+
+        boolean accepts(UndetVar uv, InferenceContext inferenceContext) {
+            return !uv.isCaptured();
+        }
+
+        boolean isSubtype(Type s, Type t, Warner warn, Infer infer) {
+            return doIncorporationOp(IncorporationBinaryOpKind.IS_SUBTYPE, s, t, warn, infer);
+        }
+
+        boolean isSameType(Type s, Type t, Infer infer) {
+            return doIncorporationOp(IncorporationBinaryOpKind.IS_SAME_TYPE, s, t, null, infer);
+        }
+
+        void addBound(InferenceBound ib, UndetVar uv, Type b, Infer infer) {
+            doIncorporationOp(opFor(ib), uv, b, null, infer);
+        }
+
+        IncorporationBinaryOpKind opFor(InferenceBound boundKind) {
+            switch (boundKind) {
+                case EQ:
+                    return IncorporationBinaryOpKind.ADD_EQ_BOUND;
+                case LOWER:
+                    return IncorporationBinaryOpKind.ADD_LOWER_BOUND;
+                case UPPER:
+                    return IncorporationBinaryOpKind.ADD_UPPER_BOUND;
+                default:
+                    Assert.error("Can't get here!");
+                    return null;
+            }
+        }
+
+        boolean doIncorporationOp(IncorporationBinaryOpKind opKind, Type op1, Type op2, Warner warn, Infer infer) {
+            IncorporationBinaryOp newOp = infer.new IncorporationBinaryOp(opKind, op1, op2);
+            Boolean res = infer.incorporationCache.get(newOp);
+            if (res == null) {
+                infer.incorporationCache.put(newOp, res = newOp.apply(warn));
+            }
+            return res;
+        }
+    }
+
+    /** incorporation steps to be executed when running in legacy mode */
+    EnumSet<IncorporationStep> incorporationStepsLegacy = EnumSet.of(IncorporationStep.EQ_CHECK_LEGACY);
+
+    /** incorporation steps to be executed when running in graph mode */
+    EnumSet<IncorporationStep> incorporationStepsGraph =
+            EnumSet.complementOf(EnumSet.of(IncorporationStep.EQ_CHECK_LEGACY));
+
+    /**
+     * Three kinds of basic operation are supported as part of an incorporation step:
+     * (i) subtype check, (ii) same type check and (iii) bound addition (either
+     * upper/lower/eq bound).
+     */
+    enum IncorporationBinaryOpKind {
+        IS_SUBTYPE() {
+            @Override
+            boolean apply(Type op1, Type op2, Warner warn, Types types) {
+                return types.isSubtypeUnchecked(op1, op2, warn);
+            }
+        },
+        IS_SAME_TYPE() {
+            @Override
+            boolean apply(Type op1, Type op2, Warner warn, Types types) {
+                return types.isSameType(op1, op2);
+            }
+        },
+        ADD_UPPER_BOUND() {
+            @Override
+            boolean apply(Type op1, Type op2, Warner warn, Types types) {
+                UndetVar uv = (UndetVar)op1;
+                uv.addBound(InferenceBound.UPPER, op2, types);
+                return true;
+            }
+        },
+        ADD_LOWER_BOUND() {
+            @Override
+            boolean apply(Type op1, Type op2, Warner warn, Types types) {
+                UndetVar uv = (UndetVar)op1;
+                uv.addBound(InferenceBound.LOWER, op2, types);
+                return true;
+            }
+        },
+        ADD_EQ_BOUND() {
+            @Override
+            boolean apply(Type op1, Type op2, Warner warn, Types types) {
+                UndetVar uv = (UndetVar)op1;
+                uv.addBound(InferenceBound.EQ, op2, types);
+                return true;
+            }
+        };
+
+        abstract boolean apply(Type op1, Type op2, Warner warn, Types types);
+    }
+
+    /**
+     * This class encapsulates a basic incorporation operation; incorporation
+     * operations takes two type operands and a kind. Each operation performed
+     * during an incorporation round is stored in a cache, so that operations
+     * are not executed unnecessarily (which would potentially lead to adding
+     * same bounds over and over).
+     */
+    class IncorporationBinaryOp {
+
+        IncorporationBinaryOpKind opKind;
+        Type op1;
+        Type op2;
+
+        IncorporationBinaryOp(IncorporationBinaryOpKind opKind, Type op1, Type op2) {
+            this.opKind = opKind;
+            this.op1 = op1;
+            this.op2 = op2;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof IncorporationBinaryOp)) {
+                return false;
+            } else {
+                IncorporationBinaryOp that = (IncorporationBinaryOp)o;
+                return opKind == that.opKind &&
+                        types.isSameType(op1, that.op1, true) &&
+                        types.isSameType(op2, that.op2, true);
+            }
+        }
+
+        @Override
+        public int hashCode() {
+            int result = opKind.hashCode();
+            result *= 127;
+            result += types.hashCode(op1);
+            result *= 127;
+            result += types.hashCode(op2);
+            return result;
+        }
+
+        boolean apply(Warner warn) {
+            return opKind.apply(op1, op2, warn, types);
+        }
+    }
+
+    /** an incorporation cache keeps track of all executed incorporation-related operations */
+    Map<IncorporationBinaryOp, Boolean> incorporationCache =
+            new HashMap<IncorporationBinaryOp, Boolean>();
+
+    /**
+     * Make sure that the upper bounds we got so far lead to a solvable inference
+     * variable by making sure that a glb exists.
+     */
+    void checkCompatibleUpperBounds(UndetVar uv, InferenceContext inferenceContext) {
+        List<Type> hibounds =
+                Type.filter(uv.getBounds(InferenceBound.UPPER), new BoundFilter(inferenceContext));
+        Type hb = null;
+        if (hibounds.isEmpty())
+            hb = syms.objectType;
+        else if (hibounds.tail.isEmpty())
+            hb = hibounds.head;
+        else
+            hb = types.glb(hibounds);
+        if (hb == null || hb.isErroneous())
+            reportBoundError(uv, BoundErrorKind.BAD_UPPER);
+    }
+    //where
+        protected static class BoundFilter implements Filter<Type> {
+
+            InferenceContext inferenceContext;
+
+            public BoundFilter(InferenceContext inferenceContext) {
+                this.inferenceContext = inferenceContext;
+            }
+
+            @Override
+            public boolean accepts(Type t) {
+                return !t.isErroneous() && !inferenceContext.free(t) &&
+                        !t.hasTag(BOT);
+            }
+        };
+
+    /**
+     * This enumeration defines all possible bound-checking related errors.
+     */
+    enum BoundErrorKind {
+        /**
+         * The (uninstantiated) inference variable has incompatible upper bounds.
+         */
+        BAD_UPPER() {
+            @Override
+            InapplicableMethodException setMessage(InferenceException ex, UndetVar uv) {
+                return ex.setMessage("incompatible.upper.bounds", uv.qtype,
+                        uv.getBounds(InferenceBound.UPPER));
+            }
+        },
+        /**
+         * The (uninstantiated) inference variable has incompatible equality constraints.
+         */
+        BAD_EQ() {
+            @Override
+            InapplicableMethodException setMessage(InferenceException ex, UndetVar uv) {
+                return ex.setMessage("incompatible.eq.bounds", uv.qtype,
+                        uv.getBounds(InferenceBound.EQ));
+            }
+        },
+        /**
+         * The (uninstantiated) inference variable has incompatible upper lower bounds.
+         */
+        BAD_UPPER_LOWER() {
+            @Override
+            InapplicableMethodException setMessage(InferenceException ex, UndetVar uv) {
+                return ex.setMessage("incompatible.upper.lower.bounds", uv.qtype,
+                        uv.getBounds(InferenceBound.UPPER), uv.getBounds(InferenceBound.LOWER));
+            }
+        },
+        /**
+         * The (uninstantiated) inference variable has incompatible upper equal bounds.
+         */
+        BAD_UPPER_EQUAL() {
+            @Override
+            InapplicableMethodException setMessage(InferenceException ex, UndetVar uv) {
+                return ex.setMessage("incompatible.upper.eq.bounds", uv.qtype,
+                        uv.getBounds(InferenceBound.UPPER), uv.getBounds(InferenceBound.EQ));
+            }
+        },
+        /**
+         * The (uninstantiated) inference variable has incompatible upper equal bounds.
+         */
+        BAD_EQUAL_LOWER() {
+            @Override
+            InapplicableMethodException setMessage(InferenceException ex, UndetVar uv) {
+                return ex.setMessage("incompatible.eq.lower.bounds", uv.qtype,
+                        uv.getBounds(InferenceBound.EQ), uv.getBounds(InferenceBound.LOWER));
+            }
+        },
+        /**
+         * An equality constraint is not compatible with an upper bound.
+         */
+        BAD_EQ_UPPER() {
+            @Override
+            InapplicableMethodException setMessage(InferenceException ex, UndetVar uv) {
+                return ex.setMessage("incompatible.eq.upper.bounds", uv.qtype,
+                        uv.getBounds(InferenceBound.EQ), uv.getBounds(InferenceBound.UPPER));
+            }
+        },
+        /**
+         * An equality constraint is not compatible with a lower bound.
+         */
+        BAD_EQ_LOWER() {
+            @Override
+            InapplicableMethodException setMessage(InferenceException ex, UndetVar uv) {
+                return ex.setMessage("incompatible.eq.lower.bounds", uv.qtype,
+                        uv.getBounds(InferenceBound.EQ), uv.getBounds(InferenceBound.LOWER));
+            }
+        },
+        /**
+         * Instantiated inference variable is not compatible with an upper bound.
+         */
+        UPPER() {
+            @Override
+            InapplicableMethodException setMessage(InferenceException ex, UndetVar uv) {
+                return ex.setMessage("inferred.do.not.conform.to.upper.bounds", uv.inst,
+                        uv.getBounds(InferenceBound.UPPER));
+            }
+        },
+        /**
+         * Instantiated inference variable is not compatible with a lower bound.
+         */
+        LOWER() {
+            @Override
+            InapplicableMethodException setMessage(InferenceException ex, UndetVar uv) {
+                return ex.setMessage("inferred.do.not.conform.to.lower.bounds", uv.inst,
+                        uv.getBounds(InferenceBound.LOWER));
+            }
+        },
+        /**
+         * Instantiated inference variable is not compatible with an equality constraint.
+         */
+        EQ() {
+            @Override
+            InapplicableMethodException setMessage(InferenceException ex, UndetVar uv) {
+                return ex.setMessage("inferred.do.not.conform.to.eq.bounds", uv.inst,
+                        uv.getBounds(InferenceBound.EQ));
+            }
+        };
+
+        abstract InapplicableMethodException setMessage(InferenceException ex, UndetVar uv);
+    }
+
+    /**
+     * Report a bound-checking error of given kind
+     */
+    void reportBoundError(UndetVar uv, BoundErrorKind bk) {
+        throw bk.setMessage(inferenceException, uv);
+    }
+    // </editor-fold>
+
+    // <editor-fold defaultstate="collapsed" desc="Inference engine">
+    /**
+     * Graph inference strategy - act as an input to the inference solver; a strategy is
+     * composed of two ingredients: (i) find a node to solve in the inference graph,
+     * and (ii) tell th engine when we are done fixing inference variables
+     */
+    interface GraphStrategy {
+
+        /**
+         * A NodeNotFoundException is thrown whenever an inference strategy fails
+         * to pick the next node to solve in the inference graph.
+         */
+        public static class NodeNotFoundException extends RuntimeException {
+            private static final long serialVersionUID = 0;
+
+            InferenceGraph graph;
+
+            public NodeNotFoundException(InferenceGraph graph) {
+                this.graph = graph;
+            }
+        }
+        /**
+         * Pick the next node (leaf) to solve in the graph
+         */
+        Node pickNode(InferenceGraph g) throws NodeNotFoundException;
+        /**
+         * Is this the last step?
+         */
+        boolean done();
+    }
+
+    /**
+     * Simple solver strategy class that locates all leaves inside a graph
+     * and picks the first leaf as the next node to solve
+     */
+    abstract class LeafSolver implements GraphStrategy {
+        public Node pickNode(InferenceGraph g) {
+            if (g.nodes.isEmpty()) {
+                //should not happen
+                throw new NodeNotFoundException(g);
+            };
+            return g.nodes.get(0);
+        }
+
+        boolean isSubtype(Type s, Type t, Warner warn, Infer infer) {
+            return doIncorporationOp(IncorporationBinaryOpKind.IS_SUBTYPE, s, t, warn, infer);
+        }
+
+        boolean isSameType(Type s, Type t, Infer infer) {
+            return doIncorporationOp(IncorporationBinaryOpKind.IS_SAME_TYPE, s, t, null, infer);
+        }
+
+        void addBound(InferenceBound ib, UndetVar uv, Type b, Infer infer) {
+            doIncorporationOp(opFor(ib), uv, b, null, infer);
+        }
+
+        IncorporationBinaryOpKind opFor(InferenceBound boundKind) {
+            switch (boundKind) {
+                case EQ:
+                    return IncorporationBinaryOpKind.ADD_EQ_BOUND;
+                case LOWER:
+                    return IncorporationBinaryOpKind.ADD_LOWER_BOUND;
+                case UPPER:
+                    return IncorporationBinaryOpKind.ADD_UPPER_BOUND;
+                default:
+                    Assert.error("Can't get here!");
+                    return null;
+            }
+        }
+
+        boolean doIncorporationOp(IncorporationBinaryOpKind opKind, Type op1, Type op2, Warner warn, Infer infer) {
+            IncorporationBinaryOp newOp = infer.new IncorporationBinaryOp(opKind, op1, op2);
+            Boolean res = infer.incorporationCache.get(newOp);
+            if (res == null) {
+                infer.incorporationCache.put(newOp, res = newOp.apply(warn));
+            }
+            return res;
+        }
+    }
+
+    /**
+     * This solver uses an heuristic to pick the best leaf - the heuristic
+     * tries to select the node that has maximal probability to contain one
+     * or more inference variables in a given list
+     */
+    abstract class BestLeafSolver extends LeafSolver {
+
+        /** list of ivars of which at least one must be solved */
+        List<Type> varsToSolve;
+
+        BestLeafSolver(List<Type> varsToSolve) {
+            this.varsToSolve = varsToSolve;
+        }
+
+        /**
+         * Computes a path that goes from a given node to the leafs in the graph.
+         * Typically this will start from a node containing a variable in
+         * {@code varsToSolve}. For any given path, the cost is computed as the total
+         * number of type-variables that should be eagerly instantiated across that path.
+         */
+        Pair<List<Node>, Integer> computeTreeToLeafs(Node n) {
+            Pair<List<Node>, Integer> cachedPath = treeCache.get(n);
+            if (cachedPath == null) {
+                //cache miss
+                if (n.isLeaf()) {
+                    //if leaf, stop
+                    cachedPath = new Pair<List<Node>, Integer>(List.of(n), n.data.length());
+                } else {
+                    //if non-leaf, proceed recursively
+                    Pair<List<Node>, Integer> path = new Pair<List<Node>, Integer>(List.of(n), n.data.length());
+                    for (Node n2 : n.getAllDependencies()) {
+                        if (n2 == n) continue;
+                        Pair<List<Node>, Integer> subpath = computeTreeToLeafs(n2);
+                        path = new Pair<List<Node>, Integer>(
+                                path.fst.prependList(subpath.fst),
+                                path.snd + subpath.snd);
+                    }
+                    cachedPath = path;
+                }
+                //save results in cache
+                treeCache.put(n, cachedPath);
+            }
+            return cachedPath;
+        }
+
+        /** cache used to avoid redundant computation of tree costs */
+        final Map<Node, Pair<List<Node>, Integer>> treeCache =
+                new HashMap<Node, Pair<List<Node>, Integer>>();
+
+        /** constant value used to mark non-existent paths */
+        final Pair<List<Node>, Integer> noPath =
+                new Pair<List<Node>, Integer>(null, Integer.MAX_VALUE);
+
+        /**
+         * Pick the leaf that minimize cost
+         */
+        @Override
+        public Node pickNode(final InferenceGraph g) {
+            treeCache.clear(); //graph changes at every step - cache must be cleared
+            Pair<List<Node>, Integer> bestPath = noPath;
+            for (Node n : g.nodes) {
+                if (!Collections.disjoint(n.data, varsToSolve)) {
+                    Pair<List<Node>, Integer> path = computeTreeToLeafs(n);
+                    //discard all paths containing at least a node in the
+                    //closure computed above
+                    if (path.snd < bestPath.snd) {
+                        bestPath = path;
+                    }
+                }
+            }
+            if (bestPath == noPath) {
+                //no path leads there
+                throw new NodeNotFoundException(g);
+            }
+            return bestPath.fst.head;
+        }
+    }
+
+    /**
+     * The inference process can be thought of as a sequence of steps. Each step
+     * instantiates an inference variable using a subset of the inference variable
+     * bounds, if certain condition are met. Decisions such as the sequence in which
+     * steps are applied, or which steps are to be applied are left to the inference engine.
+     */
+    enum InferenceStep {
+
+        /**
+         * Instantiate an inference variables using one of its (ground) equality
+         * constraints
+         */
+        EQ(InferenceBound.EQ) {
+            @Override
+            Type solve(UndetVar uv, InferenceContext inferenceContext) {
+                return filterBounds(uv, inferenceContext).head;
+            }
+        },
+        /**
+         * Instantiate an inference variables using its (ground) lower bounds. Such
+         * bounds are merged together using lub().
+         */
+        LOWER(InferenceBound.LOWER) {
+            @Override
+            Type solve(UndetVar uv, InferenceContext inferenceContext) {
+                Infer infer = inferenceContext.infer();
+                List<Type> lobounds = filterBounds(uv, inferenceContext);
+                //note: lobounds should have at least one element
+                Type owntype = lobounds.tail.tail == null  ? lobounds.head : infer.types.lub(lobounds);
+                if (owntype.isPrimitive() || owntype.hasTag(ERROR)) {
+                    throw infer.inferenceException
+                        .setMessage("no.unique.minimal.instance.exists",
+                                    uv.qtype, lobounds);
+                } else {
+                    return owntype;
+                }
+            }
+        },
+        /**
+         * Infer uninstantiated/unbound inference variables occurring in 'throws'
+         * clause as RuntimeException
+         */
+        THROWS(InferenceBound.UPPER) {
+            @Override
+            public boolean accepts(UndetVar t, InferenceContext inferenceContext) {
+                if ((t.qtype.tsym.flags() & Flags.THROWS) == 0) {
+                    //not a throws undet var
+                    return false;
+                }
+                if (t.getBounds(InferenceBound.EQ, InferenceBound.LOWER, InferenceBound.UPPER)
+                            .diff(t.getDeclaredBounds()).nonEmpty()) {
+                    //not an unbounded undet var
+                    return false;
+                }
+                Infer infer = inferenceContext.infer();
+                for (Type db : t.getDeclaredBounds()) {
+                    if (t.isInterface()) continue;
+                    if (infer.types.asSuper(infer.syms.runtimeExceptionType, db.tsym) != null) {
+                        //declared bound is a supertype of RuntimeException
+                        return true;
+                    }
+                }
+                //declared bound is more specific then RuntimeException - give up
+                return false;
+            }
+
+            @Override
+            Type solve(UndetVar uv, InferenceContext inferenceContext) {
+                return inferenceContext.infer().syms.runtimeExceptionType;
+            }
+        },
+        /**
+         * Instantiate an inference variables using its (ground) upper bounds. Such
+         * bounds are merged together using glb().
+         */
+        UPPER(InferenceBound.UPPER) {
+            @Override
+            Type solve(UndetVar uv, InferenceContext inferenceContext) {
+                Infer infer = inferenceContext.infer();
+                List<Type> hibounds = filterBounds(uv, inferenceContext);
+                //note: hibounds should have at least one element
+                Type owntype = hibounds.tail.tail == null  ? hibounds.head : infer.types.glb(hibounds);
+                if (owntype.isPrimitive() || owntype.hasTag(ERROR)) {
+                    throw infer.inferenceException
+                        .setMessage("no.unique.maximal.instance.exists",
+                                    uv.qtype, hibounds);
+                } else {
+                    return owntype;
+                }
+            }
+        },
+        /**
+         * Like the former; the only difference is that this step can only be applied
+         * if all upper bounds are ground.
+         */
+        UPPER_LEGACY(InferenceBound.UPPER) {
+            @Override
+            public boolean accepts(UndetVar t, InferenceContext inferenceContext) {
+                return !inferenceContext.free(t.getBounds(ib)) && !t.isCaptured();
+            }
+
+            @Override
+            Type solve(UndetVar uv, InferenceContext inferenceContext) {
+                return UPPER.solve(uv, inferenceContext);
+            }
+        },
+        /**
+         * Like the former; the only difference is that this step can only be applied
+         * if all upper/lower bounds are ground.
+         */
+        CAPTURED(InferenceBound.UPPER) {
+            @Override
+            public boolean accepts(UndetVar t, InferenceContext inferenceContext) {
+                return t.isCaptured() &&
+                        !inferenceContext.free(t.getBounds(InferenceBound.UPPER, InferenceBound.LOWER));
+            }
+
+            @Override
+            Type solve(UndetVar uv, InferenceContext inferenceContext) {
+                Infer infer = inferenceContext.infer();
+                Type upper = UPPER.filterBounds(uv, inferenceContext).nonEmpty() ?
+                        UPPER.solve(uv, inferenceContext) :
+                        infer.syms.objectType;
+                Type lower = LOWER.filterBounds(uv, inferenceContext).nonEmpty() ?
+                        LOWER.solve(uv, inferenceContext) :
+                        infer.syms.botType;
+                CapturedType prevCaptured = (CapturedType)uv.qtype;
+                return new CapturedType(prevCaptured.tsym.name, prevCaptured.tsym.owner, upper, lower, prevCaptured.wildcard);
+            }
+        };
+
+        final InferenceBound ib;
+
+        InferenceStep(InferenceBound ib) {
+            this.ib = ib;
+        }
+
+        /**
+         * Find an instantiated type for a given inference variable within
+         * a given inference context
+         */
+        abstract Type solve(UndetVar uv, InferenceContext inferenceContext);
+
+        /**
+         * Can the inference variable be instantiated using this step?
+         */
+        public boolean accepts(UndetVar t, InferenceContext inferenceContext) {
+            return filterBounds(t, inferenceContext).nonEmpty() && !t.isCaptured();
+        }
+
+        /**
+         * Return the subset of ground bounds in a given bound set (i.e. eq/lower/upper)
+         */
+        List<Type> filterBounds(UndetVar uv, InferenceContext inferenceContext) {
+            return Type.filter(uv.getBounds(ib), new BoundFilter(inferenceContext));
+        }
+    }
+
+    /**
+     * This enumeration defines the sequence of steps to be applied when the
+     * solver works in legacy mode. The steps in this enumeration reflect
+     * the behavior of old inference routine (see JLS SE 7 15.12.2.7/15.12.2.8).
+     */
+    enum LegacyInferenceSteps {
+
+        EQ_LOWER(EnumSet.of(InferenceStep.EQ, InferenceStep.LOWER)),
+        EQ_UPPER(EnumSet.of(InferenceStep.EQ, InferenceStep.UPPER_LEGACY));
+
+        final EnumSet<InferenceStep> steps;
+
+        LegacyInferenceSteps(EnumSet<InferenceStep> steps) {
+            this.steps = steps;
+        }
+    }
+
+    /**
+     * This enumeration defines the sequence of steps to be applied when the
+     * graph solver is used. This order is defined so as to maximize compatibility
+     * w.r.t. old inference routine (see JLS SE 7 15.12.2.7/15.12.2.8).
+     */
+    enum GraphInferenceSteps {
+
+        EQ(EnumSet.of(InferenceStep.EQ)),
+        EQ_LOWER(EnumSet.of(InferenceStep.EQ, InferenceStep.LOWER)),
+        EQ_LOWER_THROWS_UPPER_CAPTURED(EnumSet.of(InferenceStep.EQ, InferenceStep.LOWER, InferenceStep.UPPER, InferenceStep.THROWS, InferenceStep.CAPTURED));
+
+        final EnumSet<InferenceStep> steps;
+
+        GraphInferenceSteps(EnumSet<InferenceStep> steps) {
+            this.steps = steps;
+        }
+    }
+
+    /**
+     * There are two kinds of dependencies between inference variables. The basic
+     * kind of dependency (or bound dependency) arises when a variable mention
+     * another variable in one of its bounds. There's also a more subtle kind
+     * of dependency that arises when a variable 'might' lead to better constraints
+     * on another variable (this is typically the case with variables holding up
+     * stuck expressions).
+     */
+    enum DependencyKind implements GraphUtils.DependencyKind {
+
+        /** bound dependency */
+        BOUND("dotted"),
+        /** stuck dependency */
+        STUCK("dashed");
+
+        final String dotSyle;
+
+        private DependencyKind(String dotSyle) {
+            this.dotSyle = dotSyle;
+        }
+
+        @Override
+        public String getDotStyle() {
+            return dotSyle;
+        }
+    }
+
+    /**
+     * This is the graph inference solver - the solver organizes all inference variables in
+     * a given inference context by bound dependencies - in the general case, such dependencies
+     * would lead to a cyclic directed graph (hence the name); the dependency info is used to build
+     * an acyclic graph, where all cyclic variables are bundled together. An inference
+     * step corresponds to solving a node in the acyclic graph - this is done by
+     * relying on a given strategy (see GraphStrategy).
+     */
+    class GraphSolver {
+
+        InferenceContext inferenceContext;
+        Map<Type, Set<Type>> stuckDeps;
+        Warner warn;
+
+        GraphSolver(InferenceContext inferenceContext, Map<Type, Set<Type>> stuckDeps, Warner warn) {
+            this.inferenceContext = inferenceContext;
+            this.stuckDeps = stuckDeps;
+            this.warn = warn;
+        }
+
+        /**
+         * Solve variables in a given inference context. The amount of variables
+         * to be solved, and the way in which the underlying acyclic graph is explored
+         * depends on the selected solver strategy.
+         */
+        void solve(GraphStrategy sstrategy) {
+            checkWithinBounds(inferenceContext, warn); //initial propagation of bounds
+            InferenceGraph inferenceGraph = new InferenceGraph(stuckDeps);
+            while (!sstrategy.done()) {
+                Node nodeToSolve = sstrategy.pickNode(inferenceGraph);
+                List<Type> varsToSolve = List.from(nodeToSolve.data);
+                List<Type> saved_undet = inferenceContext.save();
+                try {
+                    //repeat until all variables are solved
+                    outer: while (Type.containsAny(inferenceContext.restvars(), varsToSolve)) {
+                        //for each inference phase
+                        for (GraphInferenceSteps step : GraphInferenceSteps.values()) {
+                            if (inferenceContext.solveBasic(varsToSolve, step.steps)) {
+                                checkWithinBounds(inferenceContext, warn);
+                                continue outer;
+                            }
+                        }
+                        //no progress
+                        throw inferenceException.setMessage();
+                    }
+                }
+                catch (InferenceException ex) {
+                    //did we fail because of interdependent ivars?
+                    inferenceContext.rollback(saved_undet);
+                    instantiateAsUninferredVars(varsToSolve, inferenceContext);
+                    checkWithinBounds(inferenceContext, warn);
+                }
+                inferenceGraph.deleteNode(nodeToSolve);
+            }
+        }
+
+        /**
+         * The dependencies between the inference variables that need to be solved
+         * form a (possibly cyclic) graph. This class reduces the original dependency graph
+         * to an acyclic version, where cyclic nodes are folded into a single 'super node'.
+         */
+        class InferenceGraph {
+
+            /**
+             * This class represents a node in the graph. Each node corresponds
+             * to an inference variable and has edges (dependencies) on other
+             * nodes. The node defines an entry point that can be used to receive
+             * updates on the structure of the graph this node belongs to (used to
+             * keep dependencies in sync).
+             */
+            class Node extends TarjanNode<ListBuffer<Type>> {
+
+                /** map listing all dependencies (grouped by kind) */
+                EnumMap<DependencyKind, Set<Node>> deps;
+
+                Node(Type ivar) {
+                    super(ListBuffer.of(ivar));
+                    this.deps = new EnumMap<DependencyKind, Set<Node>>(DependencyKind.class);
+                }
+
+                @Override
+                public GraphUtils.DependencyKind[] getSupportedDependencyKinds() {
+                    return DependencyKind.values();
+                }
+
+                @Override
+                public String getDependencyName(GraphUtils.Node<ListBuffer<Type>> to, GraphUtils.DependencyKind dk) {
+                    if (dk == DependencyKind.STUCK) return "";
+                    else {
+                        StringBuilder buf = new StringBuilder();
+                        String sep = "";
+                        for (Type from : data) {
+                            UndetVar uv = (UndetVar)inferenceContext.asUndetVar(from);
+                            for (Type bound : uv.getBounds(InferenceBound.values())) {
+                                if (bound.containsAny(List.from(to.data))) {
+                                    buf.append(sep);
+                                    buf.append(bound);
+                                    sep = ",";
+                                }
+                            }
+                        }
+                        return buf.toString();
+                    }
+                }
+
+                @Override
+                public Iterable<? extends Node> getAllDependencies() {
+                    return getDependencies(DependencyKind.values());
+                }
+
+                @Override
+                public Iterable<? extends TarjanNode<ListBuffer<Type>>> getDependenciesByKind(GraphUtils.DependencyKind dk) {
+                    return getDependencies((DependencyKind)dk);
+                }
+
+                /**
+                 * Retrieves all dependencies with given kind(s).
+                 */
+                protected Set<Node> getDependencies(DependencyKind... depKinds) {
+                    Set<Node> buf = new LinkedHashSet<Node>();
+                    for (DependencyKind dk : depKinds) {
+                        Set<Node> depsByKind = deps.get(dk);
+                        if (depsByKind != null) {
+                            buf.addAll(depsByKind);
+                        }
+                    }
+                    return buf;
+                }
+
+                /**
+                 * Adds dependency with given kind.
+                 */
+                protected void addDependency(DependencyKind dk, Node depToAdd) {
+                    Set<Node> depsByKind = deps.get(dk);
+                    if (depsByKind == null) {
+                        depsByKind = new LinkedHashSet<Node>();
+                        deps.put(dk, depsByKind);
+                    }
+                    depsByKind.add(depToAdd);
+                }
+
+                /**
+                 * Add multiple dependencies of same given kind.
+                 */
+                protected void addDependencies(DependencyKind dk, Set<Node> depsToAdd) {
+                    for (Node n : depsToAdd) {
+                        addDependency(dk, n);
+                    }
+                }
+
+                /**
+                 * Remove a dependency, regardless of its kind.
+                 */
+                protected Set<DependencyKind> removeDependency(Node n) {
+                    Set<DependencyKind> removedKinds = new HashSet<>();
+                    for (DependencyKind dk : DependencyKind.values()) {
+                        Set<Node> depsByKind = deps.get(dk);
+                        if (depsByKind == null) continue;
+                        if (depsByKind.remove(n)) {
+                            removedKinds.add(dk);
+                        }
+                    }
+                    return removedKinds;
+                }
+
+                /**
+                 * Compute closure of a give node, by recursively walking
+                 * through all its dependencies (of given kinds)
+                 */
+                protected Set<Node> closure(DependencyKind... depKinds) {
+                    boolean progress = true;
+                    Set<Node> closure = new HashSet<Node>();
+                    closure.add(this);
+                    while (progress) {
+                        progress = false;
+                        for (Node n1 : new HashSet<Node>(closure)) {
+                            progress = closure.addAll(n1.getDependencies(depKinds));
+                        }
+                    }
+                    return closure;
+                }
+
+                /**
+                 * Is this node a leaf? This means either the node has no dependencies,
+                 * or it just has self-dependencies.
+                 */
+                protected boolean isLeaf() {
+                    //no deps, or only one self dep
+                    Set<Node> allDeps = getDependencies(DependencyKind.BOUND, DependencyKind.STUCK);
+                    if (allDeps.isEmpty()) return true;
+                    for (Node n : allDeps) {
+                        if (n != this) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+
+                /**
+                 * Merge this node with another node, acquiring its dependencies.
+                 * This routine is used to merge all cyclic node together and
+                 * form an acyclic graph.
+                 */
+                protected void mergeWith(List<? extends Node> nodes) {
+                    for (Node n : nodes) {
+                        Assert.check(n.data.length() == 1, "Attempt to merge a compound node!");
+                        data.appendList(n.data);
+                        for (DependencyKind dk : DependencyKind.values()) {
+                            addDependencies(dk, n.getDependencies(dk));
+                        }
+                    }
+                    //update deps
+                    EnumMap<DependencyKind, Set<Node>> deps2 = new EnumMap<DependencyKind, Set<Node>>(DependencyKind.class);
+                    for (DependencyKind dk : DependencyKind.values()) {
+                        for (Node d : getDependencies(dk)) {
+                            Set<Node> depsByKind = deps2.get(dk);
+                            if (depsByKind == null) {
+                                depsByKind = new LinkedHashSet<Node>();
+                                deps2.put(dk, depsByKind);
+                            }
+                            if (data.contains(d.data.first())) {
+                                depsByKind.add(this);
+                            } else {
+                                depsByKind.add(d);
+                            }
+                        }
+                    }
+                    deps = deps2;
+                }
+
+                /**
+                 * Notify all nodes that something has changed in the graph
+                 * topology.
+                 */
+                private void graphChanged(Node from, Node to) {
+                    for (DependencyKind dk : removeDependency(from)) {
+                        if (to != null) {
+                            addDependency(dk, to);
+                        }
+                    }
+                }
+            }
+
+            /** the nodes in the inference graph */
+            ArrayList<Node> nodes;
+
+            InferenceGraph(Map<Type, Set<Type>> optDeps) {
+                initNodes(optDeps);
+            }
+
+            /**
+             * Basic lookup helper for retrieving a graph node given an inference
+             * variable type.
+             */
+            public Node findNode(Type t) {
+                for (Node n : nodes) {
+                    if (n.data.contains(t)) {
+                        return n;
+                    }
+                }
+                return null;
+            }
+
+            /**
+             * Delete a node from the graph. This update the underlying structure
+             * of the graph (including dependencies) via listeners updates.
+             */
+            public void deleteNode(Node n) {
+                Assert.check(nodes.contains(n));
+                nodes.remove(n);
+                notifyUpdate(n, null);
+            }
+
+            /**
+             * Notify all nodes of a change in the graph. If the target node is
+             * {@code null} the source node is assumed to be removed.
+             */
+            void notifyUpdate(Node from, Node to) {
+                for (Node n : nodes) {
+                    n.graphChanged(from, to);
+                }
+            }
+
+            /**
+             * Create the graph nodes. First a simple node is created for every inference
+             * variables to be solved. Then Tarjan is used to found all connected components
+             * in the graph. For each component containing more than one node, a super node is
+             * created, effectively replacing the original cyclic nodes.
+             */
+            void initNodes(Map<Type, Set<Type>> stuckDeps) {
+                //add nodes
+                nodes = new ArrayList<Node>();
+                for (Type t : inferenceContext.restvars()) {
+                    nodes.add(new Node(t));
+                }
+                //add dependencies
+                for (Node n_i : nodes) {
+                    Type i = n_i.data.first();
+                    Set<Type> optDepsByNode = stuckDeps.get(i);
+                    for (Node n_j : nodes) {
+                        Type j = n_j.data.first();
+                        UndetVar uv_i = (UndetVar)inferenceContext.asUndetVar(i);
+                        if (Type.containsAny(uv_i.getBounds(InferenceBound.values()), List.of(j))) {
+                            //update i's bound dependencies
+                            n_i.addDependency(DependencyKind.BOUND, n_j);
+                        }
+                        if (optDepsByNode != null && optDepsByNode.contains(j)) {
+                            //update i's stuck dependencies
+                            n_i.addDependency(DependencyKind.STUCK, n_j);
+                        }
+                    }
+                }
+                //merge cyclic nodes
+                ArrayList<Node> acyclicNodes = new ArrayList<Node>();
+                for (List<? extends Node> conSubGraph : GraphUtils.tarjan(nodes)) {
+                    if (conSubGraph.length() > 1) {
+                        Node root = conSubGraph.head;
+                        root.mergeWith(conSubGraph.tail);
+                        for (Node n : conSubGraph) {
+                            notifyUpdate(n, root);
+                        }
+                    }
+                    acyclicNodes.add(conSubGraph.head);
+                }
+                nodes = acyclicNodes;
+            }
+
+            /**
+             * Debugging: dot representation of this graph
+             */
+            String toDot() {
+                StringBuilder buf = new StringBuilder();
+                for (Type t : inferenceContext.undetvars) {
+                    UndetVar uv = (UndetVar)t;
+                    buf.append(String.format("var %s - upper bounds = %s, lower bounds = %s, eq bounds = %s\\n",
+                            uv.qtype, uv.getBounds(InferenceBound.UPPER), uv.getBounds(InferenceBound.LOWER),
+                            uv.getBounds(InferenceBound.EQ)));
+                }
+                return GraphUtils.toDot(nodes, "inferenceGraph" + hashCode(), buf.toString());
+            }
+        }
+    }
+    // </editor-fold>
+
+    // <editor-fold defaultstate="collapsed" desc="Inference context">
+    /**
+     * Functional interface for defining inference callbacks. Certain actions
+     * (i.e. subtyping checks) might need to be redone after all inference variables
+     * have been fixed.
+     */
+    interface FreeTypeListener {
+        void typesInferred(InferenceContext inferenceContext);
+    }
+
+    /**
+     * An inference context keeps track of the set of variables that are free
+     * in the current context. It provides utility methods for opening/closing
+     * types to their corresponding free/closed forms. It also provide hooks for
+     * attaching deferred post-inference action (see PendingCheck). Finally,
+     * it can be used as an entry point for performing upper/lower bound inference
+     * (see InferenceKind).
+     */
+     class InferenceContext {
+
+        /** list of inference vars as undet vars */
+        List<Type> undetvars;
+
+        /** list of inference vars in this context */
+        List<Type> inferencevars;
+
+        Map<FreeTypeListener, List<Type>> freeTypeListeners =
+                new HashMap<FreeTypeListener, List<Type>>();
+
+        List<FreeTypeListener> freetypeListeners = List.nil();
+
+        public InferenceContext(List<Type> inferencevars) {
+            this.undetvars = Type.map(inferencevars, fromTypeVarFun);
+            this.inferencevars = inferencevars;
+        }
+        //where
+            Mapping fromTypeVarFun = new Mapping("fromTypeVarFunWithBounds") {
+                // mapping that turns inference variables into undet vars
+                public Type apply(Type t) {
+                    if (t.hasTag(TYPEVAR)) {
+                        TypeVar tv = (TypeVar)t;
+                        if (tv.isCaptured()) {
+                            return new CapturedUndetVar((CapturedType)tv, types);
+                        } else {
+                            return new UndetVar(tv, types);
+                        }
+                    } else {
+                        return t.map(this);
+                    }
+                }
+            };
+
+        /**
+         * add a new inference var to this inference context
+         */
+        void addVar(TypeVar t) {
+            this.undetvars = this.undetvars.prepend(fromTypeVarFun.apply(t));
+            this.inferencevars = this.inferencevars.prepend(t);
+        }
+
+        /**
+         * returns the list of free variables (as type-variables) in this
+         * inference context
+         */
+        List<Type> inferenceVars() {
+            return inferencevars;
+        }
+
+        /**
+         * returns the list of uninstantiated variables (as type-variables) in this
+         * inference context
+         */
+        List<Type> restvars() {
+            return filterVars(new Filter<UndetVar>() {
+                public boolean accepts(UndetVar uv) {
+                    return uv.inst == null;
+                }
+            });
+        }
+
+        /**
+         * returns the list of instantiated variables (as type-variables) in this
+         * inference context
+         */
+        List<Type> instvars() {
+            return filterVars(new Filter<UndetVar>() {
+                public boolean accepts(UndetVar uv) {
+                    return uv.inst != null;
+                }
+            });
+        }
+
+        /**
+         * Get list of bounded inference variables (where bound is other than
+         * declared bounds).
+         */
+        final List<Type> boundedVars() {
+            return filterVars(new Filter<UndetVar>() {
+                public boolean accepts(UndetVar uv) {
+                    return uv.getBounds(InferenceBound.UPPER)
+                             .diff(uv.getDeclaredBounds())
+                             .appendList(uv.getBounds(InferenceBound.EQ, InferenceBound.LOWER)).nonEmpty();
+                }
+            });
+        }
+
+        /* Returns the corresponding inference variables.
+         */
+        private List<Type> filterVars(Filter<UndetVar> fu) {
+            ListBuffer<Type> res = new ListBuffer<>();
+            for (Type t : undetvars) {
+                UndetVar uv = (UndetVar)t;
+                if (fu.accepts(uv)) {
+                    res.append(uv.qtype);
+                }
+            }
+            return res.toList();
+        }
+
+        /**
+         * is this type free?
+         */
+        final boolean free(Type t) {
+            return t.containsAny(inferencevars);
+        }
+
+        final boolean free(List<Type> ts) {
+            for (Type t : ts) {
+                if (free(t)) return true;
+            }
+            return false;
+        }
+
+        /**
+         * Returns a list of free variables in a given type
+         */
+        final List<Type> freeVarsIn(Type t) {
+            ListBuffer<Type> buf = new ListBuffer<>();
+            for (Type iv : inferenceVars()) {
+                if (t.contains(iv)) {
+                    buf.add(iv);
+                }
+            }
+            return buf.toList();
+        }
+
+        final List<Type> freeVarsIn(List<Type> ts) {
+            ListBuffer<Type> buf = new ListBuffer<>();
+            for (Type t : ts) {
+                buf.appendList(freeVarsIn(t));
+            }
+            ListBuffer<Type> buf2 = new ListBuffer<>();
+            for (Type t : buf) {
+                if (!buf2.contains(t)) {
+                    buf2.add(t);
+                }
+            }
+            return buf2.toList();
+        }
+
+        /**
+         * Replace all free variables in a given type with corresponding
+         * undet vars (used ahead of subtyping/compatibility checks to allow propagation
+         * of inference constraints).
+         */
+        final Type asUndetVar(Type t) {
+            return types.subst(t, inferencevars, undetvars);
+        }
+
+        final List<Type> asUndetVars(List<Type> ts) {
+            ListBuffer<Type> buf = new ListBuffer<>();
+            for (Type t : ts) {
+                buf.append(asUndetVar(t));
+            }
+            return buf.toList();
+        }
+
+        List<Type> instTypes() {
+            ListBuffer<Type> buf = new ListBuffer<>();
+            for (Type t : undetvars) {
+                UndetVar uv = (UndetVar)t;
+                buf.append(uv.inst != null ? uv.inst : uv.qtype);
+            }
+            return buf.toList();
+        }
+
+        /**
+         * Replace all free variables in a given type with corresponding
+         * instantiated types - if one or more free variable has not been
+         * fully instantiated, it will still be available in the resulting type.
+         */
+        Type asInstType(Type t) {
+            return types.subst(t, inferencevars, instTypes());
+        }
+
+        List<Type> asInstTypes(List<Type> ts) {
+            ListBuffer<Type> buf = new ListBuffer<>();
+            for (Type t : ts) {
+                buf.append(asInstType(t));
+            }
+            return buf.toList();
+        }
+
+        /**
+         * Add custom hook for performing post-inference action
+         */
+        void addFreeTypeListener(List<Type> types, FreeTypeListener ftl) {
+            freeTypeListeners.put(ftl, freeVarsIn(types));
+        }
+
+        /**
+         * Mark the inference context as complete and trigger evaluation
+         * of all deferred checks.
+         */
+        void notifyChange() {
+            notifyChange(inferencevars.diff(restvars()));
+        }
+
+        void notifyChange(List<Type> inferredVars) {
+            InferenceException thrownEx = null;
+            for (Map.Entry<FreeTypeListener, List<Type>> entry :
+                    new HashMap<FreeTypeListener, List<Type>>(freeTypeListeners).entrySet()) {
+                if (!Type.containsAny(entry.getValue(), inferencevars.diff(inferredVars))) {
+                    try {
+                        entry.getKey().typesInferred(this);
+                        freeTypeListeners.remove(entry.getKey());
+                    } catch (InferenceException ex) {
+                        if (thrownEx == null) {
+                            thrownEx = ex;
+                        }
+                    }
+                }
+            }
+            //inference exception multiplexing - present any inference exception
+            //thrown when processing listeners as a single one
+            if (thrownEx != null) {
+                throw thrownEx;
+            }
+        }
+
+        /**
+         * Save the state of this inference context
+         */
+        List<Type> save() {
+            ListBuffer<Type> buf = new ListBuffer<>();
+            for (Type t : undetvars) {
+                UndetVar uv = (UndetVar)t;
+                UndetVar uv2 = new UndetVar((TypeVar)uv.qtype, types);
+                for (InferenceBound ib : InferenceBound.values()) {
+                    for (Type b : uv.getBounds(ib)) {
+                        uv2.addBound(ib, b, types);
+                    }
+                }
+                uv2.inst = uv.inst;
+                buf.add(uv2);
+            }
+            return buf.toList();
+        }
+
+        /**
+         * Restore the state of this inference context to the previous known checkpoint
+         */
+        void rollback(List<Type> saved_undet) {
+             Assert.check(saved_undet != null && saved_undet.length() == undetvars.length());
+            //restore bounds (note: we need to preserve the old instances)
+            for (Type t : undetvars) {
+                UndetVar uv = (UndetVar)t;
+                UndetVar uv_saved = (UndetVar)saved_undet.head;
+                for (InferenceBound ib : InferenceBound.values()) {
+                    uv.setBounds(ib, uv_saved.getBounds(ib));
+                }
+                uv.inst = uv_saved.inst;
+                saved_undet = saved_undet.tail;
+            }
+        }
+
+        /**
+         * Copy variable in this inference context to the given context
+         */
+        void dupTo(final InferenceContext that) {
+            that.inferencevars = that.inferencevars.appendList(
+                    inferencevars.diff(that.inferencevars));
+            that.undetvars = that.undetvars.appendList(
+                    undetvars.diff(that.undetvars));
+            //set up listeners to notify original inference contexts as
+            //propagated vars are inferred in new context
+            for (Type t : inferencevars) {
+                that.freeTypeListeners.put(new FreeTypeListener() {
+                    public void typesInferred(InferenceContext inferenceContext) {
+                        InferenceContext.this.notifyChange();
+                    }
+                }, List.of(t));
+            }
+        }
+
+        private void solve(GraphStrategy ss, Warner warn) {
+            solve(ss, new HashMap<Type, Set<Type>>(), warn);
+        }
+
+        /**
+         * Solve with given graph strategy.
+         */
+        private void solve(GraphStrategy ss, Map<Type, Set<Type>> stuckDeps, Warner warn) {
+            GraphSolver s = new GraphSolver(this, stuckDeps, warn);
+            s.solve(ss);
+        }
+
+        /**
+         * Solve all variables in this context.
+         */
+        public void solve(Warner warn) {
+            solve(new LeafSolver() {
+                public boolean done() {
+                    return restvars().isEmpty();
+                }
+            }, warn);
+        }
+
+        /**
+         * Solve all variables in the given list.
+         */
+        public void solve(final List<Type> vars, Warner warn) {
+            solve(new BestLeafSolver(vars) {
+                public boolean done() {
+                    return !free(asInstTypes(vars));
+                }
+            }, warn);
+        }
+
+        /**
+         * Solve at least one variable in given list.
+         */
+        public void solveAny(List<Type> varsToSolve, Map<Type, Set<Type>> optDeps, Warner warn) {
+            solve(new BestLeafSolver(varsToSolve.intersect(restvars())) {
+                public boolean done() {
+                    return instvars().intersect(varsToSolve).nonEmpty();
+                }
+            }, optDeps, warn);
+        }
+
+        /**
+         * Apply a set of inference steps
+         */
+        private boolean solveBasic(EnumSet<InferenceStep> steps) {
+            return solveBasic(inferencevars, steps);
+        }
+
+        private boolean solveBasic(List<Type> varsToSolve, EnumSet<InferenceStep> steps) {
+            boolean changed = false;
+            for (Type t : varsToSolve.intersect(restvars())) {
+                UndetVar uv = (UndetVar)asUndetVar(t);
+                for (InferenceStep step : steps) {
+                    if (step.accepts(uv, this)) {
+                        uv.inst = step.solve(uv, this);
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+            return changed;
+        }
+
+        /**
+         * Instantiate inference variables in legacy mode (JLS 15.12.2.7, 15.12.2.8).
+         * During overload resolution, instantiation is done by doing a partial
+         * inference process using eq/lower bound instantiation. During check,
+         * we also instantiate any remaining vars by repeatedly using eq/upper
+         * instantiation, until all variables are solved.
+         */
+        public void solveLegacy(boolean partial, Warner warn, EnumSet<InferenceStep> steps) {
+            while (true) {
+                boolean stuck = !solveBasic(steps);
+                if (restvars().isEmpty() || partial) {
+                    //all variables have been instantiated - exit
+                    break;
+                } else if (stuck) {
+                    //some variables could not be instantiated because of cycles in
+                    //upper bounds - provide a (possibly recursive) default instantiation
+                    instantiateAsUninferredVars(restvars(), this);
+                    break;
+                } else {
+                    //some variables have been instantiated - replace newly instantiated
+                    //variables in remaining upper bounds and continue
+                    for (Type t : undetvars) {
+                        UndetVar uv = (UndetVar)t;
+                        uv.substBounds(inferenceVars(), instTypes(), types);
+                    }
+                }
+            }
+            checkWithinBounds(this, warn);
+        }
+
+        private Infer infer() {
+            //back-door to infer
+            return Infer.this;
+        }
+
+        @Override
+        public String toString() {
+            return "Inference vars: " + inferencevars + '\n' +
+                   "Undet vars: " + undetvars;
+        }
+
+        /* Method Types.capture() generates a new type every time it's applied
+         * to a wildcard parameterized type. This is intended functionality but
+         * there are some cases when what you need is not to generate a new
+         * captured type but to check that a previously generated captured type
+         * is correct. There are cases when caching a captured type for later
+         * reuse is sound. In general two captures from the same AST are equal.
+         * This is why the tree is used as the key of the map below. This map
+         * stores a Type per AST.
+         */
+        Map<JCTree, Type> captureTypeCache = new HashMap<>();
+
+        Type cachedCapture(JCTree tree, Type t, boolean readOnly) {
+            Type captured = captureTypeCache.get(tree);
+            if (captured != null) {
+                return captured;
+            }
+
+            Type result = types.capture(t);
+            if (result != t && !readOnly) { // then t is a wildcard parameterized type
+                captureTypeCache.put(tree, result);
+            }
+            return result;
+        }
+    }
+
+    final InferenceContext emptyContext = new InferenceContext(List.<Type>nil());
+    // </editor-fold>
+}

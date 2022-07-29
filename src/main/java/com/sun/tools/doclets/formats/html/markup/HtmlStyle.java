@@ -1,108 +1,102 @@
-/*     */ package com.sun.tools.doclets.formats.html.markup;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public enum HtmlStyle
-/*     */ {
-/*  39 */   aboutLanguage,
-/*  40 */   activeTableTab,
-/*  41 */   altColor,
-/*  42 */   bar,
-/*  43 */   block,
-/*  44 */   blockList,
-/*  45 */   blockListLast,
-/*  46 */   bottomNav,
-/*  47 */   classUseContainer,
-/*  48 */   colFirst,
-/*  49 */   colLast,
-/*  50 */   colOne,
-/*  51 */   constantsSummary,
-/*  52 */   constantValuesContainer,
-/*  53 */   contentContainer,
-/*  54 */   deprecatedContent,
-/*  55 */   deprecatedLabel,
-/*  56 */   deprecatedSummary,
-/*  57 */   deprecationComment,
-/*  58 */   description,
-/*  59 */   descfrmTypeLabel,
-/*  60 */   details,
-/*  61 */   docSummary,
-/*  62 */   emphasizedPhrase,
-/*  63 */   header,
-/*  64 */   horizontal,
-/*  65 */   footer,
-/*  66 */   indexContainer,
-/*  67 */   indexHeader,
-/*  68 */   inheritance,
-/*  69 */   interfaceName,
-/*  70 */   legalCopy,
-/*  71 */   memberNameLabel,
-/*  72 */   memberNameLink,
-/*  73 */   memberSummary,
-/*  74 */   nameValue,
-/*  75 */   navBarCell1Rev,
-/*  76 */   navList,
-/*  77 */   overrideSpecifyLabel,
-/*  78 */   overviewSummary,
-/*  79 */   packageHierarchyLabel,
-/*  80 */   paramLabel,
-/*  81 */   returnLabel,
-/*  82 */   rowColor,
-/*  83 */   seeLabel,
-/*  84 */   serializedFormContainer,
-/*  85 */   simpleTagLabel,
-/*  86 */   skipNav,
-/*  87 */   sourceContainer,
-/*  88 */   sourceLineNo,
-/*  89 */   subNav,
-/*  90 */   subNavList,
-/*  91 */   subTitle,
-/*  92 */   summary,
-/*  93 */   tabEnd,
-/*  94 */   tableTab,
-/*  95 */   throwsLabel,
-/*  96 */   title,
-/*  97 */   topNav,
-/*  98 */   typeNameLabel,
-/*  99 */   typeNameLink,
-/* 100 */   typeSummary,
-/* 101 */   useSummary;
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\markup\HtmlStyle.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2010, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html.markup;
+
+/**
+ * Enum representing HTML styles. The name map to values in the CSS file.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Bhavesh Patel
+ */
+public enum HtmlStyle {
+    aboutLanguage,
+    activeTableTab,
+    altColor,
+    bar,
+    block,
+    blockList,
+    blockListLast,
+    bottomNav,
+    classUseContainer,
+    colFirst,
+    colLast,
+    colOne,
+    constantsSummary,
+    constantValuesContainer,
+    contentContainer,
+    deprecatedContent,
+    deprecatedLabel,
+    deprecatedSummary,
+    deprecationComment,
+    description,
+    descfrmTypeLabel,
+    details,
+    docSummary,
+    emphasizedPhrase,
+    header,
+    horizontal,
+    footer,
+    indexContainer,
+    indexHeader,
+    inheritance,
+    interfaceName,
+    legalCopy,
+    memberNameLabel,
+    memberNameLink,
+    memberSummary,
+    nameValue,
+    navBarCell1Rev,
+    navList,
+    overrideSpecifyLabel,
+    overviewSummary,
+    packageHierarchyLabel,
+    paramLabel,
+    returnLabel,
+    rowColor,
+    seeLabel,
+    serializedFormContainer,
+    simpleTagLabel,
+    skipNav,
+    sourceContainer,
+    sourceLineNo,
+    subNav,
+    subNavList,
+    subTitle,
+    summary,
+    tabEnd,
+    tableTab,
+    throwsLabel,
+    title,
+    topNav,
+    typeNameLabel,
+    typeNameLink,
+    typeSummary,
+    useSummary;
+}

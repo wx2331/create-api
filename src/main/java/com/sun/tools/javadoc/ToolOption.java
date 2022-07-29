@@ -1,344 +1,332 @@
-/*     */ package com.sun.tools.javadoc;
-/*     */ 
-/*     */ import com.sun.tools.javac.util.ListBuffer;
-/*     */ import com.sun.tools.javac.util.Options;
-/*     */ import java.util.StringTokenizer;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public enum ToolOption
-/*     */ {
-/*  45 */   BOOTCLASSPATH("-bootclasspath", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/*  48 */       param1Helper.setCompilerOpt(this.opt, param1String);
-/*     */     }
-/*     */   },
-/*     */   
-/*  52 */   CLASSPATH("-classpath", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/*  55 */       param1Helper.setCompilerOpt(this.opt, param1String);
-/*     */     }
-/*     */   },
-/*     */   
-/*  59 */   CP("-cp", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/*  62 */       param1Helper.setCompilerOpt(this.opt, param1String);
-/*     */     }
-/*     */   },
-/*     */   
-/*  66 */   EXTDIRS("-extdirs", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/*  69 */       param1Helper.setCompilerOpt(this.opt, param1String);
-/*     */     }
-/*     */   },
-/*     */   
-/*  73 */   SOURCEPATH("-sourcepath", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/*  76 */       param1Helper.setCompilerOpt(this.opt, param1String);
-/*     */     }
-/*     */   },
-/*     */   
-/*  80 */   SYSCLASSPATH("-sysclasspath", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/*  83 */       param1Helper.setCompilerOpt("-bootclasspath", param1String);
-/*     */     }
-/*     */   },
-/*     */   
-/*  87 */   ENCODING("-encoding", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/*  90 */       param1Helper.encoding = param1String;
-/*  91 */       param1Helper.setCompilerOpt(this.opt, param1String);
-/*     */     }
-/*     */   },
-/*     */   
-/*  95 */   SOURCE("-source", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/*  98 */       param1Helper.setCompilerOpt(this.opt, param1String);
-/*     */     }
-/*     */   },
-/*     */   
-/* 102 */   XMAXERRS("-Xmaxerrs", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/* 105 */       param1Helper.setCompilerOpt(this.opt, param1String);
-/*     */     }
-/*     */   },
-/*     */   
-/* 109 */   XMAXWARNS("-Xmaxwarns", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/* 112 */       param1Helper.setCompilerOpt(this.opt, param1String);
-/*     */     }
-/*     */   },
-/*     */ 
-/*     */ 
-/*     */   
-/* 118 */   DOCLET("-doclet", true),
-/*     */   
-/* 120 */   DOCLETPATH("-docletpath", true),
-/*     */ 
-/*     */ 
-/*     */   
-/* 124 */   SUBPACKAGES("-subpackages", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/* 127 */       param1Helper.addToList(param1Helper.subPackages, param1String);
-/*     */     }
-/*     */   },
-/*     */   
-/* 131 */   EXCLUDE("-exclude", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/* 134 */       param1Helper.addToList(param1Helper.excludedPackages, param1String);
-/*     */     }
-/*     */   },
-/*     */ 
-/*     */ 
-/*     */   
-/* 140 */   PACKAGE("-package")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 143 */       param1Helper.setFilter(-9223372036854775803L);
-/*     */     }
-/*     */   },
-/*     */ 
-/*     */   
-/* 148 */   PRIVATE("-private")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 151 */       param1Helper.setFilter(-9223372036854775801L);
-/*     */     }
-/*     */   },
-/*     */   
-/* 155 */   PROTECTED("-protected")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 158 */       param1Helper.setFilter(5L);
-/*     */     }
-/*     */   },
-/*     */   
-/* 162 */   PUBLIC("-public")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 165 */       param1Helper.setFilter(1L);
-/*     */     }
-/*     */   },
-/*     */ 
-/*     */ 
-/*     */   
-/* 171 */   PROMPT("-prompt")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 174 */       param1Helper.compOpts.put("-prompt", "-prompt");
-/* 175 */       param1Helper.promptOnError = true;
-/*     */     }
-/*     */   },
-/*     */   
-/* 179 */   QUIET("-quiet")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 182 */       param1Helper.quiet = true;
-/*     */     }
-/*     */   },
-/*     */   
-/* 186 */   VERBOSE("-verbose")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 189 */       param1Helper.compOpts.put("-verbose", "");
-/*     */     }
-/*     */   },
-/*     */   
-/* 193 */   XWERROR("-Xwerror")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 196 */       param1Helper.rejectWarnings = true;
-/*     */     }
-/*     */   },
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 203 */   BREAKITERATOR("-breakiterator")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 206 */       param1Helper.breakiterator = true;
-/*     */     }
-/*     */   },
-/*     */   
-/* 210 */   LOCALE("-locale", true)
-/*     */   {
-/*     */     public void process(Helper param1Helper, String param1String) {
-/* 213 */       param1Helper.docLocale = param1String;
-/*     */     }
-/*     */   },
-/*     */   
-/* 217 */   OVERVIEW("-overview", true),
-/*     */   
-/* 219 */   XCLASSES("-Xclasses")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 222 */       param1Helper.docClasses = true;
-/*     */     }
-/*     */   },
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 229 */   HELP("-help")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 232 */       param1Helper.usage();
-/*     */     }
-/*     */   },
-/*     */   
-/* 236 */   X("-X")
-/*     */   {
-/*     */     public void process(Helper param1Helper) {
-/* 239 */       param1Helper.Xusage();
-/*     */     }
-/*     */   };
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public final String opt;
-/*     */   
-/*     */   public final boolean hasArg;
-/*     */ 
-/*     */   
-/*     */   ToolOption(String paramString1, boolean paramBoolean) {
-/* 251 */     this.opt = paramString1;
-/* 252 */     this.hasArg = paramBoolean;
-/*     */   }
-/*     */   
-/*     */   void process(Helper paramHelper, String paramString) {}
-/*     */   
-/*     */   void process(Helper paramHelper) {}
-/*     */   
-/*     */   static ToolOption get(String paramString) {
-/* 260 */     for (ToolOption toolOption : values()) {
-/* 261 */       if (paramString.equals(toolOption.opt))
-/* 262 */         return toolOption; 
-/*     */     } 
-/* 264 */     return null;
-/*     */   }
-/*     */   static abstract class Helper { final ListBuffer<String[]> options; final ListBuffer<String> subPackages; final ListBuffer<String> excludedPackages;
-/*     */     
-/*     */     Helper() {
-/* 269 */       this.options = new ListBuffer();
-/*     */ 
-/*     */       
-/* 272 */       this.subPackages = new ListBuffer();
-/*     */ 
-/*     */       
-/* 275 */       this.excludedPackages = new ListBuffer();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */       
-/* 281 */       this.encoding = null;
-/*     */ 
-/*     */       
-/* 284 */       this.breakiterator = false;
-/*     */ 
-/*     */       
-/* 287 */       this.quiet = false;
-/*     */ 
-/*     */       
-/* 290 */       this.docClasses = false;
-/*     */ 
-/*     */       
-/* 293 */       this.rejectWarnings = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */       
-/* 299 */       this.docLocale = "";
-/*     */ 
-/*     */       
-/* 302 */       this.showAccess = null;
-/*     */     }
-/*     */     Options compOpts; String encoding; boolean breakiterator; boolean quiet; boolean docClasses; boolean rejectWarnings;
-/*     */     boolean promptOnError;
-/*     */     String docLocale;
-/*     */     ModifierFilter showAccess;
-/*     */     
-/*     */     protected void addToList(ListBuffer<String> param1ListBuffer, String param1String) {
-/* 310 */       StringTokenizer stringTokenizer = new StringTokenizer(param1String, ":");
-/*     */       
-/* 312 */       while (stringTokenizer.hasMoreTokens()) {
-/* 313 */         String str = stringTokenizer.nextToken();
-/* 314 */         param1ListBuffer.append(str);
-/*     */       } 
-/*     */     }
-/*     */     
-/*     */     protected void setFilter(long param1Long) {
-/* 319 */       if (this.showAccess != null) {
-/* 320 */         usageError("main.incompatible.access.flags", new Object[0]);
-/*     */       }
-/* 322 */       this.showAccess = new ModifierFilter(param1Long);
-/*     */     }
-/*     */     
-/*     */     private void setCompilerOpt(String param1String1, String param1String2) {
-/* 326 */       if (this.compOpts.get(param1String1) != null) {
-/* 327 */         usageError("main.option.already.seen", new Object[] { param1String1 });
-/*     */       }
-/* 329 */       this.compOpts.put(param1String1, param1String2);
-/*     */     }
-/*     */     
-/*     */     abstract void usage();
-/*     */     
-/*     */     abstract void Xusage();
-/*     */     
-/*     */     abstract void usageError(String param1String, Object... param1VarArgs); }
-/*     */ 
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javadoc\ToolOption.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2012, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javadoc;
+
+import com.sun.tools.javac.code.Flags;
+import com.sun.tools.javac.util.ListBuffer;
+import com.sun.tools.javac.util.Options;
+import java.util.StringTokenizer;
+
+
+/**
+ * javadoc tool options.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public enum ToolOption {
+    // ----- options for underlying compiler -----
+
+    BOOTCLASSPATH("-bootclasspath", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.setCompilerOpt(opt, arg);
+        }
+    },
+
+    CLASSPATH("-classpath", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.setCompilerOpt(opt, arg);
+        }
+    },
+
+    CP("-cp", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.setCompilerOpt(opt, arg);
+        }
+    },
+
+    EXTDIRS("-extdirs", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.setCompilerOpt(opt, arg);
+        }
+    },
+
+    SOURCEPATH("-sourcepath", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.setCompilerOpt(opt, arg);
+        }
+    },
+
+    SYSCLASSPATH("-sysclasspath", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.setCompilerOpt("-bootclasspath", arg);
+        }
+    },
+
+    ENCODING("-encoding", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.encoding = arg;
+            helper.setCompilerOpt(opt, arg);
+        }
+    },
+
+    SOURCE("-source", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.setCompilerOpt(opt, arg);
+        }
+    },
+
+    XMAXERRS("-Xmaxerrs", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.setCompilerOpt(opt, arg);
+        }
+    },
+
+    XMAXWARNS("-Xmaxwarns", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.setCompilerOpt(opt, arg);
+        }
+    },
+
+    // ----- doclet options -----
+
+    DOCLET("-doclet", true), // handled in setDocletInvoker
+
+    DOCLETPATH("-docletpath", true), // handled in setDocletInvoker
+
+    // ----- selection options -----
+
+    SUBPACKAGES("-subpackages", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.addToList(helper.subPackages, arg);
+        }
+    },
+
+    EXCLUDE("-exclude", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.addToList(helper.excludedPackages, arg);
+        }
+    },
+
+    // ----- filtering options -----
+
+    PACKAGE("-package") {
+        @Override
+        public void process(Helper helper) {
+            helper.setFilter(
+                    Flags.PUBLIC | Flags.PROTECTED | ModifierFilter.PACKAGE);
+        }
+    },
+
+    PRIVATE("-private") {
+        @Override
+        public void process(Helper helper) {
+            helper.setFilter(ModifierFilter.ALL_ACCESS);
+        }
+    },
+
+    PROTECTED("-protected") {
+        @Override
+        public void process(Helper helper) {
+            helper.setFilter(Flags.PUBLIC | Flags.PROTECTED);
+        }
+    },
+
+    PUBLIC("-public") {
+        @Override
+        public void process(Helper helper) {
+            helper.setFilter(Flags.PUBLIC);
+        }
+    },
+
+    // ----- output control options -----
+
+    PROMPT("-prompt") {
+        @Override
+        public void process(Helper helper) {
+            helper.compOpts.put("-prompt", "-prompt");
+            helper.promptOnError = true;
+        }
+    },
+
+    QUIET("-quiet") {
+        @Override
+        public void process(Helper helper) {
+            helper.quiet = true;
+        }
+    },
+
+    VERBOSE("-verbose") {
+        @Override
+        public void process(Helper helper) {
+            helper.compOpts.put("-verbose", "");
+        }
+    },
+
+    XWERROR("-Xwerror") {
+        @Override
+        public void process(Helper helper) {
+            helper.rejectWarnings = true;
+
+        }
+    },
+
+    // ----- other options -----
+
+    BREAKITERATOR("-breakiterator") {
+        @Override
+        public void process(Helper helper) {
+            helper.breakiterator = true;
+        }
+    },
+
+    LOCALE("-locale", true) {
+        @Override
+        public void process(Helper helper, String arg) {
+            helper.docLocale = arg;
+        }
+    },
+
+    OVERVIEW("-overview", true),
+
+    XCLASSES("-Xclasses") {
+        @Override
+        public void process(Helper helper) {
+            helper.docClasses = true;
+
+        }
+    },
+
+    // ----- help options -----
+
+    HELP("-help") {
+        @Override
+        public void process(Helper helper) {
+            helper.usage();
+        }
+    },
+
+    X("-X") {
+        @Override
+        public void process(Helper helper) {
+            helper.Xusage();
+        }
+    };
+
+    public final String opt;
+    public final boolean hasArg;
+
+    ToolOption(String opt) {
+        this(opt, false);
+    }
+
+    ToolOption(String opt, boolean hasArg) {
+        this.opt = opt;
+        this.hasArg = hasArg;
+    }
+
+    void process(Helper helper, String arg) { }
+
+    void process(Helper helper) { }
+
+    static ToolOption get(String name) {
+        for (ToolOption o: values()) {
+            if (name.equals(o.opt))
+                return o;
+        }
+        return null;
+    }
+
+    static abstract class Helper {
+        /** List of decoded options. */
+        final ListBuffer<String[]> options = new ListBuffer<String[]>();
+
+        /** Selected packages, from -subpackages. */
+        final ListBuffer<String> subPackages = new ListBuffer<String>();
+
+        /** Excluded packages, from -exclude. */
+        final ListBuffer<String> excludedPackages = new ListBuffer<String>();
+
+        /** javac options, set by various options. */
+        Options compOpts; // = Options.instance(context)
+
+        /* Encoding for javac, and files written? set by -encoding. */
+        String encoding = null;
+
+        /** Set by -breakiterator. */
+        boolean breakiterator = false;
+
+        /** Set by -quiet. */
+        boolean quiet = false;
+
+        /** Set by -Xclasses. */
+        boolean docClasses = false;
+
+        /** Set by -Xwerror. */
+        boolean rejectWarnings = false;
+
+        /** Set by -prompt. */
+        boolean promptOnError;
+
+        /** Set by -locale. */
+        String docLocale = "";
+
+        /** Set by -public, private, -protected, -package. */
+        ModifierFilter showAccess = null;
+
+        abstract void usage();
+        abstract void Xusage();
+
+        abstract void usageError(String msg, Object... args);
+
+        protected void addToList(ListBuffer<String> list, String str){
+            StringTokenizer st = new StringTokenizer(str, ":");
+            String current;
+            while(st.hasMoreTokens()){
+                current = st.nextToken();
+                list.append(current);
+            }
+        }
+
+        protected void setFilter(long filterBits) {
+            if (showAccess != null) {
+                usageError("main.incompatible.access.flags");
+            }
+            showAccess = new ModifierFilter(filterBits);
+        }
+
+        private void setCompilerOpt(String opt, String arg) {
+            if (compOpts.get(opt) != null) {
+                usageError("main.option.already.seen", opt);
+            }
+            compOpts.put(opt, arg);
+        }
+    }
+}

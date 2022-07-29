@@ -1,995 +1,989 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.DocErrorReporter;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.javadoc.RootDoc;
-/*     */ import com.sun.javadoc.SourcePosition;
-/*     */ import com.sun.tools.doclets.internal.toolkit.builders.BuilderFactory;
-/*     */ import com.sun.tools.doclets.internal.toolkit.taglets.TagletManager;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.ClassDocCatalog;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocFile;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocletAbortException;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.Extern;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.Group;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.MessageRetriever;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.MetaKeywords;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.Util;
-/*     */ import com.sun.tools.javac.jvm.Profile;
-/*     */ import com.sun.tools.javac.sym.Profiles;
-/*     */ import com.sun.tools.javac.util.StringUtils;
-/*     */ import java.io.ByteArrayOutputStream;
-/*     */ import java.io.File;
-/*     */ import java.io.IOException;
-/*     */ import java.io.InputStream;
-/*     */ import java.io.OutputStreamWriter;
-/*     */ import java.io.UnsupportedEncodingException;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.Collections;
-/*     */ import java.util.Comparator;
-/*     */ import java.util.EnumMap;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.LinkedHashSet;
-/*     */ import java.util.List;
-/*     */ import java.util.Locale;
-/*     */ import java.util.Map;
-/*     */ import java.util.Set;
-/*     */ import java.util.StringTokenizer;
-/*     */ import java.util.regex.Matcher;
-/*     */ import java.util.regex.Pattern;
-/*     */ import javax.tools.JavaFileManager;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public abstract class Configuration
-/*     */ {
-/*     */   protected BuilderFactory builderFactory;
-/*     */   public TagletManager tagletManager;
-/*     */   public String builderXMLPath;
-/*     */   private static final String DEFAULT_BUILDER_XML = "resources/doclet.xml";
-/*     */   
-/*     */   public static class Fault
-/*     */     extends Exception
-/*     */   {
-/*     */     private static final long serialVersionUID = 0L;
-/*     */     
-/*     */     Fault(String param1String) {
-/*  66 */       super(param1String);
-/*     */     }
-/*     */     
-/*     */     Fault(String param1String, Exception param1Exception) {
-/*  70 */       super(param1String, param1Exception);
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*  97 */   public String tagletpath = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean serialwarn = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public int sourcetab;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String tabSpaces;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean linksource = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean nosince = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean copydocfilesubdirs = false;
-/*     */ 
-/*     */ 
-/*     */   
-/* 131 */   public String charset = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean keywords = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 143 */   public final MetaKeywords metakeywords = new MetaKeywords(this);
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Set<String> excludedDocFileDirs;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Set<String> excludedQualifiers;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public RootDoc root;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 164 */   public String destDirName = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 169 */   public String docFileDestDirName = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 175 */   public String docencoding = null;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean nocomment = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 186 */   public String encoding = null;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean showauthor = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean javafx = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean showversion = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 214 */   public String sourcepath = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 219 */   public String profilespath = "";
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean showProfiles = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean nodeprecated = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassDocCatalog classDocCatalog;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 247 */   public MessageRetriever message = null;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean notimestamp = false;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 258 */   public final Group group = new Group(this);
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 263 */   public final Extern extern = new Extern(this);
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Profiles profiles;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Map<String, PackageDoc[]> profilePackages;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public PackageDoc[] packages;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public abstract String getDocletSpecificBuildDate();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public abstract void setSpecificDocletOptions(String[][] paramArrayOfString) throws Fault;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public abstract MessageRetriever getDocletSpecificMsg();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Configuration() {
-/* 307 */     this.message = new MessageRetriever(this, "com.sun.tools.doclets.internal.toolkit.resources.doclets");
-/*     */ 
-/*     */     
-/* 310 */     this.excludedDocFileDirs = new HashSet<>();
-/* 311 */     this.excludedQualifiers = new HashSet<>();
-/* 312 */     setTabWidth(8);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public BuilderFactory getBuilderFactory() {
-/* 321 */     if (this.builderFactory == null) {
-/* 322 */       this.builderFactory = new BuilderFactory(this);
-/*     */     }
-/* 324 */     return this.builderFactory;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public int optionLength(String paramString) {
-/* 341 */     paramString = StringUtils.toLowerCase(paramString);
-/* 342 */     if (paramString.equals("-author") || paramString
-/* 343 */       .equals("-docfilessubdirs") || paramString
-/* 344 */       .equals("-javafx") || paramString
-/* 345 */       .equals("-keywords") || paramString
-/* 346 */       .equals("-linksource") || paramString
-/* 347 */       .equals("-nocomment") || paramString
-/* 348 */       .equals("-nodeprecated") || paramString
-/* 349 */       .equals("-nosince") || paramString
-/* 350 */       .equals("-notimestamp") || paramString
-/* 351 */       .equals("-quiet") || paramString
-/* 352 */       .equals("-xnodate") || paramString
-/* 353 */       .equals("-version"))
-/* 354 */       return 1; 
-/* 355 */     if (paramString.equals("-d") || paramString
-/* 356 */       .equals("-docencoding") || paramString
-/* 357 */       .equals("-encoding") || paramString
-/* 358 */       .equals("-excludedocfilessubdir") || paramString
-/* 359 */       .equals("-link") || paramString
-/* 360 */       .equals("-sourcetab") || paramString
-/* 361 */       .equals("-noqualifier") || paramString
-/* 362 */       .equals("-output") || paramString
-/* 363 */       .equals("-sourcepath") || paramString
-/* 364 */       .equals("-tag") || paramString
-/* 365 */       .equals("-taglet") || paramString
-/* 366 */       .equals("-tagletpath") || paramString
-/* 367 */       .equals("-xprofilespath"))
-/* 368 */       return 2; 
-/* 369 */     if (paramString.equals("-group") || paramString
-/* 370 */       .equals("-linkoffline")) {
-/* 371 */       return 3;
-/*     */     }
-/* 373 */     return -1;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public abstract boolean validOptions(String[][] paramArrayOfString, DocErrorReporter paramDocErrorReporter);
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void initProfiles() throws IOException {
-/* 387 */     if (this.profilespath.isEmpty()) {
-/*     */       return;
-/*     */     }
-/* 390 */     this.profiles = Profiles.read(new File(this.profilespath));
-/*     */ 
-/*     */ 
-/*     */     
-/* 394 */     EnumMap<Profile, Object> enumMap = new EnumMap<>(Profile.class);
-/*     */     
-/* 396 */     for (Profile profile : Profile.values()) {
-/* 397 */       enumMap.put(profile, new ArrayList());
-/*     */     }
-/* 399 */     for (PackageDoc packageDoc : this.packages) {
-/* 400 */       if (!this.nodeprecated || !Util.isDeprecated((Doc)packageDoc)) {
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */         
-/* 405 */         int i = this.profiles.getProfile(packageDoc.name().replace(".", "/") + "/*");
-/* 406 */         Profile profile = Profile.lookup(i);
-/* 407 */         if (profile != null) {
-/* 408 */           List<PackageDoc> list1 = (List)enumMap.get(profile);
-/* 409 */           list1.add(packageDoc);
-/*     */         } 
-/*     */       } 
-/*     */     } 
-/*     */     
-/* 414 */     this.profilePackages = (Map)new HashMap<>();
-/* 415 */     List<?> list = Collections.emptyList();
-/*     */     
-/* 417 */     for (Map.Entry<Profile, Object> entry : enumMap.entrySet()) {
-/* 418 */       Profile profile = (Profile)entry.getKey();
-/* 419 */       List<?> list1 = (List)entry.getValue();
-/* 420 */       list1.addAll(list);
-/* 421 */       Collections.sort(list1);
-/* 422 */       int i = list1.size();
-/*     */ 
-/*     */       
-/* 425 */       if (i > 0)
-/* 426 */         this.profilePackages.put(profile.name, list1.toArray(new PackageDoc[list1.size()])); 
-/* 427 */       list = list1;
-/*     */     } 
-/*     */ 
-/*     */ 
-/*     */     
-/* 432 */     this.showProfiles = !list.isEmpty();
-/*     */   }
-/*     */   
-/*     */   private void initPackageArray() {
-/* 436 */     HashSet<PackageDoc> hashSet = new HashSet(Arrays.asList((Object[])this.root.specifiedPackages()));
-/* 437 */     ClassDoc[] arrayOfClassDoc = this.root.specifiedClasses();
-/* 438 */     for (byte b = 0; b < arrayOfClassDoc.length; b++) {
-/* 439 */       hashSet.add(arrayOfClassDoc[b].containingPackage());
-/*     */     }
-/* 441 */     ArrayList<PackageDoc> arrayList = new ArrayList<>(hashSet);
-/* 442 */     Collections.sort(arrayList);
-/* 443 */     this.packages = arrayList.<PackageDoc>toArray(new PackageDoc[0]);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void setOptions(String[][] paramArrayOfString) throws Fault {
-/* 452 */     LinkedHashSet<String[]> linkedHashSet = new LinkedHashSet();
-/*     */     
-/*     */     byte b;
-/*     */     
-/* 456 */     for (b = 0; b < paramArrayOfString.length; b++) {
-/* 457 */       String[] arrayOfString = paramArrayOfString[b];
-/* 458 */       String str = StringUtils.toLowerCase(arrayOfString[0]);
-/* 459 */       if (str.equals("-d")) {
-/* 460 */         this.destDirName = addTrailingFileSep(arrayOfString[1]);
-/* 461 */         this.docFileDestDirName = this.destDirName;
-/* 462 */         ensureOutputDirExists();
-/*     */         
-/*     */         break;
-/*     */       } 
-/*     */     } 
-/* 467 */     for (b = 0; b < paramArrayOfString.length; b++) {
-/* 468 */       String[] arrayOfString = paramArrayOfString[b];
-/* 469 */       String str = StringUtils.toLowerCase(arrayOfString[0]);
-/* 470 */       if (str.equals("-docfilessubdirs")) {
-/* 471 */         this.copydocfilesubdirs = true;
-/* 472 */       } else if (str.equals("-docencoding")) {
-/* 473 */         this.docencoding = arrayOfString[1];
-/* 474 */       } else if (str.equals("-encoding")) {
-/* 475 */         this.encoding = arrayOfString[1];
-/* 476 */       } else if (str.equals("-author")) {
-/* 477 */         this.showauthor = true;
-/* 478 */       } else if (str.equals("-javafx")) {
-/* 479 */         this.javafx = true;
-/* 480 */       } else if (str.equals("-nosince")) {
-/* 481 */         this.nosince = true;
-/* 482 */       } else if (str.equals("-version")) {
-/* 483 */         this.showversion = true;
-/* 484 */       } else if (str.equals("-nodeprecated")) {
-/* 485 */         this.nodeprecated = true;
-/* 486 */       } else if (str.equals("-sourcepath")) {
-/* 487 */         this.sourcepath = arrayOfString[1];
-/* 488 */       } else if ((str.equals("-classpath") || str.equals("-cp")) && this.sourcepath
-/* 489 */         .length() == 0) {
-/* 490 */         this.sourcepath = arrayOfString[1];
-/* 491 */       } else if (str.equals("-excludedocfilessubdir")) {
-/* 492 */         addToSet(this.excludedDocFileDirs, arrayOfString[1]);
-/* 493 */       } else if (str.equals("-noqualifier")) {
-/* 494 */         addToSet(this.excludedQualifiers, arrayOfString[1]);
-/* 495 */       } else if (str.equals("-linksource")) {
-/* 496 */         this.linksource = true;
-/* 497 */       } else if (str.equals("-sourcetab")) {
-/* 498 */         this.linksource = true;
-/*     */         try {
-/* 500 */           setTabWidth(Integer.parseInt(arrayOfString[1]));
-/* 501 */         } catch (NumberFormatException numberFormatException) {
-/*     */ 
-/*     */           
-/* 504 */           this.sourcetab = -1;
-/*     */         } 
-/* 506 */         if (this.sourcetab <= 0) {
-/* 507 */           this.message.warning("doclet.sourcetab_warning", new Object[0]);
-/* 508 */           setTabWidth(8);
-/*     */         } 
-/* 510 */       } else if (str.equals("-notimestamp")) {
-/* 511 */         this.notimestamp = true;
-/* 512 */       } else if (str.equals("-nocomment")) {
-/* 513 */         this.nocomment = true;
-/* 514 */       } else if (str.equals("-tag") || str.equals("-taglet")) {
-/* 515 */         linkedHashSet.add(arrayOfString);
-/* 516 */       } else if (str.equals("-tagletpath")) {
-/* 517 */         this.tagletpath = arrayOfString[1];
-/* 518 */       } else if (str.equals("-xprofilespath")) {
-/* 519 */         this.profilespath = arrayOfString[1];
-/* 520 */       } else if (str.equals("-keywords")) {
-/* 521 */         this.keywords = true;
-/* 522 */       } else if (str.equals("-serialwarn")) {
-/* 523 */         this.serialwarn = true;
-/* 524 */       } else if (str.equals("-group")) {
-/* 525 */         this.group.checkPackageGroups(arrayOfString[1], arrayOfString[2]);
-/* 526 */       } else if (str.equals("-link")) {
-/* 527 */         String str1 = arrayOfString[1];
-/* 528 */         this.extern.link(str1, str1, (DocErrorReporter)this.root, false);
-/* 529 */       } else if (str.equals("-linkoffline")) {
-/* 530 */         String str1 = arrayOfString[1];
-/* 531 */         String str2 = arrayOfString[2];
-/* 532 */         this.extern.link(str1, str2, (DocErrorReporter)this.root, true);
-/*     */       } 
-/*     */     } 
-/* 535 */     if (this.sourcepath.length() == 0) {
-/* 536 */       this
-/* 537 */         .sourcepath = (System.getProperty("env.class.path") == null) ? "" : System.getProperty("env.class.path");
-/*     */     }
-/* 539 */     if (this.docencoding == null) {
-/* 540 */       this.docencoding = this.encoding;
-/*     */     }
-/*     */     
-/* 543 */     this.classDocCatalog = new ClassDocCatalog(this.root.specifiedClasses(), this);
-/* 544 */     initTagletManager((Set<String[]>)linkedHashSet);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void setOptions() throws Fault {
-/* 553 */     initPackageArray();
-/* 554 */     setOptions(this.root.options());
-/*     */     try {
-/* 556 */       initProfiles();
-/* 557 */     } catch (Exception exception) {
-/* 558 */       throw new DocletAbortException(exception);
-/*     */     } 
-/* 560 */     setSpecificDocletOptions(this.root.options());
-/*     */   }
-/*     */   
-/*     */   private void ensureOutputDirExists() throws Fault {
-/* 564 */     DocFile docFile = DocFile.createFileForDirectory(this, this.destDirName);
-/* 565 */     if (!docFile.exists())
-/*     */     
-/* 567 */     { this.root.printNotice(getText("doclet.dest_dir_create", this.destDirName));
-/* 568 */       docFile.mkdirs(); }
-/* 569 */     else { if (!docFile.isDirectory())
-/* 570 */         throw new Fault(getText("doclet.destination_directory_not_directory_0", docFile
-/*     */               
-/* 572 */               .getPath())); 
-/* 573 */       if (!docFile.canWrite()) {
-/* 574 */         throw new Fault(getText("doclet.destination_directory_not_writable_0", docFile
-/*     */               
-/* 576 */               .getPath()));
-/*     */       } }
-/*     */   
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void initTagletManager(Set<String[]> paramSet) {
-/* 588 */     this.tagletManager = (this.tagletManager == null) ? new TagletManager(this.nosince, this.showversion, this.showauthor, this.javafx, this.message) : this.tagletManager;
-/*     */ 
-/*     */ 
-/*     */     
-/* 592 */     for (String[] arrayOfString1 : paramSet) {
-/*     */       
-/* 594 */       if (arrayOfString1[0].equals("-taglet")) {
-/* 595 */         this.tagletManager.addCustomTag(arrayOfString1[1], getFileManager(), this.tagletpath);
-/*     */         continue;
-/*     */       } 
-/* 598 */       String[] arrayOfString2 = tokenize(arrayOfString1[1], ':', 3);
-/*     */       
-/* 600 */       if (arrayOfString2.length == 1) {
-/* 601 */         String str = arrayOfString1[1];
-/* 602 */         if (this.tagletManager.isKnownCustomTag(str)) {
-/*     */           
-/* 604 */           this.tagletManager.addNewSimpleCustomTag(str, null, "");
-/*     */           continue;
-/*     */         } 
-/* 607 */         StringBuilder stringBuilder = new StringBuilder(str + ":");
-/* 608 */         stringBuilder.setCharAt(0, Character.toUpperCase(str.charAt(0)));
-/* 609 */         this.tagletManager.addNewSimpleCustomTag(str, stringBuilder.toString(), "a"); continue;
-/*     */       } 
-/* 611 */       if (arrayOfString2.length == 2) {
-/*     */         
-/* 613 */         this.tagletManager.addNewSimpleCustomTag(arrayOfString2[0], arrayOfString2[1], ""); continue;
-/* 614 */       }  if (arrayOfString2.length >= 3) {
-/* 615 */         this.tagletManager.addNewSimpleCustomTag(arrayOfString2[0], arrayOfString2[2], arrayOfString2[1]); continue;
-/*     */       } 
-/* 617 */       this.message.error("doclet.Error_invalid_custom_tag_argument", new Object[] { arrayOfString1[1] });
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private String[] tokenize(String paramString, char paramChar, int paramInt) {
-/* 636 */     ArrayList<String> arrayList = new ArrayList();
-/* 637 */     StringBuilder stringBuilder = new StringBuilder();
-/* 638 */     boolean bool = false; int i;
-/* 639 */     for (i = 0; i < paramString.length(); i += Character.charCount(i)) {
-/* 640 */       int j = paramString.codePointAt(i);
-/* 641 */       if (bool) {
-/*     */         
-/* 643 */         stringBuilder.appendCodePoint(j);
-/* 644 */         bool = false;
-/* 645 */       } else if (j == paramChar && arrayList.size() < paramInt - 1) {
-/*     */         
-/* 647 */         arrayList.add(stringBuilder.toString());
-/* 648 */         stringBuilder = new StringBuilder();
-/* 649 */       } else if (j == 92) {
-/*     */         
-/* 651 */         bool = true;
-/*     */       } else {
-/*     */         
-/* 654 */         stringBuilder.appendCodePoint(j);
-/*     */       } 
-/*     */     } 
-/* 657 */     if (stringBuilder.length() > 0) {
-/* 658 */       arrayList.add(stringBuilder.toString());
-/*     */     }
-/* 660 */     return arrayList.<String>toArray(new String[0]);
-/*     */   }
-/*     */   
-/*     */   private void addToSet(Set<String> paramSet, String paramString) {
-/* 664 */     StringTokenizer stringTokenizer = new StringTokenizer(paramString, ":");
-/*     */     
-/* 666 */     while (stringTokenizer.hasMoreTokens()) {
-/* 667 */       String str = stringTokenizer.nextToken();
-/* 668 */       paramSet.add(str);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static String addTrailingFileSep(String paramString) {
-/* 681 */     String str1 = System.getProperty("file.separator");
-/* 682 */     String str2 = str1 + str1;
-/*     */     int i;
-/* 684 */     while ((i = paramString.indexOf(str2, 1)) >= 0)
-/*     */     {
-/* 686 */       paramString = paramString.substring(0, i) + paramString.substring(i + str1.length());
-/*     */     }
-/* 688 */     if (!paramString.endsWith(str1))
-/* 689 */       paramString = paramString + str1; 
-/* 690 */     return paramString;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean generalValidOptions(String[][] paramArrayOfString, DocErrorReporter paramDocErrorReporter) {
-/* 708 */     boolean bool = false;
-/* 709 */     String str = "";
-/* 710 */     for (byte b = 0; b < paramArrayOfString.length; b++) {
-/* 711 */       String[] arrayOfString = paramArrayOfString[b];
-/* 712 */       String str1 = StringUtils.toLowerCase(arrayOfString[0]);
-/* 713 */       if (str1.equals("-docencoding")) {
-/* 714 */         bool = true;
-/* 715 */         if (!checkOutputFileEncoding(arrayOfString[1], paramDocErrorReporter)) {
-/* 716 */           return false;
-/*     */         }
-/* 718 */       } else if (str1.equals("-encoding")) {
-/* 719 */         str = arrayOfString[1];
-/*     */       } 
-/*     */     } 
-/* 722 */     if (!bool && str.length() > 0 && 
-/* 723 */       !checkOutputFileEncoding(str, paramDocErrorReporter)) {
-/* 724 */       return false;
-/*     */     }
-/*     */     
-/* 727 */     return true;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean shouldDocumentProfile(String paramString) {
-/* 738 */     return this.profilePackages.containsKey(paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private boolean checkOutputFileEncoding(String paramString, DocErrorReporter paramDocErrorReporter) {
-/* 750 */     ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-/* 751 */     OutputStreamWriter outputStreamWriter = null;
-/*     */     try {
-/* 753 */       outputStreamWriter = new OutputStreamWriter(byteArrayOutputStream, paramString);
-/* 754 */     } catch (UnsupportedEncodingException unsupportedEncodingException) {
-/* 755 */       paramDocErrorReporter.printError(getText("doclet.Encoding_not_supported", paramString));
-/*     */       
-/* 757 */       return false;
-/*     */     } finally {
-/*     */       try {
-/* 760 */         if (outputStreamWriter != null) {
-/* 761 */           outputStreamWriter.close();
-/*     */         }
-/* 763 */       } catch (IOException iOException) {}
-/*     */     } 
-/*     */     
-/* 766 */     return true;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean shouldExcludeDocFileDir(String paramString) {
-/* 775 */     if (this.excludedDocFileDirs.contains(paramString)) {
-/* 776 */       return true;
-/*     */     }
-/* 778 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean shouldExcludeQualifier(String paramString) {
-/* 787 */     if (this.excludedQualifiers.contains("all") || this.excludedQualifiers
-/* 788 */       .contains(paramString) || this.excludedQualifiers
-/* 789 */       .contains(paramString + ".*")) {
-/* 790 */       return true;
-/*     */     }
-/* 792 */     int i = -1;
-/* 793 */     while ((i = paramString.indexOf(".", i + 1)) != -1) {
-/* 794 */       if (this.excludedQualifiers.contains(paramString.substring(0, i + 1) + "*")) {
-/* 795 */         return true;
-/*     */       }
-/*     */     } 
-/* 798 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getClassName(ClassDoc paramClassDoc) {
-/* 808 */     PackageDoc packageDoc = paramClassDoc.containingPackage();
-/* 809 */     if (packageDoc != null && shouldExcludeQualifier(paramClassDoc.containingPackage().name())) {
-/* 810 */       return paramClassDoc.name();
-/*     */     }
-/* 812 */     return paramClassDoc.qualifiedName();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getText(String paramString) {
-/*     */     try {
-/* 819 */       return getDocletSpecificMsg().getText(paramString, new Object[0]);
-/* 820 */     } catch (Exception exception) {
-/*     */       
-/* 822 */       return this.message.getText(paramString, new Object[0]);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public String getText(String paramString1, String paramString2) {
-/*     */     try {
-/* 829 */       return getDocletSpecificMsg().getText(paramString1, new Object[] { paramString2 });
-/* 830 */     } catch (Exception exception) {
-/*     */       
-/* 832 */       return this.message.getText(paramString1, new Object[] { paramString2 });
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public String getText(String paramString1, String paramString2, String paramString3) {
-/*     */     try {
-/* 839 */       return getDocletSpecificMsg().getText(paramString1, new Object[] { paramString2, paramString3 });
-/* 840 */     } catch (Exception exception) {
-/*     */       
-/* 842 */       return this.message.getText(paramString1, new Object[] { paramString2, paramString3 });
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public String getText(String paramString1, String paramString2, String paramString3, String paramString4) {
-/*     */     try {
-/* 849 */       return getDocletSpecificMsg().getText(paramString1, new Object[] { paramString2, paramString3, paramString4 });
-/* 850 */     } catch (Exception exception) {
-/*     */       
-/* 852 */       return this.message.getText(paramString1, new Object[] { paramString2, paramString3, paramString4 });
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public abstract Content newContent();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getResource(String paramString) {
-/* 865 */     Content content = newContent();
-/* 866 */     content.addContent(getText(paramString));
-/* 867 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getResource(String paramString, Object paramObject) {
-/* 878 */     return getResource(paramString, paramObject, null, null);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getResource(String paramString, Object paramObject1, Object paramObject2) {
-/* 889 */     return getResource(paramString, paramObject1, paramObject2, null);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getResource(String paramString, Object paramObject1, Object paramObject2, Object paramObject3) {
-/* 901 */     Content content = newContent();
-/* 902 */     Pattern pattern = Pattern.compile("\\{([012])\\}");
-/* 903 */     String str = getText(paramString);
-/* 904 */     Matcher matcher = pattern.matcher(str);
-/* 905 */     int i = 0;
-/* 906 */     while (matcher.find(i)) {
-/* 907 */       content.addContent(str.substring(i, matcher.start()));
-/*     */       
-/* 909 */       Object object = null;
-/* 910 */       switch (matcher.group(1).charAt(0)) { case '0':
-/* 911 */           object = paramObject1; break;
-/* 912 */         case '1': object = paramObject2; break;
-/* 913 */         case '2': object = paramObject3;
-/*     */           break; }
-/*     */       
-/* 916 */       if (object == null) {
-/* 917 */         content.addContent("{" + matcher.group(1) + "}");
-/* 918 */       } else if (object instanceof String) {
-/* 919 */         content.addContent((String)object);
-/* 920 */       } else if (object instanceof Content) {
-/* 921 */         content.addContent((Content)object);
-/*     */       } 
-/*     */       
-/* 924 */       i = matcher.end();
-/*     */     } 
-/*     */     
-/* 927 */     content.addContent(str.substring(i));
-/* 928 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isGeneratedDoc(ClassDoc paramClassDoc) {
-/* 941 */     if (!this.nodeprecated) {
-/* 942 */       return true;
-/*     */     }
-/* 944 */     return (!Util.isDeprecated((Doc)paramClassDoc) && !Util.isDeprecated((Doc)paramClassDoc.containingPackage()));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public abstract WriterFactory getWriterFactory();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public InputStream getBuilderXML() throws IOException {
-/* 960 */     return (this.builderXMLPath == null) ? Configuration.class
-/* 961 */       .getResourceAsStream("resources/doclet.xml") : 
-/* 962 */       DocFile.createFileForInput(this, this.builderXMLPath).openInputStream();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public abstract Locale getLocale();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public abstract JavaFileManager getFileManager();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public abstract Comparator<ProgramElementDoc> getMemberComparator();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void setTabWidth(int paramInt) {
-/* 984 */     this.sourcetab = paramInt;
-/* 985 */     this.tabSpaces = String.format("%" + paramInt + "s", new Object[] { "" });
-/*     */   }
-/*     */   
-/*     */   public abstract boolean showMessage(SourcePosition paramSourcePosition, String paramString);
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolkit\Configuration.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit;
+
+import java.io.*;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import javax.tools.JavaFileManager;
+
+import com.sun.javadoc.*;
+import com.sun.tools.javac.sym.Profiles;
+import com.sun.tools.javac.jvm.Profile;
+import com.sun.tools.doclets.internal.toolkit.builders.BuilderFactory;
+import com.sun.tools.doclets.internal.toolkit.taglets.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+import com.sun.tools.javac.util.StringUtils;
+
+/**
+ * Configure the output based on the options. Doclets should sub-class
+ * Configuration, to configure and add their own options. This class contains
+ * all user options which are supported by the 1.1 doclet and the standard
+ * doclet.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Robert Field.
+ * @author Atul Dambalkar.
+ * @author Jamie Ho
+ */
+public abstract class Configuration {
+
+    /**
+     * Exception used to report a problem during setOptions.
+     */
+    public static class Fault extends Exception {
+        private static final long serialVersionUID = 0;
+
+        Fault(String msg) {
+            super(msg);
+        }
+
+        Fault(String msg, Exception cause) {
+            super(msg, cause);
+        }
+    }
+
+    /**
+     * The factory for builders.
+     */
+    protected BuilderFactory builderFactory;
+
+    /**
+     * The taglet manager.
+     */
+    public TagletManager tagletManager;
+
+    /**
+     * The path to the builder XML input file.
+     */
+    public String builderXMLPath;
+
+    /**
+     * The default path to the builder XML.
+     */
+    private static final String DEFAULT_BUILDER_XML = "resources/doclet.xml";
+
+    /**
+     * The path to Taglets
+     */
+    public String tagletpath = "";
+
+    /**
+     * This is true if option "-serialwarn" is used. Defualt value is false to
+     * suppress excessive warnings about serial tag.
+     */
+    public boolean serialwarn = false;
+
+    /**
+     * The specified amount of space between tab stops.
+     */
+    public int sourcetab;
+
+    public String tabSpaces;
+
+    /**
+     * True if we should generate browsable sources.
+     */
+    public boolean linksource = false;
+
+    /**
+     * True if command line option "-nosince" is used. Default value is
+     * false.
+     */
+    public boolean nosince = false;
+
+    /**
+     * True if we should recursively copy the doc-file subdirectories
+     */
+    public boolean copydocfilesubdirs = false;
+
+    /**
+     * The META charset tag used for cross-platform viewing.
+     */
+    public String charset = "";
+
+    /**
+     * True if user wants to add member names as meta keywords.
+     * Set to false because meta keywords are ignored in general
+     * by most Internet search engines.
+     */
+    public boolean keywords = false;
+
+    /**
+     * The meta tag keywords instance.
+     */
+    public final MetaKeywords metakeywords = new MetaKeywords(this);
+
+    /**
+     * The list of doc-file subdirectories to exclude
+     */
+    protected Set<String> excludedDocFileDirs;
+
+    /**
+     * The list of qualifiers to exclude
+     */
+    protected Set<String> excludedQualifiers;
+
+    /**
+     * The Root of the generated Program Structure from the Doclet API.
+     */
+    public RootDoc root;
+
+    /**
+     * Destination directory name, in which doclet will generate the entire
+     * documentation. Default is current directory.
+     */
+    public String destDirName = "";
+
+    /**
+     * Destination directory name, in which doclet will copy the doc-files to.
+     */
+    public String docFileDestDirName = "";
+
+    /**
+     * Encoding for this document. Default is default encoding for this
+     * platform.
+     */
+    public String docencoding = null;
+
+    /**
+     * True if user wants to suppress descriptions and tags.
+     */
+    public boolean nocomment = false;
+
+    /**
+     * Encoding for this document. Default is default encoding for this
+     * platform.
+     */
+    public String encoding = null;
+
+    /**
+     * Generate author specific information for all the classes if @author
+     * tag is used in the doc comment and if -author option is used.
+     * <code>showauthor</code> is set to true if -author option is used.
+     * Default is don't show author information.
+     */
+    public boolean showauthor = false;
+
+    /**
+     * Generate documentation for JavaFX getters and setters automatically
+     * by copying it from the appropriate property definition.
+     */
+    public boolean javafx = false;
+
+    /**
+     * Generate version specific information for the all the classes
+     * if @version tag is used in the doc comment and if -version option is
+     * used. <code>showversion</code> is set to true if -version option is
+     * used.Default is don't show version information.
+     */
+    public boolean showversion = false;
+
+    /**
+     * Sourcepath from where to read the source files. Default is classpath.
+     *
+     */
+    public String sourcepath = "";
+
+    /**
+     * Argument for command line option "-Xprofilespath".
+     */
+    public String profilespath = "";
+
+    /**
+     * Generate profiles documentation if profilespath is set and valid profiles
+     * are present.
+     */
+    public boolean showProfiles = false;
+
+    /**
+     * Don't generate deprecated API information at all, if -nodeprecated
+     * option is used. <code>nodepracted</code> is set to true if
+     * -nodeprecated option is used. Default is generate deprected API
+     * information.
+     */
+    public boolean nodeprecated = false;
+
+    /**
+     * The catalog of classes specified on the command-line
+     */
+    public ClassDocCatalog classDocCatalog;
+
+    /**
+     * Message Retriever for the doclet, to retrieve message from the resource
+     * file for this Configuration, which is common for 1.1 and standard
+     * doclets.
+     *
+     * TODO:  Make this private!!!
+     */
+    public MessageRetriever message = null;
+
+    /**
+     * True if user wants to suppress time stamp in output.
+     * Default is false.
+     */
+    public boolean notimestamp= false;
+
+    /**
+     * The package grouping instance.
+     */
+    public final Group group = new Group(this);
+
+    /**
+     * The tracker of external package links.
+     */
+    public final Extern extern = new Extern(this);
+
+    /**
+     * Return the build date for the doclet.
+     */
+    public abstract String getDocletSpecificBuildDate();
+
+    /**
+     * This method should be defined in all those doclets(configurations),
+     * which want to derive themselves from this Configuration. This method
+     * can be used to set its own command line options.
+     *
+     * @param options The array of option names and values.
+     * @throws DocletAbortException
+     */
+    public abstract void setSpecificDocletOptions(String[][] options) throws Fault;
+
+    /**
+     * Return the doclet specific {@link MessageRetriever}
+     * @return the doclet specific MessageRetriever.
+     */
+    public abstract MessageRetriever getDocletSpecificMsg();
+
+    /**
+     * A profiles object used to access profiles across various pages.
+     */
+    public Profiles profiles;
+
+    /**
+     * An map of the profiles to packages.
+     */
+    public Map<String,PackageDoc[]> profilePackages;
+
+    /**
+     * An array of the packages specified on the command-line merged
+     * with the array of packages that contain the classes specified on the
+     * command-line.  The array is sorted.
+     */
+    public PackageDoc[] packages;
+
+    /**
+     * Constructor. Constructs the message retriever with resource file.
+     */
+    public Configuration() {
+        message =
+            new MessageRetriever(this,
+            "com.sun.tools.doclets.internal.toolkit.resources.doclets");
+        excludedDocFileDirs = new HashSet<String>();
+        excludedQualifiers = new HashSet<String>();
+        setTabWidth(DocletConstants.DEFAULT_TAB_STOP_LENGTH);
+    }
+
+    /**
+     * Return the builder factory for this doclet.
+     *
+     * @return the builder factory for this doclet.
+     */
+    public BuilderFactory getBuilderFactory() {
+        if (builderFactory == null) {
+            builderFactory = new BuilderFactory(this);
+        }
+        return builderFactory;
+    }
+
+    /**
+     * This method should be defined in all those doclets
+     * which want to inherit from this Configuration. This method
+     * should return the number of arguments to the command line
+     * option (including the option name).  For example,
+     * -notimestamp is a single-argument option, so this method would
+     * return 1.
+     *
+     * @param option Command line option under consideration.
+     * @return number of arguments to option (including the
+     * option name). Zero return means option not known.
+     * Negative value means error occurred.
+     */
+    public int optionLength(String option) {
+        option = StringUtils.toLowerCase(option);
+        if (option.equals("-author") ||
+            option.equals("-docfilessubdirs") ||
+            option.equals("-javafx") ||
+            option.equals("-keywords") ||
+            option.equals("-linksource") ||
+            option.equals("-nocomment") ||
+            option.equals("-nodeprecated") ||
+            option.equals("-nosince") ||
+            option.equals("-notimestamp") ||
+            option.equals("-quiet") ||
+            option.equals("-xnodate") ||
+            option.equals("-version")) {
+            return 1;
+        } else if (option.equals("-d") ||
+                   option.equals("-docencoding") ||
+                   option.equals("-encoding") ||
+                   option.equals("-excludedocfilessubdir") ||
+                   option.equals("-link") ||
+                   option.equals("-sourcetab") ||
+                   option.equals("-noqualifier") ||
+                   option.equals("-output") ||
+                   option.equals("-sourcepath") ||
+                   option.equals("-tag") ||
+                   option.equals("-taglet") ||
+                   option.equals("-tagletpath") ||
+                   option.equals("-xprofilespath")) {
+            return 2;
+        } else if (option.equals("-group") ||
+                   option.equals("-linkoffline")) {
+            return 3;
+        } else {
+            return -1;  // indicate we don't know about it
+        }
+    }
+
+    /**
+     * Perform error checking on the given options.
+     *
+     * @param options  the given options to check.
+     * @param reporter the reporter used to report errors.
+     */
+    public abstract boolean validOptions(String options[][],
+        DocErrorReporter reporter);
+
+    private void initProfiles() throws IOException {
+        if (profilespath.isEmpty())
+            return;
+
+        profiles = Profiles.read(new File(profilespath));
+
+        // Group the packages to be documented by the lowest profile (if any)
+        // in which each appears
+        Map<Profile, List<PackageDoc>> interimResults =
+                new EnumMap<Profile, List<PackageDoc>>(Profile.class);
+        for (Profile p: Profile.values())
+            interimResults.put(p, new ArrayList<PackageDoc>());
+
+        for (PackageDoc pkg: packages) {
+            if (nodeprecated && Util.isDeprecated(pkg)) {
+                continue;
+            }
+            // the getProfile method takes a type name, not a package name,
+            // but isn't particularly fussy about the simple name -- so just use *
+            int i = profiles.getProfile(pkg.name().replace(".", "/") + "/*");
+            Profile p = Profile.lookup(i);
+            if (p != null) {
+                List<PackageDoc> pkgs = interimResults.get(p);
+                pkgs.add(pkg);
+            }
+        }
+
+        // Build the profilePackages structure used by the doclet
+        profilePackages = new HashMap<String,PackageDoc[]>();
+        List<PackageDoc> prev = Collections.<PackageDoc>emptyList();
+        int size;
+        for (Map.Entry<Profile,List<PackageDoc>> e: interimResults.entrySet()) {
+            Profile p = e.getKey();
+            List<PackageDoc> pkgs =  e.getValue();
+            pkgs.addAll(prev); // each profile contains all lower profiles
+            Collections.sort(pkgs);
+            size = pkgs.size();
+            // For a profile, if there are no packages to be documented, do not add
+            // it to profilePackages map.
+            if (size > 0)
+                profilePackages.put(p.name, pkgs.toArray(new PackageDoc[pkgs.size()]));
+            prev = pkgs;
+        }
+
+        // Generate profiles documentation if any profile contains any
+        // of the packages to be documented.
+        showProfiles = !prev.isEmpty();
+    }
+
+    private void initPackageArray() {
+        Set<PackageDoc> set = new HashSet<PackageDoc>(Arrays.asList(root.specifiedPackages()));
+        ClassDoc[] classes = root.specifiedClasses();
+        for (int i = 0; i < classes.length; i++) {
+            set.add(classes[i].containingPackage());
+        }
+        ArrayList<PackageDoc> results = new ArrayList<PackageDoc>(set);
+        Collections.sort(results);
+        packages = results.toArray(new PackageDoc[] {});
+    }
+
+    /**
+     * Set the command line options supported by this configuration.
+     *
+     * @param options the two dimensional array of options.
+     */
+    public void setOptions(String[][] options) throws Fault {
+        LinkedHashSet<String[]> customTagStrs = new LinkedHashSet<String[]>();
+
+        // Some options, specifically -link and -linkoffline, require that
+        // the output directory has already been created: so do that first.
+        for (int oi = 0; oi < options.length; ++oi) {
+            String[] os = options[oi];
+            String opt = StringUtils.toLowerCase(os[0]);
+            if (opt.equals("-d")) {
+                destDirName = addTrailingFileSep(os[1]);
+                docFileDestDirName = destDirName;
+                ensureOutputDirExists();
+                break;
+            }
+        }
+
+        for (int oi = 0; oi < options.length; ++oi) {
+            String[] os = options[oi];
+            String opt = StringUtils.toLowerCase(os[0]);
+            if (opt.equals("-docfilessubdirs")) {
+                copydocfilesubdirs = true;
+            } else if (opt.equals("-docencoding")) {
+                docencoding = os[1];
+            } else if (opt.equals("-encoding")) {
+                encoding = os[1];
+            } else if (opt.equals("-author")) {
+                showauthor = true;
+            } else  if (opt.equals("-javafx")) {
+                javafx = true;
+            } else if (opt.equals("-nosince")) {
+                nosince = true;
+            } else if (opt.equals("-version")) {
+                showversion = true;
+            } else if (opt.equals("-nodeprecated")) {
+                nodeprecated = true;
+            } else if (opt.equals("-sourcepath")) {
+                sourcepath = os[1];
+            } else if ((opt.equals("-classpath") || opt.equals("-cp")) &&
+                       sourcepath.length() == 0) {
+                sourcepath = os[1];
+            } else if (opt.equals("-excludedocfilessubdir")) {
+                addToSet(excludedDocFileDirs, os[1]);
+            } else if (opt.equals("-noqualifier")) {
+                addToSet(excludedQualifiers, os[1]);
+            } else if (opt.equals("-linksource")) {
+                linksource = true;
+            } else if (opt.equals("-sourcetab")) {
+                linksource = true;
+                try {
+                    setTabWidth(Integer.parseInt(os[1]));
+                } catch (NumberFormatException e) {
+                    //Set to -1 so that warning will be printed
+                    //to indicate what is valid argument.
+                    sourcetab = -1;
+                }
+                if (sourcetab <= 0) {
+                    message.warning("doclet.sourcetab_warning");
+                    setTabWidth(DocletConstants.DEFAULT_TAB_STOP_LENGTH);
+                }
+            } else if (opt.equals("-notimestamp")) {
+                notimestamp = true;
+            } else if (opt.equals("-nocomment")) {
+                nocomment = true;
+            } else if (opt.equals("-tag") || opt.equals("-taglet")) {
+                customTagStrs.add(os);
+            } else if (opt.equals("-tagletpath")) {
+                tagletpath = os[1];
+            }  else if (opt.equals("-xprofilespath")) {
+                profilespath = os[1];
+            } else if (opt.equals("-keywords")) {
+                keywords = true;
+            } else if (opt.equals("-serialwarn")) {
+                serialwarn = true;
+            } else if (opt.equals("-group")) {
+                group.checkPackageGroups(os[1], os[2]);
+            } else if (opt.equals("-link")) {
+                String url = os[1];
+                extern.link(url, url, root, false);
+            } else if (opt.equals("-linkoffline")) {
+                String url = os[1];
+                String pkglisturl = os[2];
+                extern.link(url, pkglisturl, root, true);
+            }
+        }
+        if (sourcepath.length() == 0) {
+            sourcepath = System.getProperty("env.class.path") == null ? "" :
+                System.getProperty("env.class.path");
+        }
+        if (docencoding == null) {
+            docencoding = encoding;
+        }
+
+        classDocCatalog = new ClassDocCatalog(root.specifiedClasses(), this);
+        initTagletManager(customTagStrs);
+    }
+
+    /**
+     * Set the command line options supported by this configuration.
+     *
+     * @throws DocletAbortException
+     */
+    public void setOptions() throws Fault {
+        initPackageArray();
+        setOptions(root.options());
+        try {
+            initProfiles();
+        } catch (Exception e) {
+            throw new DocletAbortException(e);
+        }
+        setSpecificDocletOptions(root.options());
+    }
+
+    private void ensureOutputDirExists() throws Fault {
+        DocFile destDir = DocFile.createFileForDirectory(this, destDirName);
+        if (!destDir.exists()) {
+            //Create the output directory (in case it doesn't exist yet)
+            root.printNotice(getText("doclet.dest_dir_create", destDirName));
+            destDir.mkdirs();
+        } else if (!destDir.isDirectory()) {
+            throw new Fault(getText(
+                "doclet.destination_directory_not_directory_0",
+                destDir.getPath()));
+        } else if (!destDir.canWrite()) {
+            throw new Fault(getText(
+                "doclet.destination_directory_not_writable_0",
+                destDir.getPath()));
+        }
+    }
+
+
+    /**
+     * Initialize the taglet manager.  The strings to initialize the simple custom tags should
+     * be in the following format:  "[tag name]:[location str]:[heading]".
+     * @param customTagStrs the set two dimensional arrays of strings.  These arrays contain
+     * either -tag or -taglet arguments.
+     */
+    private void initTagletManager(Set<String[]> customTagStrs) {
+        tagletManager = tagletManager == null ?
+            new TagletManager(nosince, showversion, showauthor, javafx, message) :
+            tagletManager;
+        String[] args;
+        for (Iterator<String[]> it = customTagStrs.iterator(); it.hasNext(); ) {
+            args = it.next();
+            if (args[0].equals("-taglet")) {
+                tagletManager.addCustomTag(args[1], getFileManager(), tagletpath);
+                continue;
+            }
+            String[] tokens = tokenize(args[1],
+                TagletManager.SIMPLE_TAGLET_OPT_SEPARATOR, 3);
+            if (tokens.length == 1) {
+                String tagName = args[1];
+                if (tagletManager.isKnownCustomTag(tagName)) {
+                    //reorder a standard tag
+                    tagletManager.addNewSimpleCustomTag(tagName, null, "");
+                } else {
+                    //Create a simple tag with the heading that has the same name as the tag.
+                    StringBuilder heading = new StringBuilder(tagName + ":");
+                    heading.setCharAt(0, Character.toUpperCase(tagName.charAt(0)));
+                    tagletManager.addNewSimpleCustomTag(tagName, heading.toString(), "a");
+                }
+            } else if (tokens.length == 2) {
+                //Add simple taglet without heading, probably to excluding it in the output.
+                tagletManager.addNewSimpleCustomTag(tokens[0], tokens[1], "");
+            } else if (tokens.length >= 3) {
+                tagletManager.addNewSimpleCustomTag(tokens[0], tokens[2], tokens[1]);
+            } else {
+                message.error("doclet.Error_invalid_custom_tag_argument", args[1]);
+            }
+        }
+    }
+
+    /**
+     * Given a string, return an array of tokens.  The separator can be escaped
+     * with the '\' character.  The '\' character may also be escaped by the
+     * '\' character.
+     *
+     * @param s         the string to tokenize.
+     * @param separator the separator char.
+     * @param maxTokens the maximum number of tokens returned.  If the
+     *                  max is reached, the remaining part of s is appended
+     *                  to the end of the last token.
+     *
+     * @return an array of tokens.
+     */
+    private String[] tokenize(String s, char separator, int maxTokens) {
+        List<String> tokens = new ArrayList<String>();
+        StringBuilder  token = new StringBuilder ();
+        boolean prevIsEscapeChar = false;
+        for (int i = 0; i < s.length(); i += Character.charCount(i)) {
+            int currentChar = s.codePointAt(i);
+            if (prevIsEscapeChar) {
+                // Case 1:  escaped character
+                token.appendCodePoint(currentChar);
+                prevIsEscapeChar = false;
+            } else if (currentChar == separator && tokens.size() < maxTokens-1) {
+                // Case 2:  separator
+                tokens.add(token.toString());
+                token = new StringBuilder();
+            } else if (currentChar == '\\') {
+                // Case 3:  escape character
+                prevIsEscapeChar = true;
+            } else {
+                // Case 4:  regular character
+                token.appendCodePoint(currentChar);
+            }
+        }
+        if (token.length() > 0) {
+            tokens.add(token.toString());
+        }
+        return tokens.toArray(new String[] {});
+    }
+
+    private void addToSet(Set<String> s, String str){
+        StringTokenizer st = new StringTokenizer(str, ":");
+        String current;
+        while(st.hasMoreTokens()){
+            current = st.nextToken();
+            s.add(current);
+        }
+    }
+
+    /**
+     * Add a trailing file separator, if not found. Remove superfluous
+     * file separators if any. Preserve the front double file separator for
+     * UNC paths.
+     *
+     * @param path Path under consideration.
+     * @return String Properly constructed path string.
+     */
+    public static String addTrailingFileSep(String path) {
+        String fs = System.getProperty("file.separator");
+        String dblfs = fs + fs;
+        int indexDblfs;
+        while ((indexDblfs = path.indexOf(dblfs, 1)) >= 0) {
+            path = path.substring(0, indexDblfs) +
+                path.substring(indexDblfs + fs.length());
+        }
+        if (!path.endsWith(fs))
+            path += fs;
+        return path;
+    }
+
+    /**
+     * This checks for the validity of the options used by the user.
+     * This works exactly like
+     * {@link Doclet#validOptions(String[][],
+     * DocErrorReporter)}. This will validate the options which are shared
+     * by our doclets. For example, this method will flag an error using
+     * the DocErrorReporter if user has used "-nohelp" and "-helpfile" option
+     * together.
+     *
+     * @param options  options used on the command line.
+     * @param reporter used to report errors.
+     * @return true if all the options are valid.
+     */
+    public boolean generalValidOptions(String options[][],
+            DocErrorReporter reporter) {
+        boolean docencodingfound = false;
+        String encoding = "";
+        for (int oi = 0; oi < options.length; oi++) {
+            String[] os = options[oi];
+            String opt = StringUtils.toLowerCase(os[0]);
+            if (opt.equals("-docencoding")) {
+                docencodingfound = true;
+                if (!checkOutputFileEncoding(os[1], reporter)) {
+                    return false;
+                }
+            } else if (opt.equals("-encoding")) {
+                encoding = os[1];
+            }
+        }
+        if (!docencodingfound && encoding.length() > 0) {
+            if (!checkOutputFileEncoding(encoding, reporter)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Check the validity of the given profile. Return false if there are no
+     * valid packages to be documented for the profile.
+     *
+     * @param profileName the profile that needs to be validated.
+     * @return true if the profile has valid packages to be documented.
+     */
+    public boolean shouldDocumentProfile(String profileName) {
+        return profilePackages.containsKey(profileName);
+    }
+
+    /**
+     * Check the validity of the given Source or Output File encoding on this
+     * platform.
+     *
+     * @param docencoding output file encoding.
+     * @param reporter    used to report errors.
+     */
+    private boolean checkOutputFileEncoding(String docencoding,
+            DocErrorReporter reporter) {
+        OutputStream ost= new ByteArrayOutputStream();
+        OutputStreamWriter osw = null;
+        try {
+            osw = new OutputStreamWriter(ost, docencoding);
+        } catch (UnsupportedEncodingException exc) {
+            reporter.printError(getText("doclet.Encoding_not_supported",
+                docencoding));
+            return false;
+        } finally {
+            try {
+                if (osw != null) {
+                    osw.close();
+                }
+            } catch (IOException exc) {
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Return true if the given doc-file subdirectory should be excluded and
+     * false otherwise.
+     * @param docfilesubdir the doc-files subdirectory to check.
+     */
+    public boolean shouldExcludeDocFileDir(String docfilesubdir){
+        if (excludedDocFileDirs.contains(docfilesubdir)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Return true if the given qualifier should be excluded and false otherwise.
+     * @param qualifier the qualifier to check.
+     */
+    public boolean shouldExcludeQualifier(String qualifier){
+        if (excludedQualifiers.contains("all") ||
+            excludedQualifiers.contains(qualifier) ||
+            excludedQualifiers.contains(qualifier + ".*")) {
+            return true;
+        } else {
+            int index = -1;
+            while ((index = qualifier.indexOf(".", index + 1)) != -1) {
+                if (excludedQualifiers.contains(qualifier.substring(0, index + 1) + "*")) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Return the qualified name of the <code>ClassDoc</code> if it's qualifier is not excluded.  Otherwise,
+     * return the unqualified <code>ClassDoc</code> name.
+     * @param cd the <code>ClassDoc</code> to check.
+     */
+    public String getClassName(ClassDoc cd) {
+        PackageDoc pd = cd.containingPackage();
+        if (pd != null && shouldExcludeQualifier(cd.containingPackage().name())) {
+            return cd.name();
+        } else {
+            return cd.qualifiedName();
+        }
+    }
+
+    public String getText(String key) {
+        try {
+            //Check the doclet specific properties file.
+            return getDocletSpecificMsg().getText(key);
+        } catch (Exception e) {
+            //Check the shared properties file.
+            return message.getText(key);
+        }
+    }
+
+    public String getText(String key, String a1) {
+        try {
+            //Check the doclet specific properties file.
+            return getDocletSpecificMsg().getText(key, a1);
+        } catch (Exception e) {
+            //Check the shared properties file.
+            return message.getText(key, a1);
+        }
+    }
+
+    public String getText(String key, String a1, String a2) {
+        try {
+            //Check the doclet specific properties file.
+            return getDocletSpecificMsg().getText(key, a1, a2);
+        } catch (Exception e) {
+            //Check the shared properties file.
+            return message.getText(key, a1, a2);
+        }
+    }
+
+    public String getText(String key, String a1, String a2, String a3) {
+        try {
+            //Check the doclet specific properties file.
+            return getDocletSpecificMsg().getText(key, a1, a2, a3);
+        } catch (Exception e) {
+            //Check the shared properties file.
+            return message.getText(key, a1, a2, a3);
+        }
+    }
+
+    public abstract Content newContent();
+
+    /**
+     * Get the configuration string as a content.
+     *
+     * @param key the key to look for in the configuration file
+     * @return a content tree for the text
+     */
+    public Content getResource(String key) {
+        Content c = newContent();
+        c.addContent(getText(key));
+        return c;
+    }
+
+    /**
+     * Get the configuration string as a content.
+     *
+     * @param key the key to look for in the configuration file
+     * @param o   string or content argument added to configuration text
+     * @return a content tree for the text
+     */
+    public Content getResource(String key, Object o) {
+        return getResource(key, o, null, null);
+    }
+
+    /**
+     * Get the configuration string as a content.
+     *
+     * @param key the key to look for in the configuration file
+     * @param o   string or content argument added to configuration text
+     * @return a content tree for the text
+     */
+    public Content getResource(String key, Object o1, Object o2) {
+        return getResource(key, o1, o2, null);
+    }
+
+    /**
+     * Get the configuration string as a content.
+     *
+     * @param key the key to look for in the configuration file
+     * @param o1  string or content argument added to configuration text
+     * @param o2  string or content argument added to configuration text
+     * @return a content tree for the text
+     */
+    public Content getResource(String key, Object o0, Object o1, Object o2) {
+        Content c = newContent();
+        Pattern p = Pattern.compile("\\{([012])\\}");
+        String text = getText(key);
+        Matcher m = p.matcher(text);
+        int start = 0;
+        while (m.find(start)) {
+            c.addContent(text.substring(start, m.start()));
+
+            Object o = null;
+            switch (m.group(1).charAt(0)) {
+                case '0': o = o0; break;
+                case '1': o = o1; break;
+                case '2': o = o2; break;
+            }
+
+            if (o == null) {
+                c.addContent("{" + m.group(1) + "}");
+            } else if (o instanceof String) {
+                c.addContent((String) o);
+            } else if (o instanceof Content) {
+                c.addContent((Content) o);
+            }
+
+            start = m.end();
+        }
+
+        c.addContent(text.substring(start));
+        return c;
+    }
+
+
+    /**
+     * Return true if the ClassDoc element is getting documented, depending upon
+     * -nodeprecated option and the deprecation information. Return true if
+     * -nodeprecated is not used. Return false if -nodeprecated is used and if
+     * either ClassDoc element is deprecated or the containing package is deprecated.
+     *
+     * @param cd the ClassDoc for which the page generation is checked
+     */
+    public boolean isGeneratedDoc(ClassDoc cd) {
+        if (!nodeprecated) {
+            return true;
+        }
+        return !(Util.isDeprecated(cd) || Util.isDeprecated(cd.containingPackage()));
+    }
+
+    /**
+     * Return the doclet specific instance of a writer factory.
+     * @return the {@link WriterFactory} for the doclet.
+     */
+    public abstract WriterFactory getWriterFactory();
+
+    /**
+     * Return the input stream to the builder XML.
+     *
+     * @return the input steam to the builder XML.
+     * @throws FileNotFoundException when the given XML file cannot be found.
+     */
+    public InputStream getBuilderXML() throws IOException {
+        return builderXMLPath == null ?
+            Configuration.class.getResourceAsStream(DEFAULT_BUILDER_XML) :
+            DocFile.createFileForInput(this, builderXMLPath).openInputStream();
+    }
+
+    /**
+     * Return the Locale for this document.
+     */
+    public abstract Locale getLocale();
+
+    /**
+     * Return the current file manager.
+     */
+    public abstract JavaFileManager getFileManager();
+
+    /**
+     * Return the comparator that will be used to sort member documentation.
+     * To no do any sorting, return null.
+     *
+     * @return the {@link Comparator} used to sort members.
+     */
+    public abstract Comparator<ProgramElementDoc> getMemberComparator();
+
+    private void setTabWidth(int n) {
+        sourcetab = n;
+        tabSpaces = String.format("%" + n + "s", "");
+    }
+
+    public abstract boolean showMessage(SourcePosition pos, String key);
+}

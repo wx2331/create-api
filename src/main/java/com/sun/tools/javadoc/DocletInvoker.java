@@ -1,345 +1,339 @@
-/*     */ package com.sun.tools.javadoc;
-/*     */ 
-/*     */ import com.sun.javadoc.DocErrorReporter;
-/*     */ import com.sun.javadoc.LanguageVersion;
-/*     */ import com.sun.javadoc.RootDoc;
-/*     */ import com.sun.tools.javac.file.Locations;
-/*     */ import com.sun.tools.javac.util.ClientCodeException;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import java.io.File;
-/*     */ import java.lang.reflect.InvocationTargetException;
-/*     */ import java.lang.reflect.Method;
-/*     */ import java.lang.reflect.Modifier;
-/*     */ import java.net.URL;
-/*     */ import java.net.URLClassLoader;
-/*     */ import javax.tools.DocumentationTool;
-/*     */ import javax.tools.JavaFileManager;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class DocletInvoker
-/*     */ {
-/*     */   private final Class<?> docletClass;
-/*     */   private final String docletClassName;
-/*     */   private final ClassLoader appClassLoader;
-/*     */   private final Messager messager;
-/*     */   private final boolean apiMode;
-/*     */   
-/*     */   private static class DocletInvokeException
-/*     */     extends Exception
-/*     */   {
-/*     */     private static final long serialVersionUID = 0L;
-/*     */     
-/*     */     private DocletInvokeException() {}
-/*     */   }
-/*     */   
-/*     */   private String appendPath(String paramString1, String paramString2) {
-/*  76 */     if (paramString1 == null || paramString1.length() == 0)
-/*  77 */       return (paramString2 == null) ? "." : paramString2; 
-/*  78 */     if (paramString2 == null || paramString2.length() == 0) {
-/*  79 */       return paramString1;
-/*     */     }
-/*  81 */     return paramString1 + File.pathSeparator + paramString2;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public DocletInvoker(Messager paramMessager, Class<?> paramClass, boolean paramBoolean) {
-/*  86 */     this.messager = paramMessager;
-/*  87 */     this.docletClass = paramClass;
-/*  88 */     this.docletClassName = paramClass.getName();
-/*  89 */     this.appClassLoader = null;
-/*  90 */     this.apiMode = paramBoolean;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public DocletInvoker(Messager paramMessager, JavaFileManager paramJavaFileManager, String paramString1, String paramString2, ClassLoader paramClassLoader, boolean paramBoolean) {
-/*  97 */     this.messager = paramMessager;
-/*  98 */     this.docletClassName = paramString1;
-/*  99 */     this.apiMode = paramBoolean;
-/*     */     
-/* 101 */     if (paramJavaFileManager != null && paramJavaFileManager.hasLocation(DocumentationTool.Location.DOCLET_PATH)) {
-/* 102 */       this.appClassLoader = paramJavaFileManager.getClassLoader(DocumentationTool.Location.DOCLET_PATH);
-/*     */     } else {
-/*     */       
-/* 105 */       String str = null;
-/*     */ 
-/*     */       
-/* 108 */       str = appendPath(System.getProperty("env.class.path"), str);
-/* 109 */       str = appendPath(System.getProperty("java.class.path"), str);
-/* 110 */       str = appendPath(paramString2, str);
-/* 111 */       URL[] arrayOfURL = Locations.pathToURLs(str);
-/* 112 */       if (paramClassLoader == null) {
-/* 113 */         this.appClassLoader = new URLClassLoader(arrayOfURL, getDelegationClassLoader(paramString1));
-/*     */       } else {
-/* 115 */         this.appClassLoader = new URLClassLoader(arrayOfURL, paramClassLoader);
-/*     */       } 
-/*     */     } 
-/*     */     
-/* 119 */     Class<?> clazz = null;
-/*     */     try {
-/* 121 */       clazz = this.appClassLoader.loadClass(paramString1);
-/* 122 */     } catch (ClassNotFoundException classNotFoundException) {
-/* 123 */       paramMessager.error(Messager.NOPOS, "main.doclet_class_not_found", new Object[] { paramString1 });
-/* 124 */       paramMessager.exit();
-/*     */     } 
-/* 126 */     this.docletClass = clazz;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private ClassLoader getDelegationClassLoader(String paramString) {
-/* 146 */     ClassLoader classLoader1 = Thread.currentThread().getContextClassLoader();
-/* 147 */     ClassLoader classLoader2 = ClassLoader.getSystemClassLoader();
-/* 148 */     if (classLoader2 == null)
-/* 149 */       return classLoader1; 
-/* 150 */     if (classLoader1 == null) {
-/* 151 */       return classLoader2;
-/*     */     }
-/*     */     
-/*     */     try {
-/* 155 */       classLoader2.loadClass(paramString);
-/*     */       try {
-/* 157 */         classLoader1.loadClass(paramString);
-/* 158 */       } catch (ClassNotFoundException classNotFoundException) {
-/* 159 */         return classLoader2;
-/*     */       } 
-/* 161 */     } catch (ClassNotFoundException classNotFoundException) {}
-/*     */ 
-/*     */ 
-/*     */     
-/*     */     try {
-/* 166 */       if (getClass() == classLoader2.loadClass(getClass().getName())) {
-/*     */         try {
-/* 168 */           if (getClass() != classLoader1.loadClass(getClass().getName()))
-/* 169 */             return classLoader2; 
-/* 170 */         } catch (ClassNotFoundException classNotFoundException) {
-/* 171 */           return classLoader2;
-/*     */         } 
-/*     */       }
-/* 174 */     } catch (ClassNotFoundException classNotFoundException) {}
-/*     */ 
-/*     */     
-/* 177 */     return classLoader1;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean start(RootDoc paramRootDoc) {
-/*     */     Object object;
-/* 185 */     String str = "start";
-/* 186 */     Class[] arrayOfClass = { RootDoc.class };
-/* 187 */     Object[] arrayOfObject = { paramRootDoc };
-/*     */     try {
-/* 189 */       object = invoke(str, null, arrayOfClass, arrayOfObject);
-/* 190 */     } catch (DocletInvokeException docletInvokeException) {
-/* 191 */       return false;
-/*     */     } 
-/* 193 */     if (object instanceof Boolean) {
-/* 194 */       return ((Boolean)object).booleanValue();
-/*     */     }
-/* 196 */     this.messager.error(Messager.NOPOS, "main.must_return_boolean", new Object[] { this.docletClassName, str });
-/*     */     
-/* 198 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public int optionLength(String paramString) {
-/*     */     Object object;
-/* 209 */     String str = "optionLength";
-/* 210 */     Class[] arrayOfClass = { String.class };
-/* 211 */     Object[] arrayOfObject = { paramString };
-/*     */     try {
-/* 213 */       object = invoke(str, new Integer(0), arrayOfClass, arrayOfObject);
-/* 214 */     } catch (DocletInvokeException docletInvokeException) {
-/* 215 */       return -1;
-/*     */     } 
-/* 217 */     if (object instanceof Integer) {
-/* 218 */       return ((Integer)object).intValue();
-/*     */     }
-/* 220 */     this.messager.error(Messager.NOPOS, "main.must_return_int", new Object[] { this.docletClassName, str });
-/*     */     
-/* 222 */     return -1;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean validOptions(List<String[]> paramList) {
-/*     */     Object object;
-/* 232 */     String[][] arrayOfString = (String[][])paramList.toArray((Object[])new String[paramList.length()][]);
-/* 233 */     String str = "validOptions";
-/* 234 */     Messager messager = this.messager;
-/* 235 */     Class[] arrayOfClass = { String[][].class, DocErrorReporter.class };
-/* 236 */     Object[] arrayOfObject = { arrayOfString, messager };
-/*     */     try {
-/* 238 */       object = invoke(str, Boolean.TRUE, arrayOfClass, arrayOfObject);
-/* 239 */     } catch (DocletInvokeException docletInvokeException) {
-/* 240 */       return false;
-/*     */     } 
-/* 242 */     if (object instanceof Boolean) {
-/* 243 */       return ((Boolean)object).booleanValue();
-/*     */     }
-/* 245 */     this.messager.error(Messager.NOPOS, "main.must_return_boolean", new Object[] { this.docletClassName, str });
-/*     */     
-/* 247 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public LanguageVersion languageVersion() {
-/*     */     try {
-/*     */       Object object;
-/* 258 */       String str = "languageVersion";
-/* 259 */       Class[] arrayOfClass = new Class[0];
-/* 260 */       Object[] arrayOfObject = new Object[0];
-/*     */       try {
-/* 262 */         object = invoke(str, LanguageVersion.JAVA_1_1, arrayOfClass, arrayOfObject);
-/* 263 */       } catch (DocletInvokeException docletInvokeException) {
-/* 264 */         return LanguageVersion.JAVA_1_1;
-/*     */       } 
-/* 266 */       if (object instanceof LanguageVersion) {
-/* 267 */         return (LanguageVersion)object;
-/*     */       }
-/* 269 */       this.messager.error(Messager.NOPOS, "main.must_return_languageversion", new Object[] { this.docletClassName, str });
-/*     */       
-/* 271 */       return LanguageVersion.JAVA_1_1;
-/*     */     }
-/* 273 */     catch (NoClassDefFoundError noClassDefFoundError) {
-/* 274 */       return null;
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private Object invoke(String paramString, Object paramObject, Class<?>[] paramArrayOfClass, Object[] paramArrayOfObject) throws DocletInvokeException {
-/*     */     Method method;
-/*     */     try {
-/* 286 */       method = this.docletClass.getMethod(paramString, paramArrayOfClass);
-/* 287 */     } catch (NoSuchMethodException noSuchMethodException) {
-/* 288 */       if (paramObject == null) {
-/* 289 */         this.messager.error(Messager.NOPOS, "main.doclet_method_not_found", new Object[] { this.docletClassName, paramString });
-/*     */         
-/* 291 */         throw new DocletInvokeException();
-/*     */       } 
-/* 293 */       return paramObject;
-/*     */     }
-/* 295 */     catch (SecurityException securityException) {
-/* 296 */       this.messager.error(Messager.NOPOS, "main.doclet_method_not_accessible", new Object[] { this.docletClassName, paramString });
-/*     */       
-/* 298 */       throw new DocletInvokeException();
-/*     */     } 
-/* 300 */     if (!Modifier.isStatic(method.getModifiers())) {
-/* 301 */       this.messager.error(Messager.NOPOS, "main.doclet_method_must_be_static", new Object[] { this.docletClassName, paramString });
-/*     */       
-/* 303 */       throw new DocletInvokeException();
-/*     */     } 
-/*     */     
-/* 306 */     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-/*     */     try {
-/* 308 */       if (this.appClassLoader != null)
-/* 309 */         Thread.currentThread().setContextClassLoader(this.appClassLoader); 
-/* 310 */       return method.invoke(null, paramArrayOfObject);
-/* 311 */     } catch (IllegalArgumentException illegalArgumentException) {
-/* 312 */       this.messager.error(Messager.NOPOS, "main.internal_error_exception_thrown", new Object[] { this.docletClassName, paramString, illegalArgumentException
-/* 313 */             .toString() });
-/* 314 */       throw new DocletInvokeException();
-/* 315 */     } catch (IllegalAccessException illegalAccessException) {
-/* 316 */       this.messager.error(Messager.NOPOS, "main.doclet_method_not_accessible", new Object[] { this.docletClassName, paramString });
-/*     */       
-/* 318 */       throw new DocletInvokeException();
-/* 319 */     } catch (NullPointerException nullPointerException) {
-/* 320 */       this.messager.error(Messager.NOPOS, "main.internal_error_exception_thrown", new Object[] { this.docletClassName, paramString, nullPointerException
-/* 321 */             .toString() });
-/* 322 */       throw new DocletInvokeException();
-/* 323 */     } catch (InvocationTargetException invocationTargetException) {
-/* 324 */       Throwable throwable = invocationTargetException.getTargetException();
-/* 325 */       if (this.apiMode)
-/* 326 */         throw new ClientCodeException(throwable); 
-/* 327 */       if (throwable instanceof OutOfMemoryError) {
-/* 328 */         this.messager.error(Messager.NOPOS, "main.out.of.memory", new Object[0]);
-/*     */       } else {
-/* 330 */         this.messager.error(Messager.NOPOS, "main.exception_thrown", new Object[] { this.docletClassName, paramString, invocationTargetException
-/* 331 */               .toString() });
-/* 332 */         invocationTargetException.getTargetException().printStackTrace();
-/*     */       } 
-/* 334 */       throw new DocletInvokeException();
-/*     */     } finally {
-/* 336 */       Thread.currentThread().setContextClassLoader(classLoader);
-/*     */     } 
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javadoc\DocletInvoker.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1998, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javadoc;
+
+import java.io.File;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.net.URL;
+import java.net.URLClassLoader;
+
+import javax.tools.DocumentationTool;
+import javax.tools.JavaFileManager;
+
+import com.sun.javadoc.*;
+import com.sun.tools.javac.file.Locations;
+import com.sun.tools.javac.util.ClientCodeException;
+import com.sun.tools.javac.util.List;
+import static com.sun.javadoc.LanguageVersion.*;
+
+
+/**
+ * Class creates, controls and invokes doclets.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Neal Gafter (rewrite)
+ */
+public class DocletInvoker {
+
+    private final Class<?> docletClass;
+
+    private final String docletClassName;
+
+    private final ClassLoader appClassLoader;
+
+    private final Messager messager;
+
+    /**
+     * In API mode, exceptions thrown while calling the doclet are
+     * propagated using ClientCodeException.
+     */
+    private final boolean apiMode;
+
+    private static class DocletInvokeException extends Exception {
+        private static final long serialVersionUID = 0;
+    }
+
+    private String appendPath(String path1, String path2) {
+        if (path1 == null || path1.length() == 0) {
+            return path2 == null ? "." : path2;
+        } else if (path2 == null || path2.length() == 0) {
+            return path1;
+        } else {
+            return path1  + File.pathSeparator + path2;
+        }
+    }
+
+    public DocletInvoker(Messager messager, Class<?> docletClass, boolean apiMode) {
+        this.messager = messager;
+        this.docletClass = docletClass;
+        docletClassName = docletClass.getName();
+        appClassLoader = null;
+        this.apiMode = apiMode;
+    }
+
+    public DocletInvoker(Messager messager, JavaFileManager fileManager,
+                         String docletClassName, String docletPath,
+                         ClassLoader docletParentClassLoader,
+                         boolean apiMode) {
+        this.messager = messager;
+        this.docletClassName = docletClassName;
+        this.apiMode = apiMode;
+
+        if (fileManager != null && fileManager.hasLocation(DocumentationTool.Location.DOCLET_PATH)) {
+            appClassLoader = fileManager.getClassLoader(DocumentationTool.Location.DOCLET_PATH);
+        } else {
+            // construct class loader
+            String cpString = null;   // make sure env.class.path defaults to dot
+
+            // do prepends to get correct ordering
+            cpString = appendPath(System.getProperty("env.class.path"), cpString);
+            cpString = appendPath(System.getProperty("java.class.path"), cpString);
+            cpString = appendPath(docletPath, cpString);
+            URL[] urls = Locations.pathToURLs(cpString);
+            if (docletParentClassLoader == null)
+                appClassLoader = new URLClassLoader(urls, getDelegationClassLoader(docletClassName));
+            else
+                appClassLoader = new URLClassLoader(urls, docletParentClassLoader);
+        }
+
+        // attempt to find doclet
+        Class<?> dc = null;
+        try {
+            dc = appClassLoader.loadClass(docletClassName);
+        } catch (ClassNotFoundException exc) {
+            messager.error(Messager.NOPOS, "main.doclet_class_not_found", docletClassName);
+            messager.exit();
+        }
+        docletClass = dc;
+    }
+
+    /*
+     * Returns the delegation class loader to use when creating
+     * appClassLoader (used to load the doclet).  The context class
+     * loader is the best choice, but legacy behavior was to use the
+     * default delegation class loader (aka system class loader).
+     *
+     * Here we favor using the context class loader.  To ensure
+     * compatibility with existing apps, we revert to legacy
+     * behavior if either or both of the following conditions hold:
+     *
+     * 1) the doclet is loadable from the system class loader but not
+     *    from the context class loader,
+     *
+     * 2) this.getClass() is loadable from the system class loader but not
+     *    from the context class loader.
+     */
+    private ClassLoader getDelegationClassLoader(String docletClassName) {
+        ClassLoader ctxCL = Thread.currentThread().getContextClassLoader();
+        ClassLoader sysCL = ClassLoader.getSystemClassLoader();
+        if (sysCL == null)
+            return ctxCL;
+        if (ctxCL == null)
+            return sysCL;
+
+        // Condition 1.
+        try {
+            sysCL.loadClass(docletClassName);
+            try {
+                ctxCL.loadClass(docletClassName);
+            } catch (ClassNotFoundException e) {
+                return sysCL;
+            }
+        } catch (ClassNotFoundException e) {
+        }
+
+        // Condition 2.
+        try {
+            if (getClass() == sysCL.loadClass(getClass().getName())) {
+                try {
+                    if (getClass() != ctxCL.loadClass(getClass().getName()))
+                        return sysCL;
+                } catch (ClassNotFoundException e) {
+                    return sysCL;
+                }
+            }
+        } catch (ClassNotFoundException e) {
+        }
+
+        return ctxCL;
+    }
+
+    /**
+     * Generate documentation here.  Return true on success.
+     */
+    public boolean start(RootDoc root) {
+        Object retVal;
+        String methodName = "start";
+        Class<?>[] paramTypes = { RootDoc.class };
+        Object[] params = { root };
+        try {
+            retVal = invoke(methodName, null, paramTypes, params);
+        } catch (DocletInvokeException exc) {
+            return false;
+        }
+        if (retVal instanceof Boolean) {
+            return ((Boolean)retVal).booleanValue();
+        } else {
+            messager.error(Messager.NOPOS, "main.must_return_boolean",
+                           docletClassName, methodName);
+            return false;
+        }
+    }
+
+    /**
+     * Check for doclet added options here. Zero return means
+     * option not known.  Positive value indicates number of
+     * arguments to option.  Negative value means error occurred.
+     */
+    public int optionLength(String option) {
+        Object retVal;
+        String methodName = "optionLength";
+        Class<?>[] paramTypes = { String.class };
+        Object[] params = { option };
+        try {
+            retVal = invoke(methodName, new Integer(0), paramTypes, params);
+        } catch (DocletInvokeException exc) {
+            return -1;
+        }
+        if (retVal instanceof Integer) {
+            return ((Integer)retVal).intValue();
+        } else {
+            messager.error(Messager.NOPOS, "main.must_return_int",
+                           docletClassName, methodName);
+            return -1;
+        }
+    }
+
+    /**
+     * Let doclet check that all options are OK. Returning true means
+     * options are OK.  If method does not exist, assume true.
+     */
+    public boolean validOptions(List<String[]> optlist) {
+        Object retVal;
+        String options[][] = optlist.toArray(new String[optlist.length()][]);
+        String methodName = "validOptions";
+        DocErrorReporter reporter = messager;
+        Class<?>[] paramTypes = { String[][].class, DocErrorReporter.class };
+        Object[] params = { options, reporter };
+        try {
+            retVal = invoke(methodName, Boolean.TRUE, paramTypes, params);
+        } catch (DocletInvokeException exc) {
+            return false;
+        }
+        if (retVal instanceof Boolean) {
+            return ((Boolean)retVal).booleanValue();
+        } else {
+            messager.error(Messager.NOPOS, "main.must_return_boolean",
+                           docletClassName, methodName);
+            return false;
+        }
+    }
+
+    /**
+     * Return the language version supported by this doclet.
+     * If the method does not exist in the doclet, assume version 1.1.
+     */
+    public LanguageVersion languageVersion() {
+        try {
+            Object retVal;
+            String methodName = "languageVersion";
+            Class<?>[] paramTypes = new Class<?>[0];
+            Object[] params = new Object[0];
+            try {
+                retVal = invoke(methodName, JAVA_1_1, paramTypes, params);
+            } catch (DocletInvokeException exc) {
+                return JAVA_1_1;
+            }
+            if (retVal instanceof LanguageVersion) {
+                return (LanguageVersion)retVal;
+            } else {
+                messager.error(Messager.NOPOS, "main.must_return_languageversion",
+                               docletClassName, methodName);
+                return JAVA_1_1;
+            }
+        } catch (NoClassDefFoundError ex) { // for boostrapping, no Enum class.
+            return null;
+        }
+    }
+
+    /**
+     * Utility method for calling doclet functionality
+     */
+    private Object invoke(String methodName, Object returnValueIfNonExistent,
+                          Class<?>[] paramTypes, Object[] params)
+        throws DocletInvokeException {
+            Method meth;
+            try {
+                meth = docletClass.getMethod(methodName, paramTypes);
+            } catch (NoSuchMethodException exc) {
+                if (returnValueIfNonExistent == null) {
+                    messager.error(Messager.NOPOS, "main.doclet_method_not_found",
+                                   docletClassName, methodName);
+                    throw new DocletInvokeException();
+                } else {
+                    return returnValueIfNonExistent;
+                }
+            } catch (SecurityException exc) {
+                messager.error(Messager.NOPOS, "main.doclet_method_not_accessible",
+                               docletClassName, methodName);
+                throw new DocletInvokeException();
+            }
+            if (!Modifier.isStatic(meth.getModifiers())) {
+                messager.error(Messager.NOPOS, "main.doclet_method_must_be_static",
+                               docletClassName, methodName);
+                throw new DocletInvokeException();
+            }
+            ClassLoader savedCCL =
+                Thread.currentThread().getContextClassLoader();
+            try {
+                if (appClassLoader != null) // will be null if doclet class provided via API
+                    Thread.currentThread().setContextClassLoader(appClassLoader);
+                return meth.invoke(null , params);
+            } catch (IllegalArgumentException exc) {
+                messager.error(Messager.NOPOS, "main.internal_error_exception_thrown",
+                               docletClassName, methodName, exc.toString());
+                throw new DocletInvokeException();
+            } catch (IllegalAccessException exc) {
+                messager.error(Messager.NOPOS, "main.doclet_method_not_accessible",
+                               docletClassName, methodName);
+                throw new DocletInvokeException();
+            } catch (NullPointerException exc) {
+                messager.error(Messager.NOPOS, "main.internal_error_exception_thrown",
+                               docletClassName, methodName, exc.toString());
+                throw new DocletInvokeException();
+            } catch (InvocationTargetException exc) {
+                Throwable err = exc.getTargetException();
+                if (apiMode)
+                    throw new ClientCodeException(err);
+                if (err instanceof OutOfMemoryError) {
+                    messager.error(Messager.NOPOS, "main.out.of.memory");
+                } else {
+                    messager.error(Messager.NOPOS, "main.exception_thrown",
+                               docletClassName, methodName, exc.toString());
+                    exc.getTargetException().printStackTrace();
+                }
+                throw new DocletInvokeException();
+            } finally {
+                Thread.currentThread().setContextClassLoader(savedCCL);
+            }
+    }
+}

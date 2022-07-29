@@ -1,181 +1,175 @@
-/*     */ package com.sun.tools.javadoc;
-/*     */
-/*     */ import com.sun.javadoc.AnnotationDesc;
-/*     */ import com.sun.javadoc.AnnotationTypeDoc;
-/*     */ import com.sun.javadoc.AnnotationTypeElementDoc;
-/*     */ import com.sun.javadoc.AnnotationValue;
-/*     */ import com.sun.tools.javac.code.Attribute;
-/*     */ import com.sun.tools.javac.code.Symbol;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import com.sun.tools.javac.util.Pair;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class AnnotationDescImpl
-/*     */   implements AnnotationDesc
-/*     */ {
-/*     */   private final DocEnv env;
-/*     */   private final Attribute.Compound annotation;
-/*     */
-/*     */   AnnotationDescImpl(DocEnv paramDocEnv, Attribute.Compound paramCompound) {
-/*  58 */     this.env = paramDocEnv;
-/*  59 */     this.annotation = paramCompound;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public AnnotationTypeDoc annotationType() {
-/*  66 */     Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)this.annotation.type.tsym;
-/*  67 */     if (this.annotation.type.isErroneous()) {
-/*  68 */       this.env.warning(null, "javadoc.class_not_found", this.annotation.type.toString());
-/*  69 */       return new AnnotationTypeDocImpl(this.env, classSymbol);
-/*     */     }
-/*  71 */     return (AnnotationTypeDoc)this.env.getClassDoc(classSymbol);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public ElementValuePair[] elementValues() {
-/*  82 */     List list = this.annotation.values;
-/*  83 */     ElementValuePair[] arrayOfElementValuePair = new ElementValuePair[list.length()];
-/*  84 */     byte b = 0;
-/*  85 */     for (Pair pair : list) {
-/*  86 */       arrayOfElementValuePair[b++] = new ElementValuePairImpl(this.env, (Symbol.MethodSymbol)pair.fst, (Attribute)pair.snd);
-/*     */     }
-/*  88 */     return arrayOfElementValuePair;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public boolean isSynthesized() {
-/*  97 */     return this.annotation.isSynthesized();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public String toString() {
-/* 110 */     StringBuilder stringBuilder = new StringBuilder("@");
-/* 111 */     stringBuilder.append(this.annotation.type.tsym);
-/*     */
-/* 113 */     ElementValuePair[] arrayOfElementValuePair = elementValues();
-/* 114 */     if (arrayOfElementValuePair.length > 0) {
-/* 115 */       stringBuilder.append('(');
-/* 116 */       boolean bool = true;
-/* 117 */       for (ElementValuePair elementValuePair : arrayOfElementValuePair) {
-/* 118 */         if (!bool) {
-/* 119 */           stringBuilder.append(", ");
-/*     */         }
-/* 121 */         bool = false;
-/*     */
-/* 123 */         String str = elementValuePair.element().name();
-/* 124 */         if (arrayOfElementValuePair.length == 1 && str.equals("value")) {
-/* 125 */           stringBuilder.append(elementValuePair.value());
-/*     */         } else {
-/* 127 */           stringBuilder.append(elementValuePair);
-/*     */         }
-/*     */       }
-/* 130 */       stringBuilder.append(')');
-/*     */     }
-/* 132 */     return stringBuilder.toString();
-/*     */   }
-/*     */
-/*     */
-/*     */   public static class ElementValuePairImpl
-/*     */     implements ElementValuePair
-/*     */   {
-/*     */     private final DocEnv env;
-/*     */
-/*     */     private final Symbol.MethodSymbol meth;
-/*     */
-/*     */     private final Attribute value;
-/*     */
-/*     */
-/*     */     ElementValuePairImpl(DocEnv param1DocEnv, Symbol.MethodSymbol param1MethodSymbol, Attribute param1Attribute) {
-/* 147 */       this.env = param1DocEnv;
-/* 148 */       this.meth = param1MethodSymbol;
-/* 149 */       this.value = param1Attribute;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public AnnotationTypeElementDoc element() {
-/* 156 */       return this.env.getAnnotationTypeElementDoc(this.meth);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public AnnotationValue value() {
-/* 163 */       return new AnnotationValueImpl(this.env, this.value);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public String toString() {
-/* 172 */       return this.meth.name + "=" + value();
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javadoc\AnnotationDescImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javadoc;
+
+import com.sun.javadoc.*;
+
+import com.sun.tools.javac.code.Attribute;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.Pair;
+
+
+/**
+ * Represents an annotation.
+ * An annotation associates a value with each element of an annotation type.
+ * Sure it ought to be called "Annotation", but that clashes with
+ * java.lang.annotation.Annotation.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Scott Seligman
+ * @since 1.5
+ */
+
+public class AnnotationDescImpl implements AnnotationDesc {
+
+    private final DocEnv env;
+    private final Attribute.Compound annotation;
+
+
+    AnnotationDescImpl(DocEnv env, Attribute.Compound annotation) {
+        this.env = env;
+        this.annotation = annotation;
+    }
+
+    /**
+     * Returns the annotation type of this annotation.
+     */
+    public AnnotationTypeDoc annotationType() {
+        ClassSymbol atsym = (ClassSymbol)annotation.type.tsym;
+        if (annotation.type.isErroneous()) {
+            env.warning(null, "javadoc.class_not_found", annotation.type.toString());
+            return new AnnotationTypeDocImpl(env, atsym);
+        } else {
+            return (AnnotationTypeDoc)env.getClassDoc(atsym);
+        }
+    }
+
+    /**
+     * Returns this annotation's elements and their values.
+     * Only those explicitly present in the annotation are
+     * included, not those assuming their default values.
+     * Returns an empty array if there are none.
+     */
+    public ElementValuePair[] elementValues() {
+        List<Pair<MethodSymbol,Attribute>> vals = annotation.values;
+        ElementValuePair res[] = new ElementValuePair[vals.length()];
+        int i = 0;
+        for (Pair<MethodSymbol,Attribute> val : vals) {
+            res[i++] = new ElementValuePairImpl(env, val.fst, val.snd);
+        }
+        return res;
+    }
+
+    /**
+     * Check for the synthesized bit on the annotation.
+     *
+     * @return true if the annotation is synthesized.
+     */
+    public boolean isSynthesized() {
+        return annotation.isSynthesized();
+    }
+
+    /**
+     * Returns a string representation of this annotation.
+     * String is of one of the forms:
+     *     @com.example.foo(name1=val1, name2=val2)
+     *     @com.example.foo(val)
+     *     @com.example.foo
+     * Omit parens for marker annotations, and omit "value=" when allowed.
+     */
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder("@");
+        sb.append(annotation.type.tsym);
+
+        ElementValuePair vals[] = elementValues();
+        if (vals.length > 0) {          // omit parens for marker annotation
+            sb.append('(');
+            boolean first = true;
+            for (ElementValuePair val : vals) {
+                if (!first) {
+                    sb.append(", ");
+                }
+                first = false;
+
+                String name = val.element().name();
+                if (vals.length == 1 && name.equals("value")) {
+                    sb.append(val.value());
+                } else {
+                    sb.append(val);
+                }
+            }
+            sb.append(')');
+        }
+        return sb.toString();
+    }
+
+
+    /**
+     * Represents an association between an annotation type element
+     * and one of its values.
+     */
+    public static class ElementValuePairImpl implements ElementValuePair {
+
+        private final DocEnv env;
+        private final MethodSymbol meth;
+        private final Attribute value;
+
+        ElementValuePairImpl(DocEnv env, MethodSymbol meth, Attribute value) {
+            this.env = env;
+            this.meth = meth;
+            this.value = value;
+        }
+
+        /**
+         * Returns the annotation type element.
+         */
+        public AnnotationTypeElementDoc element() {
+            return env.getAnnotationTypeElementDoc(meth);
+        }
+
+        /**
+         * Returns the value associated with the annotation type element.
+         */
+        public AnnotationValue value() {
+            return new AnnotationValueImpl(env, value);
+        }
+
+        /**
+         * Returns a string representation of this pair
+         * of the form "name=value".
+         */
+        @Override
+        public String toString() {
+            return meth.name + "=" + value();
+        }
+    }
+}

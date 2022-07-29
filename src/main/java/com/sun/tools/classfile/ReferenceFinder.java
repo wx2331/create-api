@@ -1,287 +1,240 @@
-/*     */ package com.sun.tools.classfile;
-/*     */ 
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.List;
-/*     */ import java.util.Objects;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public final class ReferenceFinder
-/*     */ {
-/*     */   private final Filter filter;
-/*     */   private final Visitor visitor;
-/*     */   private ConstantPool.Visitor<Boolean, ConstantPool> cpVisitor;
-/*     */   private Instruction.KindVisitor<Integer, List<Integer>> codeVisitor;
-/*     */   
-/*     */   public ReferenceFinder(Filter paramFilter, Visitor paramVisitor) {
-/* 132 */     this.cpVisitor = new ConstantPool.Visitor<Boolean, ConstantPool>()
-/*     */       {
-/*     */         public Boolean visitClass(ConstantPool.CONSTANT_Class_info param1CONSTANT_Class_info, ConstantPool param1ConstantPool)
-/*     */         {
-/* 136 */           return Boolean.valueOf(false);
-/*     */         }
-/*     */         
-/*     */         public Boolean visitInterfaceMethodref(ConstantPool.CONSTANT_InterfaceMethodref_info param1CONSTANT_InterfaceMethodref_info, ConstantPool param1ConstantPool) {
-/* 140 */           return Boolean.valueOf(ReferenceFinder.this.filter.accept(param1ConstantPool, param1CONSTANT_InterfaceMethodref_info));
-/*     */         }
-/*     */         
-/*     */         public Boolean visitMethodref(ConstantPool.CONSTANT_Methodref_info param1CONSTANT_Methodref_info, ConstantPool param1ConstantPool) {
-/* 144 */           return Boolean.valueOf(ReferenceFinder.this.filter.accept(param1ConstantPool, param1CONSTANT_Methodref_info));
-/*     */         }
-/*     */         
-/*     */         public Boolean visitFieldref(ConstantPool.CONSTANT_Fieldref_info param1CONSTANT_Fieldref_info, ConstantPool param1ConstantPool) {
-/* 148 */           return Boolean.valueOf(ReferenceFinder.this.filter.accept(param1ConstantPool, param1CONSTANT_Fieldref_info));
-/*     */         }
-/*     */         
-/*     */         public Boolean visitDouble(ConstantPool.CONSTANT_Double_info param1CONSTANT_Double_info, ConstantPool param1ConstantPool) {
-/* 152 */           return Boolean.valueOf(false);
-/*     */         }
-/*     */         
-/*     */         public Boolean visitFloat(ConstantPool.CONSTANT_Float_info param1CONSTANT_Float_info, ConstantPool param1ConstantPool) {
-/* 156 */           return Boolean.valueOf(false);
-/*     */         }
-/*     */         
-/*     */         public Boolean visitInteger(ConstantPool.CONSTANT_Integer_info param1CONSTANT_Integer_info, ConstantPool param1ConstantPool) {
-/* 160 */           return Boolean.valueOf(false);
-/*     */         }
-/*     */         
-/*     */         public Boolean visitInvokeDynamic(ConstantPool.CONSTANT_InvokeDynamic_info param1CONSTANT_InvokeDynamic_info, ConstantPool param1ConstantPool) {
-/* 164 */           return Boolean.valueOf(false);
-/*     */         }
-/*     */         
-/*     */         public Boolean visitLong(ConstantPool.CONSTANT_Long_info param1CONSTANT_Long_info, ConstantPool param1ConstantPool) {
-/* 168 */           return Boolean.valueOf(false);
-/*     */         }
-/*     */         
-/*     */         public Boolean visitNameAndType(ConstantPool.CONSTANT_NameAndType_info param1CONSTANT_NameAndType_info, ConstantPool param1ConstantPool) {
-/* 172 */           return Boolean.valueOf(false);
-/*     */         }
-/*     */         
-/*     */         public Boolean visitMethodHandle(ConstantPool.CONSTANT_MethodHandle_info param1CONSTANT_MethodHandle_info, ConstantPool param1ConstantPool) {
-/* 176 */           return Boolean.valueOf(false);
-/*     */         }
-/*     */         
-/*     */         public Boolean visitMethodType(ConstantPool.CONSTANT_MethodType_info param1CONSTANT_MethodType_info, ConstantPool param1ConstantPool) {
-/* 180 */           return Boolean.valueOf(false);
-/*     */         }
-/*     */         
-/*     */         public Boolean visitString(ConstantPool.CONSTANT_String_info param1CONSTANT_String_info, ConstantPool param1ConstantPool) {
-/* 184 */           return Boolean.valueOf(false);
-/*     */         }
-/*     */         
-/*     */         public Boolean visitUtf8(ConstantPool.CONSTANT_Utf8_info param1CONSTANT_Utf8_info, ConstantPool param1ConstantPool) {
-/* 188 */           return Boolean.valueOf(false);
-/*     */         }
-/*     */       };
-/*     */     
-/* 192 */     this.codeVisitor = new Instruction.KindVisitor<Integer, List<Integer>>()
-/*     */       {
-/*     */         public Integer visitNoOperands(Instruction param1Instruction, List<Integer> param1List)
-/*     */         {
-/* 196 */           return Integer.valueOf(0);
-/*     */         }
-/*     */         
-/*     */         public Integer visitArrayType(Instruction param1Instruction, Instruction.TypeKind param1TypeKind, List<Integer> param1List) {
-/* 200 */           return Integer.valueOf(0);
-/*     */         }
-/*     */         
-/*     */         public Integer visitBranch(Instruction param1Instruction, int param1Int, List<Integer> param1List) {
-/* 204 */           return Integer.valueOf(0);
-/*     */         }
-/*     */         
-/*     */         public Integer visitConstantPoolRef(Instruction param1Instruction, int param1Int, List<Integer> param1List) {
-/* 208 */           return Integer.valueOf(param1List.contains(Integer.valueOf(param1Int)) ? param1Int : 0);
-/*     */         }
-/*     */         
-/*     */         public Integer visitConstantPoolRefAndValue(Instruction param1Instruction, int param1Int1, int param1Int2, List<Integer> param1List) {
-/* 212 */           return Integer.valueOf(param1List.contains(Integer.valueOf(param1Int1)) ? param1Int1 : 0);
-/*     */         }
-/*     */         
-/*     */         public Integer visitLocal(Instruction param1Instruction, int param1Int, List<Integer> param1List) {
-/* 216 */           return Integer.valueOf(0);
-/*     */         }
-/*     */         
-/*     */         public Integer visitLocalAndValue(Instruction param1Instruction, int param1Int1, int param1Int2, List<Integer> param1List) {
-/* 220 */           return Integer.valueOf(0);
-/*     */         }
-/*     */         
-/*     */         public Integer visitLookupSwitch(Instruction param1Instruction, int param1Int1, int param1Int2, int[] param1ArrayOfint1, int[] param1ArrayOfint2, List<Integer> param1List) {
-/* 224 */           return Integer.valueOf(0);
-/*     */         }
-/*     */         
-/*     */         public Integer visitTableSwitch(Instruction param1Instruction, int param1Int1, int param1Int2, int param1Int3, int[] param1ArrayOfint, List<Integer> param1List) {
-/* 228 */           return Integer.valueOf(0);
-/*     */         }
-/*     */         
-/*     */         public Integer visitValue(Instruction param1Instruction, int param1Int, List<Integer> param1List) {
-/* 232 */           return Integer.valueOf(0);
-/*     */         }
-/*     */         
-/*     */         public Integer visitUnknown(Instruction param1Instruction, List<Integer> param1List) {
-/* 236 */           return Integer.valueOf(0);
-/*     */         }
-/*     */       };
-/*     */     this.filter = Objects.<Filter>requireNonNull(paramFilter);
-/*     */     this.visitor = Objects.<Visitor>requireNonNull(paramVisitor);
-/*     */   }
-/*     */   
-/*     */   public boolean parse(ClassFile paramClassFile) throws ConstantPoolException {
-/*     */     ArrayList<Integer> arrayList = new ArrayList();
-/*     */     int i = 1;
-/*     */     for (ConstantPool.CPInfo cPInfo : paramClassFile.constant_pool.entries()) {
-/*     */       if (((Boolean)cPInfo.<Boolean, ConstantPool>accept(this.cpVisitor, paramClassFile.constant_pool)).booleanValue())
-/*     */         arrayList.add(Integer.valueOf(i)); 
-/*     */       i += cPInfo.size();
-/*     */     } 
-/*     */     if (arrayList.isEmpty())
-/*     */       return false; 
-/*     */     for (Method method : paramClassFile.methods) {
-/*     */       HashSet<Integer> hashSet = new HashSet();
-/*     */       Code_attribute code_attribute = (Code_attribute)method.attributes.get("Code");
-/*     */       if (code_attribute != null)
-/*     */         for (Instruction instruction : code_attribute.getInstructions()) {
-/*     */           int j = ((Integer)instruction.<Integer, List<Integer>>accept(this.codeVisitor, arrayList)).intValue();
-/*     */           if (j > 0)
-/*     */             hashSet.add(Integer.valueOf(j)); 
-/*     */         }  
-/*     */       if (hashSet.size() > 0) {
-/*     */         ArrayList<ConstantPool.CPRefInfo> arrayList1 = new ArrayList(hashSet.size());
-/*     */         for (Iterator<Integer> iterator = hashSet.iterator(); iterator.hasNext(); ) {
-/*     */           int j = ((Integer)iterator.next()).intValue();
-/*     */           arrayList1.add(ConstantPool.CPRefInfo.class.cast(paramClassFile.constant_pool.get(j)));
-/*     */         } 
-/*     */         this.visitor.visit(paramClassFile, method, arrayList1);
-/*     */       } 
-/*     */     } 
-/*     */     return true;
-/*     */   }
-/*     */   
-/*     */   public static interface Filter {
-/*     */     boolean accept(ConstantPool param1ConstantPool, ConstantPool.CPRefInfo param1CPRefInfo);
-/*     */   }
-/*     */   
-/*     */   public static interface Visitor {
-/*     */     void visit(ClassFile param1ClassFile, Method param1Method, List<ConstantPool.CPRefInfo> param1List);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\classfile\ReferenceFinder.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.classfile;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import com.sun.tools.classfile.Instruction.TypeKind;
+import static com.sun.tools.classfile.ConstantPool.*;
+
+/**
+ * A utility class to find where in a ClassFile references
+ * a {@link CONSTANT_Methodref_info method},
+ * a {@link CONSTANT_InterfaceMethodref_info interface method,
+ * or a {@link CONSTANT_Fieldref_info field}.
+ */
+public final class ReferenceFinder {
+    /**
+     * Filter for ReferenceFinder of what constant pool entries for reference lookup.
+     */
+    public interface Filter {
+        /**
+         * Decides if the given CPRefInfo entry should be accepted or filtered.
+         *
+         * @param cpool  ConstantPool of the ClassFile being parsed
+         * @param cpref  constant pool entry representing a reference to
+         *               a fields method, and interface method.
+         * @return {@code true} if accepted; otherwise {@code false}
+         */
+        boolean accept(ConstantPool cpool, CPRefInfo cpref);
+    }
+
+    /**
+     * Visitor of individual method of a ClassFile that references the
+     * accepted field, method, or interface method references.
+     */
+    public interface Visitor {
+        /**
+         * Invoked for a method containing one or more accepted CPRefInfo entries
+         *
+         * @param cf      ClassFile
+         * @param method  Method that does the references the accepted references
+         * @param refs    Accepted constant pool method/field reference
+         */
+        void visit(ClassFile cf, Method method, List<CPRefInfo> refConstantPool);
+    }
+
+    private final Filter filter;
+    private final Visitor visitor;
+
+    /**
+     * Constructor.
+     */
+    public ReferenceFinder(Filter filter, Visitor visitor) {
+        this.filter = Objects.requireNonNull(filter);
+        this.visitor = Objects.requireNonNull(visitor);
+    }
+
+    /**
+     * Parses a given ClassFile and invoke the visitor if there is any reference
+     * to the constant pool entries referencing field, method, or
+     * interface method that are accepted. This method will return
+     * {@code true} if there is one or more accepted constant pool entries
+     * to lookup; otherwise, it will return {@code false}.
+     *
+     * @param  cf  ClassFile
+     * @return {@code true} if the given class file is processed to lookup
+     *         references
+     * @throws ConstantPoolException if an error of the constant pool
+     */
+    public boolean parse(ClassFile cf) throws ConstantPoolException {
+        List<Integer> cprefs = new ArrayList<Integer>();
+        int index = 1;
+        for (CPInfo cpInfo : cf.constant_pool.entries()) {
+            if (cpInfo.accept(cpVisitor, cf.constant_pool)) {
+                cprefs.add(index);
+            }
+            index += cpInfo.size();
+        }
+
+        if (cprefs.isEmpty()) {
+            return false;
+        }
+
+        for (Method m : cf.methods) {
+            Set<Integer> ids = new HashSet<Integer>();
+            Code_attribute c_attr = (Code_attribute) m.attributes.get(Attribute.Code);
+            if (c_attr != null) {
+                for (Instruction instr : c_attr.getInstructions()) {
+                    int idx = instr.accept(codeVisitor, cprefs);
+                    if (idx > 0) {
+                        ids.add(idx);
+                    }
+                }
+            }
+            if (ids.size() > 0) {
+                List<CPRefInfo> refInfos = new ArrayList<CPRefInfo>(ids.size());
+                for (int id : ids) {
+                    refInfos.add(CPRefInfo.class.cast(cf.constant_pool.get(id)));
+                }
+                visitor.visit(cf, m, refInfos);
+            }
+        }
+        return true;
+    }
+
+    private ConstantPool.Visitor<Boolean,ConstantPool> cpVisitor =
+            new ConstantPool.Visitor<Boolean,ConstantPool>()
+    {
+        public Boolean visitClass(CONSTANT_Class_info info, ConstantPool cpool) {
+            return false;
+        }
+
+        public Boolean visitInterfaceMethodref(CONSTANT_InterfaceMethodref_info info, ConstantPool cpool) {
+            return filter.accept(cpool, info);
+        }
+
+        public Boolean visitMethodref(CONSTANT_Methodref_info info, ConstantPool cpool) {
+            return filter.accept(cpool, info);
+        }
+
+        public Boolean visitFieldref(CONSTANT_Fieldref_info info, ConstantPool cpool) {
+            return filter.accept(cpool, info);
+        }
+
+        public Boolean visitDouble(CONSTANT_Double_info info, ConstantPool cpool) {
+            return false;
+        }
+
+        public Boolean visitFloat(CONSTANT_Float_info info, ConstantPool cpool) {
+            return false;
+        }
+
+        public Boolean visitInteger(CONSTANT_Integer_info info, ConstantPool cpool) {
+            return false;
+        }
+
+        public Boolean visitInvokeDynamic(CONSTANT_InvokeDynamic_info info, ConstantPool cpool) {
+            return false;
+        }
+
+        public Boolean visitLong(CONSTANT_Long_info info, ConstantPool cpool) {
+            return false;
+        }
+
+        public Boolean visitNameAndType(CONSTANT_NameAndType_info info, ConstantPool cpool) {
+            return false;
+        }
+
+        public Boolean visitMethodHandle(CONSTANT_MethodHandle_info info, ConstantPool cpool) {
+            return false;
+        }
+
+        public Boolean visitMethodType(CONSTANT_MethodType_info info, ConstantPool cpool) {
+            return false;
+        }
+
+        public Boolean visitString(CONSTANT_String_info info, ConstantPool cpool) {
+            return false;
+        }
+
+        public Boolean visitUtf8(CONSTANT_Utf8_info info, ConstantPool cpool) {
+            return false;
+        }
+    };
+
+    private Instruction.KindVisitor<Integer, List<Integer>> codeVisitor =
+            new Instruction.KindVisitor<Integer, List<Integer>>()
+    {
+        public Integer visitNoOperands(Instruction instr, List<Integer> p) {
+            return 0;
+        }
+
+        public Integer visitArrayType(Instruction instr, TypeKind kind, List<Integer> p) {
+            return 0;
+        }
+
+        public Integer visitBranch(Instruction instr, int offset, List<Integer> p) {
+            return 0;
+        }
+
+        public Integer visitConstantPoolRef(Instruction instr, int index, List<Integer> p) {
+            return p.contains(index) ? index : 0;
+        }
+
+        public Integer visitConstantPoolRefAndValue(Instruction instr, int index, int value, List<Integer> p) {
+            return p.contains(index) ? index : 0;
+        }
+
+        public Integer visitLocal(Instruction instr, int index, List<Integer> p) {
+            return 0;
+        }
+
+        public Integer visitLocalAndValue(Instruction instr, int index, int value, List<Integer> p) {
+            return 0;
+        }
+
+        public Integer visitLookupSwitch(Instruction instr, int default_, int npairs, int[] matches, int[] offsets, List<Integer> p) {
+            return 0;
+        }
+
+        public Integer visitTableSwitch(Instruction instr, int default_, int low, int high, int[] offsets, List<Integer> p) {
+            return 0;
+        }
+
+        public Integer visitValue(Instruction instr, int value, List<Integer> p) {
+            return 0;
+        }
+
+        public Integer visitUnknown(Instruction instr, List<Integer> p) {
+            return 0;
+        }
+    };
+}
+

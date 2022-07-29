@@ -1,320 +1,315 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.javadoc.Tag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPath;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.MethodTypes;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.Util;
-/*     */ import java.io.IOException;
-/*     */ import java.util.List;
-/*     */ import java.util.Set;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public abstract class SubWriterHolderWriter
-/*     */   extends HtmlDocletWriter
-/*     */ {
-/*     */   public SubWriterHolderWriter(ConfigurationImpl paramConfigurationImpl, DocPath paramDocPath) throws IOException {
-/*  60 */     super(paramConfigurationImpl, paramDocPath);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryHeader(AbstractMemberWriter paramAbstractMemberWriter, ClassDoc paramClassDoc, Content paramContent) {
-/*  72 */     paramAbstractMemberWriter.addSummaryAnchor(paramClassDoc, paramContent);
-/*  73 */     paramAbstractMemberWriter.addSummaryLabel(paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getSummaryTableTree(AbstractMemberWriter paramAbstractMemberWriter, ClassDoc paramClassDoc, List<Content> paramList, boolean paramBoolean) {
-/*     */     Content content;
-/*  88 */     if (paramBoolean) {
-/*  89 */       content = getTableCaption(paramAbstractMemberWriter.methodTypes);
-/*  90 */       generateMethodTypesScript(paramAbstractMemberWriter.typeMap, paramAbstractMemberWriter.methodTypes);
-/*     */     } else {
-/*     */       
-/*  93 */       content = getTableCaption(paramAbstractMemberWriter.getCaption());
-/*     */     } 
-/*  95 */     HtmlTree htmlTree = HtmlTree.TABLE(HtmlStyle.memberSummary, 0, 3, 0, paramAbstractMemberWriter
-/*  96 */         .getTableSummary(), content);
-/*  97 */     htmlTree.addContent(getSummaryTableHeader(paramAbstractMemberWriter.getSummaryTableHeader((ProgramElementDoc)paramClassDoc), "col"));
-/*  98 */     for (byte b = 0; b < paramList.size(); b++) {
-/*  99 */       htmlTree.addContent(paramList.get(b));
-/*     */     }
-/* 101 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getTableCaption(Set<MethodTypes> paramSet) {
-/* 111 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.CAPTION);
-/* 112 */     for (MethodTypes methodTypes : paramSet) {
-/*     */       HtmlTree htmlTree1;
-/*     */       
-/* 115 */       if (methodTypes.isDefaultTab()) {
-/* 116 */         HtmlTree htmlTree3 = HtmlTree.SPAN(this.configuration.getResource(methodTypes.resourceKey()));
-/* 117 */         htmlTree1 = HtmlTree.SPAN(methodTypes.tabId(), HtmlStyle.activeTableTab, (Content)htmlTree3);
-/*     */       } else {
-/*     */         
-/* 120 */         HtmlTree htmlTree3 = HtmlTree.SPAN(getMethodTypeLinks(methodTypes));
-/* 121 */         htmlTree1 = HtmlTree.SPAN(methodTypes.tabId(), HtmlStyle.tableTab, (Content)htmlTree3);
-/*     */       } 
-/*     */       
-/* 124 */       HtmlTree htmlTree2 = HtmlTree.SPAN(HtmlStyle.tabEnd, getSpace());
-/* 125 */       htmlTree1.addContent((Content)htmlTree2);
-/* 126 */       htmlTree.addContent((Content)htmlTree1);
-/*     */     } 
-/* 128 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMethodTypeLinks(MethodTypes paramMethodTypes) {
-/* 138 */     String str = "javascript:show(" + paramMethodTypes.value() + ");";
-/* 139 */     return (Content)HtmlTree.A(str, this.configuration.getResource(paramMethodTypes.resourceKey()));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addInheritedSummaryHeader(AbstractMemberWriter paramAbstractMemberWriter, ClassDoc paramClassDoc, Content paramContent) {
-/* 152 */     paramAbstractMemberWriter.addInheritedSummaryAnchor(paramClassDoc, paramContent);
-/* 153 */     paramAbstractMemberWriter.addInheritedSummaryLabel(paramClassDoc, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addIndexComment(Doc paramDoc, Content paramContent) {
-/* 163 */     addIndexComment(paramDoc, paramDoc.firstSentenceTags(), paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addIndexComment(Doc paramDoc, Tag[] paramArrayOfTag, Content paramContent) {
-/* 175 */     Tag[] arrayOfTag = paramDoc.tags("deprecated");
-/*     */     
-/* 177 */     if (Util.isDeprecated(paramDoc)) {
-/* 178 */       HtmlTree htmlTree2 = HtmlTree.SPAN(HtmlStyle.deprecatedLabel, this.deprecatedPhrase);
-/* 179 */       HtmlTree htmlTree1 = HtmlTree.DIV(HtmlStyle.block, (Content)htmlTree2);
-/* 180 */       htmlTree1.addContent(getSpace());
-/* 181 */       if (arrayOfTag.length > 0) {
-/* 182 */         addInlineDeprecatedComment(paramDoc, arrayOfTag[0], (Content)htmlTree1);
-/*     */       }
-/* 184 */       paramContent.addContent((Content)htmlTree1);
-/*     */       return;
-/*     */     } 
-/* 187 */     ClassDoc classDoc = ((ProgramElementDoc)paramDoc).containingClass();
-/* 188 */     if (classDoc != null && Util.isDeprecated((Doc)classDoc)) {
-/* 189 */       HtmlTree htmlTree2 = HtmlTree.SPAN(HtmlStyle.deprecatedLabel, this.deprecatedPhrase);
-/* 190 */       HtmlTree htmlTree1 = HtmlTree.DIV(HtmlStyle.block, (Content)htmlTree2);
-/* 191 */       htmlTree1.addContent(getSpace());
-/* 192 */       paramContent.addContent((Content)htmlTree1);
-/*     */     } 
-/*     */     
-/* 195 */     addSummaryComment(paramDoc, paramArrayOfTag, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryType(AbstractMemberWriter paramAbstractMemberWriter, ProgramElementDoc paramProgramElementDoc, Content paramContent) {
-/* 207 */     paramAbstractMemberWriter.addSummaryType(paramProgramElementDoc, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryLinkComment(AbstractMemberWriter paramAbstractMemberWriter, ProgramElementDoc paramProgramElementDoc, Content paramContent) {
-/* 219 */     addSummaryLinkComment(paramAbstractMemberWriter, paramProgramElementDoc, paramProgramElementDoc.firstSentenceTags(), paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryLinkComment(AbstractMemberWriter paramAbstractMemberWriter, ProgramElementDoc paramProgramElementDoc, Tag[] paramArrayOfTag, Content paramContent) {
-/* 232 */     addIndexComment((Doc)paramProgramElementDoc, paramArrayOfTag, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addInheritedMemberSummary(AbstractMemberWriter paramAbstractMemberWriter, ClassDoc paramClassDoc, ProgramElementDoc paramProgramElementDoc, boolean paramBoolean, Content paramContent) {
-/* 246 */     if (!paramBoolean) {
-/* 247 */       paramContent.addContent(", ");
-/*     */     }
-/* 249 */     paramAbstractMemberWriter.addInheritedSummaryLink(paramClassDoc, paramProgramElementDoc, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getContentHeader() {
-/* 258 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.DIV);
-/* 259 */     htmlTree.addStyle(HtmlStyle.contentContainer);
-/* 260 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMemberTreeHeader() {
-/* 269 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.LI);
-/* 270 */     htmlTree.addStyle(HtmlStyle.blockList);
-/* 271 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMemberTree(Content paramContent) {
-/* 281 */     return (Content)HtmlTree.UL(HtmlStyle.blockList, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMemberSummaryTree(Content paramContent) {
-/* 292 */     return getMemberTree(HtmlStyle.summary, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMemberDetailsTree(Content paramContent) {
-/* 302 */     return getMemberTree(HtmlStyle.details, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMemberTree(HtmlStyle paramHtmlStyle, Content paramContent) {
-/* 312 */     return (Content)HtmlTree.DIV(paramHtmlStyle, getMemberTree(paramContent));
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\SubWriterHolderWriter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+import java.util.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * This abstract class exists to provide functionality needed in the
+ * the formatting of member information.  Since AbstractSubWriter and its
+ * subclasses control this, they would be the logical place to put this.
+ * However, because each member type has its own subclass, subclassing
+ * can not be used effectively to change formatting.  The concrete
+ * class subclass of this class can be subclassed to change formatting.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @see AbstractMemberWriter
+ * @see ClassWriterImpl
+ *
+ * @author Robert Field
+ * @author Atul M Dambalkar
+ * @author Bhavesh Patel (Modified)
+ */
+public abstract class SubWriterHolderWriter extends HtmlDocletWriter {
+
+    public SubWriterHolderWriter(ConfigurationImpl configuration, DocPath filename)
+            throws IOException {
+        super(configuration, filename);
+    }
+
+    /**
+     * Add the summary header.
+     *
+     * @param mw the writer for the member being documented
+     * @param cd the classdoc to be documented
+     * @param memberTree the content tree to which the summary header will be added
+     */
+    public void addSummaryHeader(AbstractMemberWriter mw, ClassDoc cd,
+            Content memberTree) {
+        mw.addSummaryAnchor(cd, memberTree);
+        mw.addSummaryLabel(memberTree);
+    }
+
+    /**
+     * Get the summary table.
+     *
+     * @param mw the writer for the member being documented
+     * @param cd the classdoc to be documented
+     * @param tableContents list of summary table contents
+     * @param showTabs true if the table needs to show tabs
+     * @return the content tree for the summary table
+     */
+    public Content getSummaryTableTree(AbstractMemberWriter mw, ClassDoc cd,
+            List<Content> tableContents, boolean showTabs) {
+        Content caption;
+        if (showTabs) {
+            caption = getTableCaption(mw.methodTypes);
+            generateMethodTypesScript(mw.typeMap, mw.methodTypes);
+        }
+        else {
+            caption = getTableCaption(mw.getCaption());
+        }
+        Content table = HtmlTree.TABLE(HtmlStyle.memberSummary, 0, 3, 0,
+                mw.getTableSummary(), caption);
+        table.addContent(getSummaryTableHeader(mw.getSummaryTableHeader(cd), "col"));
+        for (int i = 0; i < tableContents.size(); i++) {
+            table.addContent(tableContents.get(i));
+        }
+        return table;
+    }
+
+    /**
+     * Get the summary table caption.
+     *
+     * @param methodTypes set comprising of method types to show as table caption
+     * @return the caption for the summary table
+     */
+    public Content getTableCaption(Set<MethodTypes> methodTypes) {
+        Content tabbedCaption = new HtmlTree(HtmlTag.CAPTION);
+        for (MethodTypes type : methodTypes) {
+            Content captionSpan;
+            Content span;
+            if (type.isDefaultTab()) {
+                captionSpan = HtmlTree.SPAN(configuration.getResource(type.resourceKey()));
+                span = HtmlTree.SPAN(type.tabId(),
+                        HtmlStyle.activeTableTab, captionSpan);
+            } else {
+                captionSpan = HtmlTree.SPAN(getMethodTypeLinks(type));
+                span = HtmlTree.SPAN(type.tabId(),
+                        HtmlStyle.tableTab, captionSpan);
+            }
+            Content tabSpan = HtmlTree.SPAN(HtmlStyle.tabEnd, getSpace());
+            span.addContent(tabSpan);
+            tabbedCaption.addContent(span);
+        }
+        return tabbedCaption;
+    }
+
+    /**
+     * Get the method type links for the table caption.
+     *
+     * @param methodType the method type to be displayed as link
+     * @return the content tree for the method type link
+     */
+    public Content getMethodTypeLinks(MethodTypes methodType) {
+        String jsShow = "javascript:show(" + methodType.value() +");";
+        HtmlTree link = HtmlTree.A(jsShow, configuration.getResource(methodType.resourceKey()));
+        return link;
+    }
+
+    /**
+     * Add the inherited summary header.
+     *
+     * @param mw the writer for the member being documented
+     * @param cd the classdoc to be documented
+     * @param inheritedTree the content tree to which the inherited summary header will be added
+     */
+    public void addInheritedSummaryHeader(AbstractMemberWriter mw, ClassDoc cd,
+            Content inheritedTree) {
+        mw.addInheritedSummaryAnchor(cd, inheritedTree);
+        mw.addInheritedSummaryLabel(cd, inheritedTree);
+    }
+
+    /**
+     * Add the index comment.
+     *
+     * @param member the member being documented
+     * @param contentTree the content tree to which the comment will be added
+     */
+    protected void addIndexComment(Doc member, Content contentTree) {
+        addIndexComment(member, member.firstSentenceTags(), contentTree);
+    }
+
+    /**
+     * Add the index comment.
+     *
+     * @param member the member being documented
+     * @param firstSentenceTags the first sentence tags for the member to be documented
+     * @param tdSummary the content tree to which the comment will be added
+     */
+    protected void addIndexComment(Doc member, Tag[] firstSentenceTags,
+            Content tdSummary) {
+        Tag[] deprs = member.tags("deprecated");
+        Content div;
+        if (Util.isDeprecated((ProgramElementDoc) member)) {
+            Content deprLabel = HtmlTree.SPAN(HtmlStyle.deprecatedLabel, deprecatedPhrase);
+            div = HtmlTree.DIV(HtmlStyle.block, deprLabel);
+            div.addContent(getSpace());
+            if (deprs.length > 0) {
+                addInlineDeprecatedComment(member, deprs[0], div);
+            }
+            tdSummary.addContent(div);
+            return;
+        } else {
+            ClassDoc cd = ((ProgramElementDoc)member).containingClass();
+            if (cd != null && Util.isDeprecated(cd)) {
+                Content deprLabel = HtmlTree.SPAN(HtmlStyle.deprecatedLabel, deprecatedPhrase);
+                div = HtmlTree.DIV(HtmlStyle.block, deprLabel);
+                div.addContent(getSpace());
+                tdSummary.addContent(div);
+            }
+        }
+        addSummaryComment(member, firstSentenceTags, tdSummary);
+    }
+
+    /**
+     * Add the summary type for the member.
+     *
+     * @param mw the writer for the member being documented
+     * @param member the member to be documented
+     * @param tdSummaryType the content tree to which the type will be added
+     */
+    public void addSummaryType(AbstractMemberWriter mw, ProgramElementDoc member,
+            Content tdSummaryType) {
+        mw.addSummaryType(member, tdSummaryType);
+    }
+
+    /**
+     * Add the summary link for the member.
+     *
+     * @param mw the writer for the member being documented
+     * @param member the member to be documented
+     * @param contentTree the content tree to which the link will be added
+     */
+    public void addSummaryLinkComment(AbstractMemberWriter mw,
+            ProgramElementDoc member, Content contentTree) {
+        addSummaryLinkComment(mw, member, member.firstSentenceTags(), contentTree);
+    }
+
+    /**
+     * Add the summary link comment.
+     *
+     * @param mw the writer for the member being documented
+     * @param member the member being documented
+     * @param firstSentenceTags the first sentence tags for the member to be documented
+     * @param tdSummary the content tree to which the comment will be added
+     */
+    public void addSummaryLinkComment(AbstractMemberWriter mw,
+            ProgramElementDoc member, Tag[] firstSentenceTags, Content tdSummary) {
+        addIndexComment(member, firstSentenceTags, tdSummary);
+    }
+
+    /**
+     * Add the inherited member summary.
+     *
+     * @param mw the writer for the member being documented
+     * @param cd the class being documented
+     * @param member the member being documented
+     * @param isFirst true if its the first link being documented
+     * @param linksTree the content tree to which the summary will be added
+     */
+    public void addInheritedMemberSummary(AbstractMemberWriter mw, ClassDoc cd,
+            ProgramElementDoc member, boolean isFirst, Content linksTree) {
+        if (! isFirst) {
+            linksTree.addContent(", ");
+        }
+        mw.addInheritedSummaryLink(cd, member, linksTree);
+    }
+
+    /**
+     * Get the document content header tree
+     *
+     * @return a content tree the document content header
+     */
+    public Content getContentHeader() {
+        HtmlTree div = new HtmlTree(HtmlTag.DIV);
+        div.addStyle(HtmlStyle.contentContainer);
+        return div;
+    }
+
+    /**
+     * Get the member header tree
+     *
+     * @return a content tree the member header
+     */
+    public Content getMemberTreeHeader() {
+        HtmlTree li = new HtmlTree(HtmlTag.LI);
+        li.addStyle(HtmlStyle.blockList);
+        return li;
+    }
+
+    /**
+     * Get the member tree
+     *
+     * @param contentTree the tree used to generate the complete member tree
+     * @return a content tree for the member
+     */
+    public Content getMemberTree(Content contentTree) {
+        Content ul = HtmlTree.UL(HtmlStyle.blockList, contentTree);
+        return ul;
+    }
+
+    /**
+     * Get the member summary tree
+     *
+     * @param contentTree the tree used to generate the member summary tree
+     * @return a content tree for the member summary
+     */
+    public Content getMemberSummaryTree(Content contentTree) {
+        return getMemberTree(HtmlStyle.summary, contentTree);
+    }
+
+    /**
+     * Get the member details tree
+     *
+     * @param contentTree the tree used to generate the member details tree
+     * @return a content tree for the member details
+     */
+    public Content getMemberDetailsTree(Content contentTree) {
+        return getMemberTree(HtmlStyle.details, contentTree);
+    }
+
+    /**
+     * Get the member tree
+     *
+     * @param style the style class to be added to the content tree
+     * @param contentTree the tree used to generate the complete member tree
+     */
+    public Content getMemberTree(HtmlStyle style, Content contentTree) {
+        Content div = HtmlTree.DIV(style, getMemberTree(contentTree));
+        return div;
+    }
+}

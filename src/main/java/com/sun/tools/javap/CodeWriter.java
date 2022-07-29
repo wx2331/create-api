@@ -1,282 +1,287 @@
-/*     */ package com.sun.tools.javap;
-/*     */ 
-/*     */ import com.sun.tools.classfile.Code_attribute;
-/*     */ import com.sun.tools.classfile.ConstantPool;
-/*     */ import com.sun.tools.classfile.ConstantPoolException;
-/*     */ import com.sun.tools.classfile.DescriptorException;
-/*     */ import com.sun.tools.classfile.Instruction;
-/*     */ import com.sun.tools.classfile.Method;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.List;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class CodeWriter
-/*     */   extends BasicWriter
-/*     */ {
-/*     */   Instruction.KindVisitor<Void, Integer> instructionPrinter;
-/*     */   private AttributeWriter attrWriter;
-/*     */   private ClassWriter classWriter;
-/*     */   private ConstantWriter constantWriter;
-/*     */   private LocalVariableTableWriter localVariableTableWriter;
-/*     */   private LocalVariableTypeTableWriter localVariableTypeTableWriter;
-/*     */   private TypeAnnotationWriter typeAnnotationWriter;
-/*     */   private SourceWriter sourceWriter;
-/*     */   private StackMapWriter stackMapWriter;
-/*     */   private TryBlockWriter tryBlockWriter;
-/*     */   private Options options;
-/*     */   
-/*     */   public static CodeWriter instance(Context paramContext) {
-/*  50 */     CodeWriter codeWriter = paramContext.<CodeWriter>get(CodeWriter.class);
-/*  51 */     if (codeWriter == null)
-/*  52 */       codeWriter = new CodeWriter(paramContext); 
-/*  53 */     return codeWriter;
-/*     */   }
-/*     */   
-/*     */   protected CodeWriter(Context paramContext) {
-/*  57 */     super(paramContext);
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */     
-/* 130 */     this.instructionPrinter = new Instruction.KindVisitor<Void, Integer>()
-/*     */       {
-/*     */         public Void visitNoOperands(Instruction param1Instruction, Integer param1Integer)
-/*     */         {
-/* 134 */           return null;
-/*     */         }
-/*     */         
-/*     */         public Void visitArrayType(Instruction param1Instruction, Instruction.TypeKind param1TypeKind, Integer param1Integer) {
-/* 138 */           CodeWriter.this.print(" " + param1TypeKind.name);
-/* 139 */           return null;
-/*     */         }
-/*     */         
-/*     */         public Void visitBranch(Instruction param1Instruction, int param1Int, Integer param1Integer) {
-/* 143 */           CodeWriter.this.print(Integer.valueOf(param1Instruction.getPC() + param1Int));
-/* 144 */           return null;
-/*     */         }
-/*     */         
-/*     */         public Void visitConstantPoolRef(Instruction param1Instruction, int param1Int, Integer param1Integer) {
-/* 148 */           CodeWriter.this.print("#" + param1Int);
-/* 149 */           CodeWriter.this.tab();
-/* 150 */           CodeWriter.this.print("// ");
-/* 151 */           CodeWriter.this.printConstant(param1Int);
-/* 152 */           return null;
-/*     */         }
-/*     */         
-/*     */         public Void visitConstantPoolRefAndValue(Instruction param1Instruction, int param1Int1, int param1Int2, Integer param1Integer) {
-/* 156 */           CodeWriter.this.print("#" + param1Int1 + ",  " + param1Int2);
-/* 157 */           CodeWriter.this.tab();
-/* 158 */           CodeWriter.this.print("// ");
-/* 159 */           CodeWriter.this.printConstant(param1Int1);
-/* 160 */           return null;
-/*     */         }
-/*     */         
-/*     */         public Void visitLocal(Instruction param1Instruction, int param1Int, Integer param1Integer) {
-/* 164 */           CodeWriter.this.print(Integer.valueOf(param1Int));
-/* 165 */           return null;
-/*     */         }
-/*     */         
-/*     */         public Void visitLocalAndValue(Instruction param1Instruction, int param1Int1, int param1Int2, Integer param1Integer) {
-/* 169 */           CodeWriter.this.print(param1Int1 + ", " + param1Int2);
-/* 170 */           return null;
-/*     */         }
-/*     */ 
-/*     */         
-/*     */         public Void visitLookupSwitch(Instruction param1Instruction, int param1Int1, int param1Int2, int[] param1ArrayOfint1, int[] param1ArrayOfint2, Integer param1Integer) {
-/* 175 */           int i = param1Instruction.getPC();
-/* 176 */           CodeWriter.this.print("{ // " + param1Int2);
-/* 177 */           CodeWriter.this.indent(param1Integer.intValue());
-/* 178 */           for (byte b = 0; b < param1Int2; b++) {
-/* 179 */             CodeWriter.this.print(String.format("%n%12d: %d", new Object[] { Integer.valueOf(param1ArrayOfint1[b]), Integer.valueOf(i + param1ArrayOfint2[b]) }));
-/*     */           } 
-/* 181 */           CodeWriter.this.print("\n     default: " + (i + param1Int1) + "\n}");
-/* 182 */           CodeWriter.this.indent(-param1Integer.intValue());
-/* 183 */           return null;
-/*     */         }
-/*     */ 
-/*     */         
-/*     */         public Void visitTableSwitch(Instruction param1Instruction, int param1Int1, int param1Int2, int param1Int3, int[] param1ArrayOfint, Integer param1Integer) {
-/* 188 */           int i = param1Instruction.getPC();
-/* 189 */           CodeWriter.this.print("{ // " + param1Int2 + " to " + param1Int3);
-/* 190 */           CodeWriter.this.indent(param1Integer.intValue());
-/* 191 */           for (byte b = 0; b < param1ArrayOfint.length; b++) {
-/* 192 */             CodeWriter.this.print(String.format("%n%12d: %d", new Object[] { Integer.valueOf(param1Int2 + b), Integer.valueOf(i + param1ArrayOfint[b]) }));
-/*     */           } 
-/* 194 */           CodeWriter.this.print("\n     default: " + (i + param1Int1) + "\n}");
-/* 195 */           CodeWriter.this.indent(-param1Integer.intValue());
-/* 196 */           return null;
-/*     */         }
-/*     */         
-/*     */         public Void visitValue(Instruction param1Instruction, int param1Int, Integer param1Integer) {
-/* 200 */           CodeWriter.this.print(Integer.valueOf(param1Int));
-/* 201 */           return null;
-/*     */         }
-/*     */         
-/*     */         public Void visitUnknown(Instruction param1Instruction, Integer param1Integer) {
-/* 205 */           return null; } }; paramContext.put(CodeWriter.class, this); this.attrWriter = AttributeWriter.instance(paramContext); this.classWriter = ClassWriter.instance(paramContext); this.constantWriter = ConstantWriter.instance(paramContext); this.sourceWriter = SourceWriter.instance(paramContext); this.tryBlockWriter = TryBlockWriter.instance(paramContext); this.stackMapWriter = StackMapWriter.instance(paramContext); this.localVariableTableWriter = LocalVariableTableWriter.instance(paramContext); this.localVariableTypeTableWriter = LocalVariableTypeTableWriter.instance(paramContext); this.typeAnnotationWriter = TypeAnnotationWriter.instance(paramContext); this.options = Options.instance(paramContext);
-/*     */   } void write(Code_attribute paramCode_attribute, ConstantPool paramConstantPool) { println("Code:"); indent(1);
-/*     */     writeVerboseHeader(paramCode_attribute, paramConstantPool);
-/*     */     writeInstrs(paramCode_attribute);
-/*     */     writeExceptionTable(paramCode_attribute);
-/*     */     this.attrWriter.write(paramCode_attribute, paramCode_attribute.attributes, paramConstantPool);
-/* 211 */     indent(-1); } public void writeExceptionTable(Code_attribute paramCode_attribute) { if (paramCode_attribute.exception_table_length > 0)
-/* 212 */     { println("Exception table:");
-/* 213 */       indent(1);
-/* 214 */       println(" from    to  target type");
-/* 215 */       for (byte b = 0; b < paramCode_attribute.exception_table.length; b++) {
-/* 216 */         Code_attribute.Exception_data exception_data = paramCode_attribute.exception_table[b];
-/* 217 */         print(String.format(" %5d %5d %5d", new Object[] {
-/* 218 */                 Integer.valueOf(exception_data.start_pc), Integer.valueOf(exception_data.end_pc), Integer.valueOf(exception_data.handler_pc) }));
-/* 219 */         print("   ");
-/* 220 */         int i = exception_data.catch_type;
-/* 221 */         if (i == 0) {
-/* 222 */           println("any");
-/*     */         } else {
-/* 224 */           print("Class ");
-/* 225 */           println(this.constantWriter.stringValue(i));
-/*     */         } 
-/*     */       } 
-/* 228 */       indent(-1); }  }
-/*     */   public void writeVerboseHeader(Code_attribute paramCode_attribute, ConstantPool paramConstantPool) { String str; Method method = this.classWriter.getMethod(); try { int i = method.descriptor.getParameterCount(paramConstantPool); if (!method.access_flags.is(8))
-/*     */         i++;  str = Integer.toString(i); } catch (ConstantPoolException constantPoolException) { str = report(constantPoolException); } catch (DescriptorException descriptorException) { str = report(descriptorException); }  println("stack=" + paramCode_attribute.max_stack + ", locals=" + paramCode_attribute.max_locals + ", args_size=" + str); }
-/*     */   public void writeInstrs(Code_attribute paramCode_attribute) { List<InstructionDetailWriter> list = getDetailWriters(paramCode_attribute); for (Instruction instruction : paramCode_attribute.getInstructions()) { try { for (InstructionDetailWriter instructionDetailWriter : list)
-/*     */           instructionDetailWriter.writeDetails(instruction);  writeInstr(instruction); } catch (ArrayIndexOutOfBoundsException arrayIndexOutOfBoundsException) { println(report("error at or after byte " + instruction.getPC())); break; }  }  for (InstructionDetailWriter instructionDetailWriter : list)
-/*     */       instructionDetailWriter.flush();  }
-/* 234 */   public void writeInstr(Instruction paramInstruction) { print(String.format("%4d: %-13s ", new Object[] { Integer.valueOf(paramInstruction.getPC()), paramInstruction.getMnemonic() })); int i = this.options.indentWidth; int j = (6 + i - 1) / i; paramInstruction.accept(this.instructionPrinter, Integer.valueOf(j)); println(); } private void printConstant(int paramInt) { this.constantWriter.write(paramInt); }
-/*     */ 
-/*     */   
-/*     */   private List<InstructionDetailWriter> getDetailWriters(Code_attribute paramCode_attribute) {
-/* 238 */     ArrayList<SourceWriter> arrayList = new ArrayList();
-/*     */     
-/* 240 */     if (this.options.details.contains(InstructionDetailWriter.Kind.SOURCE)) {
-/* 241 */       this.sourceWriter.reset(this.classWriter.getClassFile(), paramCode_attribute);
-/* 242 */       if (this.sourceWriter.hasSource()) {
-/* 243 */         arrayList.add(this.sourceWriter);
-/*     */       } else {
-/* 245 */         println("(Source code not available)");
-/*     */       } 
-/*     */     } 
-/* 248 */     if (this.options.details.contains(InstructionDetailWriter.Kind.LOCAL_VARS)) {
-/* 249 */       this.localVariableTableWriter.reset(paramCode_attribute);
-/* 250 */       arrayList.add(this.localVariableTableWriter);
-/*     */     } 
-/*     */     
-/* 253 */     if (this.options.details.contains(InstructionDetailWriter.Kind.LOCAL_VAR_TYPES)) {
-/* 254 */       this.localVariableTypeTableWriter.reset(paramCode_attribute);
-/* 255 */       arrayList.add(this.localVariableTypeTableWriter);
-/*     */     } 
-/*     */     
-/* 258 */     if (this.options.details.contains(InstructionDetailWriter.Kind.STACKMAPS)) {
-/* 259 */       this.stackMapWriter.reset(paramCode_attribute);
-/* 260 */       this.stackMapWriter.writeInitialDetails();
-/* 261 */       arrayList.add(this.stackMapWriter);
-/*     */     } 
-/*     */     
-/* 264 */     if (this.options.details.contains(InstructionDetailWriter.Kind.TRY_BLOCKS)) {
-/* 265 */       this.tryBlockWriter.reset(paramCode_attribute);
-/* 266 */       arrayList.add(this.tryBlockWriter);
-/*     */     } 
-/*     */     
-/* 269 */     if (this.options.details.contains(InstructionDetailWriter.Kind.TYPE_ANNOS)) {
-/* 270 */       this.typeAnnotationWriter.reset(paramCode_attribute);
-/* 271 */       arrayList.add(this.typeAnnotationWriter);
-/*     */     } 
-/*     */     
-/* 274 */     return (List)arrayList;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javap\CodeWriter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2007, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javap;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import com.sun.tools.classfile.AccessFlags;
+import com.sun.tools.classfile.Code_attribute;
+import com.sun.tools.classfile.ConstantPool;
+import com.sun.tools.classfile.ConstantPoolException;
+import com.sun.tools.classfile.DescriptorException;
+import com.sun.tools.classfile.Instruction;
+import com.sun.tools.classfile.Instruction.TypeKind;
+import com.sun.tools.classfile.Method;
+
+/*
+ *  Write the contents of a Code attribute.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class CodeWriter extends BasicWriter {
+    public static CodeWriter instance(Context context) {
+        CodeWriter instance = context.get(CodeWriter.class);
+        if (instance == null)
+            instance = new CodeWriter(context);
+        return instance;
+    }
+
+    protected CodeWriter(Context context) {
+        super(context);
+        context.put(CodeWriter.class, this);
+        attrWriter = AttributeWriter.instance(context);
+        classWriter = ClassWriter.instance(context);
+        constantWriter = ConstantWriter.instance(context);
+        sourceWriter = SourceWriter.instance(context);
+        tryBlockWriter = TryBlockWriter.instance(context);
+        stackMapWriter = StackMapWriter.instance(context);
+        localVariableTableWriter = LocalVariableTableWriter.instance(context);
+        localVariableTypeTableWriter = LocalVariableTypeTableWriter.instance(context);
+        typeAnnotationWriter = TypeAnnotationWriter.instance(context);
+        options = Options.instance(context);
+    }
+
+    void write(Code_attribute attr, ConstantPool constant_pool) {
+        println("Code:");
+        indent(+1);
+        writeVerboseHeader(attr, constant_pool);
+        writeInstrs(attr);
+        writeExceptionTable(attr);
+        attrWriter.write(attr, attr.attributes, constant_pool);
+        indent(-1);
+    }
+
+    public void writeVerboseHeader(Code_attribute attr, ConstantPool constant_pool) {
+        Method method = classWriter.getMethod();
+        String argCount;
+        try {
+            int n = method.descriptor.getParameterCount(constant_pool);
+            if (!method.access_flags.is(AccessFlags.ACC_STATIC))
+                ++n;  // for 'this'
+            argCount = Integer.toString(n);
+        } catch (ConstantPoolException e) {
+            argCount = report(e);
+        } catch (DescriptorException e) {
+            argCount = report(e);
+        }
+
+        println("stack=" + attr.max_stack +
+                ", locals=" + attr.max_locals +
+                ", args_size=" + argCount);
+
+    }
+
+    public void writeInstrs(Code_attribute attr) {
+        List<InstructionDetailWriter> detailWriters = getDetailWriters(attr);
+
+        for (Instruction instr: attr.getInstructions()) {
+            try {
+                for (InstructionDetailWriter w: detailWriters)
+                    w.writeDetails(instr);
+                writeInstr(instr);
+            } catch (ArrayIndexOutOfBoundsException e) {
+                println(report("error at or after byte " + instr.getPC()));
+                break;
+            }
+        }
+
+        for (InstructionDetailWriter w: detailWriters)
+            w.flush();
+    }
+
+    public void writeInstr(Instruction instr) {
+        print(String.format("%4d: %-13s ", instr.getPC(), instr.getMnemonic()));
+        // compute the number of indentations for the body of multi-line instructions
+        // This is 6 (the width of "%4d: "), divided by the width of each indentation level,
+        // and rounded up to the next integer.
+        int indentWidth = options.indentWidth;
+        int indent = (6 + indentWidth - 1) / indentWidth;
+        instr.accept(instructionPrinter, indent);
+        println();
+    }
+    // where
+    Instruction.KindVisitor<Void,Integer> instructionPrinter =
+            new Instruction.KindVisitor<Void,Integer>() {
+
+        public Void visitNoOperands(Instruction instr, Integer indent) {
+            return null;
+        }
+
+        public Void visitArrayType(Instruction instr, TypeKind kind, Integer indent) {
+            print(" " + kind.name);
+            return null;
+        }
+
+        public Void visitBranch(Instruction instr, int offset, Integer indent) {
+            print((instr.getPC() + offset));
+            return null;
+        }
+
+        public Void visitConstantPoolRef(Instruction instr, int index, Integer indent) {
+            print("#" + index);
+            tab();
+            print("// ");
+            printConstant(index);
+            return null;
+        }
+
+        public Void visitConstantPoolRefAndValue(Instruction instr, int index, int value, Integer indent) {
+            print("#" + index + ",  " + value);
+            tab();
+            print("// ");
+            printConstant(index);
+            return null;
+        }
+
+        public Void visitLocal(Instruction instr, int index, Integer indent) {
+            print(index);
+            return null;
+        }
+
+        public Void visitLocalAndValue(Instruction instr, int index, int value, Integer indent) {
+            print(index + ", " + value);
+            return null;
+        }
+
+        public Void visitLookupSwitch(Instruction instr,
+                int default_, int npairs, int[] matches, int[] offsets, Integer indent) {
+            int pc = instr.getPC();
+            print("{ // " + npairs);
+            indent(indent);
+            for (int i = 0; i < npairs; i++) {
+                print(String.format("%n%12d: %d", matches[i], (pc + offsets[i])));
+            }
+            print("\n     default: " + (pc + default_) + "\n}");
+            indent(-indent);
+            return null;
+        }
+
+        public Void visitTableSwitch(Instruction instr,
+                int default_, int low, int high, int[] offsets, Integer indent) {
+            int pc = instr.getPC();
+            print("{ // " + low + " to " + high);
+            indent(indent);
+            for (int i = 0; i < offsets.length; i++) {
+                print(String.format("%n%12d: %d", (low + i), (pc + offsets[i])));
+            }
+            print("\n     default: " + (pc + default_) + "\n}");
+            indent(-indent);
+            return null;
+        }
+
+        public Void visitValue(Instruction instr, int value, Integer indent) {
+            print(value);
+            return null;
+        }
+
+        public Void visitUnknown(Instruction instr, Integer indent) {
+            return null;
+        }
+    };
+
+
+    public void writeExceptionTable(Code_attribute attr) {
+        if (attr.exception_table_length > 0) {
+            println("Exception table:");
+            indent(+1);
+            println(" from    to  target type");
+            for (int i = 0; i < attr.exception_table.length; i++) {
+                Code_attribute.Exception_data handler = attr.exception_table[i];
+                print(String.format(" %5d %5d %5d",
+                        handler.start_pc, handler.end_pc, handler.handler_pc));
+                print("   ");
+                int catch_type = handler.catch_type;
+                if (catch_type == 0) {
+                    println("any");
+                } else {
+                    print("Class ");
+                    println(constantWriter.stringValue(catch_type));
+                }
+            }
+            indent(-1);
+        }
+
+    }
+
+    private void printConstant(int index) {
+        constantWriter.write(index);
+    }
+
+    private List<InstructionDetailWriter> getDetailWriters(Code_attribute attr) {
+        List<InstructionDetailWriter> detailWriters =
+                new ArrayList<InstructionDetailWriter>();
+        if (options.details.contains(InstructionDetailWriter.Kind.SOURCE)) {
+            sourceWriter.reset(classWriter.getClassFile(), attr);
+            if (sourceWriter.hasSource())
+                detailWriters.add(sourceWriter);
+            else
+                println("(Source code not available)");
+        }
+
+        if (options.details.contains(InstructionDetailWriter.Kind.LOCAL_VARS)) {
+            localVariableTableWriter.reset(attr);
+            detailWriters.add(localVariableTableWriter);
+        }
+
+        if (options.details.contains(InstructionDetailWriter.Kind.LOCAL_VAR_TYPES)) {
+            localVariableTypeTableWriter.reset(attr);
+            detailWriters.add(localVariableTypeTableWriter);
+        }
+
+        if (options.details.contains(InstructionDetailWriter.Kind.STACKMAPS)) {
+            stackMapWriter.reset(attr);
+            stackMapWriter.writeInitialDetails();
+            detailWriters.add(stackMapWriter);
+        }
+
+        if (options.details.contains(InstructionDetailWriter.Kind.TRY_BLOCKS)) {
+            tryBlockWriter.reset(attr);
+            detailWriters.add(tryBlockWriter);
+        }
+
+        if (options.details.contains(InstructionDetailWriter.Kind.TYPE_ANNOS)) {
+            typeAnnotationWriter.reset(attr);
+            detailWriters.add(typeAnnotationWriter);
+        }
+
+        return detailWriters;
+    }
+
+    private AttributeWriter attrWriter;
+    private ClassWriter classWriter;
+    private ConstantWriter constantWriter;
+    private LocalVariableTableWriter localVariableTableWriter;
+    private LocalVariableTypeTableWriter localVariableTypeTableWriter;
+    private TypeAnnotationWriter typeAnnotationWriter;
+    private SourceWriter sourceWriter;
+    private StackMapWriter stackMapWriter;
+    private TryBlockWriter tryBlockWriter;
+    private Options options;
+}

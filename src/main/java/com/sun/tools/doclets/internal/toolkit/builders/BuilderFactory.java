@@ -1,309 +1,303 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.builders;
-/*     */ 
-/*     */ import com.sun.javadoc.AnnotationTypeDoc;
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.javadoc.Type;
-/*     */ import com.sun.tools.doclets.internal.toolkit.AnnotationTypeWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.ClassWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import com.sun.tools.doclets.internal.toolkit.PropertyWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.WriterFactory;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.ClassTree;
-/*     */ import com.sun.tools.javac.jvm.Profile;
-/*     */ import java.util.HashSet;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class BuilderFactory
-/*     */ {
-/*     */   private final Configuration configuration;
-/*     */   private final WriterFactory writerFactory;
-/*     */   private final AbstractBuilder.Context context;
-/*     */   
-/*     */   public BuilderFactory(Configuration paramConfiguration) {
-/*  68 */     this.configuration = paramConfiguration;
-/*  69 */     this.writerFactory = paramConfiguration.getWriterFactory();
-/*     */     
-/*  71 */     HashSet<String> hashSet = new HashSet();
-/*  72 */     this
-/*  73 */       .context = new AbstractBuilder.Context(paramConfiguration, hashSet, LayoutParser.getInstance(paramConfiguration));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getConstantsSummaryBuider() throws Exception {
-/*  81 */     return ConstantsSummaryBuilder.getInstance(this.context, this.writerFactory
-/*  82 */         .getConstantsSummaryWriter());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getPackageSummaryBuilder(PackageDoc paramPackageDoc1, PackageDoc paramPackageDoc2, PackageDoc paramPackageDoc3) throws Exception {
-/*  95 */     return PackageSummaryBuilder.getInstance(this.context, paramPackageDoc1, this.writerFactory
-/*  96 */         .getPackageSummaryWriter(paramPackageDoc1, paramPackageDoc2, paramPackageDoc3));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getProfileSummaryBuilder(Profile paramProfile1, Profile paramProfile2, Profile paramProfile3) throws Exception {
-/* 109 */     return ProfileSummaryBuilder.getInstance(this.context, paramProfile1, this.writerFactory
-/* 110 */         .getProfileSummaryWriter(paramProfile1, paramProfile2, paramProfile3));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getProfilePackageSummaryBuilder(PackageDoc paramPackageDoc1, PackageDoc paramPackageDoc2, PackageDoc paramPackageDoc3, Profile paramProfile) throws Exception {
-/* 124 */     return ProfilePackageSummaryBuilder.getInstance(this.context, paramPackageDoc1, this.writerFactory
-/* 125 */         .getProfilePackageSummaryWriter(paramPackageDoc1, paramPackageDoc2, paramPackageDoc3, paramProfile), paramProfile);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getClassBuilder(ClassDoc paramClassDoc1, ClassDoc paramClassDoc2, ClassDoc paramClassDoc3, ClassTree paramClassTree) throws Exception {
-/* 142 */     return ClassBuilder.getInstance(this.context, paramClassDoc1, this.writerFactory
-/* 143 */         .getClassWriter(paramClassDoc1, paramClassDoc2, paramClassDoc3, paramClassTree));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getAnnotationTypeBuilder(AnnotationTypeDoc paramAnnotationTypeDoc, Type paramType1, Type paramType2) throws Exception {
-/* 160 */     return AnnotationTypeBuilder.getInstance(this.context, paramAnnotationTypeDoc, this.writerFactory
-/* 161 */         .getAnnotationTypeWriter(paramAnnotationTypeDoc, paramType1, paramType2));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getMethodBuilder(ClassWriter paramClassWriter) throws Exception {
-/* 171 */     return MethodBuilder.getInstance(this.context, paramClassWriter
-/* 172 */         .getClassDoc(), this.writerFactory
-/* 173 */         .getMethodWriter(paramClassWriter));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getAnnotationTypeFieldsBuilder(AnnotationTypeWriter paramAnnotationTypeWriter) throws Exception {
-/* 186 */     return AnnotationTypeFieldBuilder.getInstance(this.context, (ClassDoc)paramAnnotationTypeWriter
-/* 187 */         .getAnnotationTypeDoc(), this.writerFactory
-/* 188 */         .getAnnotationTypeFieldWriter(paramAnnotationTypeWriter));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getAnnotationTypeOptionalMemberBuilder(AnnotationTypeWriter paramAnnotationTypeWriter) throws Exception {
-/* 202 */     return AnnotationTypeOptionalMemberBuilder.getInstance(this.context, (ClassDoc)paramAnnotationTypeWriter
-/* 203 */         .getAnnotationTypeDoc(), this.writerFactory
-/* 204 */         .getAnnotationTypeOptionalMemberWriter(paramAnnotationTypeWriter));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getAnnotationTypeRequiredMemberBuilder(AnnotationTypeWriter paramAnnotationTypeWriter) throws Exception {
-/* 218 */     return AnnotationTypeRequiredMemberBuilder.getInstance(this.context, (ClassDoc)paramAnnotationTypeWriter
-/* 219 */         .getAnnotationTypeDoc(), this.writerFactory
-/* 220 */         .getAnnotationTypeRequiredMemberWriter(paramAnnotationTypeWriter));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getEnumConstantsBuilder(ClassWriter paramClassWriter) throws Exception {
-/* 231 */     return EnumConstantBuilder.getInstance(this.context, paramClassWriter.getClassDoc(), this.writerFactory
-/* 232 */         .getEnumConstantWriter(paramClassWriter));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getFieldBuilder(ClassWriter paramClassWriter) throws Exception {
-/* 242 */     return FieldBuilder.getInstance(this.context, paramClassWriter.getClassDoc(), this.writerFactory
-/* 243 */         .getFieldWriter(paramClassWriter));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getPropertyBuilder(ClassWriter paramClassWriter) throws Exception {
-/* 253 */     PropertyWriter propertyWriter = this.writerFactory.getPropertyWriter(paramClassWriter);
-/* 254 */     return PropertyBuilder.getInstance(this.context, paramClassWriter
-/* 255 */         .getClassDoc(), propertyWriter);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getConstructorBuilder(ClassWriter paramClassWriter) throws Exception {
-/* 266 */     return ConstructorBuilder.getInstance(this.context, paramClassWriter
-/* 267 */         .getClassDoc(), this.writerFactory
-/* 268 */         .getConstructorWriter(paramClassWriter));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getMemberSummaryBuilder(ClassWriter paramClassWriter) throws Exception {
-/* 278 */     return MemberSummaryBuilder.getInstance(paramClassWriter, this.context);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getMemberSummaryBuilder(AnnotationTypeWriter paramAnnotationTypeWriter) throws Exception {
-/* 291 */     return MemberSummaryBuilder.getInstance(paramAnnotationTypeWriter, this.context);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AbstractBuilder getSerializedFormBuilder() throws Exception {
-/* 301 */     return SerializedFormBuilder.getInstance(this.context);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolkit\builders\BuilderFactory.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.builders;
+
+import java.util.HashSet;
+import java.util.Set;
+
+import com.sun.javadoc.*;
+import com.sun.tools.javac.jvm.Profile;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * The factory for constructing builders.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Jamie Ho
+ * @since 1.4
+ */
+
+public class BuilderFactory {
+
+    /**
+     * The current configuration of the doclet.
+     */
+    private final Configuration configuration;
+
+    /**
+     * The factory to retrieve the required writers from.
+     */
+    private final WriterFactory writerFactory;
+
+    private final AbstractBuilder.Context context;
+
+    /**
+     * Construct a builder factory using the given configuration.
+     * @param configuration the configuration for the current doclet
+     * being executed.
+     */
+    public BuilderFactory (Configuration configuration) {
+        this.configuration = configuration;
+        this.writerFactory = configuration.getWriterFactory();
+
+        Set<String> containingPackagesSeen = new HashSet<String>();
+        context = new AbstractBuilder.Context(configuration, containingPackagesSeen,
+                LayoutParser.getInstance(configuration));
+    }
+
+    /**
+     * Return the builder that builds the constant summary.
+     * @return the builder that builds the constant summary.
+     */
+    public AbstractBuilder getConstantsSummaryBuider() throws Exception {
+        return ConstantsSummaryBuilder.getInstance(context,
+            writerFactory.getConstantsSummaryWriter());
+    }
+
+    /**
+     * Return the builder that builds the package summary.
+     *
+     * @param pkg the package being documented.
+     * @param prevPkg the previous package being documented.
+     * @param nextPkg the next package being documented.
+     * @return the builder that builds the constant summary.
+     */
+    public AbstractBuilder getPackageSummaryBuilder(PackageDoc pkg, PackageDoc prevPkg,
+            PackageDoc nextPkg) throws Exception {
+        return PackageSummaryBuilder.getInstance(context, pkg,
+            writerFactory.getPackageSummaryWriter(pkg, prevPkg, nextPkg));
+    }
+
+    /**
+     * Return the builder that builds the profile summary.
+     *
+     * @param profile the profile being documented.
+     * @param prevProfile the previous profile being documented.
+     * @param nextProfile the next profile being documented.
+     * @return the builder that builds the profile summary.
+     */
+    public AbstractBuilder getProfileSummaryBuilder(Profile profile, Profile prevProfile,
+            Profile nextProfile) throws Exception {
+        return ProfileSummaryBuilder.getInstance(context, profile,
+            writerFactory.getProfileSummaryWriter(profile, prevProfile, nextProfile));
+    }
+
+    /**
+     * Return the builder that builds the profile package summary.
+     *
+     * @param pkg the profile package being documented.
+     * @param prevPkg the previous profile package being documented.
+     * @param nextPkg the next profile package being documented.
+     * @param profile the profile being documented.
+     * @return the builder that builds the profile package summary.
+     */
+    public AbstractBuilder getProfilePackageSummaryBuilder(PackageDoc pkg, PackageDoc prevPkg,
+            PackageDoc nextPkg, Profile profile) throws Exception {
+        return ProfilePackageSummaryBuilder.getInstance(context, pkg,
+            writerFactory.getProfilePackageSummaryWriter(pkg, prevPkg, nextPkg,
+                profile), profile);
+    }
+
+    /**
+     * Return the builder for the class.
+     *
+     * @param classDoc the class being documented.
+     * @param prevClass the previous class that was documented.
+     * @param nextClass the next class being documented.
+     * @param classTree the class tree.
+     * @return the writer for the class.  Return null if this
+     * writer is not supported by the doclet.
+     */
+    public AbstractBuilder getClassBuilder(ClassDoc classDoc,
+            ClassDoc prevClass, ClassDoc nextClass, ClassTree classTree)
+            throws Exception {
+        return ClassBuilder.getInstance(context, classDoc,
+            writerFactory.getClassWriter(classDoc, prevClass, nextClass,
+                classTree));
+    }
+
+    /**
+     * Return the builder for the annotation type.
+     *
+     * @param annotationType the annotation type being documented.
+     * @param prevType the previous type that was documented.
+     * @param nextType the next type being documented.
+     * @return the writer for the annotation type.  Return null if this
+     * writer is not supported by the doclet.
+     */
+    public AbstractBuilder getAnnotationTypeBuilder(
+        AnnotationTypeDoc annotationType,
+        Type prevType, Type nextType)
+            throws Exception {
+        return AnnotationTypeBuilder.getInstance(context, annotationType,
+            writerFactory.getAnnotationTypeWriter(annotationType, prevType, nextType));
+    }
+
+    /**
+     * Return an instance of the method builder for the given class.
+     *
+     * @return an instance of the method builder for the given class.
+     */
+    public AbstractBuilder getMethodBuilder(ClassWriter classWriter)
+           throws Exception {
+        return MethodBuilder.getInstance(context,
+            classWriter.getClassDoc(),
+            writerFactory.getMethodWriter(classWriter));
+    }
+
+    /**
+     * Return an instance of the annotation type fields builder for the given
+     * class.
+     *
+     * @return an instance of the annotation type field builder for the given
+     *         annotation type.
+     */
+    public AbstractBuilder getAnnotationTypeFieldsBuilder(
+            AnnotationTypeWriter annotationTypeWriter)
+    throws Exception {
+        return AnnotationTypeFieldBuilder.getInstance(context,
+            annotationTypeWriter.getAnnotationTypeDoc(),
+            writerFactory.getAnnotationTypeFieldWriter(
+                annotationTypeWriter));
+    }
+
+    /**
+     * Return an instance of the annotation type member builder for the given
+     * class.
+     *
+     * @return an instance of the annotation type member builder for the given
+     *         annotation type.
+     */
+    public AbstractBuilder getAnnotationTypeOptionalMemberBuilder(
+            AnnotationTypeWriter annotationTypeWriter)
+    throws Exception {
+        return AnnotationTypeOptionalMemberBuilder.getInstance(context,
+            annotationTypeWriter.getAnnotationTypeDoc(),
+            writerFactory.getAnnotationTypeOptionalMemberWriter(
+                annotationTypeWriter));
+    }
+
+    /**
+     * Return an instance of the annotation type member builder for the given
+     * class.
+     *
+     * @return an instance of the annotation type member builder for the given
+     *         annotation type.
+     */
+    public AbstractBuilder getAnnotationTypeRequiredMemberBuilder(
+            AnnotationTypeWriter annotationTypeWriter)
+    throws Exception {
+        return AnnotationTypeRequiredMemberBuilder.getInstance(context,
+            annotationTypeWriter.getAnnotationTypeDoc(),
+            writerFactory.getAnnotationTypeRequiredMemberWriter(
+                annotationTypeWriter));
+    }
+
+    /**
+     * Return an instance of the enum constants builder for the given class.
+     *
+     * @return an instance of the enum constants builder for the given class.
+     */
+    public AbstractBuilder getEnumConstantsBuilder(ClassWriter classWriter)
+            throws Exception {
+        return EnumConstantBuilder.getInstance(context, classWriter.getClassDoc(),
+            writerFactory.getEnumConstantWriter(classWriter));
+    }
+
+    /**
+     * Return an instance of the field builder for the given class.
+     *
+     * @return an instance of the field builder for the given class.
+     */
+    public AbstractBuilder getFieldBuilder(ClassWriter classWriter)
+            throws Exception {
+        return FieldBuilder.getInstance(context, classWriter.getClassDoc(),
+            writerFactory.getFieldWriter(classWriter));
+    }
+
+    /**
+     * Return an instance of the property builder for the given class.
+     *
+     * @return an instance of the field builder for the given class.
+     */
+    public AbstractBuilder getPropertyBuilder(ClassWriter classWriter) throws Exception {
+        final PropertyWriter propertyWriter =
+                writerFactory.getPropertyWriter(classWriter);
+        return PropertyBuilder.getInstance(context,
+                                           classWriter.getClassDoc(),
+                                           propertyWriter);
+    }
+
+    /**
+     * Return an instance of the constructor builder for the given class.
+     *
+     * @return an instance of the constructor builder for the given class.
+     */
+    public AbstractBuilder getConstructorBuilder(ClassWriter classWriter)
+            throws Exception {
+        return ConstructorBuilder.getInstance(context,
+            classWriter.getClassDoc(),
+            writerFactory.getConstructorWriter(classWriter));
+    }
+
+    /**
+     * Return an instance of the member summary builder for the given class.
+     *
+     * @return an instance of the member summary builder for the given class.
+     */
+    public AbstractBuilder getMemberSummaryBuilder(ClassWriter classWriter)
+            throws Exception {
+        return MemberSummaryBuilder.getInstance(classWriter, context);
+    }
+
+    /**
+     * Return an instance of the member summary builder for the given annotation
+     * type.
+     *
+     * @return an instance of the member summary builder for the given
+     *         annotation type.
+     */
+    public AbstractBuilder getMemberSummaryBuilder(
+            AnnotationTypeWriter annotationTypeWriter)
+    throws Exception {
+        return MemberSummaryBuilder.getInstance(annotationTypeWriter, context);
+    }
+
+    /**
+     * Return the builder that builds the serialized form.
+     *
+     * @return the builder that builds the serialized form.
+     */
+    public AbstractBuilder getSerializedFormBuilder()
+            throws Exception {
+        return SerializedFormBuilder.getInstance(context);
+    }
+}

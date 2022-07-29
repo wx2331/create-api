@@ -1,349 +1,345 @@
-/*     */ package com.sun.tools.javac.code;
-/*     */
-/*     */ import com.sun.tools.javac.util.Context;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import com.sun.tools.javac.util.Options;
-/*     */ import com.sun.tools.javac.util.Pair;
-/*     */ import java.util.EnumSet;
-/*     */ import java.util.Map;
-/*     */ import java.util.concurrent.ConcurrentHashMap;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class Lint
-/*     */ {
-/*  47 */   protected static final Context.Key<Lint> lintKey = new Context.Key();
-/*     */   private final AugmentVisitor augmentor;
-/*     */
-/*     */   public static Lint instance(Context paramContext) {
-/*  51 */     Lint lint = (Lint)paramContext.get(lintKey);
-/*  52 */     if (lint == null)
-/*  53 */       lint = new Lint(paramContext);
-/*  54 */     return lint;
-/*     */   }
-/*     */
-/*     */
-/*     */   private final EnumSet<LintCategory> values;
-/*     */   private final EnumSet<LintCategory> suppressedValues;
-/*     */
-/*     */   public Lint augment(Attribute.Compound paramCompound) {
-/*  62 */     return this.augmentor.augment(this, paramCompound);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Lint augment(Symbol paramSymbol) {
-/*  71 */     Lint lint = this.augmentor.augment(this, paramSymbol.getDeclarationAttributes());
-/*  72 */     if (paramSymbol.isDeprecated()) {
-/*  73 */       if (lint == this)
-/*  74 */         lint = new Lint(this);
-/*  75 */       lint.values.remove(LintCategory.DEPRECATION);
-/*  76 */       lint.suppressedValues.add(LintCategory.DEPRECATION);
-/*     */     }
-/*  78 */     return lint;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*  86 */   private static final Map<String, LintCategory> map = new ConcurrentHashMap<>(20);
-/*     */
-/*     */
-/*     */
-/*     */   protected Lint(Context paramContext) {
-/*  91 */     Options options = Options.instance(paramContext);
-/*  92 */     this.values = EnumSet.noneOf(LintCategory.class);
-/*  93 */     for (Map.Entry<String, LintCategory> entry : map.entrySet()) {
-/*  94 */       if (options.lint((String)entry.getKey())) {
-/*  95 */         this.values.add((LintCategory)entry.getValue());
-/*     */       }
-/*     */     }
-/*  98 */     this.suppressedValues = EnumSet.noneOf(LintCategory.class);
-/*     */
-/* 100 */     paramContext.put(lintKey, this);
-/* 101 */     this.augmentor = new AugmentVisitor(paramContext);
-/*     */   }
-/*     */
-/*     */   protected Lint(Lint paramLint) {
-/* 105 */     this.augmentor = paramLint.augmentor;
-/* 106 */     this.values = paramLint.values.clone();
-/* 107 */     this.suppressedValues = paramLint.suppressedValues.clone();
-/*     */   }
-/*     */
-/*     */
-/*     */   public String toString() {
-/* 112 */     return "Lint:[values" + this.values + " suppressedValues" + this.suppressedValues + "]";
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public enum LintCategory
-/*     */   {
-/* 124 */     AUXILIARYCLASS("auxiliaryclass"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 129 */     CAST("cast"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 134 */     CLASSFILE("classfile"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 139 */     DEPRECATION("deprecation"),
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 145 */     DEP_ANN("dep-ann"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 150 */     DIVZERO("divzero"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 155 */     EMPTY("empty"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 160 */     FALLTHROUGH("fallthrough"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 165 */     FINALLY("finally"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 170 */     OPTIONS("options"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 175 */     OVERLOADS("overloads"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 180 */     OVERRIDES("overrides"),
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 187 */     PATH("path"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 192 */     PROCESSING("processing"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 197 */     RAW("rawtypes"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 202 */     SERIAL("serial"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 207 */     STATIC("static"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 212 */     SUNAPI("sunapi", true),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 217 */     TRY("try"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 222 */     UNCHECKED("unchecked"),
-/*     */
-/*     */
-/*     */
-/*     */
-/* 227 */     VARARGS("varargs");
-/*     */
-/*     */     public final String option;
-/*     */
-/*     */     public final boolean hidden;
-/*     */
-/*     */     LintCategory(String param1String1, boolean param1Boolean) {
-/* 234 */       this.option = param1String1;
-/* 235 */       this.hidden = param1Boolean;
-/* 236 */       Lint.map.put(param1String1, this);
-/*     */     }
-/*     */
-/*     */     static LintCategory get(String param1String) {
-/* 240 */       return (LintCategory)Lint.map.get(param1String);
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public boolean isEnabled(LintCategory paramLintCategory) {
-/* 253 */     return this.values.contains(paramLintCategory);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public boolean isSuppressed(LintCategory paramLintCategory) {
-/* 263 */     return this.suppressedValues.contains(paramLintCategory);
-/*     */   }
-/*     */
-/*     */   protected static class AugmentVisitor
-/*     */     implements Attribute.Visitor
-/*     */   {
-/*     */     private final Context context;
-/*     */     private Symtab syms;
-/*     */     private Lint parent;
-/*     */     private Lint lint;
-/*     */
-/*     */     AugmentVisitor(Context param1Context) {
-/* 275 */       this.context = param1Context;
-/*     */     }
-/*     */
-/*     */     Lint augment(Lint param1Lint, Attribute.Compound param1Compound) {
-/* 279 */       initSyms();
-/* 280 */       this.parent = param1Lint;
-/* 281 */       this.lint = null;
-/* 282 */       param1Compound.accept(this);
-/* 283 */       return (this.lint == null) ? param1Lint : this.lint;
-/*     */     }
-/*     */
-/*     */     Lint augment(Lint param1Lint, List<Attribute.Compound> param1List) {
-/* 287 */       initSyms();
-/* 288 */       this.parent = param1Lint;
-/* 289 */       this.lint = null;
-/* 290 */       for (Attribute.Compound compound : param1List) {
-/* 291 */         compound.accept(this);
-/*     */       }
-/* 293 */       return (this.lint == null) ? param1Lint : this.lint;
-/*     */     }
-/*     */
-/*     */     private void initSyms() {
-/* 297 */       if (this.syms == null)
-/* 298 */         this.syms = Symtab.instance(this.context);
-/*     */     }
-/*     */
-/*     */     private void suppress(LintCategory param1LintCategory) {
-/* 302 */       if (this.lint == null)
-/* 303 */         this.lint = new Lint(this.parent);
-/* 304 */       this.lint.suppressedValues.add(param1LintCategory);
-/* 305 */       this.lint.values.remove(param1LintCategory);
-/*     */     }
-/*     */
-/*     */     public void visitConstant(Attribute.Constant param1Constant) {
-/* 309 */       if (param1Constant.type.tsym == this.syms.stringType.tsym) {
-/* 310 */         LintCategory lintCategory = LintCategory.get((String)param1Constant.value);
-/* 311 */         if (lintCategory != null) {
-/* 312 */           suppress(lintCategory);
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */     public void visitClass(Attribute.Class param1Class) {}
-/*     */
-/*     */
-/*     */     public void visitCompound(Attribute.Compound param1Compound) {
-/* 323 */       if (param1Compound.type.tsym == this.syms.suppressWarningsType.tsym) {
-/* 324 */         List<Pair<Symbol.MethodSymbol, Attribute>> list = param1Compound.values;
-/* 325 */         for (; list.nonEmpty(); list = list.tail) {
-/* 326 */           Pair pair = (Pair)list.head;
-/* 327 */           if (((Symbol.MethodSymbol)pair.fst).name.toString().equals("value")) {
-/* 328 */             ((Attribute)pair.snd).accept(this);
-/*     */           }
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public void visitArray(Attribute.Array param1Array) {
-/* 335 */       for (Attribute attribute : param1Array.values)
-/* 336 */         attribute.accept(this);
-/*     */     }
-/*     */
-/*     */     public void visitEnum(Attribute.Enum param1Enum) {}
-/*     */
-/*     */     public void visitError(Attribute.Error param1Error) {}
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\code\Lint.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2005, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.code;
+
+import java.util.EnumSet;
+import java.util.Map;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.util.Context;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.Options;
+import com.sun.tools.javac.util.Pair;
+
+/**
+ * A class for handling -Xlint suboptions and @SuppresssWarnings.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Lint
+{
+    /** The context key for the root Lint object. */
+    protected static final Context.Key<Lint> lintKey = new Context.Key<Lint>();
+
+    /** Get the root Lint instance. */
+    public static Lint instance(Context context) {
+        Lint instance = context.get(lintKey);
+        if (instance == null)
+            instance = new Lint(context);
+        return instance;
+    }
+
+    /**
+     * Returns the result of combining the values in this object with
+     * the given annotation.
+     */
+    public Lint augment(Attribute.Compound attr) {
+        return augmentor.augment(this, attr);
+    }
+
+
+    /**
+     * Returns the result of combining the values in this object with
+     * the metadata on the given symbol.
+     */
+    public Lint augment(Symbol sym) {
+        Lint l = augmentor.augment(this, sym.getDeclarationAttributes());
+        if (sym.isDeprecated()) {
+            if (l == this)
+                l = new Lint(this);
+            l.values.remove(LintCategory.DEPRECATION);
+            l.suppressedValues.add(LintCategory.DEPRECATION);
+        }
+        return l;
+    }
+
+    private final AugmentVisitor augmentor;
+
+    private final EnumSet<LintCategory> values;
+    private final EnumSet<LintCategory> suppressedValues;
+
+    private static final Map<String, LintCategory> map =
+            new java.util.concurrent.ConcurrentHashMap<String, LintCategory>(20);
+
+    protected Lint(Context context) {
+        // initialize values according to the lint options
+        Options options = Options.instance(context);
+        values = EnumSet.noneOf(LintCategory.class);
+        for (Map.Entry<String, LintCategory> e: map.entrySet()) {
+            if (options.lint(e.getKey()))
+                values.add(e.getValue());
+        }
+
+        suppressedValues = EnumSet.noneOf(LintCategory.class);
+
+        context.put(lintKey, this);
+        augmentor = new AugmentVisitor(context);
+    }
+
+    protected Lint(Lint other) {
+        this.augmentor = other.augmentor;
+        this.values = other.values.clone();
+        this.suppressedValues = other.suppressedValues.clone();
+    }
+
+    @Override
+    public String toString() {
+        return "Lint:[values" + values + " suppressedValues" + suppressedValues + "]";
+    }
+
+    /**
+     * Categories of warnings that can be generated by the compiler.
+     */
+    public enum LintCategory {
+        /**
+         * Warn when code refers to a auxiliary class that is hidden in a source file (ie source file name is
+         * different from the class name, and the type is not properly nested) and the referring code
+         * is not located in the same source file.
+         */
+        AUXILIARYCLASS("auxiliaryclass"),
+
+        /**
+         * Warn about use of unnecessary casts.
+         */
+        CAST("cast"),
+
+        /**
+         * Warn about issues related to classfile contents
+         */
+        CLASSFILE("classfile"),
+
+        /**
+         * Warn about use of deprecated items.
+         */
+        DEPRECATION("deprecation"),
+
+        /**
+         * Warn about items which are documented with an {@code @deprecated} JavaDoc
+         * comment, but which do not have {@code @Deprecated} annotation.
+         */
+        DEP_ANN("dep-ann"),
+
+        /**
+         * Warn about division by constant integer 0.
+         */
+        DIVZERO("divzero"),
+
+        /**
+         * Warn about empty statement after if.
+         */
+        EMPTY("empty"),
+
+        /**
+         * Warn about falling through from one case of a switch statement to the next.
+         */
+        FALLTHROUGH("fallthrough"),
+
+        /**
+         * Warn about finally clauses that do not terminate normally.
+         */
+        FINALLY("finally"),
+
+        /**
+         * Warn about issues relating to use of command line options
+         */
+        OPTIONS("options"),
+
+        /**
+         * Warn about issues regarding method overloads.
+         */
+        OVERLOADS("overloads"),
+
+        /**
+         * Warn about issues regarding method overrides.
+         */
+        OVERRIDES("overrides"),
+
+        /**
+         * Warn about invalid path elements on the command line.
+         * Such warnings cannot be suppressed with the SuppressWarnings
+         * annotation.
+         */
+        PATH("path"),
+
+        /**
+         * Warn about issues regarding annotation processing.
+         */
+        PROCESSING("processing"),
+
+        /**
+         * Warn about unchecked operations on raw types.
+         */
+        RAW("rawtypes"),
+
+        /**
+         * Warn about Serializable classes that do not provide a serial version ID.
+         */
+        SERIAL("serial"),
+
+        /**
+         * Warn about issues relating to use of statics
+         */
+        STATIC("static"),
+
+        /**
+         * Warn about proprietary API that may be removed in a future release.
+         */
+        SUNAPI("sunapi", true),
+
+        /**
+         * Warn about issues relating to use of try blocks (i.e. try-with-resources)
+         */
+        TRY("try"),
+
+        /**
+         * Warn about unchecked operations on raw types.
+         */
+        UNCHECKED("unchecked"),
+
+        /**
+         * Warn about potentially unsafe vararg methods
+         */
+        VARARGS("varargs");
+
+        LintCategory(String option) {
+            this(option, false);
+        }
+
+        LintCategory(String option, boolean hidden) {
+            this.option = option;
+            this.hidden = hidden;
+            map.put(option, this);
+        }
+
+        static LintCategory get(String option) {
+            return map.get(option);
+        }
+
+        public final String option;
+        public final boolean hidden;
+    };
+
+    /**
+     * Checks if a warning category is enabled. A warning category may be enabled
+     * on the command line, or by default, and can be temporarily disabled with
+     * the SuppressWarnings annotation.
+     */
+    public boolean isEnabled(LintCategory lc) {
+        return values.contains(lc);
+    }
+
+    /**
+     * Checks is a warning category has been specifically suppressed, by means
+     * of the SuppressWarnings annotation, or, in the case of the deprecated
+     * category, whether it has been implicitly suppressed by virtue of the
+     * current entity being itself deprecated.
+     */
+    public boolean isSuppressed(LintCategory lc) {
+        return suppressedValues.contains(lc);
+    }
+
+    protected static class AugmentVisitor implements Attribute.Visitor {
+        private final Context context;
+        private Symtab syms;
+        private Lint parent;
+        private Lint lint;
+
+        AugmentVisitor(Context context) {
+            // to break an ugly sequence of initialization dependencies,
+            // we defer the initialization of syms until it is needed
+            this.context = context;
+        }
+
+        Lint augment(Lint parent, Attribute.Compound attr) {
+            initSyms();
+            this.parent = parent;
+            lint = null;
+            attr.accept(this);
+            return (lint == null ? parent : lint);
+        }
+
+        Lint augment(Lint parent, List<Attribute.Compound> attrs) {
+            initSyms();
+            this.parent = parent;
+            lint = null;
+            for (Attribute.Compound a: attrs) {
+                a.accept(this);
+            }
+            return (lint == null ? parent : lint);
+        }
+
+        private void initSyms() {
+            if (syms == null)
+                syms = Symtab.instance(context);
+        }
+
+        private void suppress(LintCategory lc) {
+            if (lint == null)
+                lint = new Lint(parent);
+            lint.suppressedValues.add(lc);
+            lint.values.remove(lc);
+        }
+
+        public void visitConstant(Attribute.Constant value) {
+            if (value.type.tsym == syms.stringType.tsym) {
+                LintCategory lc = LintCategory.get((String) (value.value));
+                if (lc != null)
+                    suppress(lc);
+            }
+        }
+
+        public void visitClass(Attribute.Class clazz) {
+        }
+
+        // If we find a @SuppressWarnings annotation, then we continue
+        // walking the tree, in order to suppress the individual warnings
+        // specified in the @SuppressWarnings annotation.
+        public void visitCompound(Attribute.Compound compound) {
+            if (compound.type.tsym == syms.suppressWarningsType.tsym) {
+                for (List<Pair<MethodSymbol,Attribute>> v = compound.values;
+                     v.nonEmpty(); v = v.tail) {
+                    Pair<MethodSymbol,Attribute> value = v.head;
+                    if (value.fst.name.toString().equals("value"))
+                        value.snd.accept(this);
+                }
+
+            }
+        }
+
+        public void visitArray(Attribute.Array array) {
+            for (Attribute value : array.values)
+                value.accept(this);
+        }
+
+        public void visitEnum(Attribute.Enum e) {
+        }
+
+        public void visitError(Attribute.Error e) {
+        }
+    };
+}

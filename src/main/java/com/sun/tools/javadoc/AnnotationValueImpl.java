@@ -1,184 +1,176 @@
-/*     */ package com.sun.tools.javadoc;
-/*     */ 
-/*     */ import com.sun.javadoc.AnnotationValue;
-/*     */ import com.sun.tools.javac.code.Attribute;
-/*     */ import com.sun.tools.javac.code.TypeTag;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class AnnotationValueImpl
-/*     */   implements AnnotationValue
-/*     */ {
-/*     */   private final DocEnv env;
-/*     */   private final Attribute attr;
-/*     */   
-/*     */   AnnotationValueImpl(DocEnv paramDocEnv, Attribute paramAttribute) {
-/*  53 */     this.env = paramDocEnv;
-/*  54 */     this.attr = paramAttribute;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Object value() {
-/*  69 */     ValueVisitor valueVisitor = new ValueVisitor();
-/*  70 */     this.attr.accept(valueVisitor);
-/*  71 */     return valueVisitor.value;
-/*     */   }
-/*     */   
-/*     */   private class ValueVisitor implements Attribute.Visitor {
-/*     */     public Object value;
-/*     */     
-/*     */     public void visitConstant(Attribute.Constant param1Constant) {
-/*  78 */       if (param1Constant.type.hasTag(TypeTag.BOOLEAN)) {
-/*     */         
-/*  80 */         this.value = Boolean.valueOf(
-/*  81 */             (((Integer)param1Constant.value).intValue() != 0));
-/*     */       } else {
-/*  83 */         this.value = param1Constant.value;
-/*     */       } 
-/*     */     }
-/*     */     private ValueVisitor() {}
-/*     */     public void visitClass(Attribute.Class param1Class) {
-/*  88 */       this.value = TypeMaker.getType(AnnotationValueImpl.this.env, 
-/*  89 */           AnnotationValueImpl.this.env.types.erasure(param1Class.classType));
-/*     */     }
-/*     */     
-/*     */     public void visitEnum(Attribute.Enum param1Enum) {
-/*  93 */       this.value = AnnotationValueImpl.this.env.getFieldDoc(param1Enum.value);
-/*     */     }
-/*     */     
-/*     */     public void visitCompound(Attribute.Compound param1Compound) {
-/*  97 */       this.value = new AnnotationDescImpl(AnnotationValueImpl.this.env, param1Compound);
-/*     */     }
-/*     */     
-/*     */     public void visitArray(Attribute.Array param1Array) {
-/* 101 */       AnnotationValue[] arrayOfAnnotationValue = new AnnotationValue[param1Array.values.length];
-/* 102 */       for (byte b = 0; b < arrayOfAnnotationValue.length; b++) {
-/* 103 */         arrayOfAnnotationValue[b] = new AnnotationValueImpl(AnnotationValueImpl.this.env, param1Array.values[b]);
-/*     */       }
-/* 105 */       this.value = arrayOfAnnotationValue;
-/*     */     }
-/*     */     
-/*     */     public void visitError(Attribute.Error param1Error) {
-/* 109 */       this.value = "<error>";
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String toString() {
-/* 121 */     ToStringVisitor toStringVisitor = new ToStringVisitor();
-/* 122 */     this.attr.accept(toStringVisitor);
-/* 123 */     return toStringVisitor.toString();
-/*     */   }
-/*     */   
-/*     */   private class ToStringVisitor implements Attribute.Visitor {
-/* 127 */     private final StringBuilder sb = new StringBuilder();
-/*     */ 
-/*     */     
-/*     */     public String toString() {
-/* 131 */       return this.sb.toString();
-/*     */     }
-/*     */     
-/*     */     public void visitConstant(Attribute.Constant param1Constant) {
-/* 135 */       if (param1Constant.type.hasTag(TypeTag.BOOLEAN)) {
-/*     */         
-/* 137 */         this.sb.append((((Integer)param1Constant.value).intValue() != 0));
-/*     */       } else {
-/* 139 */         this.sb.append(FieldDocImpl.constantValueExpression(param1Constant.value));
-/*     */       } 
-/*     */     }
-/*     */     
-/*     */     public void visitClass(Attribute.Class param1Class) {
-/* 144 */       this.sb.append(param1Class);
-/*     */     }
-/*     */     
-/*     */     public void visitEnum(Attribute.Enum param1Enum) {
-/* 148 */       this.sb.append(param1Enum);
-/*     */     }
-/*     */     
-/*     */     public void visitCompound(Attribute.Compound param1Compound) {
-/* 152 */       this.sb.append(new AnnotationDescImpl(AnnotationValueImpl.this.env, param1Compound));
-/*     */     }
-/*     */ 
-/*     */     
-/*     */     public void visitArray(Attribute.Array param1Array) {
-/* 157 */       if (param1Array.values.length != 1) this.sb.append('{');
-/*     */       
-/* 159 */       boolean bool = true;
-/* 160 */       for (Attribute attribute : param1Array.values) {
-/* 161 */         if (bool) {
-/* 162 */           bool = false;
-/*     */         } else {
-/* 164 */           this.sb.append(", ");
-/*     */         } 
-/* 166 */         attribute.accept(this);
-/*     */       } 
-/*     */       
-/* 169 */       if (param1Array.values.length != 1) this.sb.append('}'); 
-/*     */     }
-/*     */     
-/*     */     public void visitError(Attribute.Error param1Error) {
-/* 173 */       this.sb.append("<error>");
-/*     */     }
-/*     */     
-/*     */     private ToStringVisitor() {}
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javadoc\AnnotationValueImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javadoc;
+
+import com.sun.javadoc.*;
+
+import com.sun.tools.javac.code.Attribute;
+
+import static com.sun.tools.javac.code.TypeTag.BOOLEAN;
+
+/**
+ * Represents a value of an annotation type element.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Scott Seligman
+ * @since 1.5
+ */
+
+public class AnnotationValueImpl implements AnnotationValue {
+
+    private final DocEnv env;
+    private final Attribute attr;
+
+
+    AnnotationValueImpl(DocEnv env, Attribute attr) {
+        this.env = env;
+        this.attr = attr;
+    }
+
+    /**
+     * Returns the value.
+     * The type of the returned object is one of the following:
+     * <ul><li> a wrapper class for a primitive type
+     *     <li> <code>String</code>
+     *     <li> <code>Type</code> (representing a class literal)
+     *     <li> <code>FieldDoc</code> (representing an enum constant)
+     *     <li> <code>AnnotationDesc</code>
+     *     <li> <code>AnnotationValue[]</code>
+     * </ul>
+     */
+    public Object value() {
+        ValueVisitor vv = new ValueVisitor();
+        attr.accept(vv);
+        return vv.value;
+    }
+
+    private class ValueVisitor implements Attribute.Visitor {
+        public Object value;
+
+        public void visitConstant(Attribute.Constant c) {
+            if (c.type.hasTag(BOOLEAN)) {
+                // javac represents false and true as integers 0 and 1
+                value = Boolean.valueOf(
+                                ((Integer)c.value).intValue() != 0);
+            } else {
+                value = c.value;
+            }
+        }
+
+        public void visitClass(Attribute.Class c) {
+            value = TypeMaker.getType(env,
+                                      env.types.erasure(c.classType));
+        }
+
+        public void visitEnum(Attribute.Enum e) {
+            value = env.getFieldDoc(e.value);
+        }
+
+        public void visitCompound(Attribute.Compound c) {
+            value = new AnnotationDescImpl(env, c);
+        }
+
+        public void visitArray(Attribute.Array a) {
+            AnnotationValue vals[] = new AnnotationValue[a.values.length];
+            for (int i = 0; i < vals.length; i++) {
+                vals[i] = new AnnotationValueImpl(env, a.values[i]);
+            }
+            value = vals;
+        }
+
+        public void visitError(Attribute.Error e) {
+            value = "<error>";
+        }
+    }
+
+    /**
+     * Returns a string representation of the value.
+     *
+     * @return the text of a Java language annotation value expression
+     *          whose value is the value of this annotation type element.
+     */
+    @Override
+    public String toString() {
+        ToStringVisitor tv = new ToStringVisitor();
+        attr.accept(tv);
+        return tv.toString();
+    }
+
+    private class ToStringVisitor implements Attribute.Visitor {
+        private final StringBuilder sb = new StringBuilder();
+
+        @Override
+        public String toString() {
+            return sb.toString();
+        }
+
+        public void visitConstant(Attribute.Constant c) {
+            if (c.type.hasTag(BOOLEAN)) {
+                // javac represents false and true as integers 0 and 1
+                sb.append(((Integer)c.value).intValue() != 0);
+            } else {
+                sb.append(FieldDocImpl.constantValueExpression(c.value));
+            }
+        }
+
+        public void visitClass(Attribute.Class c) {
+            sb.append(c);
+        }
+
+        public void visitEnum(Attribute.Enum e) {
+            sb.append(e);
+        }
+
+        public void visitCompound(Attribute.Compound c) {
+            sb.append(new AnnotationDescImpl(env, c));
+        }
+
+        public void visitArray(Attribute.Array a) {
+            // Omit braces from singleton.
+            if (a.values.length != 1) sb.append('{');
+
+            boolean first = true;
+            for (Attribute elem : a.values) {
+                if (first) {
+                    first = false;
+                } else {
+                    sb.append(", ");
+                }
+                elem.accept(this);
+            }
+            // Omit braces from singleton.
+            if (a.values.length != 1) sb.append('}');
+        }
+
+        public void visitError(Attribute.Error e) {
+            sb.append("<error>");
+        }
+    }
+}

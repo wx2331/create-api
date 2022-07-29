@@ -1,332 +1,326 @@
-/*     */ package com.sun.tools.doclint;
-/*     */ 
-/*     */ import java.util.HashMap;
-/*     */ import java.util.Map;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public enum Entity
-/*     */ {
-/*  47 */   nbsp(160),
-/*  48 */   iexcl(161),
-/*  49 */   cent(162),
-/*  50 */   pound(163),
-/*  51 */   curren(164),
-/*  52 */   yen(165),
-/*  53 */   brvbar(166),
-/*  54 */   sect(167),
-/*  55 */   uml(168),
-/*  56 */   copy(169),
-/*  57 */   ordf(170),
-/*  58 */   laquo(171),
-/*  59 */   not(172),
-/*  60 */   shy(173),
-/*  61 */   reg(174),
-/*  62 */   macr(175),
-/*  63 */   deg(176),
-/*  64 */   plusmn(177),
-/*  65 */   sup2(178),
-/*  66 */   sup3(179),
-/*  67 */   acute(180),
-/*  68 */   micro(181),
-/*  69 */   para(182),
-/*  70 */   middot(183),
-/*  71 */   cedil(184),
-/*  72 */   sup1(185),
-/*  73 */   ordm(186),
-/*  74 */   raquo(187),
-/*  75 */   frac14(188),
-/*  76 */   frac12(189),
-/*  77 */   frac34(190),
-/*  78 */   iquest(191),
-/*  79 */   Agrave(192),
-/*  80 */   Aacute(193),
-/*  81 */   Acirc(194),
-/*  82 */   Atilde(195),
-/*  83 */   Auml(196),
-/*  84 */   Aring(197),
-/*  85 */   AElig(198),
-/*  86 */   Ccedil(199),
-/*  87 */   Egrave(200),
-/*  88 */   Eacute(201),
-/*  89 */   Ecirc(202),
-/*  90 */   Euml(203),
-/*  91 */   Igrave(204),
-/*  92 */   Iacute(205),
-/*  93 */   Icirc(206),
-/*  94 */   Iuml(207),
-/*  95 */   ETH(208),
-/*  96 */   Ntilde(209),
-/*  97 */   Ograve(210),
-/*  98 */   Oacute(211),
-/*  99 */   Ocirc(212),
-/* 100 */   Otilde(213),
-/* 101 */   Ouml(214),
-/* 102 */   times(215),
-/* 103 */   Oslash(216),
-/* 104 */   Ugrave(217),
-/* 105 */   Uacute(218),
-/* 106 */   Ucirc(219),
-/* 107 */   Uuml(220),
-/* 108 */   Yacute(221),
-/* 109 */   THORN(222),
-/* 110 */   szlig(223),
-/* 111 */   agrave(224),
-/* 112 */   aacute(225),
-/* 113 */   acirc(226),
-/* 114 */   atilde(227),
-/* 115 */   auml(228),
-/* 116 */   aring(229),
-/* 117 */   aelig(230),
-/* 118 */   ccedil(231),
-/* 119 */   egrave(232),
-/* 120 */   eacute(233),
-/* 121 */   ecirc(234),
-/* 122 */   euml(235),
-/* 123 */   igrave(236),
-/* 124 */   iacute(237),
-/* 125 */   icirc(238),
-/* 126 */   iuml(239),
-/* 127 */   eth(240),
-/* 128 */   ntilde(241),
-/* 129 */   ograve(242),
-/* 130 */   oacute(243),
-/* 131 */   ocirc(244),
-/* 132 */   otilde(245),
-/* 133 */   ouml(246),
-/* 134 */   divide(247),
-/* 135 */   oslash(248),
-/* 136 */   ugrave(249),
-/* 137 */   uacute(250),
-/* 138 */   ucirc(251),
-/* 139 */   uuml(252),
-/* 140 */   yacute(253),
-/* 141 */   thorn(254),
-/* 142 */   yuml(255),
-/* 143 */   fnof(402),
-/* 144 */   Alpha(913),
-/* 145 */   Beta(914),
-/* 146 */   Gamma(915),
-/* 147 */   Delta(916),
-/* 148 */   Epsilon(917),
-/* 149 */   Zeta(918),
-/* 150 */   Eta(919),
-/* 151 */   Theta(920),
-/* 152 */   Iota(921),
-/* 153 */   Kappa(922),
-/* 154 */   Lambda(923),
-/* 155 */   Mu(924),
-/* 156 */   Nu(925),
-/* 157 */   Xi(926),
-/* 158 */   Omicron(927),
-/* 159 */   Pi(928),
-/* 160 */   Rho(929),
-/* 161 */   Sigma(931),
-/* 162 */   Tau(932),
-/* 163 */   Upsilon(933),
-/* 164 */   Phi(934),
-/* 165 */   Chi(935),
-/* 166 */   Psi(936),
-/* 167 */   Omega(937),
-/* 168 */   alpha(945),
-/* 169 */   beta(946),
-/* 170 */   gamma(947),
-/* 171 */   delta(948),
-/* 172 */   epsilon(949),
-/* 173 */   zeta(950),
-/* 174 */   eta(951),
-/* 175 */   theta(952),
-/* 176 */   iota(953),
-/* 177 */   kappa(954),
-/* 178 */   lambda(955),
-/* 179 */   mu(956),
-/* 180 */   nu(957),
-/* 181 */   xi(958),
-/* 182 */   omicron(959),
-/* 183 */   pi(960),
-/* 184 */   rho(961),
-/* 185 */   sigmaf(962),
-/* 186 */   sigma(963),
-/* 187 */   tau(964),
-/* 188 */   upsilon(965),
-/* 189 */   phi(966),
-/* 190 */   chi(967),
-/* 191 */   psi(968),
-/* 192 */   omega(969),
-/* 193 */   thetasym(977),
-/* 194 */   upsih(978),
-/* 195 */   piv(982),
-/* 196 */   bull(8226),
-/* 197 */   hellip(8230),
-/* 198 */   prime(8242),
-/* 199 */   Prime(8243),
-/* 200 */   oline(8254),
-/* 201 */   frasl(8260),
-/* 202 */   weierp(8472),
-/* 203 */   image(8465),
-/* 204 */   real(8476),
-/* 205 */   trade(8482),
-/* 206 */   alefsym(8501),
-/* 207 */   larr(8592),
-/* 208 */   uarr(8593),
-/* 209 */   rarr(8594),
-/* 210 */   darr(8595),
-/* 211 */   harr(8596),
-/* 212 */   crarr(8629),
-/* 213 */   lArr(8656),
-/* 214 */   uArr(8657),
-/* 215 */   rArr(8658),
-/* 216 */   dArr(8659),
-/* 217 */   hArr(8660),
-/* 218 */   forall(8704),
-/* 219 */   part(8706),
-/* 220 */   exist(8707),
-/* 221 */   empty(8709),
-/* 222 */   nabla(8711),
-/* 223 */   isin(8712),
-/* 224 */   notin(8713),
-/* 225 */   ni(8715),
-/* 226 */   prod(8719),
-/* 227 */   sum(8721),
-/* 228 */   minus(8722),
-/* 229 */   lowast(8727),
-/* 230 */   radic(8730),
-/* 231 */   prop(8733),
-/* 232 */   infin(8734),
-/* 233 */   ang(8736),
-/* 234 */   and(8743),
-/* 235 */   or(8744),
-/* 236 */   cap(8745),
-/* 237 */   cup(8746),
-/* 238 */   _int(8747),
-/* 239 */   there4(8756),
-/* 240 */   sim(8764),
-/* 241 */   cong(8773),
-/* 242 */   asymp(8776),
-/* 243 */   ne(8800),
-/* 244 */   equiv(8801),
-/* 245 */   le(8804),
-/* 246 */   ge(8805),
-/* 247 */   sub(8834),
-/* 248 */   sup(8835),
-/* 249 */   nsub(8836),
-/* 250 */   sube(8838),
-/* 251 */   supe(8839),
-/* 252 */   oplus(8853),
-/* 253 */   otimes(8855),
-/* 254 */   perp(8869),
-/* 255 */   sdot(8901),
-/* 256 */   lceil(8968),
-/* 257 */   rceil(8969),
-/* 258 */   lfloor(8970),
-/* 259 */   rfloor(8971),
-/* 260 */   lang(9001),
-/* 261 */   rang(9002),
-/* 262 */   loz(9674),
-/* 263 */   spades(9824),
-/* 264 */   clubs(9827),
-/* 265 */   hearts(9829),
-/* 266 */   diams(9830),
-/* 267 */   quot(34),
-/* 268 */   amp(38),
-/* 269 */   lt(60),
-/* 270 */   gt(62),
-/* 271 */   OElig(338),
-/* 272 */   oelig(339),
-/* 273 */   Scaron(352),
-/* 274 */   scaron(353),
-/* 275 */   Yuml(376),
-/* 276 */   circ(710),
-/* 277 */   tilde(732),
-/* 278 */   ensp(8194),
-/* 279 */   emsp(8195),
-/* 280 */   thinsp(8201),
-/* 281 */   zwnj(8204),
-/* 282 */   zwj(8205),
-/* 283 */   lrm(8206),
-/* 284 */   rlm(8207),
-/* 285 */   ndash(8211),
-/* 286 */   mdash(8212),
-/* 287 */   lsquo(8216),
-/* 288 */   rsquo(8217),
-/* 289 */   sbquo(8218),
-/* 290 */   ldquo(8220),
-/* 291 */   rdquo(8221),
-/* 292 */   bdquo(8222),
-/* 293 */   dagger(8224),
-/* 294 */   Dagger(8225),
-/* 295 */   permil(8240),
-/* 296 */   lsaquo(8249),
-/* 297 */   rsaquo(8250),
-/* 298 */   euro(8364);
-/*     */   
-/*     */   int code;
-/*     */   
-/*     */   Entity(int paramInt1) {
-/* 303 */     this.code = paramInt1;
-/*     */   }
-/*     */   private static final Map<String, Entity> names; private static final Map<Integer, Entity> codes;
-/*     */   static boolean isValid(String paramString) {
-/* 307 */     return names.containsKey(paramString);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   static boolean isValid(int paramInt) {
-/* 312 */     return (codes.containsKey(Integer.valueOf(paramInt)) || (32 <= paramInt && paramInt < 2127));
-/*     */   }
-/*     */   static {
-/* 315 */     names = new HashMap<>();
-/* 316 */     codes = new HashMap<>();
-/*     */     
-/* 318 */     for (Entity entity : values()) {
-/* 319 */       String str = entity.name();
-/* 320 */       int i = entity.code;
-/* 321 */       if (str.startsWith("_")) str = str.substring(1); 
-/* 322 */       names.put(str, entity);
-/* 323 */       codes.put(Integer.valueOf(i), entity);
-/*     */     } 
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclint\Entity.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2012, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclint;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Table of entities defined in HTML 4.01.
+ *
+ * <p> Derived from
+ * <a href="http://www.w3.org/TR/html4/sgml/entities.html">Character entity references in HTML 4</a>.
+ *
+ * The name of the member follows the name of the entity,
+ * except when it clashes with a keyword, in which case
+ * it is prefixed by '_'.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own
+ * risk.  This code and its internal interfaces are subject to change
+ * or deletion without notice.</b></p>
+ */
+public enum Entity {
+    nbsp(160),
+    iexcl(161),
+    cent(162),
+    pound(163),
+    curren(164),
+    yen(165),
+    brvbar(166),
+    sect(167),
+    uml(168),
+    copy(169),
+    ordf(170),
+    laquo(171),
+    not(172),
+    shy(173),
+    reg(174),
+    macr(175),
+    deg(176),
+    plusmn(177),
+    sup2(178),
+    sup3(179),
+    acute(180),
+    micro(181),
+    para(182),
+    middot(183),
+    cedil(184),
+    sup1(185),
+    ordm(186),
+    raquo(187),
+    frac14(188),
+    frac12(189),
+    frac34(190),
+    iquest(191),
+    Agrave(192),
+    Aacute(193),
+    Acirc(194),
+    Atilde(195),
+    Auml(196),
+    Aring(197),
+    AElig(198),
+    Ccedil(199),
+    Egrave(200),
+    Eacute(201),
+    Ecirc(202),
+    Euml(203),
+    Igrave(204),
+    Iacute(205),
+    Icirc(206),
+    Iuml(207),
+    ETH(208),
+    Ntilde(209),
+    Ograve(210),
+    Oacute(211),
+    Ocirc(212),
+    Otilde(213),
+    Ouml(214),
+    times(215),
+    Oslash(216),
+    Ugrave(217),
+    Uacute(218),
+    Ucirc(219),
+    Uuml(220),
+    Yacute(221),
+    THORN(222),
+    szlig(223),
+    agrave(224),
+    aacute(225),
+    acirc(226),
+    atilde(227),
+    auml(228),
+    aring(229),
+    aelig(230),
+    ccedil(231),
+    egrave(232),
+    eacute(233),
+    ecirc(234),
+    euml(235),
+    igrave(236),
+    iacute(237),
+    icirc(238),
+    iuml(239),
+    eth(240),
+    ntilde(241),
+    ograve(242),
+    oacute(243),
+    ocirc(244),
+    otilde(245),
+    ouml(246),
+    divide(247),
+    oslash(248),
+    ugrave(249),
+    uacute(250),
+    ucirc(251),
+    uuml(252),
+    yacute(253),
+    thorn(254),
+    yuml(255),
+    fnof(402),
+    Alpha(913),
+    Beta(914),
+    Gamma(915),
+    Delta(916),
+    Epsilon(917),
+    Zeta(918),
+    Eta(919),
+    Theta(920),
+    Iota(921),
+    Kappa(922),
+    Lambda(923),
+    Mu(924),
+    Nu(925),
+    Xi(926),
+    Omicron(927),
+    Pi(928),
+    Rho(929),
+    Sigma(931),
+    Tau(932),
+    Upsilon(933),
+    Phi(934),
+    Chi(935),
+    Psi(936),
+    Omega(937),
+    alpha(945),
+    beta(946),
+    gamma(947),
+    delta(948),
+    epsilon(949),
+    zeta(950),
+    eta(951),
+    theta(952),
+    iota(953),
+    kappa(954),
+    lambda(955),
+    mu(956),
+    nu(957),
+    xi(958),
+    omicron(959),
+    pi(960),
+    rho(961),
+    sigmaf(962),
+    sigma(963),
+    tau(964),
+    upsilon(965),
+    phi(966),
+    chi(967),
+    psi(968),
+    omega(969),
+    thetasym(977),
+    upsih(978),
+    piv(982),
+    bull(8226),
+    hellip(8230),
+    prime(8242),
+    Prime(8243),
+    oline(8254),
+    frasl(8260),
+    weierp(8472),
+    image(8465),
+    real(8476),
+    trade(8482),
+    alefsym(8501),
+    larr(8592),
+    uarr(8593),
+    rarr(8594),
+    darr(8595),
+    harr(8596),
+    crarr(8629),
+    lArr(8656),
+    uArr(8657),
+    rArr(8658),
+    dArr(8659),
+    hArr(8660),
+    forall(8704),
+    part(8706),
+    exist(8707),
+    empty(8709),
+    nabla(8711),
+    isin(8712),
+    notin(8713),
+    ni(8715),
+    prod(8719),
+    sum(8721),
+    minus(8722),
+    lowast(8727),
+    radic(8730),
+    prop(8733),
+    infin(8734),
+    ang(8736),
+    and(8743),
+    or(8744),
+    cap(8745),
+    cup(8746),
+    _int(8747),
+    there4(8756),
+    sim(8764),
+    cong(8773),
+    asymp(8776),
+    ne(8800),
+    equiv(8801),
+    le(8804),
+    ge(8805),
+    sub(8834),
+    sup(8835),
+    nsub(8836),
+    sube(8838),
+    supe(8839),
+    oplus(8853),
+    otimes(8855),
+    perp(8869),
+    sdot(8901),
+    lceil(8968),
+    rceil(8969),
+    lfloor(8970),
+    rfloor(8971),
+    lang(9001),
+    rang(9002),
+    loz(9674),
+    spades(9824),
+    clubs(9827),
+    hearts(9829),
+    diams(9830),
+    quot(34),
+    amp(38),
+    lt(60),
+    gt(62),
+    OElig(338),
+    oelig(339),
+    Scaron(352),
+    scaron(353),
+    Yuml(376),
+    circ(710),
+    tilde(732),
+    ensp(8194),
+    emsp(8195),
+    thinsp(8201),
+    zwnj(8204),
+    zwj(8205),
+    lrm(8206),
+    rlm(8207),
+    ndash(8211),
+    mdash(8212),
+    lsquo(8216),
+    rsquo(8217),
+    sbquo(8218),
+    ldquo(8220),
+    rdquo(8221),
+    bdquo(8222),
+    dagger(8224),
+    Dagger(8225),
+    permil(8240),
+    lsaquo(8249),
+    rsaquo(8250),
+    euro(8364);
+
+    int code;
+
+    private Entity(int code) {
+        this.code = code;
+    }
+
+    static boolean isValid(String name) {
+        return names.containsKey(name);
+    }
+
+    static boolean isValid(int code) {
+        // allow numeric codes for standard ANSI characters
+        return codes.containsKey(code) || ( 32 <= code && code < 2127);
+    }
+
+    private static final Map<String,Entity> names = new HashMap<String,Entity>();
+    private static final Map<Integer,Entity> codes = new HashMap<Integer,Entity>();
+    static {
+        for (Entity e: values()) {
+            String name = e.name();
+            int code = e.code;
+            if (name.startsWith("_")) name = name.substring(1);
+            names.put(name, e);
+            codes.put(code, e);
+        }
+    }
+}

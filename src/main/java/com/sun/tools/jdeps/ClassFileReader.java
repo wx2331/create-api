@@ -1,378 +1,372 @@
-/*     */ package com.sun.tools.jdeps;
-/*     */
-/*     */ import com.sun.tools.classfile.ClassFile;
-/*     */ import com.sun.tools.classfile.ConstantPoolException;
-/*     */ import com.sun.tools.classfile.Dependencies;
-/*     */ import java.io.File;
-/*     */ import java.io.FileNotFoundException;
-/*     */ import java.io.IOException;
-/*     */ import java.io.InputStream;
-/*     */ import java.nio.file.FileVisitResult;
-/*     */ import java.nio.file.Files;
-/*     */ import java.nio.file.Path;
-/*     */ import java.nio.file.SimpleFileVisitor;
-/*     */ import java.nio.file.attribute.BasicFileAttributes;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Enumeration;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.List;
-/*     */ import java.util.NoSuchElementException;
-/*     */ import java.util.jar.Attributes;
-/*     */ import java.util.jar.JarEntry;
-/*     */ import java.util.jar.JarFile;
-/*     */ import java.util.jar.Manifest;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class ClassFileReader
-/*     */ {
-/*     */   protected final Path path;
-/*     */   protected final String baseFileName;
-/*     */
-/*     */   public static ClassFileReader newInstance(Path paramPath) throws IOException {
-/*  51 */     if (!Files.exists(paramPath, new java.nio.file.LinkOption[0])) {
-/*  52 */       throw new FileNotFoundException(paramPath.toString());
-/*     */     }
-/*     */
-/*  55 */     if (Files.isDirectory(paramPath, new java.nio.file.LinkOption[0]))
-/*  56 */       return new DirectoryReader(paramPath);
-/*  57 */     if (paramPath.getFileName().toString().endsWith(".jar")) {
-/*  58 */       return new JarFileReader(paramPath);
-/*     */     }
-/*  60 */     return new ClassFileReader(paramPath);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static ClassFileReader newInstance(Path paramPath, JarFile paramJarFile) throws IOException {
-/*  68 */     return new JarFileReader(paramPath, paramJarFile);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*  73 */   protected final List<String> skippedEntries = new ArrayList<>();
-/*     */   protected ClassFileReader(Path paramPath) {
-/*  75 */     this.path = paramPath;
-/*  76 */     this
-/*     */
-/*  78 */       .baseFileName = (paramPath.getFileName() != null) ? paramPath.getFileName().toString() : paramPath.toString();
-/*     */   }
-/*     */
-/*     */   public String getFileName() {
-/*  82 */     return this.baseFileName;
-/*     */   }
-/*     */
-/*     */   public List<String> skippedEntries() {
-/*  86 */     return this.skippedEntries;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public ClassFile getClassFile(String paramString) throws IOException {
-/*  94 */     if (paramString.indexOf('.') > 0) {
-/*  95 */       int i = paramString.lastIndexOf('.');
-/*  96 */       String str = paramString.replace('.', File.separatorChar) + ".class";
-/*  97 */       if (!this.baseFileName.equals(str)) { if (this.baseFileName
-/*  98 */           .equals(str.substring(0, i) + "$" + str
-/*  99 */             .substring(i + 1, str.length())))
-/* 100 */           return readClassFile(this.path);  } else { return readClassFile(this.path); }
-/*     */
-/*     */
-/* 103 */     } else if (this.baseFileName.equals(paramString.replace('/', File.separatorChar) + ".class")) {
-/* 104 */       return readClassFile(this.path);
-/*     */     }
-/*     */
-/* 107 */     return null;
-/*     */   }
-/*     */
-/*     */   public Iterable<ClassFile> getClassFiles() throws IOException {
-/* 111 */     return new Iterable<ClassFile>() {
-/*     */         public Iterator<ClassFile> iterator() {
-/* 113 */           return new FileIterator();
-/*     */         }
-/*     */       };
-/*     */   }
-/*     */
-/*     */   protected ClassFile readClassFile(Path paramPath) throws IOException {
-/* 119 */     InputStream inputStream = null;
-/*     */     try {
-/* 121 */       inputStream = Files.newInputStream(paramPath, new java.nio.file.OpenOption[0]);
-/* 122 */       return ClassFile.read(inputStream);
-/* 123 */     } catch (ConstantPoolException constantPoolException) {
-/* 124 */       throw new Dependencies.ClassFileError(constantPoolException);
-/*     */     } finally {
-/* 126 */       if (inputStream != null) {
-/* 127 */         inputStream.close();
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */   class FileIterator
-/*     */     implements Iterator<ClassFile>
-/*     */   {
-/* 135 */     int count = 0;
-/*     */
-/*     */     public boolean hasNext() {
-/* 138 */       return (this.count == 0 && ClassFileReader.this.baseFileName.endsWith(".class"));
-/*     */     }
-/*     */
-/*     */     public ClassFile next() {
-/* 142 */       if (!hasNext()) {
-/* 143 */         throw new NoSuchElementException();
-/*     */       }
-/*     */       try {
-/* 146 */         ClassFile classFile = ClassFileReader.this.readClassFile(ClassFileReader.this.path);
-/* 147 */         this.count++;
-/* 148 */         return classFile;
-/* 149 */       } catch (IOException iOException) {
-/* 150 */         throw new Dependencies.ClassFileError(iOException);
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public void remove() {
-/* 155 */       throw new UnsupportedOperationException("Not supported yet.");
-/*     */     } }
-/*     */
-/*     */   public boolean isMultiReleaseJar() throws IOException {
-/* 159 */     return false;
-/*     */   }
-/*     */   public String toString() {
-/* 162 */     return this.path.toString();
-/*     */   }
-/*     */
-/*     */   private static class DirectoryReader extends ClassFileReader {
-/*     */     DirectoryReader(Path param1Path) throws IOException {
-/* 167 */       super(param1Path);
-/*     */     }
-/*     */
-/*     */     public ClassFile getClassFile(String param1String) throws IOException {
-/* 171 */       if (param1String.indexOf('.') > 0) {
-/* 172 */         int i = param1String.lastIndexOf('.');
-/* 173 */         String str = param1String.replace('.', File.separatorChar) + ".class";
-/* 174 */         Path path = this.path.resolve(str);
-/* 175 */         if (!Files.exists(path, new java.nio.file.LinkOption[0])) {
-/* 176 */           path = this.path.resolve(str.substring(0, i) + "$" + str
-/* 177 */               .substring(i + 1, str.length()));
-/*     */         }
-/* 179 */         if (Files.exists(path, new java.nio.file.LinkOption[0])) {
-/* 180 */           return readClassFile(path);
-/*     */         }
-/*     */       } else {
-/* 183 */         Path path = this.path.resolve(param1String + ".class");
-/* 184 */         if (Files.exists(path, new java.nio.file.LinkOption[0])) {
-/* 185 */           return readClassFile(path);
-/*     */         }
-/*     */       }
-/* 188 */       return null;
-/*     */     }
-/*     */
-/*     */     public Iterable<ClassFile> getClassFiles() throws IOException {
-/* 192 */       final DirectoryIterator iter = new DirectoryIterator();
-/* 193 */       return new Iterable<ClassFile>() {
-/*     */           public Iterator<ClassFile> iterator() {
-/* 195 */             return iter;
-/*     */           }
-/*     */         };
-/*     */     }
-/*     */
-/*     */     private List<Path> walkTree(Path param1Path) throws IOException {
-/* 201 */       final ArrayList<Path> files = new ArrayList();
-/* 202 */       Files.walkFileTree(param1Path, new SimpleFileVisitor<Path>()
-/*     */           {
-/*     */             public FileVisitResult visitFile(Path param2Path, BasicFileAttributes param2BasicFileAttributes) throws IOException {
-/* 205 */               if (param2Path.getFileName().toString().endsWith(".class")) {
-/* 206 */                 files.add(param2Path);
-/*     */               }
-/* 208 */               return FileVisitResult.CONTINUE;
-/*     */             }
-/*     */           });
-/* 211 */       return arrayList;
-/*     */     }
-/*     */
-/*     */     class DirectoryIterator implements Iterator<ClassFile> {
-/*     */       private List<Path> entries;
-/* 216 */       private int index = 0;
-/*     */       DirectoryIterator() throws IOException {
-/* 218 */         this.entries = DirectoryReader.this.walkTree(DirectoryReader.this.path);
-/* 219 */         this.index = 0;
-/*     */       }
-/*     */
-/*     */       public boolean hasNext() {
-/* 223 */         return (this.index != this.entries.size());
-/*     */       }
-/*     */
-/*     */       public ClassFile next() {
-/* 227 */         if (!hasNext()) {
-/* 228 */           throw new NoSuchElementException();
-/*     */         }
-/* 230 */         Path path = this.entries.get(this.index++);
-/*     */         try {
-/* 232 */           return DirectoryReader.this.readClassFile(path);
-/* 233 */         } catch (IOException iOException) {
-/* 234 */           throw new Dependencies.ClassFileError(iOException);
-/*     */         }
-/*     */       }
-/*     */
-/*     */       public void remove() {
-/* 239 */         throw new UnsupportedOperationException("Not supported yet.");
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */   static class JarFileReader extends ClassFileReader { private final JarFile jarfile;
-/*     */
-/*     */     JarFileReader(Path param1Path) throws IOException {
-/* 247 */       this(param1Path, new JarFile(param1Path.toFile(), false));
-/*     */     }
-/*     */
-/*     */     JarFileReader(Path param1Path, JarFile param1JarFile) throws IOException {
-/* 251 */       super(param1Path);
-/* 252 */       this.jarfile = param1JarFile;
-/*     */     }
-/*     */
-/*     */     public ClassFile getClassFile(String param1String) throws IOException {
-/* 256 */       if (param1String.indexOf('.') > 0) {
-/* 257 */         int i = param1String.lastIndexOf('.');
-/* 258 */         String str = param1String.replace('.', '/') + ".class";
-/* 259 */         JarEntry jarEntry = this.jarfile.getJarEntry(str);
-/* 260 */         if (jarEntry == null) {
-/* 261 */           jarEntry = this.jarfile.getJarEntry(str.substring(0, i) + "$" + str
-/* 262 */               .substring(i + 1, str.length()));
-/*     */         }
-/* 264 */         if (jarEntry != null) {
-/* 265 */           return readClassFile(this.jarfile, jarEntry);
-/*     */         }
-/*     */       } else {
-/* 268 */         JarEntry jarEntry = this.jarfile.getJarEntry(param1String + ".class");
-/* 269 */         if (jarEntry != null) {
-/* 270 */           return readClassFile(this.jarfile, jarEntry);
-/*     */         }
-/*     */       }
-/* 273 */       return null;
-/*     */     }
-/*     */
-/*     */     protected ClassFile readClassFile(JarFile param1JarFile, JarEntry param1JarEntry) throws IOException {
-/* 277 */       InputStream inputStream = null;
-/*     */       try {
-/* 279 */         inputStream = param1JarFile.getInputStream(param1JarEntry);
-/* 280 */         return ClassFile.read(inputStream);
-/* 281 */       } catch (ConstantPoolException constantPoolException) {
-/* 282 */         throw new Dependencies.ClassFileError(constantPoolException);
-/*     */       } finally {
-/* 284 */         if (inputStream != null)
-/* 285 */           inputStream.close();
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public Iterable<ClassFile> getClassFiles() throws IOException {
-/* 290 */       final JarFileIterator iter = new JarFileIterator(this, this.jarfile);
-/* 291 */       return new Iterable<ClassFile>() {
-/*     */           public Iterator<ClassFile> iterator() {
-/* 293 */             return iter;
-/*     */           }
-/*     */         };
-/*     */     }
-/*     */
-/*     */
-/*     */     public boolean isMultiReleaseJar() throws IOException {
-/* 300 */       Manifest manifest = this.jarfile.getManifest();
-/* 301 */       if (manifest != null) {
-/* 302 */         Attributes attributes = manifest.getMainAttributes();
-/* 303 */         return "true".equalsIgnoreCase(attributes.getValue("Multi-Release"));
-/*     */       }
-/* 305 */       return false;
-/*     */     } }
-/*     */
-/*     */   class JarFileIterator implements Iterator<ClassFile> {
-/*     */     protected final JarFileReader reader;
-/*     */     protected Enumeration<JarEntry> entries;
-/*     */     protected JarFile jf;
-/*     */     protected JarEntry nextEntry;
-/*     */     protected ClassFile cf;
-/*     */
-/*     */     JarFileIterator(JarFileReader param1JarFileReader) {
-/* 316 */       this(param1JarFileReader, null);
-/*     */     }
-/*     */     JarFileIterator(JarFileReader param1JarFileReader, JarFile param1JarFile) {
-/* 319 */       this.reader = param1JarFileReader;
-/* 320 */       setJarFile(param1JarFile);
-/*     */     }
-/*     */
-/*     */     void setJarFile(JarFile param1JarFile) {
-/* 324 */       if (param1JarFile == null)
-/*     */         return;
-/* 326 */       this.jf = param1JarFile;
-/* 327 */       this.entries = this.jf.entries();
-/* 328 */       this.nextEntry = nextEntry();
-/*     */     }
-/*     */
-/*     */     public boolean hasNext() {
-/* 332 */       if (this.nextEntry != null && this.cf != null) {
-/* 333 */         return true;
-/*     */       }
-/* 335 */       while (this.nextEntry != null) {
-/*     */         try {
-/* 337 */           this.cf = this.reader.readClassFile(this.jf, this.nextEntry);
-/* 338 */           return true;
-/* 339 */         } catch (Dependencies.ClassFileError|IOException classFileError) {
-/* 340 */           ClassFileReader.this.skippedEntries.add(this.nextEntry.getName());
-/*     */
-/* 342 */           this.nextEntry = nextEntry();
-/*     */         }
-/* 344 */       }  return false;
-/*     */     }
-/*     */
-/*     */     public ClassFile next() {
-/* 348 */       if (!hasNext()) {
-/* 349 */         throw new NoSuchElementException();
-/*     */       }
-/* 351 */       ClassFile classFile = this.cf;
-/* 352 */       this.cf = null;
-/* 353 */       this.nextEntry = nextEntry();
-/* 354 */       return classFile;
-/*     */     }
-/*     */
-/*     */     protected JarEntry nextEntry() {
-/* 358 */       while (this.entries.hasMoreElements()) {
-/* 359 */         JarEntry jarEntry = this.entries.nextElement();
-/* 360 */         String str = jarEntry.getName();
-/* 361 */         if (str.endsWith(".class")) {
-/* 362 */           return jarEntry;
-/*     */         }
-/*     */       }
-/* 365 */       return null;
-/*     */     }
-/*     */
-/*     */     public void remove() {
-/* 369 */       throw new UnsupportedOperationException("Not supported yet.");
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\jdeps\ClassFileReader.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2012, 2017, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+package com.sun.tools.jdeps;
+
+import com.sun.tools.classfile.ClassFile;
+import com.sun.tools.classfile.ConstantPoolException;
+import com.sun.tools.classfile.Dependencies.ClassFileError;
+import java.io.*;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.*;
+import java.util.jar.Attributes;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
+
+/**
+ * ClassFileReader reads ClassFile(s) of a given path that can be
+ * a .class file, a directory, or a JAR file.
+ */
+public class ClassFileReader {
+    /**
+     * Returns a ClassFileReader instance of a given path.
+     */
+    public static ClassFileReader newInstance(Path path) throws IOException {
+        if (!Files.exists(path)) {
+            throw new FileNotFoundException(path.toString());
+        }
+
+        if (Files.isDirectory(path)) {
+            return new DirectoryReader(path);
+        } else if (path.getFileName().toString().endsWith(".jar")) {
+            return new JarFileReader(path);
+        } else {
+            return new ClassFileReader(path);
+        }
+    }
+
+    /**
+     * Returns a ClassFileReader instance of a given JarFile.
+     */
+    public static ClassFileReader newInstance(Path path, JarFile jf) throws IOException {
+        return new JarFileReader(path, jf);
+    }
+
+    protected final Path path;
+    protected final String baseFileName;
+    protected final List<String> skippedEntries = new ArrayList<>();
+    protected ClassFileReader(Path path) {
+        this.path = path;
+        this.baseFileName = path.getFileName() != null
+                                ? path.getFileName().toString()
+                                : path.toString();
+    }
+
+    public String getFileName() {
+        return baseFileName;
+    }
+
+    public List<String> skippedEntries() {
+        return skippedEntries;
+    }
+
+    /**
+     * Returns the ClassFile matching the given binary name
+     * or a fully-qualified class name.
+     */
+    public ClassFile getClassFile(String name) throws IOException {
+        if (name.indexOf('.') > 0) {
+            int i = name.lastIndexOf('.');
+            String pathname = name.replace('.', File.separatorChar) + ".class";
+            if (baseFileName.equals(pathname) ||
+                    baseFileName.equals(pathname.substring(0, i) + "$" +
+                                        pathname.substring(i+1, pathname.length()))) {
+                return readClassFile(path);
+            }
+        } else {
+            if (baseFileName.equals(name.replace('/', File.separatorChar) + ".class")) {
+                return readClassFile(path);
+            }
+        }
+        return null;
+    }
+
+    public Iterable<ClassFile> getClassFiles() throws IOException {
+        return new Iterable<ClassFile>() {
+            public Iterator<ClassFile> iterator() {
+                return new FileIterator();
+            }
+        };
+    }
+
+    protected ClassFile readClassFile(Path p) throws IOException {
+        InputStream is = null;
+        try {
+            is = Files.newInputStream(p);
+            return ClassFile.read(is);
+        } catch (ConstantPoolException e) {
+            throw new ClassFileError(e);
+        } finally {
+            if (is != null) {
+                is.close();
+            }
+        }
+    }
+
+    class FileIterator implements Iterator<ClassFile> {
+        int count;
+        FileIterator() {
+            this.count = 0;
+        }
+        public boolean hasNext() {
+            return count == 0 && baseFileName.endsWith(".class");
+        }
+
+        public ClassFile next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            try {
+                ClassFile cf = readClassFile(path);
+                count++;
+                return cf;
+            } catch (IOException e) {
+                throw new ClassFileError(e);
+            }
+        }
+
+        public void remove() {
+            throw new UnsupportedOperationException("Not supported yet.");
+        }
+    }
+
+    public boolean isMultiReleaseJar() throws IOException { return false; }
+
+    public String toString() {
+        return path.toString();
+    }
+
+    private static class DirectoryReader extends ClassFileReader {
+        DirectoryReader(Path path) throws IOException {
+            super(path);
+        }
+
+        public ClassFile getClassFile(String name) throws IOException {
+            if (name.indexOf('.') > 0) {
+                int i = name.lastIndexOf('.');
+                String pathname = name.replace('.', File.separatorChar) + ".class";
+                Path p = path.resolve(pathname);
+                if (!Files.exists(p)) {
+                    p = path.resolve(pathname.substring(0, i) + "$" +
+                                     pathname.substring(i+1, pathname.length()));
+                }
+                if (Files.exists(p)) {
+                    return readClassFile(p);
+                }
+            } else {
+                Path p = path.resolve(name + ".class");
+                if (Files.exists(p)) {
+                    return readClassFile(p);
+                }
+            }
+            return null;
+        }
+
+        public Iterable<ClassFile> getClassFiles() throws IOException {
+            final Iterator<ClassFile> iter = new DirectoryIterator();
+            return new Iterable<ClassFile>() {
+                public Iterator<ClassFile> iterator() {
+                    return iter;
+                }
+            };
+        }
+
+        private List<Path> walkTree(Path dir) throws IOException {
+            final List<Path> files = new ArrayList<Path>();
+            Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+                        throws IOException {
+                    if (file.getFileName().toString().endsWith(".class")) {
+                        files.add(file);
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+            return files;
+        }
+
+        class DirectoryIterator implements Iterator<ClassFile> {
+            private List<Path> entries;
+            private int index = 0;
+            DirectoryIterator() throws IOException {
+                entries = walkTree(path);
+                index = 0;
+            }
+
+            public boolean hasNext() {
+                return index != entries.size();
+            }
+
+            public ClassFile next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                Path path = entries.get(index++);
+                try {
+                    return readClassFile(path);
+                } catch (IOException e) {
+                    throw new ClassFileError(e);
+                }
+            }
+
+            public void remove() {
+                throw new UnsupportedOperationException("Not supported yet.");
+            }
+        }
+    }
+
+    static class JarFileReader extends ClassFileReader {
+        private final JarFile jarfile;
+        JarFileReader(Path path) throws IOException {
+            this(path, new JarFile(path.toFile(), false));
+        }
+
+        JarFileReader(Path path, JarFile jf) throws IOException {
+            super(path);
+            this.jarfile = jf;
+        }
+
+        public ClassFile getClassFile(String name) throws IOException {
+            if (name.indexOf('.') > 0) {
+                int i = name.lastIndexOf('.');
+                String entryName = name.replace('.', '/') + ".class";
+                JarEntry e = jarfile.getJarEntry(entryName);
+                if (e == null) {
+                    e = jarfile.getJarEntry(entryName.substring(0, i) + "$"
+                            + entryName.substring(i + 1, entryName.length()));
+                }
+                if (e != null) {
+                    return readClassFile(jarfile, e);
+                }
+            } else {
+                JarEntry e = jarfile.getJarEntry(name + ".class");
+                if (e != null) {
+                    return readClassFile(jarfile, e);
+                }
+            }
+            return null;
+        }
+
+        protected ClassFile readClassFile(JarFile jarfile, JarEntry e) throws IOException {
+            InputStream is = null;
+            try {
+                is = jarfile.getInputStream(e);
+                return ClassFile.read(is);
+            } catch (ConstantPoolException ex) {
+                throw new ClassFileError(ex);
+            } finally {
+                if (is != null)
+                    is.close();
+            }
+        }
+
+        public Iterable<ClassFile> getClassFiles() throws IOException {
+            final Iterator<ClassFile> iter = new JarFileIterator(this, jarfile);
+            return new Iterable<ClassFile>() {
+                public Iterator<ClassFile> iterator() {
+                    return iter;
+                }
+            };
+        }
+
+        @Override
+        public boolean isMultiReleaseJar() throws IOException {
+            Manifest mf = this.jarfile.getManifest();
+            if (mf != null) {
+                Attributes atts = mf.getMainAttributes();
+                return "true".equalsIgnoreCase(atts.getValue("Multi-Release"));
+            }
+            return false;
+        }
+    }
+
+    class JarFileIterator implements Iterator<ClassFile> {
+        protected final JarFileReader reader;
+        protected Enumeration<JarEntry> entries;
+        protected JarFile jf;
+        protected JarEntry nextEntry;
+        protected ClassFile cf;
+        JarFileIterator(JarFileReader reader) {
+            this(reader, null);
+        }
+        JarFileIterator(JarFileReader reader, JarFile jarfile) {
+            this.reader = reader;
+            setJarFile(jarfile);
+        }
+
+        void setJarFile(JarFile jarfile) {
+            if (jarfile == null) return;
+
+            this.jf = jarfile;
+            this.entries = jf.entries();
+            this.nextEntry = nextEntry();
+        }
+
+        public boolean hasNext() {
+            if (nextEntry != null && cf != null) {
+                return true;
+            }
+            while (nextEntry != null) {
+                try {
+                    cf = reader.readClassFile(jf, nextEntry);
+                    return true;
+                } catch (ClassFileError | IOException ex) {
+                    skippedEntries.add(nextEntry.getName());
+                }
+                nextEntry = nextEntry();
+            }
+            return false;
+        }
+
+        public ClassFile next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            ClassFile classFile = cf;
+            cf = null;
+            nextEntry = nextEntry();
+            return classFile;
+        }
+
+        protected JarEntry nextEntry() {
+            while (entries.hasMoreElements()) {
+                JarEntry e = entries.nextElement();
+                String name = e.getName();
+                if (name.endsWith(".class")) {
+                    return e;
+                }
+            }
+            return null;
+        }
+
+        public void remove() {
+            throw new UnsupportedOperationException("Not supported yet.");
+        }
+    }
+}

@@ -1,100 +1,94 @@
-/*    */ package com.sun.tools.javac.file;
-/*    */ 
-/*    */ import com.sun.tools.javac.util.Context;
-/*    */ import java.io.File;
-/*    */ import java.io.IOException;
-/*    */ import java.util.ArrayList;
-/*    */ import java.util.Collections;
-/*    */ import java.util.List;
-/*    */ import java.util.StringTokenizer;
-/*    */ import java.util.jar.Attributes;
-/*    */ import java.util.jar.JarFile;
-/*    */ import java.util.jar.Manifest;
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ public class FSInfo
-/*    */ {
-/*    */   public static FSInfo instance(Context paramContext) {
-/* 32 */     FSInfo fSInfo = (FSInfo)paramContext.get(FSInfo.class);
-/* 33 */     if (fSInfo == null)
-/* 34 */       fSInfo = new FSInfo(); 
-/* 35 */     return fSInfo;
-/*    */   }
-/*    */ 
-/*    */   
-/*    */   protected FSInfo() {}
-/*    */   
-/*    */   protected FSInfo(Context paramContext) {
-/* 42 */     paramContext.put(FSInfo.class, this);
-/*    */   }
-/*    */   
-/*    */   public File getCanonicalFile(File paramFile) {
-/*    */     try {
-/* 47 */       return paramFile.getCanonicalFile();
-/* 48 */     } catch (IOException iOException) {
-/* 49 */       return paramFile.getAbsoluteFile();
-/*    */     } 
-/*    */   }
-/*    */   
-/*    */   public boolean exists(File paramFile) {
-/* 54 */     return paramFile.exists();
-/*    */   }
-/*    */   
-/*    */   public boolean isDirectory(File paramFile) {
-/* 58 */     return paramFile.isDirectory();
-/*    */   }
-/*    */   
-/*    */   public boolean isFile(File paramFile) {
-/* 62 */     return paramFile.isFile();
-/*    */   }
-/*    */   
-/*    */   public List<File> getJarClassPath(File paramFile) throws IOException {
-/* 66 */     String str = paramFile.getParent();
-/* 67 */     JarFile jarFile = new JarFile(paramFile);
-/*    */     try {
-/* 69 */       Manifest manifest = jarFile.getManifest();
-/* 70 */       if (manifest == null) {
-/* 71 */         return (List)Collections.emptyList();
-/*    */       }
-/* 73 */       Attributes attributes = manifest.getMainAttributes();
-/* 74 */       if (attributes == null) {
-/* 75 */         return (List)Collections.emptyList();
-/*    */       }
-/* 77 */       String str1 = attributes.getValue(Attributes.Name.CLASS_PATH);
-/* 78 */       if (str1 == null) {
-/* 79 */         return (List)Collections.emptyList();
-/*    */       }
-/* 81 */       ArrayList<File> arrayList = new ArrayList();
-/*    */       
-/* 83 */       for (StringTokenizer stringTokenizer = new StringTokenizer(str1); stringTokenizer.hasMoreTokens(); ) {
-/* 84 */         String str2 = stringTokenizer.nextToken();
-/* 85 */         File file = (str == null) ? new File(str2) : new File(str, str2);
-/* 86 */         arrayList.add(file);
-/*    */       } 
-/*    */       
-/* 89 */       return arrayList;
-/*    */     } finally {
-/* 91 */       jarFile.close();
-/*    */     } 
-/*    */   }
-/*    */ }
 
+package com.sun.tools.javac.file;
 
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\file\FSInfo.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.StringTokenizer;
+import java.util.jar.Attributes;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
+
+import com.sun.tools.javac.util.Context;
+
+/**
+ * Get meta-info about files. Default direct (non-caching) implementation.
+ * @see CacheFSInfo
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own risk.
+ * This code and its internal interfaces are subject to change or
+ * deletion without notice.</b>
  */
+public class FSInfo {
+
+    /** Get the FSInfo instance for this context.
+     *  @param context the context
+     *  @return the Paths instance for this context
+     */
+    public static FSInfo instance(Context context) {
+        FSInfo instance = context.get(FSInfo.class);
+        if (instance == null)
+            instance = new FSInfo();
+        return instance;
+    }
+
+    protected FSInfo() {
+    }
+
+    protected FSInfo(Context context) {
+        context.put(FSInfo.class, this);
+    }
+
+    public File getCanonicalFile(File file) {
+        try {
+            return file.getCanonicalFile();
+        } catch (IOException e) {
+            return file.getAbsoluteFile();
+        }
+    }
+
+    public boolean exists(File file) {
+        return file.exists();
+    }
+
+    public boolean isDirectory(File file) {
+        return file.isDirectory();
+    }
+
+    public boolean isFile(File file) {
+        return file.isFile();
+    }
+
+    public List<File> getJarClassPath(File file) throws IOException {
+        String parent = file.getParent();
+        JarFile jarFile = new JarFile(file);
+        try {
+            Manifest man = jarFile.getManifest();
+            if (man == null)
+                return Collections.emptyList();
+
+            Attributes attr = man.getMainAttributes();
+            if (attr == null)
+                return Collections.emptyList();
+
+            String path = attr.getValue(Attributes.Name.CLASS_PATH);
+            if (path == null)
+                return Collections.emptyList();
+
+            List<File> list = new ArrayList<File>();
+
+            for (StringTokenizer st = new StringTokenizer(path); st.hasMoreTokens(); ) {
+                String elt = st.nextToken();
+                File f = (parent == null ? new File(elt) : new File(parent, elt));
+                list.add(f);
+            }
+
+            return list;
+        } finally {
+            jarFile.close();
+        }
+    }
+}

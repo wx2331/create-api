@@ -1,473 +1,467 @@
-/*     */ package com.sun.tools.javac.code;
-/*     */
-/*     */ import com.sun.tools.javac.comp.Annotate;
-/*     */ import com.sun.tools.javac.comp.Env;
-/*     */ import com.sun.tools.javac.util.Assert;
-/*     */ import com.sun.tools.javac.util.JCDiagnostic;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import com.sun.tools.javac.util.ListBuffer;
-/*     */ import com.sun.tools.javac.util.Log;
-/*     */ import java.util.Map;
-/*     */ import javax.tools.JavaFileObject;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class SymbolMetadata
-/*     */ {
-/*  73 */   private static final List<Attribute.Compound> DECL_NOT_STARTED = List.of(null);
-/*  74 */   private static final List<Attribute.Compound> DECL_IN_PROGRESS = List.of(null);
-/*     */
-/*     */
-/*     */
-/*     */
-/*  79 */   private List<Attribute.Compound> attributes = DECL_NOT_STARTED;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*  85 */   private List<Attribute.TypeCompound> type_attributes = List.nil();
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*  91 */   private List<Attribute.TypeCompound> init_type_attributes = List.nil();
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*  97 */   private List<Attribute.TypeCompound> clinit_type_attributes = List.nil();
-/*     */
-/*     */
-/*     */   private final Symbol sym;
-/*     */
-/*     */
-/*     */
-/*     */   public SymbolMetadata(Symbol paramSymbol) {
-/* 105 */     this.sym = paramSymbol;
-/*     */   }
-/*     */
-/*     */   public List<Attribute.Compound> getDeclarationAttributes() {
-/* 109 */     return filterDeclSentinels(this.attributes);
-/*     */   }
-/*     */
-/*     */   public List<Attribute.TypeCompound> getTypeAttributes() {
-/* 113 */     return this.type_attributes;
-/*     */   }
-/*     */
-/*     */   public List<Attribute.TypeCompound> getInitTypeAttributes() {
-/* 117 */     return this.init_type_attributes;
-/*     */   }
-/*     */
-/*     */   public List<Attribute.TypeCompound> getClassInitTypeAttributes() {
-/* 121 */     return this.clinit_type_attributes;
-/*     */   }
-/*     */
-/*     */   public void setDeclarationAttributes(List<Attribute.Compound> paramList) {
-/* 125 */     Assert.check((pendingCompletion() || !isStarted()));
-/* 126 */     if (paramList == null) {
-/* 127 */       throw new NullPointerException();
-/*     */     }
-/* 129 */     this.attributes = paramList;
-/*     */   }
-/*     */
-/*     */   public void setTypeAttributes(List<Attribute.TypeCompound> paramList) {
-/* 133 */     if (paramList == null) {
-/* 134 */       throw new NullPointerException();
-/*     */     }
-/* 136 */     this.type_attributes = paramList;
-/*     */   }
-/*     */
-/*     */   public void setInitTypeAttributes(List<Attribute.TypeCompound> paramList) {
-/* 140 */     if (paramList == null) {
-/* 141 */       throw new NullPointerException();
-/*     */     }
-/* 143 */     this.init_type_attributes = paramList;
-/*     */   }
-/*     */
-/*     */   public void setClassInitTypeAttributes(List<Attribute.TypeCompound> paramList) {
-/* 147 */     if (paramList == null) {
-/* 148 */       throw new NullPointerException();
-/*     */     }
-/* 150 */     this.clinit_type_attributes = paramList;
-/*     */   }
-/*     */
-/*     */   public void setAttributes(SymbolMetadata paramSymbolMetadata) {
-/* 154 */     if (paramSymbolMetadata == null) {
-/* 155 */       throw new NullPointerException();
-/*     */     }
-/* 157 */     setDeclarationAttributes(paramSymbolMetadata.getDeclarationAttributes());
-/* 158 */     if ((this.sym.flags() & 0x80000000L) != 0L) {
-/* 159 */       Assert.check((paramSymbolMetadata.sym.kind == 16));
-/* 160 */       ListBuffer listBuffer = new ListBuffer();
-/* 161 */       for (Attribute.TypeCompound typeCompound : paramSymbolMetadata.getTypeAttributes()) {
-/*     */
-/* 163 */         if (!typeCompound.position.type.isLocal())
-/* 164 */           listBuffer.append(typeCompound);
-/*     */       }
-/* 166 */       setTypeAttributes(listBuffer.toList());
-/*     */     } else {
-/* 168 */       setTypeAttributes(paramSymbolMetadata.getTypeAttributes());
-/*     */     }
-/* 170 */     if (this.sym.kind == 2) {
-/* 171 */       setInitTypeAttributes(paramSymbolMetadata.getInitTypeAttributes());
-/* 172 */       setClassInitTypeAttributes(paramSymbolMetadata.getClassInitTypeAttributes());
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public void setDeclarationAttributesWithCompletion(Annotate.AnnotateRepeatedContext<Attribute.Compound> paramAnnotateRepeatedContext) {
-/* 177 */     Assert.check((pendingCompletion() || (!isStarted() && this.sym.kind == 1)));
-/* 178 */     setDeclarationAttributes(getAttributesForCompletion(paramAnnotateRepeatedContext));
-/*     */   }
-/*     */
-/*     */   public void appendTypeAttributesWithCompletion(Annotate.AnnotateRepeatedContext<Attribute.TypeCompound> paramAnnotateRepeatedContext) {
-/* 182 */     appendUniqueTypes(getAttributesForCompletion(paramAnnotateRepeatedContext));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   private <T extends Attribute.Compound> List<T> getAttributesForCompletion(final Annotate.AnnotateRepeatedContext<T> ctx) {
-/* 188 */     Map map = ctx.annotated;
-/* 189 */     boolean bool = false;
-/* 190 */     List list = List.nil();
-/* 191 */     for (ListBuffer listBuffer : map.values()) {
-/* 192 */       if (listBuffer.size() == 1) {
-/* 193 */         list = list.prepend(listBuffer.first());
-/*     */
-/*     */
-/*     */         continue;
-/*     */       }
-/*     */
-/* 199 */       Placeholder<T> placeholder2 = new Placeholder<>(ctx, listBuffer.toList(), this.sym);
-/* 200 */       Placeholder<T> placeholder1 = placeholder2;
-/* 201 */       list = list.prepend(placeholder1);
-/* 202 */       bool = true;
-/*     */     }
-/*     */
-/*     */
-/* 206 */     if (bool)
-/*     */     {
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 224 */       ctx.annotateRepeated(new Annotate.Worker()
-/*     */           {
-/*     */             public String toString() {
-/* 227 */               return "repeated annotation pass of: " + SymbolMetadata.this.sym + " in: " + SymbolMetadata.this.sym.owner;
-/*     */             }
-/*     */
-/*     */
-/*     */             public void run() {
-/* 232 */               SymbolMetadata.this.complete(ctx);
-/*     */             }
-/*     */           });
-/*     */     }
-/*     */
-/* 237 */     return list.reverse();
-/*     */   }
-/*     */
-/*     */   public SymbolMetadata reset() {
-/* 241 */     this.attributes = DECL_IN_PROGRESS;
-/* 242 */     return this;
-/*     */   }
-/*     */
-/*     */   public boolean isEmpty() {
-/* 246 */     return (!isStarted() ||
-/* 247 */       pendingCompletion() || this.attributes
-/* 248 */       .isEmpty());
-/*     */   }
-/*     */
-/*     */   public boolean isTypesEmpty() {
-/* 252 */     return this.type_attributes.isEmpty();
-/*     */   }
-/*     */
-/*     */   public boolean pendingCompletion() {
-/* 256 */     return (this.attributes == DECL_IN_PROGRESS);
-/*     */   }
-/*     */
-/*     */   public SymbolMetadata append(List<Attribute.Compound> paramList) {
-/* 260 */     this.attributes = filterDeclSentinels(this.attributes);
-/*     */
-/* 262 */     if (!paramList.isEmpty())
-/*     */     {
-/* 264 */       if (this.attributes.isEmpty()) {
-/* 265 */         this.attributes = paramList;
-/*     */       } else {
-/* 267 */         this.attributes = this.attributes.appendList(paramList);
-/*     */       }  }
-/* 269 */     return this;
-/*     */   }
-/*     */
-/*     */   public SymbolMetadata appendUniqueTypes(List<Attribute.TypeCompound> paramList) {
-/* 273 */     if (!paramList.isEmpty())
-/*     */     {
-/* 275 */       if (this.type_attributes.isEmpty()) {
-/* 276 */         this.type_attributes = paramList;
-/*     */       }
-/*     */       else {
-/*     */
-/* 280 */         for (Attribute.TypeCompound typeCompound : paramList) {
-/* 281 */           if (!this.type_attributes.contains(typeCompound))
-/* 282 */             this.type_attributes = this.type_attributes.append(typeCompound);
-/*     */         }
-/*     */       }  }
-/* 285 */     return this;
-/*     */   }
-/*     */
-/*     */   public SymbolMetadata appendInitTypeAttributes(List<Attribute.TypeCompound> paramList) {
-/* 289 */     if (!paramList.isEmpty())
-/*     */     {
-/* 291 */       if (this.init_type_attributes.isEmpty()) {
-/* 292 */         this.init_type_attributes = paramList;
-/*     */       } else {
-/* 294 */         this.init_type_attributes = this.init_type_attributes.appendList(paramList);
-/*     */       }  }
-/* 296 */     return this;
-/*     */   }
-/*     */
-/*     */   public SymbolMetadata appendClassInitTypeAttributes(List<Attribute.TypeCompound> paramList) {
-/* 300 */     if (!paramList.isEmpty())
-/*     */     {
-/* 302 */       if (this.clinit_type_attributes.isEmpty()) {
-/* 303 */         this.clinit_type_attributes = paramList;
-/*     */       } else {
-/* 305 */         this.clinit_type_attributes = this.clinit_type_attributes.appendList(paramList);
-/*     */       }  }
-/* 307 */     return this;
-/*     */   }
-/*     */
-/*     */   public SymbolMetadata prepend(List<Attribute.Compound> paramList) {
-/* 311 */     this.attributes = filterDeclSentinels(this.attributes);
-/*     */
-/* 313 */     if (!paramList.isEmpty())
-/*     */     {
-/* 315 */       if (this.attributes.isEmpty()) {
-/* 316 */         this.attributes = paramList;
-/*     */       } else {
-/* 318 */         this.attributes = this.attributes.prependList(paramList);
-/*     */       }  }
-/* 320 */     return this;
-/*     */   }
-/*     */
-/*     */   private List<Attribute.Compound> filterDeclSentinels(List<Attribute.Compound> paramList) {
-/* 324 */     return (paramList == DECL_IN_PROGRESS || paramList == DECL_NOT_STARTED) ?
-/* 325 */       List.nil() : paramList;
-/*     */   }
-/*     */
-/*     */
-/*     */   private boolean isStarted() {
-/* 330 */     return (this.attributes != DECL_NOT_STARTED);
-/*     */   }
-/*     */
-/*     */   private List<Attribute.Compound> getPlaceholders() {
-/* 334 */     List list = List.nil();
-/* 335 */     for (Attribute.Compound compound : filterDeclSentinels(this.attributes)) {
-/* 336 */       if (compound instanceof Placeholder) {
-/* 337 */         list = list.prepend(compound);
-/*     */       }
-/*     */     }
-/* 340 */     return list.reverse();
-/*     */   }
-/*     */
-/*     */   private List<Attribute.TypeCompound> getTypePlaceholders() {
-/* 344 */     List list = List.nil();
-/* 345 */     for (Attribute.TypeCompound typeCompound : this.type_attributes) {
-/* 346 */       if (typeCompound instanceof Placeholder) {
-/* 347 */         list = list.prepend(typeCompound);
-/*     */       }
-/*     */     }
-/* 350 */     return list.reverse();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private <T extends Attribute.Compound> void complete(Annotate.AnnotateRepeatedContext<T> paramAnnotateRepeatedContext) {
-/* 357 */     Log log = paramAnnotateRepeatedContext.log;
-/* 358 */     Env env = paramAnnotateRepeatedContext.env;
-/* 359 */     JavaFileObject javaFileObject = log.useSource(env.toplevel.sourcefile);
-/*     */
-/*     */     try {
-/* 362 */       if (paramAnnotateRepeatedContext.isTypeCompound) {
-/* 363 */         Assert.check(!isTypesEmpty());
-/*     */
-/* 365 */         if (isTypesEmpty()) {
-/*     */           return;
-/*     */         }
-/*     */
-/* 369 */         List list = List.nil();
-/* 370 */         for (Attribute.TypeCompound typeCompound : getTypeAttributes()) {
-/* 371 */           if (typeCompound instanceof Placeholder) {
-/*     */
-/* 373 */             Placeholder<Attribute.TypeCompound> placeholder = (Placeholder)typeCompound;
-/* 374 */             Attribute.TypeCompound typeCompound1 = replaceOne(placeholder, placeholder.getRepeatedContext());
-/*     */
-/* 376 */             if (null != typeCompound1)
-/* 377 */               list = list.prepend(typeCompound1);
-/*     */             continue;
-/*     */           }
-/* 380 */           list = list.prepend(typeCompound);
-/*     */         }
-/*     */
-/*     */
-/* 384 */         this.type_attributes = list.reverse();
-/*     */
-/* 386 */         Assert.check(getTypePlaceholders().isEmpty());
-/*     */       } else {
-/* 388 */         Assert.check(!pendingCompletion());
-/*     */
-/* 390 */         if (isEmpty()) {
-/*     */           return;
-/*     */         }
-/*     */
-/* 394 */         List list = List.nil();
-/* 395 */         for (Attribute.Compound compound : getDeclarationAttributes()) {
-/* 396 */           if (compound instanceof Placeholder) {
-/*     */
-/* 398 */             Object object = replaceOne((Placeholder<Object>)compound, (Annotate.AnnotateRepeatedContext)paramAnnotateRepeatedContext);
-/*     */
-/* 400 */             if (null != object)
-/* 401 */               list = list.prepend(object);
-/*     */             continue;
-/*     */           }
-/* 404 */           list = list.prepend(compound);
-/*     */         }
-/*     */
-/*     */
-/* 408 */         this.attributes = list.reverse();
-/*     */
-/* 410 */         Assert.check(getPlaceholders().isEmpty());
-/*     */       }
-/*     */     } finally {
-/* 413 */       log.useSource(javaFileObject);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   private <T extends Attribute.Compound> T replaceOne(Placeholder<T> paramPlaceholder, Annotate.AnnotateRepeatedContext<T> paramAnnotateRepeatedContext) {
-/* 418 */     Log log = paramAnnotateRepeatedContext.log;
-/*     */
-/*     */
-/* 421 */     Attribute.Compound compound = paramAnnotateRepeatedContext.processRepeatedAnnotations(paramPlaceholder.getPlaceholderFor(), this.sym);
-/*     */
-/* 423 */     if (compound != null) {
-/*     */
-/*     */
-/*     */
-/* 427 */       ListBuffer listBuffer = (ListBuffer)paramAnnotateRepeatedContext.annotated.get(compound.type.tsym);
-/* 428 */       if (listBuffer != null) {
-/* 429 */         log.error((JCDiagnostic.DiagnosticPosition)paramAnnotateRepeatedContext.pos.get(listBuffer.first()), "invalid.repeatable.annotation.repeated.and.container.present", new Object[] {
-/* 430 */               ((Attribute.Compound)listBuffer.first()).type.tsym
-/*     */             });
-/*     */       }
-/*     */     }
-/*     */
-/* 435 */     return (T)compound;
-/*     */   }
-/*     */
-/*     */   private static class Placeholder<T extends Attribute.Compound>
-/*     */     extends Attribute.TypeCompound {
-/*     */     private final Annotate.AnnotateRepeatedContext<T> ctx;
-/*     */     private final List<T> placeholderFor;
-/*     */     private final Symbol on;
-/*     */
-/*     */     public Placeholder(Annotate.AnnotateRepeatedContext<T> param1AnnotateRepeatedContext, List<T> param1List, Symbol param1Symbol) {
-/* 445 */       super(param1Symbol.type, List.nil(), param1AnnotateRepeatedContext.isTypeCompound ? ((TypeCompound)param1List.head).position : new TypeAnnotationPosition());
-/*     */
-/*     */
-/*     */
-/* 449 */       this.ctx = param1AnnotateRepeatedContext;
-/* 450 */       this.placeholderFor = param1List;
-/* 451 */       this.on = param1Symbol;
-/*     */     }
-/*     */
-/*     */
-/*     */     public String toString() {
-/* 456 */       return "<placeholder: " + this.placeholderFor + " on: " + this.on + ">";
-/*     */     }
-/*     */
-/*     */     public List<T> getPlaceholderFor() {
-/* 460 */       return this.placeholderFor;
-/*     */     }
-/*     */
-/*     */     public Annotate.AnnotateRepeatedContext<T> getRepeatedContext() {
-/* 464 */       return this.ctx;
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\code\SymbolMetadata.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2012, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.code;
+
+import java.util.Map;
+
+import javax.tools.JavaFileObject;
+
+import com.sun.tools.javac.comp.Annotate;
+import com.sun.tools.javac.comp.AttrContext;
+import com.sun.tools.javac.code.Attribute.TypeCompound;
+import com.sun.tools.javac.code.Kinds;
+import com.sun.tools.javac.comp.Env;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.Assert;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.ListBuffer;
+import com.sun.tools.javac.util.Log;
+import com.sun.tools.javac.util.Pair;
+import static com.sun.tools.javac.code.Kinds.PCK;
+
+/**
+ * Container for all annotations (attributes in javac) on a Symbol.
+ *
+ * This class is explicitly mutable. Its contents will change when attributes
+ * are annotated onto the Symbol. However this class depends on the facts that
+ * List (in javac) is immutable.
+ *
+ * An instance of this class can be in one of three states:
+ *
+ * NOT_STARTED indicates that the Symbol this instance belongs to has not been
+ * annotated (yet). Specifically if the declaration is not annotated this
+ * instance will never move past NOT_STARTED. You can never go back to
+ * NOT_STARTED.
+ *
+ * IN_PROGRESS annotations have been found on the declaration. Will be processed
+ * later. You can reset to IN_PROGRESS. While IN_PROGRESS you can set the list
+ * of attributes (and this moves out of the IN_PROGRESS state).
+ *
+ * "unnamed" this SymbolMetadata contains some attributes, possibly the final set.
+ * While in this state you can only prepend or append to the attributes not set
+ * it directly. You can also move back to the IN_PROGRESS state using reset().
+ *
+ * <p><b>This is NOT part of any supported API. If you write code that depends
+ * on this, you do so at your own risk. This code and its internal interfaces
+ * are subject to change or deletion without notice.</b>
+ */
+public class SymbolMetadata {
+
+    private static final List<Attribute.Compound> DECL_NOT_STARTED = List.of(null);
+    private static final List<Attribute.Compound> DECL_IN_PROGRESS = List.of(null);
+
+    /*
+     * This field should never be null
+     */
+    private List<Attribute.Compound> attributes = DECL_NOT_STARTED;
+
+    /*
+     * Type attributes for this symbol.
+     * This field should never be null.
+     */
+    private List<TypeCompound> type_attributes = List.<TypeCompound>nil();
+
+    /*
+     * Type attributes of initializers in this class.
+     * Unused if the current symbol is not a ClassSymbol.
+     */
+    private List<TypeCompound> init_type_attributes = List.<TypeCompound>nil();
+
+    /*
+     * Type attributes of class initializers in this class.
+     * Unused if the current symbol is not a ClassSymbol.
+     */
+    private List<TypeCompound> clinit_type_attributes = List.<TypeCompound>nil();
+
+    /*
+     * The Symbol this SymbolMetadata instance belongs to
+     */
+    private final Symbol sym;
+
+    public SymbolMetadata(Symbol sym) {
+        this.sym = sym;
+    }
+
+    public List<Attribute.Compound> getDeclarationAttributes() {
+        return filterDeclSentinels(attributes);
+    }
+
+    public List<TypeCompound> getTypeAttributes() {
+        return type_attributes;
+    }
+
+    public List<TypeCompound> getInitTypeAttributes() {
+        return init_type_attributes;
+    }
+
+    public List<TypeCompound> getClassInitTypeAttributes() {
+        return clinit_type_attributes;
+    }
+
+    public void setDeclarationAttributes(List<Attribute.Compound> a) {
+        Assert.check(pendingCompletion() || !isStarted());
+        if (a == null) {
+            throw new NullPointerException();
+        }
+        attributes = a;
+    }
+
+    public void setTypeAttributes(List<TypeCompound> a) {
+        if (a == null) {
+            throw new NullPointerException();
+        }
+        type_attributes = a;
+    }
+
+    public void setInitTypeAttributes(List<TypeCompound> a) {
+        if (a == null) {
+            throw new NullPointerException();
+        }
+        init_type_attributes = a;
+    }
+
+    public void setClassInitTypeAttributes(List<TypeCompound> a) {
+        if (a == null) {
+            throw new NullPointerException();
+        }
+        clinit_type_attributes = a;
+    }
+
+    public void setAttributes(SymbolMetadata other) {
+        if (other == null) {
+            throw new NullPointerException();
+        }
+        setDeclarationAttributes(other.getDeclarationAttributes());
+        if ((sym.flags() & Flags.BRIDGE) != 0) {
+            Assert.check(other.sym.kind == Kinds.MTH);
+            ListBuffer<TypeCompound> typeAttributes = new ListBuffer<>();
+            for (TypeCompound tc : other.getTypeAttributes()) {
+                // Carry over only contractual type annotations: i.e nothing interior to method body.
+                if (!tc.position.type.isLocal())
+                    typeAttributes.append(tc);
+            }
+            setTypeAttributes(typeAttributes.toList());
+        } else {
+            setTypeAttributes(other.getTypeAttributes());
+        }
+        if (sym.kind == Kinds.TYP) {
+            setInitTypeAttributes(other.getInitTypeAttributes());
+            setClassInitTypeAttributes(other.getClassInitTypeAttributes());
+        }
+    }
+
+    public void setDeclarationAttributesWithCompletion(final Annotate.AnnotateRepeatedContext<Attribute.Compound> ctx) {
+        Assert.check(pendingCompletion() || (!isStarted() && sym.kind == PCK));
+        this.setDeclarationAttributes(getAttributesForCompletion(ctx));
+    }
+
+    public void appendTypeAttributesWithCompletion(final Annotate.AnnotateRepeatedContext<TypeCompound> ctx) {
+        this.appendUniqueTypes(getAttributesForCompletion(ctx));
+    }
+
+    private <T extends Attribute.Compound> List<T> getAttributesForCompletion(
+            final Annotate.AnnotateRepeatedContext<T> ctx) {
+
+        Map<Symbol.TypeSymbol, ListBuffer<T>> annotated = ctx.annotated;
+        boolean atLeastOneRepeated = false;
+        List<T> buf = List.<T>nil();
+        for (ListBuffer<T> lb : annotated.values()) {
+            if (lb.size() == 1) {
+                buf = buf.prepend(lb.first());
+            } else { // repeated
+                // This will break when other subtypes of Attributs.Compound
+                // are introduced, because PlaceHolder is a subtype of TypeCompound.
+                T res;
+                @SuppressWarnings("unchecked")
+                T ph = (T) new Placeholder<T>(ctx, lb.toList(), sym);
+                res = ph;
+                buf = buf.prepend(res);
+                atLeastOneRepeated = true;
+            }
+        }
+
+        if (atLeastOneRepeated) {
+            // The Symbol s is now annotated with a combination of
+            // finished non-repeating annotations and placeholders for
+            // repeating annotations.
+            //
+            // We need to do this in two passes because when creating
+            // a container for a repeating annotation we must
+            // guarantee that the @Repeatable on the
+            // contained annotation is fully annotated
+            //
+            // The way we force this order is to do all repeating
+            // annotations in a pass after all non-repeating are
+            // finished. This will work because @Repeatable
+            // is non-repeating and therefore will be annotated in the
+            // fist pass.
+
+            // Queue a pass that will replace Attribute.Placeholders
+            // with Attribute.Compound (made from synthesized containers).
+            ctx.annotateRepeated(new Annotate.Worker() {
+                @Override
+                public String toString() {
+                    return "repeated annotation pass of: " + sym + " in: " + sym.owner;
+                }
+
+                @Override
+                public void run() {
+                    complete(ctx);
+                }
+            });
+        }
+        // Add non-repeating attributes
+        return buf.reverse();
+    }
+
+    public SymbolMetadata reset() {
+        attributes = DECL_IN_PROGRESS;
+        return this;
+    }
+
+    public boolean isEmpty() {
+        return !isStarted()
+                || pendingCompletion()
+                || attributes.isEmpty();
+    }
+
+    public boolean isTypesEmpty() {
+        return type_attributes.isEmpty();
+    }
+
+    public boolean pendingCompletion() {
+        return attributes == DECL_IN_PROGRESS;
+    }
+
+    public SymbolMetadata append(List<Attribute.Compound> l) {
+        attributes = filterDeclSentinels(attributes);
+
+        if (l.isEmpty()) {
+            ; // no-op
+        } else if (attributes.isEmpty()) {
+            attributes = l;
+        } else {
+            attributes = attributes.appendList(l);
+        }
+        return this;
+    }
+
+    public SymbolMetadata appendUniqueTypes(List<TypeCompound> l) {
+        if (l.isEmpty()) {
+            ; // no-op
+        } else if (type_attributes.isEmpty()) {
+            type_attributes = l;
+        } else {
+            // TODO: in case we expect a large number of annotations, this
+            // might be inefficient.
+            for (TypeCompound tc : l) {
+                if (!type_attributes.contains(tc))
+                    type_attributes = type_attributes.append(tc);
+            }
+        }
+        return this;
+    }
+
+    public SymbolMetadata appendInitTypeAttributes(List<TypeCompound> l) {
+        if (l.isEmpty()) {
+            ; // no-op
+        } else if (init_type_attributes.isEmpty()) {
+            init_type_attributes = l;
+        } else {
+            init_type_attributes = init_type_attributes.appendList(l);
+        }
+        return this;
+    }
+
+    public SymbolMetadata appendClassInitTypeAttributes(List<TypeCompound> l) {
+        if (l.isEmpty()) {
+            ; // no-op
+        } else if (clinit_type_attributes.isEmpty()) {
+            clinit_type_attributes = l;
+        } else {
+            clinit_type_attributes = clinit_type_attributes.appendList(l);
+        }
+        return this;
+    }
+
+    public SymbolMetadata prepend(List<Attribute.Compound> l) {
+        attributes = filterDeclSentinels(attributes);
+
+        if (l.isEmpty()) {
+            ; // no-op
+        } else if (attributes.isEmpty()) {
+            attributes = l;
+        } else {
+            attributes = attributes.prependList(l);
+        }
+        return this;
+    }
+
+    private List<Attribute.Compound> filterDeclSentinels(List<Attribute.Compound> a) {
+        return (a == DECL_IN_PROGRESS || a == DECL_NOT_STARTED)
+                ? List.<Attribute.Compound>nil()
+                : a;
+    }
+
+    private boolean isStarted() {
+        return attributes != DECL_NOT_STARTED;
+    }
+
+    private List<Attribute.Compound> getPlaceholders() {
+        List<Attribute.Compound> res = List.<Attribute.Compound>nil();
+        for (Attribute.Compound a : filterDeclSentinels(attributes)) {
+            if (a instanceof Placeholder) {
+                res = res.prepend(a);
+            }
+        }
+        return res.reverse();
+    }
+
+    private List<TypeCompound> getTypePlaceholders() {
+        List<TypeCompound> res = List.<TypeCompound>nil();
+        for (TypeCompound a : type_attributes) {
+            if (a instanceof Placeholder) {
+                res = res.prepend(a);
+            }
+        }
+        return res.reverse();
+    }
+
+    /*
+     * Replace Placeholders for repeating annotations with their containers
+     */
+    private <T extends Attribute.Compound> void complete(Annotate.AnnotateRepeatedContext<T> ctx) {
+        Log log = ctx.log;
+        Env<AttrContext> env = ctx.env;
+        JavaFileObject oldSource = log.useSource(env.toplevel.sourcefile);
+        try {
+            // TODO: can we reduce duplication in the following branches?
+            if (ctx.isTypeCompound) {
+                Assert.check(!isTypesEmpty());
+
+                if (isTypesEmpty()) {
+                    return;
+                }
+
+                List<TypeCompound> result = List.nil();
+                for (TypeCompound a : getTypeAttributes()) {
+                    if (a instanceof Placeholder) {
+                        @SuppressWarnings("unchecked")
+                        Placeholder<TypeCompound> ph = (Placeholder<TypeCompound>) a;
+                        TypeCompound replacement = replaceOne(ph, ph.getRepeatedContext());
+
+                        if (null != replacement) {
+                            result = result.prepend(replacement);
+                        }
+                    } else {
+                        result = result.prepend(a);
+                    }
+                }
+
+                type_attributes = result.reverse();
+
+                Assert.check(SymbolMetadata.this.getTypePlaceholders().isEmpty());
+            } else {
+                Assert.check(!pendingCompletion());
+
+                if (isEmpty()) {
+                    return;
+                }
+
+                List<Attribute.Compound> result = List.nil();
+                for (Attribute.Compound a : getDeclarationAttributes()) {
+                    if (a instanceof Placeholder) {
+                        @SuppressWarnings("unchecked")
+                        Attribute.Compound replacement = replaceOne((Placeholder<T>) a, ctx);
+
+                        if (null != replacement) {
+                            result = result.prepend(replacement);
+                        }
+                    } else {
+                        result = result.prepend(a);
+                    }
+                }
+
+                attributes = result.reverse();
+
+                Assert.check(SymbolMetadata.this.getPlaceholders().isEmpty());
+            }
+        } finally {
+            log.useSource(oldSource);
+        }
+    }
+
+    private <T extends Attribute.Compound> T replaceOne(Placeholder<T> placeholder, Annotate.AnnotateRepeatedContext<T> ctx) {
+        Log log = ctx.log;
+
+        // Process repeated annotations
+        T validRepeated = ctx.processRepeatedAnnotations(placeholder.getPlaceholderFor(), sym);
+
+        if (validRepeated != null) {
+            // Check that the container isn't manually
+            // present along with repeated instances of
+            // its contained annotation.
+            ListBuffer<T> manualContainer = ctx.annotated.get(validRepeated.type.tsym);
+            if (manualContainer != null) {
+                log.error(ctx.pos.get(manualContainer.first()), "invalid.repeatable.annotation.repeated.and.container.present",
+                        manualContainer.first().type.tsym);
+            }
+        }
+
+        // A null return will delete the Placeholder
+        return validRepeated;
+    }
+
+    private static class Placeholder<T extends Attribute.Compound> extends TypeCompound {
+
+        private final Annotate.AnnotateRepeatedContext<T> ctx;
+        private final List<T> placeholderFor;
+        private final Symbol on;
+
+        public Placeholder(Annotate.AnnotateRepeatedContext<T> ctx, List<T> placeholderFor, Symbol on) {
+            super(on.type, List.<Pair<Symbol.MethodSymbol, Attribute>>nil(),
+                    ctx.isTypeCompound ?
+                            ((TypeCompound)placeholderFor.head).position :
+                                new TypeAnnotationPosition());
+            this.ctx = ctx;
+            this.placeholderFor = placeholderFor;
+            this.on = on;
+        }
+
+        @Override
+        public String toString() {
+            return "<placeholder: " + placeholderFor + " on: " + on + ">";
+        }
+
+        public List<T> getPlaceholderFor() {
+            return placeholderFor;
+        }
+
+        public Annotate.AnnotateRepeatedContext<T> getRepeatedContext() {
+            return ctx;
+        }
+    }
+}

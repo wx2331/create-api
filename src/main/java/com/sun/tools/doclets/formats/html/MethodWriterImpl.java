@@ -1,418 +1,412 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.ExecutableMemberDoc;
-/*     */ import com.sun.javadoc.MemberDoc;
-/*     */ import com.sun.javadoc.MethodDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.javadoc.Type;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlConstants;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.formats.html.markup.StringContent;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.MemberSummaryWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.MethodWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.ImplementedMethods;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.Util;
-/*     */ import java.io.IOException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class MethodWriterImpl
-/*     */   extends AbstractExecutableMemberWriter
-/*     */   implements MethodWriter, MemberSummaryWriter
-/*     */ {
-/*     */   public MethodWriterImpl(SubWriterHolderWriter paramSubWriterHolderWriter, ClassDoc paramClassDoc) {
-/*  59 */     super(paramSubWriterHolderWriter, paramClassDoc);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public MethodWriterImpl(SubWriterHolderWriter paramSubWriterHolderWriter) {
-/*  68 */     super(paramSubWriterHolderWriter);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMemberSummaryHeader(ClassDoc paramClassDoc, Content paramContent) {
-/*  76 */     paramContent.addContent(HtmlConstants.START_OF_METHOD_SUMMARY);
-/*  77 */     Content content = this.writer.getMemberTreeHeader();
-/*  78 */     this.writer.addSummaryHeader(this, paramClassDoc, content);
-/*  79 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMethodDetailsTreeHeader(ClassDoc paramClassDoc, Content paramContent) {
-/*  87 */     paramContent.addContent(HtmlConstants.START_OF_METHOD_DETAILS);
-/*  88 */     Content content = this.writer.getMemberTreeHeader();
-/*  89 */     content.addContent(this.writer.getMarkerAnchor(SectionName.METHOD_DETAIL));
-/*     */     
-/*  91 */     HtmlTree htmlTree = HtmlTree.HEADING(HtmlConstants.DETAILS_HEADING, this.writer.methodDetailsLabel);
-/*     */     
-/*  93 */     content.addContent((Content)htmlTree);
-/*  94 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMethodDocTreeHeader(MethodDoc paramMethodDoc, Content paramContent) {
-/*     */     String str;
-/* 103 */     if ((str = getErasureAnchor((ExecutableMemberDoc)paramMethodDoc)) != null) {
-/* 104 */       paramContent.addContent(this.writer.getMarkerAnchor(str));
-/*     */     }
-/* 106 */     paramContent.addContent(this.writer
-/* 107 */         .getMarkerAnchor(this.writer.getAnchor((ExecutableMemberDoc)paramMethodDoc)));
-/* 108 */     Content content = this.writer.getMemberTreeHeader();
-/* 109 */     HtmlTree htmlTree = new HtmlTree(HtmlConstants.MEMBER_HEADING);
-/* 110 */     htmlTree.addContent(paramMethodDoc.name());
-/* 111 */     content.addContent((Content)htmlTree);
-/* 112 */     return content;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getSignature(MethodDoc paramMethodDoc) {
-/* 122 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.PRE);
-/* 123 */     this.writer.addAnnotationInfo((ProgramElementDoc)paramMethodDoc, (Content)htmlTree);
-/* 124 */     addModifiers((MemberDoc)paramMethodDoc, (Content)htmlTree);
-/* 125 */     addTypeParameters((ExecutableMemberDoc)paramMethodDoc, (Content)htmlTree);
-/* 126 */     addReturnType(paramMethodDoc, (Content)htmlTree);
-/* 127 */     if (this.configuration.linksource) {
-/* 128 */       StringContent stringContent = new StringContent(paramMethodDoc.name());
-/* 129 */       this.writer.addSrcLink((ProgramElementDoc)paramMethodDoc, (Content)stringContent, (Content)htmlTree);
-/*     */     } else {
-/* 131 */       addName(paramMethodDoc.name(), (Content)htmlTree);
-/*     */     } 
-/* 133 */     int i = htmlTree.charCount();
-/* 134 */     addParameters((ExecutableMemberDoc)paramMethodDoc, (Content)htmlTree, i);
-/* 135 */     addExceptions((ExecutableMemberDoc)paramMethodDoc, (Content)htmlTree, i);
-/* 136 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addDeprecated(MethodDoc paramMethodDoc, Content paramContent) {
-/* 143 */     addDeprecatedInfo((ProgramElementDoc)paramMethodDoc, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addComments(Type paramType, MethodDoc paramMethodDoc, Content paramContent) {
-/* 150 */     ClassDoc classDoc = paramType.asClassDoc();
-/* 151 */     if ((paramMethodDoc.inlineTags()).length > 0) {
-/* 152 */       if (paramType.asClassDoc().equals(this.classdoc) || (
-/* 153 */         !classDoc.isPublic() && 
-/* 154 */         !Util.isLinkable(classDoc, this.configuration))) {
-/* 155 */         this.writer.addInlineComment((Doc)paramMethodDoc, paramContent);
-/*     */       } else {
-/*     */         
-/* 158 */         Content content = this.writer.getDocLink(LinkInfoImpl.Kind.METHOD_DOC_COPY, paramType
-/* 159 */             .asClassDoc(), (MemberDoc)paramMethodDoc, 
-/* 160 */             paramType.asClassDoc().isIncluded() ? paramType
-/* 161 */             .typeName() : paramType.qualifiedTypeName(), false);
-/*     */         
-/* 163 */         HtmlTree htmlTree1 = HtmlTree.CODE(content);
-/* 164 */         HtmlTree htmlTree2 = HtmlTree.SPAN(HtmlStyle.descfrmTypeLabel, paramType.asClassDoc().isClass() ? this.writer.descfrmClassLabel : this.writer.descfrmInterfaceLabel);
-/*     */         
-/* 166 */         htmlTree2.addContent(this.writer.getSpace());
-/* 167 */         htmlTree2.addContent((Content)htmlTree1);
-/* 168 */         paramContent.addContent((Content)HtmlTree.DIV(HtmlStyle.block, (Content)htmlTree2));
-/* 169 */         this.writer.addInlineComment((Doc)paramMethodDoc, paramContent);
-/*     */       } 
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addTags(MethodDoc paramMethodDoc, Content paramContent) {
-/* 178 */     this.writer.addTagsInfo((Doc)paramMethodDoc, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMethodDetails(Content paramContent) {
-/* 185 */     return getMemberTree(paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getMethodDoc(Content paramContent, boolean paramBoolean) {
-/* 193 */     return getMemberTree(paramContent, paramBoolean);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void close() throws IOException {
-/* 200 */     this.writer.close();
-/*     */   }
-/*     */   
-/*     */   public int getMemberKind() {
-/* 204 */     return 4;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryLabel(Content paramContent) {
-/* 211 */     HtmlTree htmlTree = HtmlTree.HEADING(HtmlConstants.SUMMARY_HEADING, this.writer
-/* 212 */         .getResource("doclet.Method_Summary"));
-/* 213 */     paramContent.addContent((Content)htmlTree);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getTableSummary() {
-/* 220 */     return this.configuration.getText("doclet.Member_Table_Summary", this.configuration
-/* 221 */         .getText("doclet.Method_Summary"), this.configuration
-/* 222 */         .getText("doclet.methods"));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getCaption() {
-/* 229 */     return this.configuration.getResource("doclet.Methods");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String[] getSummaryTableHeader(ProgramElementDoc paramProgramElementDoc) {
-/* 236 */     return new String[] { this.writer
-/* 237 */         .getModifierTypeHeader(), this.configuration
-/* 238 */         .getText("doclet.0_and_1", this.configuration
-/* 239 */           .getText("doclet.Method"), this.configuration
-/* 240 */           .getText("doclet.Description")) };
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addSummaryAnchor(ClassDoc paramClassDoc, Content paramContent) {
-/* 249 */     paramContent.addContent(this.writer.getMarkerAnchor(SectionName.METHOD_SUMMARY));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addInheritedSummaryAnchor(ClassDoc paramClassDoc, Content paramContent) {
-/* 257 */     paramContent.addContent(this.writer.getMarkerAnchor(SectionName.METHODS_INHERITANCE, this.configuration
-/* 258 */           .getClassName(paramClassDoc)));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addInheritedSummaryLabel(ClassDoc paramClassDoc, Content paramContent) {
-/* 265 */     Content content = this.writer.getPreQualifiedClassLink(LinkInfoImpl.Kind.MEMBER, paramClassDoc, false);
-/*     */ 
-/*     */ 
-/*     */     
-/* 269 */     StringContent stringContent = new StringContent(paramClassDoc.isClass() ? this.configuration.getText("doclet.Methods_Inherited_From_Class") : this.configuration.getText("doclet.Methods_Inherited_From_Interface"));
-/* 270 */     HtmlTree htmlTree = HtmlTree.HEADING(HtmlConstants.INHERITED_SUMMARY_HEADING, (Content)stringContent);
-/*     */     
-/* 272 */     htmlTree.addContent(this.writer.getSpace());
-/* 273 */     htmlTree.addContent(content);
-/* 274 */     paramContent.addContent((Content)htmlTree);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addSummaryType(ProgramElementDoc paramProgramElementDoc, Content paramContent) {
-/* 281 */     MethodDoc methodDoc = (MethodDoc)paramProgramElementDoc;
-/* 282 */     addModifierAndType((ProgramElementDoc)methodDoc, methodDoc.returnType(), paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected static void addOverridden(HtmlDocletWriter paramHtmlDocletWriter, Type paramType, MethodDoc paramMethodDoc, Content paramContent) {
-/* 290 */     if (paramHtmlDocletWriter.configuration.nocomment) {
-/*     */       return;
-/*     */     }
-/* 293 */     ClassDoc classDoc = paramType.asClassDoc();
-/* 294 */     if (!classDoc.isPublic() && 
-/* 295 */       !Util.isLinkable(classDoc, paramHtmlDocletWriter.configuration)) {
-/*     */       return;
-/*     */     }
-/*     */     
-/* 299 */     if (paramType.asClassDoc().isIncluded() && !paramMethodDoc.isIncluded()) {
-/*     */       return;
-/*     */     }
-/*     */ 
-/*     */     
-/* 304 */     Content content = paramHtmlDocletWriter.overridesLabel;
-/* 305 */     LinkInfoImpl.Kind kind = LinkInfoImpl.Kind.METHOD_OVERRIDES;
-/*     */     
-/* 307 */     if (paramMethodDoc != null) {
-/* 308 */       if (paramType.asClassDoc().isAbstract() && paramMethodDoc.isAbstract()) {
-/*     */ 
-/*     */         
-/* 311 */         content = paramHtmlDocletWriter.specifiedByLabel;
-/* 312 */         kind = LinkInfoImpl.Kind.METHOD_SPECIFIED_BY;
-/*     */       } 
-/* 314 */       HtmlTree htmlTree1 = HtmlTree.DT((Content)HtmlTree.SPAN(HtmlStyle.overrideSpecifyLabel, content));
-/* 315 */       paramContent.addContent((Content)htmlTree1);
-/*     */       
-/* 317 */       Content content1 = paramHtmlDocletWriter.getLink(new LinkInfoImpl(paramHtmlDocletWriter.configuration, kind, paramType));
-/* 318 */       HtmlTree htmlTree2 = HtmlTree.CODE(content1);
-/* 319 */       String str = paramMethodDoc.name();
-/* 320 */       Content content2 = paramHtmlDocletWriter.getLink((new LinkInfoImpl(paramHtmlDocletWriter.configuration, LinkInfoImpl.Kind.MEMBER, paramType
-/*     */             
-/* 322 */             .asClassDoc()))
-/* 323 */           .where(paramHtmlDocletWriter.getName(paramHtmlDocletWriter.getAnchor((ExecutableMemberDoc)paramMethodDoc))).label(str));
-/* 324 */       HtmlTree htmlTree3 = HtmlTree.CODE(content2);
-/* 325 */       HtmlTree htmlTree4 = HtmlTree.DD((Content)htmlTree3);
-/* 326 */       htmlTree4.addContent(paramHtmlDocletWriter.getSpace());
-/* 327 */       htmlTree4.addContent(paramHtmlDocletWriter.getResource("doclet.in_class"));
-/* 328 */       htmlTree4.addContent(paramHtmlDocletWriter.getSpace());
-/* 329 */       htmlTree4.addContent((Content)htmlTree2);
-/* 330 */       paramContent.addContent((Content)htmlTree4);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected static void addImplementsInfo(HtmlDocletWriter paramHtmlDocletWriter, MethodDoc paramMethodDoc, Content paramContent) {
-/* 339 */     if (paramHtmlDocletWriter.configuration.nocomment) {
-/*     */       return;
-/*     */     }
-/* 342 */     ImplementedMethods implementedMethods = new ImplementedMethods(paramMethodDoc, paramHtmlDocletWriter.configuration);
-/*     */     
-/* 344 */     MethodDoc[] arrayOfMethodDoc = implementedMethods.build();
-/* 345 */     for (byte b = 0; b < arrayOfMethodDoc.length; b++) {
-/* 346 */       MethodDoc methodDoc = arrayOfMethodDoc[b];
-/* 347 */       Type type = implementedMethods.getMethodHolder(methodDoc);
-/* 348 */       Content content1 = paramHtmlDocletWriter.getLink(new LinkInfoImpl(paramHtmlDocletWriter.configuration, LinkInfoImpl.Kind.METHOD_SPECIFIED_BY, type));
-/*     */       
-/* 350 */       HtmlTree htmlTree1 = HtmlTree.CODE(content1);
-/* 351 */       HtmlTree htmlTree2 = HtmlTree.DT((Content)HtmlTree.SPAN(HtmlStyle.overrideSpecifyLabel, paramHtmlDocletWriter.specifiedByLabel));
-/* 352 */       paramContent.addContent((Content)htmlTree2);
-/* 353 */       Content content2 = paramHtmlDocletWriter.getDocLink(LinkInfoImpl.Kind.MEMBER, (MemberDoc)methodDoc, methodDoc
-/*     */           
-/* 355 */           .name(), false);
-/* 356 */       HtmlTree htmlTree3 = HtmlTree.CODE(content2);
-/* 357 */       HtmlTree htmlTree4 = HtmlTree.DD((Content)htmlTree3);
-/* 358 */       htmlTree4.addContent(paramHtmlDocletWriter.getSpace());
-/* 359 */       htmlTree4.addContent(paramHtmlDocletWriter.getResource("doclet.in_interface"));
-/* 360 */       htmlTree4.addContent(paramHtmlDocletWriter.getSpace());
-/* 361 */       htmlTree4.addContent((Content)htmlTree1);
-/* 362 */       paramContent.addContent((Content)htmlTree4);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addReturnType(MethodDoc paramMethodDoc, Content paramContent) {
-/* 373 */     Type type = paramMethodDoc.returnType();
-/* 374 */     if (type != null) {
-/* 375 */       Content content = this.writer.getLink(new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.RETURN_TYPE, type));
-/*     */       
-/* 377 */       paramContent.addContent(content);
-/* 378 */       paramContent.addContent(this.writer.getSpace());
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getNavSummaryLink(ClassDoc paramClassDoc, boolean paramBoolean) {
-/* 386 */     if (paramBoolean) {
-/* 387 */       if (paramClassDoc == null) {
-/* 388 */         return this.writer.getHyperLink(SectionName.METHOD_SUMMARY, this.writer
-/*     */             
-/* 390 */             .getResource("doclet.navMethod"));
-/*     */       }
-/* 392 */       return this.writer.getHyperLink(SectionName.METHODS_INHERITANCE, this.configuration
-/*     */           
-/* 394 */           .getClassName(paramClassDoc), this.writer.getResource("doclet.navMethod"));
-/*     */     } 
-/*     */     
-/* 397 */     return this.writer.getResource("doclet.navMethod");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addNavDetailLink(boolean paramBoolean, Content paramContent) {
-/* 405 */     if (paramBoolean) {
-/* 406 */       paramContent.addContent(this.writer.getHyperLink(SectionName.METHOD_DETAIL, this.writer
-/* 407 */             .getResource("doclet.navMethod")));
-/*     */     } else {
-/* 409 */       paramContent.addContent(this.writer.getResource("doclet.navMethod"));
-/*     */     } 
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\MethodWriterImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1997, 2014, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+import com.sun.tools.javac.util.StringUtils;
+
+/**
+ * Writes method documentation in HTML format.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Robert Field
+ * @author Atul M Dambalkar
+ * @author Jamie Ho (rewrite)
+ * @author Bhavesh Patel (Modified)
+ */
+public class MethodWriterImpl extends AbstractExecutableMemberWriter
+        implements MethodWriter, MemberSummaryWriter {
+
+    /**
+     * Construct a new MethodWriterImpl.
+     *
+     * @param writer the writer for the class that the methods belong to.
+     * @param classDoc the class being documented.
+     */
+    public MethodWriterImpl(SubWriterHolderWriter writer, ClassDoc classDoc) {
+        super(writer, classDoc);
+    }
+
+    /**
+     * Construct a new MethodWriterImpl.
+     *
+     * @param writer The writer for the class that the methods belong to.
+     */
+    public MethodWriterImpl(SubWriterHolderWriter writer) {
+        super(writer);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getMemberSummaryHeader(ClassDoc classDoc,
+            Content memberSummaryTree) {
+        memberSummaryTree.addContent(HtmlConstants.START_OF_METHOD_SUMMARY);
+        Content memberTree = writer.getMemberTreeHeader();
+        writer.addSummaryHeader(this, classDoc, memberTree);
+        return memberTree;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getMethodDetailsTreeHeader(ClassDoc classDoc,
+            Content memberDetailsTree) {
+        memberDetailsTree.addContent(HtmlConstants.START_OF_METHOD_DETAILS);
+        Content methodDetailsTree = writer.getMemberTreeHeader();
+        methodDetailsTree.addContent(writer.getMarkerAnchor(
+                SectionName.METHOD_DETAIL));
+        Content heading = HtmlTree.HEADING(HtmlConstants.DETAILS_HEADING,
+                writer.methodDetailsLabel);
+        methodDetailsTree.addContent(heading);
+        return methodDetailsTree;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getMethodDocTreeHeader(MethodDoc method,
+            Content methodDetailsTree) {
+        String erasureAnchor;
+        if ((erasureAnchor = getErasureAnchor(method)) != null) {
+            methodDetailsTree.addContent(writer.getMarkerAnchor((erasureAnchor)));
+        }
+        methodDetailsTree.addContent(
+                writer.getMarkerAnchor(writer.getAnchor(method)));
+        Content methodDocTree = writer.getMemberTreeHeader();
+        Content heading = new HtmlTree(HtmlConstants.MEMBER_HEADING);
+        heading.addContent(method.name());
+        methodDocTree.addContent(heading);
+        return methodDocTree;
+    }
+
+    /**
+     * Get the signature for the given method.
+     *
+     * @param method the method being documented.
+     * @return a content object for the signature
+     */
+    public Content getSignature(MethodDoc method) {
+        Content pre = new HtmlTree(HtmlTag.PRE);
+        writer.addAnnotationInfo(method, pre);
+        addModifiers(method, pre);
+        addTypeParameters(method, pre);
+        addReturnType(method, pre);
+        if (configuration.linksource) {
+            Content methodName = new StringContent(method.name());
+            writer.addSrcLink(method, methodName, pre);
+        } else {
+            addName(method.name(), pre);
+        }
+        int indent = pre.charCount();
+        addParameters(method, pre, indent);
+        addExceptions(method, pre, indent);
+        return pre;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addDeprecated(MethodDoc method, Content methodDocTree) {
+        addDeprecatedInfo(method, methodDocTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addComments(Type holder, MethodDoc method, Content methodDocTree) {
+        ClassDoc holderClassDoc = holder.asClassDoc();
+        if (method.inlineTags().length > 0) {
+            if (holder.asClassDoc().equals(classdoc) ||
+                    (! (holderClassDoc.isPublic() ||
+                    Util.isLinkable(holderClassDoc, configuration)))) {
+                writer.addInlineComment(method, methodDocTree);
+            } else {
+                Content link =
+                        writer.getDocLink(LinkInfoImpl.Kind.METHOD_DOC_COPY,
+                        holder.asClassDoc(), method,
+                        holder.asClassDoc().isIncluded() ?
+                            holder.typeName() : holder.qualifiedTypeName(),
+                            false);
+                Content codelLink = HtmlTree.CODE(link);
+                Content descfrmLabel = HtmlTree.SPAN(HtmlStyle.descfrmTypeLabel, holder.asClassDoc().isClass()?
+                    writer.descfrmClassLabel : writer.descfrmInterfaceLabel);
+                descfrmLabel.addContent(writer.getSpace());
+                descfrmLabel.addContent(codelLink);
+                methodDocTree.addContent(HtmlTree.DIV(HtmlStyle.block, descfrmLabel));
+                writer.addInlineComment(method, methodDocTree);
+            }
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addTags(MethodDoc method, Content methodDocTree) {
+        writer.addTagsInfo(method, methodDocTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getMethodDetails(Content methodDetailsTree) {
+        return getMemberTree(methodDetailsTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getMethodDoc(Content methodDocTree,
+            boolean isLastContent) {
+        return getMemberTree(methodDocTree, isLastContent);
+    }
+
+    /**
+     * Close the writer.
+     */
+    public void close() throws IOException {
+        writer.close();
+    }
+
+    public int getMemberKind() {
+        return VisibleMemberMap.METHODS;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addSummaryLabel(Content memberTree) {
+        Content label = HtmlTree.HEADING(HtmlConstants.SUMMARY_HEADING,
+                writer.getResource("doclet.Method_Summary"));
+        memberTree.addContent(label);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String getTableSummary() {
+        return configuration.getText("doclet.Member_Table_Summary",
+                configuration.getText("doclet.Method_Summary"),
+                configuration.getText("doclet.methods"));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getCaption() {
+        return configuration.getResource("doclet.Methods");
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String[] getSummaryTableHeader(ProgramElementDoc member) {
+        String[] header = new String[] {
+            writer.getModifierTypeHeader(),
+            configuration.getText("doclet.0_and_1",
+                    configuration.getText("doclet.Method"),
+                    configuration.getText("doclet.Description"))
+        };
+        return header;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addSummaryAnchor(ClassDoc cd, Content memberTree) {
+        memberTree.addContent(writer.getMarkerAnchor(
+                SectionName.METHOD_SUMMARY));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addInheritedSummaryAnchor(ClassDoc cd, Content inheritedTree) {
+        inheritedTree.addContent(writer.getMarkerAnchor(
+                SectionName.METHODS_INHERITANCE, configuration.getClassName(cd)));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addInheritedSummaryLabel(ClassDoc cd, Content inheritedTree) {
+        Content classLink = writer.getPreQualifiedClassLink(
+                LinkInfoImpl.Kind.MEMBER, cd, false);
+        Content label = new StringContent(cd.isClass() ?
+            configuration.getText("doclet.Methods_Inherited_From_Class") :
+            configuration.getText("doclet.Methods_Inherited_From_Interface"));
+        Content labelHeading = HtmlTree.HEADING(HtmlConstants.INHERITED_SUMMARY_HEADING,
+                label);
+        labelHeading.addContent(writer.getSpace());
+        labelHeading.addContent(classLink);
+        inheritedTree.addContent(labelHeading);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected void addSummaryType(ProgramElementDoc member, Content tdSummaryType) {
+        MethodDoc meth = (MethodDoc)member;
+        addModifierAndType(meth, meth.returnType(), tdSummaryType);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected static void addOverridden(HtmlDocletWriter writer,
+            Type overriddenType, MethodDoc method, Content dl) {
+        if (writer.configuration.nocomment) {
+            return;
+        }
+        ClassDoc holderClassDoc = overriddenType.asClassDoc();
+        if (! (holderClassDoc.isPublic() ||
+            Util.isLinkable(holderClassDoc, writer.configuration))) {
+            //This is an implementation detail that should not be documented.
+            return;
+        }
+        if (overriddenType.asClassDoc().isIncluded() && ! method.isIncluded()) {
+            //The class is included but the method is not.  That means that it
+            //is not visible so don't document this.
+            return;
+        }
+        Content label = writer.overridesLabel;
+        LinkInfoImpl.Kind context = LinkInfoImpl.Kind.METHOD_OVERRIDES;
+
+        if (method != null) {
+            if (overriddenType.asClassDoc().isAbstract() && method.isAbstract()){
+                //Abstract method is implemented from abstract class,
+                //not overridden
+                label = writer.specifiedByLabel;
+                context = LinkInfoImpl.Kind.METHOD_SPECIFIED_BY;
+            }
+            Content dt = HtmlTree.DT(HtmlTree.SPAN(HtmlStyle.overrideSpecifyLabel, label));
+            dl.addContent(dt);
+            Content overriddenTypeLink =
+                    writer.getLink(new LinkInfoImpl(writer.configuration, context, overriddenType));
+            Content codeOverridenTypeLink = HtmlTree.CODE(overriddenTypeLink);
+            String name = method.name();
+            Content methlink = writer.getLink(
+                    new LinkInfoImpl(writer.configuration, LinkInfoImpl.Kind.MEMBER,
+                    overriddenType.asClassDoc())
+                    .where(writer.getName(writer.getAnchor(method))).label(name));
+            Content codeMethLink = HtmlTree.CODE(methlink);
+            Content dd = HtmlTree.DD(codeMethLink);
+            dd.addContent(writer.getSpace());
+            dd.addContent(writer.getResource("doclet.in_class"));
+            dd.addContent(writer.getSpace());
+            dd.addContent(codeOverridenTypeLink);
+            dl.addContent(dd);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected static void addImplementsInfo(HtmlDocletWriter writer,
+            MethodDoc method, Content dl) {
+        if(writer.configuration.nocomment){
+            return;
+        }
+        ImplementedMethods implementedMethodsFinder =
+                new ImplementedMethods(method, writer.configuration);
+        MethodDoc[] implementedMethods = implementedMethodsFinder.build();
+        for (int i = 0; i < implementedMethods.length; i++) {
+            MethodDoc implementedMeth = implementedMethods[i];
+            Type intfac = implementedMethodsFinder.getMethodHolder(implementedMeth);
+            Content intfaclink = writer.getLink(new LinkInfoImpl(
+                    writer.configuration, LinkInfoImpl.Kind.METHOD_SPECIFIED_BY, intfac));
+            Content codeIntfacLink = HtmlTree.CODE(intfaclink);
+            Content dt = HtmlTree.DT(HtmlTree.SPAN(HtmlStyle.overrideSpecifyLabel, writer.specifiedByLabel));
+            dl.addContent(dt);
+            Content methlink = writer.getDocLink(
+                    LinkInfoImpl.Kind.MEMBER, implementedMeth,
+                    implementedMeth.name(), false);
+            Content codeMethLink = HtmlTree.CODE(methlink);
+            Content dd = HtmlTree.DD(codeMethLink);
+            dd.addContent(writer.getSpace());
+            dd.addContent(writer.getResource("doclet.in_interface"));
+            dd.addContent(writer.getSpace());
+            dd.addContent(codeIntfacLink);
+            dl.addContent(dd);
+        }
+    }
+
+    /**
+     * Add the return type.
+     *
+     * @param method the method being documented.
+     * @param htmltree the content tree to which the return type will be added
+     */
+    protected void addReturnType(MethodDoc method, Content htmltree) {
+        Type type = method.returnType();
+        if (type != null) {
+            Content linkContent = writer.getLink(
+                    new LinkInfoImpl(configuration, LinkInfoImpl.Kind.RETURN_TYPE, type));
+            htmltree.addContent(linkContent);
+            htmltree.addContent(writer.getSpace());
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected Content getNavSummaryLink(ClassDoc cd, boolean link) {
+        if (link) {
+            if (cd == null) {
+                return writer.getHyperLink(
+                        SectionName.METHOD_SUMMARY,
+                        writer.getResource("doclet.navMethod"));
+            } else {
+                return writer.getHyperLink(
+                        SectionName.METHODS_INHERITANCE,
+                        configuration.getClassName(cd), writer.getResource("doclet.navMethod"));
+            }
+        } else {
+            return writer.getResource("doclet.navMethod");
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected void addNavDetailLink(boolean link, Content liNav) {
+        if (link) {
+            liNav.addContent(writer.getHyperLink(
+                    SectionName.METHOD_DETAIL, writer.getResource("doclet.navMethod")));
+        } else {
+            liNav.addContent(writer.getResource("doclet.navMethod"));
+        }
+    }
+}

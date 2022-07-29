@@ -1,2447 +1,2441 @@
-/*      */ package com.sun.tools.javac.jvm;
-/*      */
-/*      */ import com.sun.tools.javac.code.Attribute;
-/*      */ import com.sun.tools.javac.code.Symbol;
-/*      */ import com.sun.tools.javac.code.Symtab;
-/*      */ import com.sun.tools.javac.code.Type;
-/*      */ import com.sun.tools.javac.code.TypeAnnotationPosition;
-/*      */ import com.sun.tools.javac.code.TypeTag;
-/*      */ import com.sun.tools.javac.code.Types;
-/*      */ import com.sun.tools.javac.util.ArrayUtils;
-/*      */ import com.sun.tools.javac.util.Assert;
-/*      */ import com.sun.tools.javac.util.Bits;
-/*      */ import com.sun.tools.javac.util.JCDiagnostic;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.Name;
-/*      */ import com.sun.tools.javac.util.Names;
-/*      */ import com.sun.tools.javac.util.Position;
-/*      */ import java.util.ArrayList;
-/*      */ import java.util.List;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class Code
-/*      */ {
-/*      */   public final boolean debugCode;
-/*      */   public final boolean needStackMap;
-/*      */   final Types types;
-/*      */   final Symtab syms;
-/*      */
-/*      */   public enum StackMapFormat
-/*      */   {
-/*   56 */     NONE,
-/*   57 */     CLDC {
-/*      */       Name getAttributeName(Names param2Names) {
-/*   59 */         return param2Names.StackMap;
-/*      */       }
-/*      */     },
-/*   62 */     JSR202 {
-/*      */       Name getAttributeName(Names param2Names) {
-/*   64 */         return param2Names.StackMapTable;
-/*      */       } };
-/*      */
-/*      */     Name getAttributeName(Names param1Names) {
-/*   68 */       return param1Names.empty;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*   79 */   public int max_stack = 0;
-/*      */
-/*      */
-/*      */
-/*   83 */   public int max_locals = 0;
-/*      */
-/*      */
-/*      */
-/*   87 */   public byte[] code = new byte[64];
-/*      */
-/*      */
-/*      */
-/*   91 */   public int cp = 0;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean checkLimits(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Log paramLog) {
-/*   97 */     if (this.cp > 65535) {
-/*   98 */       paramLog.error(paramDiagnosticPosition, "limit.code", new Object[0]);
-/*   99 */       return true;
-/*      */     }
-/*  101 */     if (this.max_locals > 65535) {
-/*  102 */       paramLog.error(paramDiagnosticPosition, "limit.locals", new Object[0]);
-/*  103 */       return true;
-/*      */     }
-/*  105 */     if (this.max_stack > 65535) {
-/*  106 */       paramLog.error(paramDiagnosticPosition, "limit.stack", new Object[0]);
-/*  107 */       return true;
-/*      */     }
-/*  109 */     return false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*  115 */   ListBuffer<char[]> catchInfo = new ListBuffer();
-/*      */
-/*      */
-/*      */
-/*      */
-/*  120 */   List<char[]> lineInfo = List.nil();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public CRTable crt;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public boolean fatcode;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private boolean alive = true;
-/*      */
-/*      */
-/*      */
-/*      */   State state;
-/*      */
-/*      */
-/*      */
-/*      */   private boolean fixedPc = false;
-/*      */
-/*      */
-/*      */
-/*  147 */   public int nextreg = 0;
-/*      */
-/*      */
-/*      */
-/*      */
-/*  152 */   Chain pendingJumps = null;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  159 */   int pendingStatPos = -1;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   boolean pendingStackMap = false;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   StackMapFormat stackMap;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   boolean varDebugInfo;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   boolean lineDebugInfo;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Position.LineMap lineMap;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   final Pool pool;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   final Symbol.MethodSymbol meth;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   StackMapFrame[] stackMapBuffer;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   ClassWriter.StackMapTableFrame[] stackMapTableBuffer;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int stackMapBufferSize;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   int lastStackMapPC;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   StackMapFrame lastFrame;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   StackMapFrame frameBeforeLast;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static int typecode(Type paramType) {
-/*  230 */     switch (paramType.getTag()) { case BYTE:
-/*  231 */         return 5;
-/*  232 */       case SHORT: return 7;
-/*  233 */       case CHAR: return 6;
-/*  234 */       case INT: return 0;
-/*  235 */       case LONG: return 1;
-/*  236 */       case FLOAT: return 2;
-/*  237 */       case DOUBLE: return 3;
-/*  238 */       case BOOLEAN: return 5;
-/*  239 */       case VOID: return 8;
-/*      */       case CLASS:
-/*      */       case ARRAY:
-/*      */       case METHOD:
-/*      */       case BOT:
-/*      */       case TYPEVAR:
-/*      */       case UNINITIALIZED_THIS:
-/*      */       case UNINITIALIZED_OBJECT:
-/*  247 */         return 4; }
-/*  248 */      throw new AssertionError("typecode " + paramType.getTag());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static int truncate(int paramInt) {
-/*  255 */     switch (paramInt) { case 5: case 6: case 7:
-/*  256 */         return 0; }
-/*  257 */      return paramInt;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static int width(int paramInt) {
-/*  264 */     switch (paramInt) { case 1: case 3:
-/*  265 */         return 2;
-/*  266 */       case 8: return 0; }
-/*  267 */      return 1;
-/*      */   }
-/*      */
-/*      */
-/*      */   public static int width(Type paramType) {
-/*  272 */     return (paramType == null) ? 1 : width(typecode(paramType));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public static int width(List<Type> paramList) {
-/*  278 */     int i = 0;
-/*  279 */     for (List<Type> list = paramList; list.nonEmpty(); list = list.tail)
-/*  280 */       i += width((Type)list.head);
-/*  281 */     return i;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public static int arraycode(Type paramType) {
-/*  287 */     switch (paramType.getTag()) { case BYTE:
-/*  288 */         return 8;
-/*  289 */       case BOOLEAN: return 4;
-/*  290 */       case SHORT: return 9;
-/*  291 */       case CHAR: return 5;
-/*  292 */       case INT: return 10;
-/*  293 */       case LONG: return 11;
-/*  294 */       case FLOAT: return 6;
-/*  295 */       case DOUBLE: return 7;
-/*  296 */       case CLASS: return 0;
-/*  297 */       case ARRAY: return 1; }
-/*  298 */      throw new AssertionError("arraycode " + paramType);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public int curCP() {
-/*  316 */     if (this.pendingJumps != null) {
-/*  317 */       resolvePending();
-/*      */     }
-/*  319 */     if (this.pendingStatPos != -1) {
-/*  320 */       markStatBegin();
-/*      */     }
-/*  322 */     this.fixedPc = true;
-/*  323 */     return this.cp;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private void emit1(int paramInt) {
-/*  329 */     if (!this.alive)
-/*  330 */       return;  this.code = ArrayUtils.ensureCapacity(this.code, this.cp);
-/*  331 */     this.code[this.cp++] = (byte)paramInt;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private void emit2(int paramInt) {
-/*  337 */     if (!this.alive)
-/*  338 */       return;  if (this.cp + 2 > this.code.length) {
-/*  339 */       emit1(paramInt >> 8);
-/*  340 */       emit1(paramInt);
-/*      */     } else {
-/*  342 */       this.code[this.cp++] = (byte)(paramInt >> 8);
-/*  343 */       this.code[this.cp++] = (byte)paramInt;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void emit4(int paramInt) {
-/*  350 */     if (!this.alive)
-/*  351 */       return;  if (this.cp + 4 > this.code.length) {
-/*  352 */       emit1(paramInt >> 24);
-/*  353 */       emit1(paramInt >> 16);
-/*  354 */       emit1(paramInt >> 8);
-/*  355 */       emit1(paramInt);
-/*      */     } else {
-/*  357 */       this.code[this.cp++] = (byte)(paramInt >> 24);
-/*  358 */       this.code[this.cp++] = (byte)(paramInt >> 16);
-/*  359 */       this.code[this.cp++] = (byte)(paramInt >> 8);
-/*  360 */       this.code[this.cp++] = (byte)paramInt;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private void emitop(int paramInt) {
-/*  367 */     if (this.pendingJumps != null) resolvePending();
-/*  368 */     if (this.alive) {
-/*  369 */       if (this.pendingStatPos != -1)
-/*  370 */         markStatBegin();
-/*  371 */       if (this.pendingStackMap) {
-/*  372 */         this.pendingStackMap = false;
-/*  373 */         emitStackMap();
-/*      */       }
-/*  375 */       if (this.debugCode)
-/*  376 */         System.err.println("emit@" + this.cp + " stack=" + this.state.stacksize + ": " +
-/*      */
-/*  378 */             mnem(paramInt));
-/*  379 */       emit1(paramInt);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   void postop() {
-/*  384 */     Assert.check((this.alive || this.state.stacksize == 0));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void emitLdc(int paramInt) {
-/*  390 */     if (paramInt <= 255) {
-/*  391 */       emitop1(18, paramInt);
-/*      */     } else {
-/*      */
-/*  394 */       emitop2(19, paramInt);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void emitMultianewarray(int paramInt1, int paramInt2, Type paramType) {
-/*  401 */     emitop(197);
-/*  402 */     if (!this.alive)
-/*  403 */       return;  emit2(paramInt2);
-/*  404 */     emit1(paramInt1);
-/*  405 */     this.state.pop(paramInt1);
-/*  406 */     this.state.push(paramType);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void emitNewarray(int paramInt, Type paramType) {
-/*  412 */     emitop(188);
-/*  413 */     if (!this.alive)
-/*  414 */       return;  emit1(paramInt);
-/*  415 */     this.state.pop(1);
-/*  416 */     this.state.push(paramType);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void emitAnewarray(int paramInt, Type paramType) {
-/*  422 */     emitop(189);
-/*  423 */     if (!this.alive)
-/*  424 */       return;  emit2(paramInt);
-/*  425 */     this.state.pop(1);
-/*  426 */     this.state.push(paramType);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void emitInvokeinterface(int paramInt, Type paramType) {
-/*  432 */     int i = width(paramType.getParameterTypes());
-/*  433 */     emitop(185);
-/*  434 */     if (!this.alive)
-/*  435 */       return;  emit2(paramInt);
-/*  436 */     emit1(i + 1);
-/*  437 */     emit1(0);
-/*  438 */     this.state.pop(i + 1);
-/*  439 */     this.state.push(paramType.getReturnType());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void emitInvokespecial(int paramInt, Type paramType) {
-/*  445 */     int i = width(paramType.getParameterTypes());
-/*  446 */     emitop(183);
-/*  447 */     if (!this.alive)
-/*  448 */       return;  emit2(paramInt);
-/*  449 */     Symbol symbol = (Symbol)this.pool.pool[paramInt];
-/*  450 */     this.state.pop(i);
-/*  451 */     if (symbol.isConstructor())
-/*  452 */       this.state.markInitialized((UninitializedType)this.state.peek());
-/*  453 */     this.state.pop(1);
-/*  454 */     this.state.push(paramType.getReturnType());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void emitInvokestatic(int paramInt, Type paramType) {
-/*  460 */     int i = width(paramType.getParameterTypes());
-/*  461 */     emitop(184);
-/*  462 */     if (!this.alive)
-/*  463 */       return;  emit2(paramInt);
-/*  464 */     this.state.pop(i);
-/*  465 */     this.state.push(paramType.getReturnType());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void emitInvokevirtual(int paramInt, Type paramType) {
-/*  471 */     int i = width(paramType.getParameterTypes());
-/*  472 */     emitop(182);
-/*  473 */     if (!this.alive)
-/*  474 */       return;  emit2(paramInt);
-/*  475 */     this.state.pop(i + 1);
-/*  476 */     this.state.push(paramType.getReturnType());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void emitInvokedynamic(int paramInt, Type paramType) {
-/*  482 */     int i = width(paramType.getParameterTypes());
-/*  483 */     emitop(186);
-/*  484 */     if (!this.alive)
-/*  485 */       return;  emit2(paramInt);
-/*  486 */     emit2(0);
-/*  487 */     this.state.pop(i);
-/*  488 */     this.state.push(paramType.getReturnType());
-/*      */   }
-/*      */
-/*      */
-/*      */   public void emitop0(int paramInt) {
-/*      */     Type type1, type2;
-/*  494 */     emitop(paramInt);
-/*  495 */     if (!this.alive)
-/*  496 */       return;  switch (paramInt) {
-/*      */       case 50:
-/*  498 */         this.state.pop(1);
-/*  499 */         type1 = this.state.stack[this.state.stacksize - 1];
-/*  500 */         this.state.pop(1);
-/*      */
-/*      */
-/*      */
-/*      */
-/*  505 */         type2 = type1.hasTag(TypeTag.BOT) ? this.syms.objectType : this.types.erasure(this.types.elemtype(type1));
-/*  506 */         this.state.push(type2);
-/*      */         break;
-/*      */       case 167:
-/*  509 */         markDead();
-/*      */         break;
-/*      */       case 0:
-/*      */       case 116:
-/*      */       case 117:
-/*      */       case 118:
-/*      */       case 119:
-/*      */         break;
-/*      */       case 1:
-/*  518 */         this.state.push(this.syms.botType);
-/*      */         break;
-/*      */       case 2:
-/*      */       case 3:
-/*      */       case 4:
-/*      */       case 5:
-/*      */       case 6:
-/*      */       case 7:
-/*      */       case 8:
-/*      */       case 26:
-/*      */       case 27:
-/*      */       case 28:
-/*      */       case 29:
-/*  531 */         this.state.push((Type)this.syms.intType);
-/*      */         break;
-/*      */       case 9:
-/*      */       case 10:
-/*      */       case 30:
-/*      */       case 31:
-/*      */       case 32:
-/*      */       case 33:
-/*  539 */         this.state.push((Type)this.syms.longType);
-/*      */         break;
-/*      */       case 11:
-/*      */       case 12:
-/*      */       case 13:
-/*      */       case 34:
-/*      */       case 35:
-/*      */       case 36:
-/*      */       case 37:
-/*  548 */         this.state.push((Type)this.syms.floatType);
-/*      */         break;
-/*      */       case 14:
-/*      */       case 15:
-/*      */       case 38:
-/*      */       case 39:
-/*      */       case 40:
-/*      */       case 41:
-/*  556 */         this.state.push((Type)this.syms.doubleType);
-/*      */         break;
-/*      */       case 42:
-/*  559 */         this.state.push((this.lvar[0]).sym.type);
-/*      */         break;
-/*      */       case 43:
-/*  562 */         this.state.push((this.lvar[1]).sym.type);
-/*      */         break;
-/*      */       case 44:
-/*  565 */         this.state.push((this.lvar[2]).sym.type);
-/*      */         break;
-/*      */       case 45:
-/*  568 */         this.state.push((this.lvar[3]).sym.type);
-/*      */         break;
-/*      */       case 46:
-/*      */       case 51:
-/*      */       case 52:
-/*      */       case 53:
-/*  574 */         this.state.pop(2);
-/*  575 */         this.state.push((Type)this.syms.intType);
-/*      */         break;
-/*      */       case 47:
-/*  578 */         this.state.pop(2);
-/*  579 */         this.state.push((Type)this.syms.longType);
-/*      */         break;
-/*      */       case 48:
-/*  582 */         this.state.pop(2);
-/*  583 */         this.state.push((Type)this.syms.floatType);
-/*      */         break;
-/*      */       case 49:
-/*  586 */         this.state.pop(2);
-/*  587 */         this.state.push((Type)this.syms.doubleType);
-/*      */         break;
-/*      */       case 59:
-/*      */       case 60:
-/*      */       case 61:
-/*      */       case 62:
-/*      */       case 67:
-/*      */       case 68:
-/*      */       case 69:
-/*      */       case 70:
-/*      */       case 75:
-/*      */       case 76:
-/*      */       case 77:
-/*      */       case 78:
-/*      */       case 87:
-/*      */       case 121:
-/*      */       case 123:
-/*      */       case 125:
-/*  605 */         this.state.pop(1);
-/*      */         break;
-/*      */       case 172:
-/*      */       case 174:
-/*      */       case 176:
-/*  610 */         Assert.check((this.state.nlocks == 0));
-/*  611 */         this.state.pop(1);
-/*  612 */         markDead();
-/*      */         break;
-/*      */       case 191:
-/*  615 */         this.state.pop(1);
-/*  616 */         markDead();
-/*      */         break;
-/*      */       case 63:
-/*      */       case 64:
-/*      */       case 65:
-/*      */       case 66:
-/*      */       case 71:
-/*      */       case 72:
-/*      */       case 73:
-/*      */       case 74:
-/*      */       case 88:
-/*  627 */         this.state.pop(2);
-/*      */         break;
-/*      */       case 173:
-/*      */       case 175:
-/*  631 */         Assert.check((this.state.nlocks == 0));
-/*  632 */         this.state.pop(2);
-/*  633 */         markDead();
-/*      */         break;
-/*      */       case 89:
-/*  636 */         this.state.push(this.state.stack[this.state.stacksize - 1]);
-/*      */         break;
-/*      */       case 177:
-/*  639 */         Assert.check((this.state.nlocks == 0));
-/*  640 */         markDead();
-/*      */         break;
-/*      */       case 190:
-/*  643 */         this.state.pop(1);
-/*  644 */         this.state.push((Type)this.syms.intType);
-/*      */         break;
-/*      */       case 96:
-/*      */       case 100:
-/*      */       case 104:
-/*      */       case 108:
-/*      */       case 112:
-/*      */       case 120:
-/*      */       case 122:
-/*      */       case 124:
-/*      */       case 126:
-/*      */       case 128:
-/*      */       case 130:
-/*  657 */         this.state.pop(1);
-/*      */         break;
-/*      */
-/*      */
-/*      */       case 83:
-/*  662 */         this.state.pop(3);
-/*      */         break;
-/*      */       case 97:
-/*      */       case 101:
-/*      */       case 105:
-/*      */       case 109:
-/*      */       case 113:
-/*      */       case 127:
-/*      */       case 129:
-/*      */       case 131:
-/*  672 */         this.state.pop(2);
-/*      */         break;
-/*      */       case 148:
-/*  675 */         this.state.pop(4);
-/*  676 */         this.state.push((Type)this.syms.intType);
-/*      */         break;
-/*      */       case 136:
-/*  679 */         this.state.pop(2);
-/*  680 */         this.state.push((Type)this.syms.intType);
-/*      */         break;
-/*      */       case 133:
-/*  683 */         this.state.pop(1);
-/*  684 */         this.state.push((Type)this.syms.longType);
-/*      */         break;
-/*      */       case 134:
-/*  687 */         this.state.pop(1);
-/*  688 */         this.state.push((Type)this.syms.floatType);
-/*      */         break;
-/*      */       case 135:
-/*  691 */         this.state.pop(1);
-/*  692 */         this.state.push((Type)this.syms.doubleType);
-/*      */         break;
-/*      */       case 137:
-/*  695 */         this.state.pop(2);
-/*  696 */         this.state.push((Type)this.syms.floatType);
-/*      */         break;
-/*      */       case 138:
-/*  699 */         this.state.pop(2);
-/*  700 */         this.state.push((Type)this.syms.doubleType);
-/*      */         break;
-/*      */       case 139:
-/*  703 */         this.state.pop(1);
-/*  704 */         this.state.push((Type)this.syms.intType);
-/*      */         break;
-/*      */       case 140:
-/*  707 */         this.state.pop(1);
-/*  708 */         this.state.push((Type)this.syms.longType);
-/*      */         break;
-/*      */       case 141:
-/*  711 */         this.state.pop(1);
-/*  712 */         this.state.push((Type)this.syms.doubleType);
-/*      */         break;
-/*      */       case 142:
-/*  715 */         this.state.pop(2);
-/*  716 */         this.state.push((Type)this.syms.intType);
-/*      */         break;
-/*      */       case 143:
-/*  719 */         this.state.pop(2);
-/*  720 */         this.state.push((Type)this.syms.longType);
-/*      */         break;
-/*      */       case 144:
-/*  723 */         this.state.pop(2);
-/*  724 */         this.state.push((Type)this.syms.floatType);
-/*      */         break;
-/*      */       case 170:
-/*      */       case 171:
-/*  728 */         this.state.pop(1);
-/*      */         break;
-/*      */
-/*      */       case 90:
-/*  732 */         type1 = this.state.pop1();
-/*  733 */         type2 = this.state.pop1();
-/*  734 */         this.state.push(type1);
-/*  735 */         this.state.push(type2);
-/*  736 */         this.state.push(type1);
-/*      */         break;
-/*      */
-/*      */       case 84:
-/*  740 */         this.state.pop(3);
-/*      */         break;
-/*      */       case 145:
-/*      */       case 146:
-/*      */       case 147:
-/*      */         break;
-/*      */       case 98:
-/*      */       case 102:
-/*      */       case 106:
-/*      */       case 110:
-/*      */       case 114:
-/*  751 */         this.state.pop(1);
-/*      */         break;
-/*      */       case 79:
-/*      */       case 81:
-/*      */       case 85:
-/*      */       case 86:
-/*  757 */         this.state.pop(3);
-/*      */         break;
-/*      */       case 80:
-/*      */       case 82:
-/*  761 */         this.state.pop(4);
-/*      */         break;
-/*      */       case 92:
-/*  764 */         if (this.state.stack[this.state.stacksize - 1] != null) {
-/*  765 */           type1 = this.state.pop1();
-/*  766 */           type2 = this.state.pop1();
-/*  767 */           this.state.push(type2);
-/*  768 */           this.state.push(type1);
-/*  769 */           this.state.push(type2);
-/*  770 */           this.state.push(type1); break;
-/*      */         }
-/*  772 */         type1 = this.state.pop2();
-/*  773 */         this.state.push(type1);
-/*  774 */         this.state.push(type1);
-/*      */         break;
-/*      */
-/*      */       case 93:
-/*  778 */         if (this.state.stack[this.state.stacksize - 1] != null) {
-/*  779 */           type1 = this.state.pop1();
-/*  780 */           type2 = this.state.pop1();
-/*  781 */           Type type = this.state.pop1();
-/*  782 */           this.state.push(type2);
-/*  783 */           this.state.push(type1);
-/*  784 */           this.state.push(type);
-/*  785 */           this.state.push(type2);
-/*  786 */           this.state.push(type1); break;
-/*      */         }
-/*  788 */         type1 = this.state.pop2();
-/*  789 */         type2 = this.state.pop1();
-/*  790 */         this.state.push(type1);
-/*  791 */         this.state.push(type2);
-/*  792 */         this.state.push(type1);
-/*      */         break;
-/*      */
-/*      */       case 94:
-/*  796 */         if (this.state.stack[this.state.stacksize - 1] != null) {
-/*  797 */           type1 = this.state.pop1();
-/*  798 */           type2 = this.state.pop1();
-/*  799 */           if (this.state.stack[this.state.stacksize - 1] != null) {
-/*      */
-/*  801 */             Type type3 = this.state.pop1();
-/*  802 */             Type type4 = this.state.pop1();
-/*  803 */             this.state.push(type2);
-/*  804 */             this.state.push(type1);
-/*  805 */             this.state.push(type4);
-/*  806 */             this.state.push(type3);
-/*  807 */             this.state.push(type2);
-/*  808 */             this.state.push(type1);
-/*      */             break;
-/*      */           }
-/*  811 */           Type type = this.state.pop2();
-/*  812 */           this.state.push(type2);
-/*  813 */           this.state.push(type1);
-/*  814 */           this.state.push(type);
-/*  815 */           this.state.push(type2);
-/*  816 */           this.state.push(type1);
-/*      */           break;
-/*      */         }
-/*  819 */         type1 = this.state.pop2();
-/*  820 */         if (this.state.stack[this.state.stacksize - 1] != null) {
-/*      */
-/*  822 */           type2 = this.state.pop1();
-/*  823 */           Type type = this.state.pop1();
-/*  824 */           this.state.push(type1);
-/*  825 */           this.state.push(type);
-/*  826 */           this.state.push(type2);
-/*  827 */           this.state.push(type1);
-/*      */           break;
-/*      */         }
-/*  830 */         type2 = this.state.pop2();
-/*  831 */         this.state.push(type1);
-/*  832 */         this.state.push(type2);
-/*  833 */         this.state.push(type1);
-/*      */         break;
-/*      */
-/*      */
-/*      */       case 91:
-/*  838 */         type1 = this.state.pop1();
-/*  839 */         if (this.state.stack[this.state.stacksize - 1] != null) {
-/*      */
-/*  841 */           type2 = this.state.pop1();
-/*  842 */           Type type = this.state.pop1();
-/*  843 */           this.state.push(type1);
-/*  844 */           this.state.push(type);
-/*  845 */           this.state.push(type2);
-/*  846 */           this.state.push(type1);
-/*      */           break;
-/*      */         }
-/*  849 */         type2 = this.state.pop2();
-/*  850 */         this.state.push(type1);
-/*  851 */         this.state.push(type2);
-/*  852 */         this.state.push(type1);
-/*      */         break;
-/*      */
-/*      */
-/*      */       case 149:
-/*      */       case 150:
-/*  858 */         this.state.pop(2);
-/*  859 */         this.state.push((Type)this.syms.intType);
-/*      */         break;
-/*      */       case 151:
-/*      */       case 152:
-/*  863 */         this.state.pop(4);
-/*  864 */         this.state.push((Type)this.syms.intType);
-/*      */         break;
-/*      */       case 95:
-/*  867 */         type1 = this.state.pop1();
-/*  868 */         type2 = this.state.pop1();
-/*  869 */         this.state.push(type1);
-/*  870 */         this.state.push(type2);
-/*      */         break;
-/*      */
-/*      */       case 99:
-/*      */       case 103:
-/*      */       case 107:
-/*      */       case 111:
-/*      */       case 115:
-/*  878 */         this.state.pop(2);
-/*      */         break;
-/*      */       case 169:
-/*  881 */         markDead();
-/*      */         break;
-/*      */
-/*      */       case 196:
-/*      */         return;
-/*      */       case 194:
-/*      */       case 195:
-/*  888 */         this.state.pop(1);
-/*      */         break;
-/*      */
-/*      */       default:
-/*  892 */         throw new AssertionError(mnem(paramInt));
-/*      */     }
-/*  894 */     postop();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void emitop1(int paramInt1, int paramInt2) {
-/*  900 */     emitop(paramInt1);
-/*  901 */     if (!this.alive)
-/*  902 */       return;  emit1(paramInt2);
-/*  903 */     switch (paramInt1) {
-/*      */       case 16:
-/*  905 */         this.state.push((Type)this.syms.intType);
-/*      */         break;
-/*      */       case 18:
-/*  908 */         this.state.push(typeForPool(this.pool.pool[paramInt2]));
-/*      */         break;
-/*      */       default:
-/*  911 */         throw new AssertionError(mnem(paramInt1));
-/*      */     }
-/*  913 */     postop();
-/*      */   }
-/*      */
-/*      */
-/*      */   private Type typeForPool(Object paramObject) {
-/*  918 */     if (paramObject instanceof Integer) return (Type)this.syms.intType;
-/*  919 */     if (paramObject instanceof Float) return (Type)this.syms.floatType;
-/*  920 */     if (paramObject instanceof String) return this.syms.stringType;
-/*  921 */     if (paramObject instanceof Long) return (Type)this.syms.longType;
-/*  922 */     if (paramObject instanceof Double) return (Type)this.syms.doubleType;
-/*  923 */     if (paramObject instanceof Symbol.ClassSymbol) return this.syms.classType;
-/*  924 */     if (paramObject instanceof Pool.MethodHandle) return this.syms.methodHandleType;
-/*  925 */     if (paramObject instanceof Types.UniqueType) return typeForPool(((Types.UniqueType)paramObject).type);
-/*  926 */     if (paramObject instanceof Type) {
-/*  927 */       Type type = ((Type)paramObject).unannotatedType();
-/*      */
-/*  929 */       if (type instanceof Type.ArrayType) return this.syms.classType;
-/*  930 */       if (type instanceof Type.MethodType) return this.syms.methodTypeType;
-/*      */     }
-/*  932 */     throw new AssertionError("Invalid type of constant pool entry: " + paramObject.getClass());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void emitop1w(int paramInt1, int paramInt2) {
-/*  939 */     if (paramInt2 > 255) {
-/*  940 */       emitop(196);
-/*  941 */       emitop(paramInt1);
-/*  942 */       emit2(paramInt2);
-/*      */     } else {
-/*  944 */       emitop(paramInt1);
-/*  945 */       emit1(paramInt2);
-/*      */     }
-/*  947 */     if (!this.alive)
-/*  948 */       return;  switch (paramInt1) {
-/*      */       case 21:
-/*  950 */         this.state.push((Type)this.syms.intType);
-/*      */         break;
-/*      */       case 22:
-/*  953 */         this.state.push((Type)this.syms.longType);
-/*      */         break;
-/*      */       case 23:
-/*  956 */         this.state.push((Type)this.syms.floatType);
-/*      */         break;
-/*      */       case 24:
-/*  959 */         this.state.push((Type)this.syms.doubleType);
-/*      */         break;
-/*      */       case 25:
-/*  962 */         this.state.push((this.lvar[paramInt2]).sym.type);
-/*      */         break;
-/*      */       case 55:
-/*      */       case 57:
-/*  966 */         this.state.pop(2);
-/*      */         break;
-/*      */       case 54:
-/*      */       case 56:
-/*      */       case 58:
-/*  971 */         this.state.pop(1);
-/*      */         break;
-/*      */       case 169:
-/*  974 */         markDead();
-/*      */         break;
-/*      */       default:
-/*  977 */         throw new AssertionError(mnem(paramInt1));
-/*      */     }
-/*  979 */     postop();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void emitop1w(int paramInt1, int paramInt2, int paramInt3) {
-/*  986 */     if (paramInt2 > 255 || paramInt3 < -128 || paramInt3 > 127) {
-/*  987 */       emitop(196);
-/*  988 */       emitop(paramInt1);
-/*  989 */       emit2(paramInt2);
-/*  990 */       emit2(paramInt3);
-/*      */     } else {
-/*  992 */       emitop(paramInt1);
-/*  993 */       emit1(paramInt2);
-/*  994 */       emit1(paramInt3);
-/*      */     }
-/*  996 */     if (!this.alive)
-/*  997 */       return;  switch (paramInt1) {
-/*      */       case 132:
-/*      */         return;
-/*      */     }
-/* 1001 */     throw new AssertionError(mnem(paramInt1));
-/*      */   }
-/*      */
-/*      */   public void emitop2(int paramInt1, int paramInt2) {
-/*      */     Symbol symbol;
-/*      */     Object object;
-/*      */     Type type;
-/* 1008 */     emitop(paramInt1);
-/* 1009 */     if (!this.alive)
-/* 1010 */       return;  emit2(paramInt2);
-/* 1011 */     switch (paramInt1) {
-/*      */       case 178:
-/* 1013 */         this.state.push(((Symbol)this.pool.pool[paramInt2]).erasure(this.types));
-/*      */
-/*      */       case 179:
-/* 1016 */         this.state.pop(((Symbol)this.pool.pool[paramInt2]).erasure(this.types));
-/*      */
-/*      */
-/*      */       case 187:
-/* 1020 */         if (this.pool.pool[paramInt2] instanceof Types.UniqueType) {
-/*      */
-/*      */
-/*      */
-/* 1024 */           Symbol.TypeSymbol typeSymbol = ((Types.UniqueType)this.pool.pool[paramInt2]).type.tsym;
-/*      */         } else {
-/* 1026 */           symbol = (Symbol)this.pool.pool[paramInt2];
-/*      */         }
-/* 1028 */         this.state.push((Type)UninitializedType.uninitializedObject(symbol.erasure(this.types), this.cp - 3));
-/*      */
-/*      */       case 17:
-/* 1031 */         this.state.push((Type)this.syms.intType);
-/*      */
-/*      */       case 153:
-/*      */       case 154:
-/*      */       case 155:
-/*      */       case 156:
-/*      */       case 157:
-/*      */       case 158:
-/*      */       case 198:
-/*      */       case 199:
-/* 1041 */         this.state.pop(1);
-/*      */
-/*      */       case 159:
-/*      */       case 160:
-/*      */       case 161:
-/*      */       case 162:
-/*      */       case 163:
-/*      */       case 164:
-/*      */       case 165:
-/*      */       case 166:
-/* 1051 */         this.state.pop(2);
-/*      */
-/*      */       case 167:
-/* 1054 */         markDead();
-/*      */
-/*      */       case 181:
-/* 1057 */         this.state.pop(((Symbol)this.pool.pool[paramInt2]).erasure(this.types));
-/* 1058 */         this.state.pop(1);
-/*      */
-/*      */       case 180:
-/* 1061 */         this.state.pop(1);
-/* 1062 */         this.state.push(((Symbol)this.pool.pool[paramInt2]).erasure(this.types));
-/*      */
-/*      */       case 192:
-/* 1065 */         this.state.pop(1);
-/* 1066 */         object = this.pool.pool[paramInt2];
-/*      */
-/*      */
-/* 1069 */         type = (object instanceof Symbol) ? ((Symbol)object).erasure(this.types) : this.types.erasure(((Types.UniqueType)object).type);
-/* 1070 */         this.state.push(type);
-/*      */
-/*      */       case 20:
-/* 1073 */         this.state.push(typeForPool(this.pool.pool[paramInt2]));
-/*      */
-/*      */       case 193:
-/* 1076 */         this.state.pop(1);
-/* 1077 */         this.state.push((Type)this.syms.intType);
-/*      */
-/*      */       case 19:
-/* 1080 */         this.state.push(typeForPool(this.pool.pool[paramInt2]));
-/*      */
-/*      */       case 168:
-/*      */         return;
-/*      */     }
-/* 1085 */     throw new AssertionError(mnem(paramInt1));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void emitop4(int paramInt1, int paramInt2) {
-/* 1093 */     emitop(paramInt1);
-/* 1094 */     if (!this.alive)
-/* 1095 */       return;  emit4(paramInt2);
-/* 1096 */     switch (paramInt1) {
-/*      */       case 200:
-/* 1098 */         markDead();
-/*      */
-/*      */       case 201:
-/*      */         return;
-/*      */     }
-/* 1103 */     throw new AssertionError(mnem(paramInt1));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void align(int paramInt) {
-/* 1111 */     if (this.alive) {
-/* 1112 */       for (; this.cp % paramInt != 0; emitop0(0));
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private void put1(int paramInt1, int paramInt2) {
-/* 1119 */     this.code[paramInt1] = (byte)paramInt2;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void put2(int paramInt1, int paramInt2) {
-/* 1127 */     put1(paramInt1, paramInt2 >> 8);
-/* 1128 */     put1(paramInt1 + 1, paramInt2);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void put4(int paramInt1, int paramInt2) {
-/* 1136 */     put1(paramInt1, paramInt2 >> 24);
-/* 1137 */     put1(paramInt1 + 1, paramInt2 >> 16);
-/* 1138 */     put1(paramInt1 + 2, paramInt2 >> 8);
-/* 1139 */     put1(paramInt1 + 3, paramInt2);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private int get1(int paramInt) {
-/* 1145 */     return this.code[paramInt] & 0xFF;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private int get2(int paramInt) {
-/* 1151 */     return get1(paramInt) << 8 | get1(paramInt + 1);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public int get4(int paramInt) {
-/* 1158 */     return
-/* 1159 */       get1(paramInt) << 24 |
-/* 1160 */       get1(paramInt + 1) << 16 |
-/* 1161 */       get1(paramInt + 2) << 8 |
-/* 1162 */       get1(paramInt + 3);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public boolean isAlive() {
-/* 1168 */     return (this.alive || this.pendingJumps != null);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void markDead() {
-/* 1174 */     this.alive = false;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public int entryPoint() {
-/* 1180 */     int i = curCP();
-/* 1181 */     this.alive = true;
-/* 1182 */     this.pendingStackMap = this.needStackMap;
-/* 1183 */     return i;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public int entryPoint(State paramState) {
-/* 1190 */     int i = curCP();
-/* 1191 */     this.alive = true;
-/* 1192 */     State state = paramState.dup();
-/* 1193 */     setDefined(state.defined);
-/* 1194 */     this.state = state;
-/* 1195 */     Assert.check((paramState.stacksize <= this.max_stack));
-/* 1196 */     if (this.debugCode) System.err.println("entry point " + paramState);
-/* 1197 */     this.pendingStackMap = this.needStackMap;
-/* 1198 */     return i;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public int entryPoint(State paramState, Type paramType) {
-/* 1205 */     int i = curCP();
-/* 1206 */     this.alive = true;
-/* 1207 */     State state = paramState.dup();
-/* 1208 */     setDefined(state.defined);
-/* 1209 */     this.state = state;
-/* 1210 */     Assert.check((paramState.stacksize <= this.max_stack));
-/* 1211 */     this.state.push(paramType);
-/* 1212 */     if (this.debugCode) System.err.println("entry point " + paramState);
-/* 1213 */     this.pendingStackMap = this.needStackMap;
-/* 1214 */     return i;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   static class StackMapFrame
-/*      */   {
-/*      */     int pc;
-/*      */
-/*      */     Type[] locals;
-/*      */
-/*      */     Type[] stack;
-/*      */   }
-/*      */
-/*      */
-/*      */   public Code(Symbol.MethodSymbol paramMethodSymbol, boolean paramBoolean1, Position.LineMap paramLineMap, boolean paramBoolean2, StackMapFormat paramStackMapFormat, boolean paramBoolean3, CRTable paramCRTable, Symtab paramSymtab, Types paramTypes, Pool paramPool) {
-/* 1230 */     this.stackMapBuffer = null;
-/*      */
-/*      */
-/* 1233 */     this.stackMapTableBuffer = null;
-/* 1234 */     this.stackMapBufferSize = 0;
-/*      */
-/*      */
-/* 1237 */     this.lastStackMapPC = -1;
-/*      */
-/*      */
-/* 1240 */     this.lastFrame = null;
-/*      */
-/*      */
-/* 1243 */     this.frameBeforeLast = null; this.meth = paramMethodSymbol; this.fatcode = paramBoolean1; this.lineMap = paramLineMap; this.lineDebugInfo = (paramLineMap != null); this.varDebugInfo = paramBoolean2; this.crt = paramCRTable; this.syms = paramSymtab; this.types = paramTypes; this.debugCode = paramBoolean3; this.stackMap = paramStackMapFormat; switch (paramStackMapFormat) { case BYTE:
-/*      */       case SHORT:
-/*      */         this.needStackMap = true; break;
-/*      */       default:
-/* 1247 */         this.needStackMap = false; break; }  this.state = new State(); this.lvar = new LocalVar[20]; this.pool = paramPool; } public void emitStackMap() { int i = curCP();
-/* 1248 */     if (!this.needStackMap) {
-/*      */       return;
-/*      */     }
-/*      */
-/* 1252 */     switch (this.stackMap) {
-/*      */       case BYTE:
-/* 1254 */         emitCLDCStackMap(i, getLocalsSize());
-/*      */         break;
-/*      */       case SHORT:
-/* 1257 */         emitStackMapFrame(i, getLocalsSize());
-/*      */         break;
-/*      */       default:
-/* 1260 */         throw new AssertionError("Should have chosen a stackmap format");
-/*      */     }
-/*      */
-/* 1263 */     if (this.debugCode) this.state.dump(i);  }
-/*      */
-/*      */
-/*      */   private int getLocalsSize() {
-/* 1267 */     int i = 0;
-/* 1268 */     for (int j = this.max_locals - 1; j >= 0; j--) {
-/* 1269 */       if (this.state.defined.isMember(j) && this.lvar[j] != null) {
-/* 1270 */         i = j + width((this.lvar[j]).sym.erasure(this.types));
-/*      */         break;
-/*      */       }
-/*      */     }
-/* 1274 */     return i;
-/*      */   }
-/*      */
-/*      */
-/*      */   void emitCLDCStackMap(int paramInt1, int paramInt2) {
-/* 1279 */     if (this.lastStackMapPC == paramInt1)
-/*      */     {
-/* 1281 */       this.stackMapBuffer[--this.stackMapBufferSize] = null;
-/*      */     }
-/* 1283 */     this.lastStackMapPC = paramInt1;
-/*      */
-/* 1285 */     if (this.stackMapBuffer == null) {
-/* 1286 */       this.stackMapBuffer = new StackMapFrame[20];
-/*      */     } else {
-/* 1288 */       this.stackMapBuffer = (StackMapFrame[])ArrayUtils.ensureCapacity((Object[])this.stackMapBuffer, this.stackMapBufferSize);
-/*      */     }
-/* 1290 */     StackMapFrame stackMapFrame = this.stackMapBuffer[this.stackMapBufferSize++] = new StackMapFrame();
-/*      */
-/* 1292 */     stackMapFrame.pc = paramInt1;
-/*      */
-/* 1294 */     stackMapFrame.locals = new Type[paramInt2]; byte b;
-/* 1295 */     for (b = 0; b < paramInt2; b++) {
-/* 1296 */       if (this.state.defined.isMember(b) && this.lvar[b] != null) {
-/* 1297 */         Type type = (this.lvar[b]).sym.type;
-/* 1298 */         if (!(type instanceof UninitializedType))
-/* 1299 */           type = this.types.erasure(type);
-/* 1300 */         stackMapFrame.locals[b] = type;
-/*      */       }
-/*      */     }
-/* 1303 */     stackMapFrame.stack = new Type[this.state.stacksize];
-/* 1304 */     for (b = 0; b < this.state.stacksize; b++)
-/* 1305 */       stackMapFrame.stack[b] = this.state.stack[b];
-/*      */   }
-/*      */
-/*      */   void emitStackMapFrame(int paramInt1, int paramInt2) {
-/* 1309 */     if (this.lastFrame == null) {
-/*      */
-/* 1311 */       this.lastFrame = getInitialFrame();
-/* 1312 */     } else if (this.lastFrame.pc == paramInt1) {
-/*      */
-/* 1314 */       this.stackMapTableBuffer[--this.stackMapBufferSize] = null;
-/* 1315 */       this.lastFrame = this.frameBeforeLast;
-/* 1316 */       this.frameBeforeLast = null;
-/*      */     }
-/*      */
-/* 1319 */     StackMapFrame stackMapFrame = new StackMapFrame();
-/* 1320 */     stackMapFrame.pc = paramInt1;
-/*      */
-/* 1322 */     byte b1 = 0;
-/* 1323 */     Type[] arrayOfType = new Type[paramInt2]; byte b2;
-/* 1324 */     for (b2 = 0; b2 < paramInt2; b2++, b1++) {
-/* 1325 */       if (this.state.defined.isMember(b2) && this.lvar[b2] != null) {
-/* 1326 */         Type type = (this.lvar[b2]).sym.type;
-/* 1327 */         if (!(type instanceof UninitializedType))
-/* 1328 */           type = this.types.erasure(type);
-/* 1329 */         arrayOfType[b2] = type;
-/* 1330 */         if (width(type) > 1) b2++;
-/*      */       }
-/*      */     }
-/* 1333 */     stackMapFrame.locals = new Type[b1]; byte b3;
-/* 1334 */     for (b2 = 0, b3 = 0; b2 < paramInt2; b2++, b3++) {
-/* 1335 */       Assert.check((b3 < b1));
-/* 1336 */       stackMapFrame.locals[b3] = arrayOfType[b2];
-/* 1337 */       if (width(arrayOfType[b2]) > 1) b2++;
-/*      */
-/*      */     }
-/* 1340 */     b2 = 0;
-/* 1341 */     for (b3 = 0; b3 < this.state.stacksize; b3++) {
-/* 1342 */       if (this.state.stack[b3] != null) {
-/* 1343 */         b2++;
-/*      */       }
-/*      */     }
-/* 1346 */     stackMapFrame.stack = new Type[b2];
-/* 1347 */     b2 = 0;
-/* 1348 */     for (b3 = 0; b3 < this.state.stacksize; b3++) {
-/* 1349 */       if (this.state.stack[b3] != null) {
-/* 1350 */         stackMapFrame.stack[b2++] = this.types.erasure(this.state.stack[b3]);
-/*      */       }
-/*      */     }
-/*      */
-/* 1354 */     if (this.stackMapTableBuffer == null) {
-/* 1355 */       this.stackMapTableBuffer = new ClassWriter.StackMapTableFrame[20];
-/*      */     } else {
-/* 1357 */       this.stackMapTableBuffer = (ClassWriter.StackMapTableFrame[])ArrayUtils.ensureCapacity((Object[])this.stackMapTableBuffer, this.stackMapBufferSize);
-/*      */     }
-/*      */
-/*      */
-/* 1361 */     this.stackMapTableBuffer[this.stackMapBufferSize++] =
-/* 1362 */       ClassWriter.StackMapTableFrame.getInstance(stackMapFrame, this.lastFrame.pc, this.lastFrame.locals, this.types);
-/*      */
-/* 1364 */     this.frameBeforeLast = this.lastFrame;
-/* 1365 */     this.lastFrame = stackMapFrame;
-/*      */   }
-/*      */
-/*      */   StackMapFrame getInitialFrame() {
-/* 1369 */     StackMapFrame stackMapFrame = new StackMapFrame();
-/* 1370 */     List list = ((Type.MethodType)this.meth.externalType(this.types)).argtypes;
-/* 1371 */     int i = list.length();
-/* 1372 */     byte b = 0;
-/* 1373 */     if (!this.meth.isStatic()) {
-/* 1374 */       Type type = this.meth.owner.type;
-/* 1375 */       stackMapFrame.locals = new Type[i + 1];
-/* 1376 */       if (this.meth.isConstructor() && type != this.syms.objectType) {
-/* 1377 */         stackMapFrame.locals[b++] = (Type)UninitializedType.uninitializedThis(type);
-/*      */       } else {
-/* 1379 */         stackMapFrame.locals[b++] = this.types.erasure(type);
-/*      */       }
-/*      */     } else {
-/* 1382 */       stackMapFrame.locals = new Type[i];
-/*      */     }
-/* 1384 */     for (Type type : list) {
-/* 1385 */       stackMapFrame.locals[b++] = this.types.erasure(type);
-/*      */     }
-/* 1387 */     stackMapFrame.pc = -1;
-/* 1388 */     stackMapFrame.stack = null;
-/* 1389 */     return stackMapFrame;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static class Chain
-/*      */   {
-/*      */     public final int pc;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     State state;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public final Chain next;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */     public Chain(int param1Int, Chain param1Chain, State param1State) {
-/* 1420 */       this.pc = param1Int;
-/* 1421 */       this.next = param1Chain;
-/* 1422 */       this.state = param1State;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public static int negate(int paramInt) {
-/* 1429 */     if (paramInt == 198) return 199;
-/* 1430 */     if (paramInt == 199) return 198;
-/* 1431 */     return (paramInt + 1 ^ 0x1) - 1;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public int emitJump(int paramInt) {
-/* 1438 */     if (this.fatcode) {
-/* 1439 */       if (paramInt == 167 || paramInt == 168) {
-/* 1440 */         emitop4(paramInt + 200 - 167, 0);
-/*      */       } else {
-/* 1442 */         emitop2(negate(paramInt), 8);
-/* 1443 */         emitop4(200, 0);
-/* 1444 */         this.alive = true;
-/* 1445 */         this.pendingStackMap = this.needStackMap;
-/*      */       }
-/* 1447 */       return this.cp - 5;
-/*      */     }
-/* 1449 */     emitop2(paramInt, 0);
-/* 1450 */     return this.cp - 3;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public Chain branch(int paramInt) {
-/* 1458 */     Chain chain = null;
-/* 1459 */     if (paramInt == 167) {
-/* 1460 */       chain = this.pendingJumps;
-/* 1461 */       this.pendingJumps = null;
-/*      */     }
-/* 1463 */     if (paramInt != 168 && isAlive()) {
-/*      */
-/*      */
-/* 1466 */       chain = new Chain(emitJump(paramInt), chain, this.state.dup());
-/* 1467 */       this.fixedPc = this.fatcode;
-/* 1468 */       if (paramInt == 167) this.alive = false;
-/*      */     }
-/* 1470 */     return chain;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void resolve(Chain paramChain, int paramInt) {
-/* 1476 */     boolean bool = false;
-/* 1477 */     State state = this.state;
-/* 1478 */     for (; paramChain != null; paramChain = paramChain.next) {
-/* 1479 */       Assert.check((this.state != paramChain.state && (paramInt > paramChain.pc || this.state.stacksize == 0)));
-/*      */
-/* 1481 */       if (paramInt >= this.cp) {
-/* 1482 */         paramInt = this.cp;
-/* 1483 */       } else if (get1(paramInt) == 167) {
-/* 1484 */         if (this.fatcode) { paramInt += get4(paramInt + 1); }
-/* 1485 */         else { paramInt += get2(paramInt + 1); }
-/*      */
-/* 1487 */       }  if (get1(paramChain.pc) == 167 && paramChain.pc + 3 == paramInt && paramInt == this.cp && !this.fixedPc) {
-/*      */
-/*      */
-/*      */
-/* 1491 */         if (this.varDebugInfo) {
-/* 1492 */           adjustAliveRanges(this.cp, -3);
-/*      */         }
-/* 1494 */         this.cp -= 3;
-/* 1495 */         paramInt -= 3;
-/* 1496 */         if (paramChain.next == null) {
-/*      */
-/*      */
-/*      */
-/* 1500 */           this.alive = true;
-/*      */           break;
-/*      */         }
-/*      */       } else {
-/* 1504 */         if (this.fatcode) {
-/* 1505 */           put4(paramChain.pc + 1, paramInt - paramChain.pc);
-/* 1506 */         } else if (paramInt - paramChain.pc < -32768 || paramInt - paramChain.pc > 32767) {
-/*      */
-/* 1508 */           this.fatcode = true;
-/*      */         } else {
-/* 1510 */           put2(paramChain.pc + 1, paramInt - paramChain.pc);
-/* 1511 */         }  Assert.check((!this.alive || (paramChain.state.stacksize == state.stacksize && paramChain.state.nlocks == state.nlocks)));
-/*      */       }
-/*      */
-/*      */
-/* 1515 */       this.fixedPc = true;
-/* 1516 */       if (this.cp == paramInt) {
-/* 1517 */         bool = true;
-/* 1518 */         if (this.debugCode)
-/* 1519 */           System.err.println("resolving chain state=" + paramChain.state);
-/* 1520 */         if (this.alive) {
-/* 1521 */           state = paramChain.state.join(state);
-/*      */         } else {
-/* 1523 */           state = paramChain.state;
-/* 1524 */           this.alive = true;
-/*      */         }
-/*      */       }
-/*      */     }
-/* 1528 */     Assert.check((!bool || this.state != state));
-/* 1529 */     if (this.state != state) {
-/* 1530 */       setDefined(state.defined);
-/* 1531 */       this.state = state;
-/* 1532 */       this.pendingStackMap = this.needStackMap;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void resolve(Chain paramChain) {
-/* 1539 */     Assert.check((!this.alive || paramChain == null || (this.state.stacksize == paramChain.state.stacksize && this.state.nlocks == paramChain.state.nlocks)));
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1544 */     this.pendingJumps = mergeChains(paramChain, this.pendingJumps);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void resolvePending() {
-/* 1550 */     Chain chain = this.pendingJumps;
-/* 1551 */     this.pendingJumps = null;
-/* 1552 */     resolve(chain, this.cp);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static Chain mergeChains(Chain paramChain1, Chain paramChain2) {
-/* 1559 */     if (paramChain2 == null) return paramChain1;
-/* 1560 */     if (paramChain1 == null) return paramChain2;
-/* 1561 */     Assert.check((paramChain1.state.stacksize == paramChain2.state.stacksize && paramChain1.state.nlocks == paramChain2.state.nlocks));
-/*      */
-/*      */
-/* 1564 */     if (paramChain1.pc < paramChain2.pc) {
-/* 1565 */       return new Chain(paramChain2.pc,
-/*      */
-/* 1567 */           mergeChains(paramChain1, paramChain2.next), paramChain2.state);
-/*      */     }
-/* 1569 */     return new Chain(paramChain1.pc,
-/*      */
-/* 1571 */         mergeChains(paramChain1.next, paramChain2), paramChain1.state);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void addCatch(char paramChar1, char paramChar2, char paramChar3, char paramChar4) {
-/* 1584 */     this.catchInfo.append(new char[] { paramChar1, paramChar2, paramChar3, paramChar4 });
-/*      */   }
-/*      */
-/*      */
-/*      */   public void compressCatchTable() {
-/* 1589 */     ListBuffer<char[]> listBuffer = new ListBuffer();
-/* 1590 */     List list = List.nil();
-/* 1591 */     for (char[] arrayOfChar : this.catchInfo) {
-/* 1592 */       list = list.prepend(Integer.valueOf(arrayOfChar[2]));
-/*      */     }
-/* 1594 */     for (char[] arrayOfChar : this.catchInfo) {
-/* 1595 */       char c1 = arrayOfChar[0];
-/* 1596 */       char c2 = arrayOfChar[1];
-/* 1597 */       if (c1 == c2 || (c1 == c2 - 1 && list
-/*      */
-/* 1599 */         .contains(Integer.valueOf(c1)))) {
-/*      */         continue;
-/*      */       }
-/* 1602 */       listBuffer.append(arrayOfChar);
-/*      */     }
-/*      */
-/* 1605 */     this.catchInfo = listBuffer;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void addLineNumber(char paramChar1, char paramChar2) {
-/* 1616 */     if (this.lineDebugInfo) {
-/* 1617 */       if (this.lineInfo.nonEmpty() && ((char[])this.lineInfo.head)[0] == paramChar1)
-/* 1618 */         this.lineInfo = this.lineInfo.tail;
-/* 1619 */       if (this.lineInfo.isEmpty() || ((char[])this.lineInfo.head)[1] != paramChar2) {
-/* 1620 */         this.lineInfo = this.lineInfo.prepend(new char[] { paramChar1, paramChar2 });
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public void statBegin(int paramInt) {
-/* 1627 */     if (paramInt != -1) {
-/* 1628 */       this.pendingStatPos = paramInt;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void markStatBegin() {
-/* 1635 */     if (this.alive && this.lineDebugInfo) {
-/* 1636 */       int i = this.lineMap.getLineNumber(this.pendingStatPos);
-/* 1637 */       char c1 = (char)this.cp;
-/* 1638 */       char c2 = (char)i;
-/* 1639 */       if (c1 == this.cp && c2 == i)
-/* 1640 */         addLineNumber(c1, c2);
-/*      */     }
-/* 1642 */     this.pendingStatPos = -1;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   class State
-/*      */     implements Cloneable
-/*      */   {
-/*      */     Bits defined;
-/*      */
-/*      */
-/*      */     Type[] stack;
-/*      */
-/*      */
-/*      */     int stacksize;
-/*      */
-/*      */
-/*      */     int[] locks;
-/*      */
-/*      */     int nlocks;
-/*      */
-/*      */
-/*      */     State() {
-/* 1665 */       this.defined = new Bits();
-/* 1666 */       this.stack = new Type[16];
-/*      */     }
-/*      */
-/*      */     State dup() {
-/*      */       try {
-/* 1671 */         State state = (State)clone();
-/* 1672 */         state.defined = new Bits(this.defined);
-/* 1673 */         state.stack = (Type[])this.stack.clone();
-/* 1674 */         if (this.locks != null) state.locks = (int[])this.locks.clone();
-/* 1675 */         if (Code.this.debugCode) {
-/* 1676 */           System.err.println("duping state " + this);
-/* 1677 */           dump();
-/*      */         }
-/* 1679 */         return state;
-/* 1680 */       } catch (CloneNotSupportedException cloneNotSupportedException) {
-/* 1681 */         throw new AssertionError(cloneNotSupportedException);
-/*      */       }
-/*      */     }
-/*      */
-/*      */     void lock(int param1Int) {
-/* 1686 */       if (this.locks == null) {
-/* 1687 */         this.locks = new int[20];
-/*      */       } else {
-/* 1689 */         this.locks = ArrayUtils.ensureCapacity(this.locks, this.nlocks);
-/*      */       }
-/* 1691 */       this.locks[this.nlocks] = param1Int;
-/* 1692 */       this.nlocks++;
-/*      */     }
-/*      */
-/*      */     void unlock(int param1Int) {
-/* 1696 */       this.nlocks--;
-/* 1697 */       Assert.check((this.locks[this.nlocks] == param1Int));
-/* 1698 */       this.locks[this.nlocks] = -1;
-/*      */     }
-/*      */     void push(Type param1Type) {
-/*      */       Type.JCPrimitiveType jCPrimitiveType;
-/* 1702 */       if (Code.this.debugCode) System.err.println("   pushing " + param1Type);
-/* 1703 */       switch (param1Type.getTag()) {
-/*      */         case VOID:
-/*      */           return;
-/*      */         case BYTE:
-/*      */         case SHORT:
-/*      */         case CHAR:
-/*      */         case BOOLEAN:
-/* 1710 */           jCPrimitiveType = Code.this.syms.intType;
-/*      */           break;
-/*      */       }
-/*      */
-/*      */
-/* 1715 */       this.stack = (Type[])ArrayUtils.ensureCapacity((Object[])this.stack, this.stacksize + 2);
-/* 1716 */       this.stack[this.stacksize++] = (Type)jCPrimitiveType;
-/* 1717 */       switch (Code.width((Type)jCPrimitiveType)) {
-/*      */         case 1:
-/*      */           break;
-/*      */         case 2:
-/* 1721 */           this.stack[this.stacksize++] = null;
-/*      */           break;
-/*      */         default:
-/* 1724 */           throw new AssertionError(jCPrimitiveType);
-/*      */       }
-/* 1726 */       if (this.stacksize > Code.this.max_stack)
-/* 1727 */         Code.this.max_stack = this.stacksize;
-/*      */     }
-/*      */
-/*      */     Type pop1() {
-/* 1731 */       if (Code.this.debugCode) System.err.println("   popping 1");
-/* 1732 */       this.stacksize--;
-/* 1733 */       Type type = this.stack[this.stacksize];
-/* 1734 */       this.stack[this.stacksize] = null;
-/* 1735 */       Assert.check((type != null && Code.width(type) == 1));
-/* 1736 */       return type;
-/*      */     }
-/*      */
-/*      */     Type peek() {
-/* 1740 */       return this.stack[this.stacksize - 1];
-/*      */     }
-/*      */
-/*      */     Type pop2() {
-/* 1744 */       if (Code.this.debugCode) System.err.println("   popping 2");
-/* 1745 */       this.stacksize -= 2;
-/* 1746 */       Type type = this.stack[this.stacksize];
-/* 1747 */       this.stack[this.stacksize] = null;
-/* 1748 */       Assert.check((this.stack[this.stacksize + 1] == null && type != null &&
-/* 1749 */           Code.width(type) == 2));
-/* 1750 */       return type;
-/*      */     }
-/*      */
-/*      */     void pop(int param1Int) {
-/* 1754 */       if (Code.this.debugCode) System.err.println("   popping " + param1Int);
-/* 1755 */       while (param1Int > 0) {
-/* 1756 */         this.stack[--this.stacksize] = null;
-/* 1757 */         param1Int--;
-/*      */       }
-/*      */     }
-/*      */
-/*      */     void pop(Type param1Type) {
-/* 1762 */       pop(Code.width(param1Type));
-/*      */     }
-/*      */
-/*      */     void forceStackTop(Type param1Type) {
-/*      */       int i;
-/*      */       Type type;
-/* 1768 */       if (!Code.this.alive)
-/* 1769 */         return;  switch (param1Type.getTag()) {
-/*      */         case CLASS:
-/*      */         case ARRAY:
-/* 1772 */           i = Code.width(param1Type);
-/* 1773 */           type = this.stack[this.stacksize - i];
-/* 1774 */           Assert.check(Code.this.types.isSubtype(Code.this.types.erasure(type), Code.this.types
-/* 1775 */                 .erasure(param1Type)));
-/* 1776 */           this.stack[this.stacksize - i] = param1Type;
-/*      */           break;
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     void markInitialized(UninitializedType param1UninitializedType) {
-/* 1783 */       Type type = param1UninitializedType.initializedType(); byte b;
-/* 1784 */       for (b = 0; b < this.stacksize; b++) {
-/* 1785 */         if (this.stack[b] == param1UninitializedType) this.stack[b] = type;
-/*      */       }
-/* 1787 */       for (b = 0; b < Code.this.lvar.length; b++) {
-/* 1788 */         LocalVar localVar = Code.this.lvar[b];
-/* 1789 */         if (localVar != null && localVar.sym.type == param1UninitializedType) {
-/* 1790 */           Symbol.VarSymbol varSymbol = localVar.sym;
-/* 1791 */           varSymbol = varSymbol.clone(varSymbol.owner);
-/* 1792 */           varSymbol.type = type;
-/* 1793 */           LocalVar localVar1 = Code.this.lvar[b] = new LocalVar(varSymbol);
-/* 1794 */           localVar1.aliveRanges = localVar.aliveRanges;
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */     State join(State param1State) {
-/* 1800 */       this.defined.andSet(param1State.defined);
-/* 1801 */       Assert.check((this.stacksize == param1State.stacksize && this.nlocks == param1State.nlocks));
-/*      */
-/* 1803 */       for (int i = 0; i < this.stacksize; ) {
-/* 1804 */         Type type1 = this.stack[i];
-/* 1805 */         Type type2 = param1State.stack[i];
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1810 */         Type type3 = (type1 == type2) ? type1 : (Code.this.types.isSubtype(type1, type2) ? type2 : (Code.this.types.isSubtype(type2, type1) ? type1 : error()));
-/* 1811 */         int j = Code.width(type3);
-/* 1812 */         this.stack[i] = type3;
-/* 1813 */         if (j == 2) Assert.checkNull(this.stack[i + 1]);
-/* 1814 */         i += j;
-/*      */       }
-/* 1816 */       return this;
-/*      */     }
-/*      */
-/*      */     Type error() {
-/* 1820 */       throw new AssertionError("inconsistent stack types at join point");
-/*      */     }
-/*      */
-/*      */     void dump() {
-/* 1824 */       dump(-1);
-/*      */     }
-/*      */
-/*      */     void dump(int param1Int) {
-/* 1828 */       System.err.print("stackMap for " + Code.this.meth.owner + "." + Code.this.meth);
-/* 1829 */       if (param1Int == -1) {
-/* 1830 */         System.out.println();
-/*      */       } else {
-/* 1832 */         System.out.println(" at " + param1Int);
-/* 1833 */       }  System.err.println(" stack (from bottom):"); int i;
-/* 1834 */       for (i = 0; i < this.stacksize; i++) {
-/* 1835 */         System.err.println("  " + i + ": " + this.stack[i]);
-/*      */       }
-/* 1837 */       i = 0; int j;
-/* 1838 */       for (j = Code.this.max_locals - 1; j >= 0; j--) {
-/* 1839 */         if (this.defined.isMember(j)) {
-/* 1840 */           i = j;
-/*      */           break;
-/*      */         }
-/*      */       }
-/* 1844 */       if (i >= 0)
-/* 1845 */         System.err.println(" locals:");
-/* 1846 */       for (j = 0; j <= i; j++) {
-/* 1847 */         System.err.print("  " + j + ": ");
-/* 1848 */         if (this.defined.isMember(j))
-/* 1849 */         { LocalVar localVar = Code.this.lvar[j];
-/* 1850 */           if (localVar == null) {
-/* 1851 */             System.err.println("(none)");
-/* 1852 */           } else if (localVar.sym == null) {
-/* 1853 */             System.err.println("UNKNOWN!");
-/*      */           } else {
-/* 1855 */             System.err.println("" + localVar.sym + " of type " + localVar.sym
-/* 1856 */                 .erasure(Code.this.types));
-/*      */           }  }
-/* 1858 */         else { System.err.println("undefined"); }
-/*      */
-/*      */       }
-/* 1861 */       if (this.nlocks != 0) {
-/* 1862 */         System.err.print(" locks:");
-/* 1863 */         for (j = 0; j < this.nlocks; j++) {
-/* 1864 */           System.err.print(" " + this.locks[j]);
-/*      */         }
-/* 1866 */         System.err.println();
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/* 1871 */   static final Type jsrReturnValue = (Type)new Type.JCPrimitiveType(TypeTag.INT, null);
-/*      */
-/*      */   LocalVar[] lvar;
-/*      */   LocalVar[] varBuffer;
-/*      */   int varBufferSize;
-/*      */
-/*      */   static class LocalVar
-/*      */   {
-/*      */     final Symbol.VarSymbol sym;
-/*      */     final char reg;
-/*      */
-/*      */     class Range
-/*      */     {
-/* 1884 */       char start_pc = Character.MAX_VALUE;
-/* 1885 */       char length = Character.MAX_VALUE;
-/*      */
-/*      */       Range() {}
-/*      */
-/*      */       Range(char param2Char) {
-/* 1890 */         this.start_pc = param2Char;
-/*      */       }
-/*      */
-/*      */       Range(char param2Char1, char param2Char2) {
-/* 1894 */         this.start_pc = param2Char1;
-/* 1895 */         this.length = param2Char2;
-/*      */       }
-/*      */
-/*      */       boolean closed() {
-/* 1899 */         return (this.start_pc != Character.MAX_VALUE && this.length != Character.MAX_VALUE);
-/*      */       }
-/*      */
-/*      */
-/*      */       public String toString() {
-/* 1904 */         char c1 = this.start_pc;
-/* 1905 */         char c2 = this.length;
-/* 1906 */         return "startpc = " + c1 + " length " + c2;
-/*      */       }
-/*      */     }
-/*      */
-/* 1910 */     List<Range> aliveRanges = new ArrayList<>();
-/*      */
-/*      */     LocalVar(Symbol.VarSymbol param1VarSymbol) {
-/* 1913 */       this.sym = param1VarSymbol;
-/* 1914 */       this.reg = (char)param1VarSymbol.adr;
-/*      */     }
-/*      */     public LocalVar dup() {
-/* 1917 */       return new LocalVar(this.sym);
-/*      */     }
-/*      */
-/*      */     Range firstRange() {
-/* 1921 */       return this.aliveRanges.isEmpty() ? null : this.aliveRanges.get(0);
-/*      */     }
-/*      */
-/*      */     Range lastRange() {
-/* 1925 */       return this.aliveRanges.isEmpty() ? null : this.aliveRanges.get(this.aliveRanges.size() - 1);
-/*      */     }
-/*      */
-/*      */     void removeLastRange() {
-/* 1929 */       Range range = lastRange();
-/* 1930 */       if (range != null) {
-/* 1931 */         this.aliveRanges.remove(range);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/*      */     public String toString() {
-/* 1937 */       if (this.aliveRanges == null) {
-/* 1938 */         return "empty local var";
-/*      */       }
-/*      */
-/* 1941 */       StringBuilder stringBuilder = (new StringBuilder()).append(this.sym).append(" in register ").append(this.reg).append(" \n");
-/* 1942 */       for (Range range : this.aliveRanges) {
-/* 1943 */         stringBuilder.append(" starts at pc=").append(Integer.toString(range.start_pc))
-/* 1944 */           .append(" length=").append(Integer.toString(range.length))
-/* 1945 */           .append("\n");
-/*      */       }
-/* 1947 */       return stringBuilder.toString();
-/*      */     }
-/*      */
-/*      */     public void openRange(char param1Char) {
-/* 1951 */       if (!hasOpenRange()) {
-/* 1952 */         this.aliveRanges.add(new Range(param1Char));
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public void closeRange(char param1Char) {
-/* 1957 */       if (isLastRangeInitialized() && param1Char > '\000') {
-/* 1958 */         Range range = lastRange();
-/* 1959 */         if (range != null &&
-/* 1960 */           range.length == Character.MAX_VALUE) {
-/* 1961 */           range.length = param1Char;
-/*      */         }
-/*      */       } else {
-/*      */
-/* 1965 */         removeLastRange();
-/*      */       }
-/*      */     }
-/*      */
-/*      */     public boolean hasOpenRange() {
-/* 1970 */       if (this.aliveRanges.isEmpty()) {
-/* 1971 */         return false;
-/*      */       }
-/* 1973 */       return ((lastRange()).length == Character.MAX_VALUE);
-/*      */     }
-/*      */
-/*      */     public boolean isLastRangeInitialized() {
-/* 1977 */       if (this.aliveRanges.isEmpty()) {
-/* 1978 */         return false;
-/*      */       }
-/* 1980 */       return ((lastRange()).start_pc != Character.MAX_VALUE);
-/*      */     }
-/*      */
-/*      */     public Range getWidestRange() {
-/* 1984 */       if (this.aliveRanges.isEmpty()) {
-/* 1985 */         return new Range();
-/*      */       }
-/* 1987 */       Range range1 = firstRange();
-/* 1988 */       Range range2 = lastRange();
-/* 1989 */       char c = (char)(range2.length + range2.start_pc - range1.start_pc);
-/* 1990 */       return new Range(range1.start_pc, c);
-/*      */     } } class Range {
-/*      */     char start_pc = Character.MAX_VALUE; char length = Character.MAX_VALUE; Range() {} Range(char param1Char) { this.start_pc = param1Char; } Range(char param1Char1, char param1Char2) { this.start_pc = param1Char1;
-/*      */       this.length = param1Char2; } boolean closed() {
-/*      */       return (this.start_pc != Character.MAX_VALUE && this.length != Character.MAX_VALUE);
-/*      */     } public String toString() {
-/*      */       char c1 = this.start_pc;
-/*      */       char c2 = this.length;
-/*      */       return "startpc = " + c1 + " length " + c2;
-/*      */     }
-/*      */   } private void addLocalVar(Symbol.VarSymbol paramVarSymbol) {
-/* 2001 */     int i = paramVarSymbol.adr;
-/* 2002 */     this.lvar = (LocalVar[])ArrayUtils.ensureCapacity((Object[])this.lvar, i + 1);
-/* 2003 */     Assert.checkNull(this.lvar[i]);
-/* 2004 */     if (this.pendingJumps != null) {
-/* 2005 */       resolvePending();
-/*      */     }
-/* 2007 */     this.lvar[i] = new LocalVar(paramVarSymbol);
-/* 2008 */     this.state.defined.excl(i);
-/*      */   }
-/*      */
-/*      */   void adjustAliveRanges(int paramInt1, int paramInt2) {
-/* 2012 */     for (LocalVar localVar : this.lvar) {
-/* 2013 */       if (localVar != null) {
-/* 2014 */         for (LocalVar.Range range : localVar.aliveRanges) {
-/* 2015 */           if (range.closed() && range.start_pc + range.length >= paramInt1) {
-/* 2016 */             range.length = (char)(range.length + paramInt2);
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public int getLVTSize() {
-/* 2027 */     int i = this.varBufferSize;
-/* 2028 */     for (byte b = 0; b < this.varBufferSize; b++) {
-/* 2029 */       LocalVar localVar = this.varBuffer[b];
-/* 2030 */       i += localVar.aliveRanges.size() - 1;
-/*      */     }
-/* 2032 */     return i;
-/*      */   }
-/*      */
-/*      */
-/*      */   public void setDefined(Bits paramBits) {
-/* 2037 */     if (this.alive && paramBits != this.state.defined) {
-/* 2038 */       Bits bits = (new Bits(this.state.defined)).xorSet(paramBits);
-/* 2039 */       int i = bits.nextBit(0);
-/* 2040 */       for (; i >= 0;
-/* 2041 */         i = bits.nextBit(i + 1)) {
-/* 2042 */         if (i >= this.nextreg) {
-/* 2043 */           this.state.defined.excl(i);
-/* 2044 */         } else if (this.state.defined.isMember(i)) {
-/* 2045 */           setUndefined(i);
-/*      */         } else {
-/* 2047 */           setDefined(i);
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public void setDefined(int paramInt) {
-/* 2054 */     LocalVar localVar = this.lvar[paramInt];
-/* 2055 */     if (localVar == null) {
-/* 2056 */       this.state.defined.excl(paramInt);
-/*      */     } else {
-/* 2058 */       this.state.defined.incl(paramInt);
-/* 2059 */       if (this.cp < 65535) {
-/* 2060 */         localVar.openRange((char)this.cp);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   public void setUndefined(int paramInt) {
-/* 2067 */     this.state.defined.excl(paramInt);
-/* 2068 */     if (paramInt < this.lvar.length && this.lvar[paramInt] != null && this.lvar[paramInt]
-/*      */
-/* 2070 */       .isLastRangeInitialized()) {
-/* 2071 */       LocalVar localVar = this.lvar[paramInt];
-/* 2072 */       char c = (char)(curCP() - (localVar.lastRange()).start_pc);
-/* 2073 */       if (c < Character.MAX_VALUE) {
-/* 2074 */         this.lvar[paramInt] = localVar.dup();
-/* 2075 */         localVar.closeRange(c);
-/* 2076 */         putVar(localVar);
-/*      */       } else {
-/* 2078 */         localVar.removeLastRange();
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   private void endScope(int paramInt) {
-/* 2085 */     LocalVar localVar = this.lvar[paramInt];
-/* 2086 */     if (localVar != null) {
-/* 2087 */       if (localVar.isLastRangeInitialized()) {
-/* 2088 */         char c = (char)(curCP() - (localVar.lastRange()).start_pc);
-/* 2089 */         if (c < Character.MAX_VALUE) {
-/* 2090 */           localVar.closeRange(c);
-/* 2091 */           putVar(localVar);
-/* 2092 */           fillLocalVarPosition(localVar);
-/*      */         }
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2100 */       this.lvar[paramInt] = null;
-/*      */     }
-/* 2102 */     this.state.defined.excl(paramInt);
-/*      */   }
-/*      */
-/*      */   private void fillLocalVarPosition(LocalVar paramLocalVar) {
-/* 2106 */     if (paramLocalVar == null || paramLocalVar.sym == null || !paramLocalVar.sym.hasTypeAnnotations())
-/*      */       return;
-/* 2108 */     for (Attribute.TypeCompound typeCompound : paramLocalVar.sym.getRawTypeAttributes()) {
-/* 2109 */       TypeAnnotationPosition typeAnnotationPosition = typeCompound.position;
-/* 2110 */       LocalVar.Range range = paramLocalVar.getWidestRange();
-/* 2111 */       typeAnnotationPosition.lvarOffset = new int[] { range.start_pc };
-/* 2112 */       typeAnnotationPosition.lvarLength = new int[] { range.length };
-/* 2113 */       typeAnnotationPosition.lvarIndex = new int[] { paramLocalVar.reg };
-/* 2114 */       typeAnnotationPosition.isValidOffset = true;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void fillExceptionParameterPositions() {
-/* 2122 */     for (byte b = 0; b < this.varBufferSize; b++) {
-/* 2123 */       LocalVar localVar = this.varBuffer[b];
-/* 2124 */       if (localVar != null && localVar.sym != null && localVar.sym
-/* 2125 */         .hasTypeAnnotations() && localVar.sym
-/* 2126 */         .isExceptionParameter())
-/*      */       {
-/*      */
-/* 2129 */         for (Attribute.TypeCompound typeCompound : localVar.sym.getRawTypeAttributes()) {
-/* 2130 */           TypeAnnotationPosition typeAnnotationPosition = typeCompound.position;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2137 */           if (typeAnnotationPosition.type_index != -666) {
-/* 2138 */             typeAnnotationPosition.exception_index = findExceptionIndex(typeAnnotationPosition.type_index);
-/* 2139 */             typeAnnotationPosition.type_index = -666;
-/*      */           }
-/*      */         }  }
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private int findExceptionIndex(int paramInt) {
-/* 2146 */     if (paramInt == Integer.MIN_VALUE)
-/*      */     {
-/*      */
-/*      */
-/* 2150 */       return -1;
-/*      */     }
-/* 2152 */     List list = this.catchInfo.toList();
-/* 2153 */     int i = this.catchInfo.length();
-/* 2154 */     for (byte b = 0; b < i; b++) {
-/* 2155 */       char[] arrayOfChar = (char[])list.head;
-/* 2156 */       list = list.tail;
-/* 2157 */       char c = arrayOfChar[3];
-/* 2158 */       if (paramInt == c) {
-/* 2159 */         return b;
-/*      */       }
-/*      */     }
-/* 2162 */     return -1;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void putVar(LocalVar paramLocalVar) {
-/* 2173 */     boolean bool1 = (this.varDebugInfo || (paramLocalVar.sym.isExceptionParameter() && paramLocalVar.sym.hasTypeAnnotations())) ? true : false;
-/* 2174 */     if (!bool1) {
-/*      */       return;
-/*      */     }
-/*      */
-/* 2178 */     boolean bool2 = ((paramLocalVar.sym.flags() & 0x1000L) != 0L && ((paramLocalVar.sym.owner.flags() & 0x2000000000000L) == 0L || (paramLocalVar.sym.flags() & 0x200000000L) == 0L)) ? true : false;
-/* 2179 */     if (bool2)
-/* 2180 */       return;  if (this.varBuffer == null) {
-/* 2181 */       this.varBuffer = new LocalVar[20];
-/*      */     } else {
-/* 2183 */       this.varBuffer = (LocalVar[])ArrayUtils.ensureCapacity((Object[])this.varBuffer, this.varBufferSize);
-/* 2184 */     }  this.varBuffer[this.varBufferSize++] = paramLocalVar;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private int newLocal(int paramInt) {
-/* 2194 */     int i = this.nextreg;
-/* 2195 */     int j = width(paramInt);
-/* 2196 */     this.nextreg = i + j;
-/* 2197 */     if (this.nextreg > this.max_locals) this.max_locals = this.nextreg;
-/* 2198 */     return i;
-/*      */   }
-/*      */
-/*      */   private int newLocal(Type paramType) {
-/* 2202 */     return newLocal(typecode(paramType));
-/*      */   }
-/*      */
-/*      */   public int newLocal(Symbol.VarSymbol paramVarSymbol) {
-/* 2206 */     int i = paramVarSymbol.adr = newLocal(paramVarSymbol.erasure(this.types));
-/* 2207 */     addLocalVar(paramVarSymbol);
-/* 2208 */     return i;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void newRegSegment() {
-/* 2214 */     this.nextreg = this.max_locals;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void endScopes(int paramInt) {
-/* 2220 */     int i = this.nextreg;
-/* 2221 */     this.nextreg = paramInt;
-/* 2222 */     for (int j = this.nextreg; j < i; ) { endScope(j); j++; }
-/*      */
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public static String mnem(int paramInt) {
-/* 2230 */     return Mneumonics.mnem[paramInt];
-/*      */   }
-/*      */
-/*      */   private static class Mneumonics {
-/* 2234 */     private static final String[] mnem = new String[203];
-/*      */     static {
-/* 2236 */       mnem[0] = "nop";
-/* 2237 */       mnem[1] = "aconst_null";
-/* 2238 */       mnem[2] = "iconst_m1";
-/* 2239 */       mnem[3] = "iconst_0";
-/* 2240 */       mnem[4] = "iconst_1";
-/* 2241 */       mnem[5] = "iconst_2";
-/* 2242 */       mnem[6] = "iconst_3";
-/* 2243 */       mnem[7] = "iconst_4";
-/* 2244 */       mnem[8] = "iconst_5";
-/* 2245 */       mnem[9] = "lconst_0";
-/* 2246 */       mnem[10] = "lconst_1";
-/* 2247 */       mnem[11] = "fconst_0";
-/* 2248 */       mnem[12] = "fconst_1";
-/* 2249 */       mnem[13] = "fconst_2";
-/* 2250 */       mnem[14] = "dconst_0";
-/* 2251 */       mnem[15] = "dconst_1";
-/* 2252 */       mnem[16] = "bipush";
-/* 2253 */       mnem[17] = "sipush";
-/* 2254 */       mnem[18] = "ldc1";
-/* 2255 */       mnem[19] = "ldc2";
-/* 2256 */       mnem[20] = "ldc2w";
-/* 2257 */       mnem[21] = "iload";
-/* 2258 */       mnem[22] = "lload";
-/* 2259 */       mnem[23] = "fload";
-/* 2260 */       mnem[24] = "dload";
-/* 2261 */       mnem[25] = "aload";
-/* 2262 */       mnem[26] = "iload_0";
-/* 2263 */       mnem[30] = "lload_0";
-/* 2264 */       mnem[34] = "fload_0";
-/* 2265 */       mnem[38] = "dload_0";
-/* 2266 */       mnem[42] = "aload_0";
-/* 2267 */       mnem[27] = "iload_1";
-/* 2268 */       mnem[31] = "lload_1";
-/* 2269 */       mnem[35] = "fload_1";
-/* 2270 */       mnem[39] = "dload_1";
-/* 2271 */       mnem[43] = "aload_1";
-/* 2272 */       mnem[28] = "iload_2";
-/* 2273 */       mnem[32] = "lload_2";
-/* 2274 */       mnem[36] = "fload_2";
-/* 2275 */       mnem[40] = "dload_2";
-/* 2276 */       mnem[44] = "aload_2";
-/* 2277 */       mnem[29] = "iload_3";
-/* 2278 */       mnem[33] = "lload_3";
-/* 2279 */       mnem[37] = "fload_3";
-/* 2280 */       mnem[41] = "dload_3";
-/* 2281 */       mnem[45] = "aload_3";
-/* 2282 */       mnem[46] = "iaload";
-/* 2283 */       mnem[47] = "laload";
-/* 2284 */       mnem[48] = "faload";
-/* 2285 */       mnem[49] = "daload";
-/* 2286 */       mnem[50] = "aaload";
-/* 2287 */       mnem[51] = "baload";
-/* 2288 */       mnem[52] = "caload";
-/* 2289 */       mnem[53] = "saload";
-/* 2290 */       mnem[54] = "istore";
-/* 2291 */       mnem[55] = "lstore";
-/* 2292 */       mnem[56] = "fstore";
-/* 2293 */       mnem[57] = "dstore";
-/* 2294 */       mnem[58] = "astore";
-/* 2295 */       mnem[59] = "istore_0";
-/* 2296 */       mnem[63] = "lstore_0";
-/* 2297 */       mnem[67] = "fstore_0";
-/* 2298 */       mnem[71] = "dstore_0";
-/* 2299 */       mnem[75] = "astore_0";
-/* 2300 */       mnem[60] = "istore_1";
-/* 2301 */       mnem[64] = "lstore_1";
-/* 2302 */       mnem[68] = "fstore_1";
-/* 2303 */       mnem[72] = "dstore_1";
-/* 2304 */       mnem[76] = "astore_1";
-/* 2305 */       mnem[61] = "istore_2";
-/* 2306 */       mnem[65] = "lstore_2";
-/* 2307 */       mnem[69] = "fstore_2";
-/* 2308 */       mnem[73] = "dstore_2";
-/* 2309 */       mnem[77] = "astore_2";
-/* 2310 */       mnem[62] = "istore_3";
-/* 2311 */       mnem[66] = "lstore_3";
-/* 2312 */       mnem[70] = "fstore_3";
-/* 2313 */       mnem[74] = "dstore_3";
-/* 2314 */       mnem[78] = "astore_3";
-/* 2315 */       mnem[79] = "iastore";
-/* 2316 */       mnem[80] = "lastore";
-/* 2317 */       mnem[81] = "fastore";
-/* 2318 */       mnem[82] = "dastore";
-/* 2319 */       mnem[83] = "aastore";
-/* 2320 */       mnem[84] = "bastore";
-/* 2321 */       mnem[85] = "castore";
-/* 2322 */       mnem[86] = "sastore";
-/* 2323 */       mnem[87] = "pop";
-/* 2324 */       mnem[88] = "pop2";
-/* 2325 */       mnem[89] = "dup";
-/* 2326 */       mnem[90] = "dup_x1";
-/* 2327 */       mnem[91] = "dup_x2";
-/* 2328 */       mnem[92] = "dup2";
-/* 2329 */       mnem[93] = "dup2_x1";
-/* 2330 */       mnem[94] = "dup2_x2";
-/* 2331 */       mnem[95] = "swap";
-/* 2332 */       mnem[96] = "iadd";
-/* 2333 */       mnem[97] = "ladd";
-/* 2334 */       mnem[98] = "fadd";
-/* 2335 */       mnem[99] = "dadd";
-/* 2336 */       mnem[100] = "isub";
-/* 2337 */       mnem[101] = "lsub";
-/* 2338 */       mnem[102] = "fsub";
-/* 2339 */       mnem[103] = "dsub";
-/* 2340 */       mnem[104] = "imul";
-/* 2341 */       mnem[105] = "lmul";
-/* 2342 */       mnem[106] = "fmul";
-/* 2343 */       mnem[107] = "dmul";
-/* 2344 */       mnem[108] = "idiv";
-/* 2345 */       mnem[109] = "ldiv";
-/* 2346 */       mnem[110] = "fdiv";
-/* 2347 */       mnem[111] = "ddiv";
-/* 2348 */       mnem[112] = "imod";
-/* 2349 */       mnem[113] = "lmod";
-/* 2350 */       mnem[114] = "fmod";
-/* 2351 */       mnem[115] = "dmod";
-/* 2352 */       mnem[116] = "ineg";
-/* 2353 */       mnem[117] = "lneg";
-/* 2354 */       mnem[118] = "fneg";
-/* 2355 */       mnem[119] = "dneg";
-/* 2356 */       mnem[120] = "ishl";
-/* 2357 */       mnem[121] = "lshl";
-/* 2358 */       mnem[122] = "ishr";
-/* 2359 */       mnem[123] = "lshr";
-/* 2360 */       mnem[124] = "iushr";
-/* 2361 */       mnem[125] = "lushr";
-/* 2362 */       mnem[126] = "iand";
-/* 2363 */       mnem[127] = "land";
-/* 2364 */       mnem[128] = "ior";
-/* 2365 */       mnem[129] = "lor";
-/* 2366 */       mnem[130] = "ixor";
-/* 2367 */       mnem[131] = "lxor";
-/* 2368 */       mnem[132] = "iinc";
-/* 2369 */       mnem[133] = "i2l";
-/* 2370 */       mnem[134] = "i2f";
-/* 2371 */       mnem[135] = "i2d";
-/* 2372 */       mnem[136] = "l2i";
-/* 2373 */       mnem[137] = "l2f";
-/* 2374 */       mnem[138] = "l2d";
-/* 2375 */       mnem[139] = "f2i";
-/* 2376 */       mnem[140] = "f2l";
-/* 2377 */       mnem[141] = "f2d";
-/* 2378 */       mnem[142] = "d2i";
-/* 2379 */       mnem[143] = "d2l";
-/* 2380 */       mnem[144] = "d2f";
-/* 2381 */       mnem[145] = "int2byte";
-/* 2382 */       mnem[146] = "int2char";
-/* 2383 */       mnem[147] = "int2short";
-/* 2384 */       mnem[148] = "lcmp";
-/* 2385 */       mnem[149] = "fcmpl";
-/* 2386 */       mnem[150] = "fcmpg";
-/* 2387 */       mnem[151] = "dcmpl";
-/* 2388 */       mnem[152] = "dcmpg";
-/* 2389 */       mnem[153] = "ifeq";
-/* 2390 */       mnem[154] = "ifne";
-/* 2391 */       mnem[155] = "iflt";
-/* 2392 */       mnem[156] = "ifge";
-/* 2393 */       mnem[157] = "ifgt";
-/* 2394 */       mnem[158] = "ifle";
-/* 2395 */       mnem[159] = "if_icmpeq";
-/* 2396 */       mnem[160] = "if_icmpne";
-/* 2397 */       mnem[161] = "if_icmplt";
-/* 2398 */       mnem[162] = "if_icmpge";
-/* 2399 */       mnem[163] = "if_icmpgt";
-/* 2400 */       mnem[164] = "if_icmple";
-/* 2401 */       mnem[165] = "if_acmpeq";
-/* 2402 */       mnem[166] = "if_acmpne";
-/* 2403 */       mnem[167] = "goto_";
-/* 2404 */       mnem[168] = "jsr";
-/* 2405 */       mnem[169] = "ret";
-/* 2406 */       mnem[170] = "tableswitch";
-/* 2407 */       mnem[171] = "lookupswitch";
-/* 2408 */       mnem[172] = "ireturn";
-/* 2409 */       mnem[173] = "lreturn";
-/* 2410 */       mnem[174] = "freturn";
-/* 2411 */       mnem[175] = "dreturn";
-/* 2412 */       mnem[176] = "areturn";
-/* 2413 */       mnem[177] = "return_";
-/* 2414 */       mnem[178] = "getstatic";
-/* 2415 */       mnem[179] = "putstatic";
-/* 2416 */       mnem[180] = "getfield";
-/* 2417 */       mnem[181] = "putfield";
-/* 2418 */       mnem[182] = "invokevirtual";
-/* 2419 */       mnem[183] = "invokespecial";
-/* 2420 */       mnem[184] = "invokestatic";
-/* 2421 */       mnem[185] = "invokeinterface";
-/* 2422 */       mnem[186] = "invokedynamic";
-/* 2423 */       mnem[187] = "new_";
-/* 2424 */       mnem[188] = "newarray";
-/* 2425 */       mnem[189] = "anewarray";
-/* 2426 */       mnem[190] = "arraylength";
-/* 2427 */       mnem[191] = "athrow";
-/* 2428 */       mnem[192] = "checkcast";
-/* 2429 */       mnem[193] = "instanceof_";
-/* 2430 */       mnem[194] = "monitorenter";
-/* 2431 */       mnem[195] = "monitorexit";
-/* 2432 */       mnem[196] = "wide";
-/* 2433 */       mnem[197] = "multianewarray";
-/* 2434 */       mnem[198] = "if_acmp_null";
-/* 2435 */       mnem[199] = "if_acmp_nonnull";
-/* 2436 */       mnem[200] = "goto_w";
-/* 2437 */       mnem[201] = "jsr_w";
-/* 2438 */       mnem[202] = "breakpoint";
-/*      */     }
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\jvm\Code.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2015, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.jvm;
+
+import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.code.Types.UniqueType;
+import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
+
+import static com.sun.tools.javac.code.TypeTag.BOT;
+import static com.sun.tools.javac.code.TypeTag.INT;
+import static com.sun.tools.javac.jvm.ByteCodes.*;
+import static com.sun.tools.javac.jvm.UninitializedType.*;
+import static com.sun.tools.javac.jvm.ClassWriter.StackMapTableFrame;
+
+/** An internal structure that corresponds to the code attribute of
+ *  methods in a classfile. The class also provides some utility operations to
+ *  generate bytecode instructions.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Code {
+
+    public final boolean debugCode;
+    public final boolean needStackMap;
+
+    public enum StackMapFormat {
+        NONE,
+        CLDC {
+            Name getAttributeName(Names names) {
+                return names.StackMap;
+            }
+        },
+        JSR202 {
+            Name getAttributeName(Names names) {
+                return names.StackMapTable;
+            }
+        };
+        Name getAttributeName(Names names) {
+            return names.empty;
+        }
+    }
+
+    final Types types;
+    final Symtab syms;
+
+/*---------- classfile fields: --------------- */
+
+    /** The maximum stack size.
+     */
+    public int max_stack = 0;
+
+    /** The maximum number of local variable slots.
+     */
+    public int max_locals = 0;
+
+    /** The code buffer.
+     */
+    public byte[] code = new byte[64];
+
+    /** the current code pointer.
+     */
+    public int cp = 0;
+
+    /** Check the code against VM spec limits; if
+     *  problems report them and return true.
+     */
+    public boolean checkLimits(DiagnosticPosition pos, Log log) {
+        if (cp > ClassFile.MAX_CODE) {
+            log.error(pos, "limit.code");
+            return true;
+        }
+        if (max_locals > ClassFile.MAX_LOCALS) {
+            log.error(pos, "limit.locals");
+            return true;
+        }
+        if (max_stack > ClassFile.MAX_STACK) {
+            log.error(pos, "limit.stack");
+            return true;
+        }
+        return false;
+    }
+
+    /** A buffer for expression catch data. Each enter is a vector
+     *  of four unsigned shorts.
+     */
+    ListBuffer<char[]> catchInfo = new ListBuffer<char[]>();
+
+    /** A buffer for line number information. Each entry is a vector
+     *  of two unsigned shorts.
+     */
+    List<char[]> lineInfo = List.nil(); // handled in stack fashion
+
+    /** The CharacterRangeTable
+     */
+    public CRTable crt;
+
+/*---------- internal fields: --------------- */
+
+    /** Are we generating code with jumps &ge; 32K?
+     */
+    public boolean fatcode;
+
+    /** Code generation enabled?
+     */
+    private boolean alive = true;
+
+    /** The current machine state (registers and stack).
+     */
+    State state;
+
+    /** Is it forbidden to compactify code, because something is
+     *  pointing to current location?
+     */
+    private boolean fixedPc = false;
+
+    /** The next available register.
+     */
+    public int nextreg = 0;
+
+    /** A chain for jumps to be resolved before the next opcode is emitted.
+     *  We do this lazily to avoid jumps to jumps.
+     */
+    Chain pendingJumps = null;
+
+    /** The position of the currently statement, if we are at the
+     *  start of this statement, NOPOS otherwise.
+     *  We need this to emit line numbers lazily, which we need to do
+     *  because of jump-to-jump optimization.
+     */
+    int pendingStatPos = Position.NOPOS;
+
+    /** Set true when a stackMap is needed at the current PC. */
+    boolean pendingStackMap = false;
+
+    /** The stack map format to be generated. */
+    StackMapFormat stackMap;
+
+    /** Switch: emit variable debug info.
+     */
+    boolean varDebugInfo;
+
+    /** Switch: emit line number info.
+     */
+    boolean lineDebugInfo;
+
+    /** Emit line number info if map supplied
+     */
+    Position.LineMap lineMap;
+
+    /** The constant pool of the current class.
+     */
+    final Pool pool;
+
+    final MethodSymbol meth;
+
+    /** Construct a code object, given the settings of the fatcode,
+     *  debugging info switches and the CharacterRangeTable.
+     */
+    public Code(MethodSymbol meth,
+                boolean fatcode,
+                Position.LineMap lineMap,
+                boolean varDebugInfo,
+                StackMapFormat stackMap,
+                boolean debugCode,
+                CRTable crt,
+                Symtab syms,
+                Types types,
+                Pool pool) {
+        this.meth = meth;
+        this.fatcode = fatcode;
+        this.lineMap = lineMap;
+        this.lineDebugInfo = lineMap != null;
+        this.varDebugInfo = varDebugInfo;
+        this.crt = crt;
+        this.syms = syms;
+        this.types = types;
+        this.debugCode = debugCode;
+        this.stackMap = stackMap;
+        switch (stackMap) {
+        case CLDC:
+        case JSR202:
+            this.needStackMap = true;
+            break;
+        default:
+            this.needStackMap = false;
+        }
+        state = new State();
+        lvar = new LocalVar[20];
+        this.pool = pool;
+    }
+
+
+/* **************************************************************************
+ * Typecodes & related stuff
+ ****************************************************************************/
+
+    /** Given a type, return its type code (used implicitly in the
+     *  JVM architecture).
+     */
+    public static int typecode(Type type) {
+        switch (type.getTag()) {
+        case BYTE: return BYTEcode;
+        case SHORT: return SHORTcode;
+        case CHAR: return CHARcode;
+        case INT: return INTcode;
+        case LONG: return LONGcode;
+        case FLOAT: return FLOATcode;
+        case DOUBLE: return DOUBLEcode;
+        case BOOLEAN: return BYTEcode;
+        case VOID: return VOIDcode;
+        case CLASS:
+        case ARRAY:
+        case METHOD:
+        case BOT:
+        case TYPEVAR:
+        case UNINITIALIZED_THIS:
+        case UNINITIALIZED_OBJECT:
+            return OBJECTcode;
+        default: throw new AssertionError("typecode " + type.getTag());
+        }
+    }
+
+    /** Collapse type code for subtypes of int to INTcode.
+     */
+    public static int truncate(int tc) {
+        switch (tc) {
+        case BYTEcode: case SHORTcode: case CHARcode: return INTcode;
+        default: return tc;
+        }
+    }
+
+    /** The width in bytes of objects of the type.
+     */
+    public static int width(int typecode) {
+        switch (typecode) {
+        case LONGcode: case DOUBLEcode: return 2;
+        case VOIDcode: return 0;
+        default: return 1;
+        }
+    }
+
+    public static int width(Type type) {
+        return type == null ? 1 : width(typecode(type));
+    }
+
+    /** The total width taken up by a vector of objects.
+     */
+    public static int width(List<Type> types) {
+        int w = 0;
+        for (List<Type> l = types; l.nonEmpty(); l = l.tail)
+            w = w + width(l.head);
+        return w;
+    }
+
+    /** Given a type, return its code for allocating arrays of that type.
+     */
+    public static int arraycode(Type type) {
+        switch (type.getTag()) {
+        case BYTE: return 8;
+        case BOOLEAN: return 4;
+        case SHORT: return 9;
+        case CHAR: return 5;
+        case INT: return 10;
+        case LONG: return 11;
+        case FLOAT: return 6;
+        case DOUBLE: return 7;
+        case CLASS: return 0;
+        case ARRAY: return 1;
+        default: throw new AssertionError("arraycode " + type);
+        }
+    }
+
+
+/* **************************************************************************
+ * Emit code
+ ****************************************************************************/
+
+    /** The current output code pointer.
+     */
+    public int curCP() {
+        /*
+         * This method has side-effects because calling it can indirectly provoke
+         *  extra code generation, like goto instructions, depending on the context
+         *  where it's called.
+         *  Use with care or even better avoid using it.
+         */
+        if (pendingJumps != null) {
+            resolvePending();
+        }
+        if (pendingStatPos != Position.NOPOS) {
+            markStatBegin();
+        }
+        fixedPc = true;
+        return cp;
+    }
+
+    /** Emit a byte of code.
+     */
+    private  void emit1(int od) {
+        if (!alive) return;
+        code = ArrayUtils.ensureCapacity(code, cp);
+        code[cp++] = (byte)od;
+    }
+
+    /** Emit two bytes of code.
+     */
+    private void emit2(int od) {
+        if (!alive) return;
+        if (cp + 2 > code.length) {
+            emit1(od >> 8);
+            emit1(od);
+        } else {
+            code[cp++] = (byte)(od >> 8);
+            code[cp++] = (byte)od;
+        }
+    }
+
+    /** Emit four bytes of code.
+     */
+    public void emit4(int od) {
+        if (!alive) return;
+        if (cp + 4 > code.length) {
+            emit1(od >> 24);
+            emit1(od >> 16);
+            emit1(od >> 8);
+            emit1(od);
+        } else {
+            code[cp++] = (byte)(od >> 24);
+            code[cp++] = (byte)(od >> 16);
+            code[cp++] = (byte)(od >> 8);
+            code[cp++] = (byte)od;
+        }
+    }
+
+    /** Emit an opcode.
+     */
+    private void emitop(int op) {
+        if (pendingJumps != null) resolvePending();
+        if (alive) {
+            if (pendingStatPos != Position.NOPOS)
+                markStatBegin();
+            if (pendingStackMap) {
+                pendingStackMap = false;
+                emitStackMap();
+            }
+            if (debugCode)
+                System.err.println("emit@" + cp + " stack=" +
+                                   state.stacksize + ": " +
+                                   mnem(op));
+            emit1(op);
+        }
+    }
+
+    void postop() {
+        Assert.check(alive || state.stacksize == 0);
+    }
+
+    /** Emit a ldc (or ldc_w) instruction, taking into account operand size
+    */
+    public void emitLdc(int od) {
+        if (od <= 255) {
+            emitop1(ldc1, od);
+        }
+        else {
+            emitop2(ldc2, od);
+        }
+    }
+
+    /** Emit a multinewarray instruction.
+     */
+    public void emitMultianewarray(int ndims, int type, Type arrayType) {
+        emitop(multianewarray);
+        if (!alive) return;
+        emit2(type);
+        emit1(ndims);
+        state.pop(ndims);
+        state.push(arrayType);
+    }
+
+    /** Emit newarray.
+     */
+    public void emitNewarray(int elemcode, Type arrayType) {
+        emitop(newarray);
+        if (!alive) return;
+        emit1(elemcode);
+        state.pop(1); // count
+        state.push(arrayType);
+    }
+
+    /** Emit anewarray.
+     */
+    public void emitAnewarray(int od, Type arrayType) {
+        emitop(anewarray);
+        if (!alive) return;
+        emit2(od);
+        state.pop(1);
+        state.push(arrayType);
+    }
+
+    /** Emit an invokeinterface instruction.
+     */
+    public void emitInvokeinterface(int meth, Type mtype) {
+        int argsize = width(mtype.getParameterTypes());
+        emitop(invokeinterface);
+        if (!alive) return;
+        emit2(meth);
+        emit1(argsize + 1);
+        emit1(0);
+        state.pop(argsize + 1);
+        state.push(mtype.getReturnType());
+    }
+
+    /** Emit an invokespecial instruction.
+     */
+    public void emitInvokespecial(int meth, Type mtype) {
+        int argsize = width(mtype.getParameterTypes());
+        emitop(invokespecial);
+        if (!alive) return;
+        emit2(meth);
+        Symbol sym = (Symbol)pool.pool[meth];
+        state.pop(argsize);
+        if (sym.isConstructor())
+            state.markInitialized((UninitializedType)state.peek());
+        state.pop(1);
+        state.push(mtype.getReturnType());
+    }
+
+    /** Emit an invokestatic instruction.
+     */
+    public void emitInvokestatic(int meth, Type mtype) {
+        int argsize = width(mtype.getParameterTypes());
+        emitop(invokestatic);
+        if (!alive) return;
+        emit2(meth);
+        state.pop(argsize);
+        state.push(mtype.getReturnType());
+    }
+
+    /** Emit an invokevirtual instruction.
+     */
+    public void emitInvokevirtual(int meth, Type mtype) {
+        int argsize = width(mtype.getParameterTypes());
+        emitop(invokevirtual);
+        if (!alive) return;
+        emit2(meth);
+        state.pop(argsize + 1);
+        state.push(mtype.getReturnType());
+    }
+
+    /** Emit an invokedynamic instruction.
+     */
+    public void emitInvokedynamic(int desc, Type mtype) {
+        int argsize = width(mtype.getParameterTypes());
+        emitop(invokedynamic);
+        if (!alive) return;
+        emit2(desc);
+        emit2(0);
+        state.pop(argsize);
+        state.push(mtype.getReturnType());
+    }
+
+    /** Emit an opcode with no operand field.
+     */
+    public void emitop0(int op) {
+        emitop(op);
+        if (!alive) return;
+        switch (op) {
+        case aaload: {
+            state.pop(1);// index
+            Type a = state.stack[state.stacksize-1];
+            state.pop(1);
+            //sometimes 'null type' is treated as a one-dimensional array type
+            //see Gen.visitLiteral - we should handle this case accordingly
+            Type stackType = a.hasTag(BOT) ?
+                syms.objectType :
+                types.erasure(types.elemtype(a));
+            state.push(stackType); }
+            break;
+        case goto_:
+            markDead();
+            break;
+        case nop:
+        case ineg:
+        case lneg:
+        case fneg:
+        case dneg:
+            break;
+        case aconst_null:
+            state.push(syms.botType);
+            break;
+        case iconst_m1:
+        case iconst_0:
+        case iconst_1:
+        case iconst_2:
+        case iconst_3:
+        case iconst_4:
+        case iconst_5:
+        case iload_0:
+        case iload_1:
+        case iload_2:
+        case iload_3:
+            state.push(syms.intType);
+            break;
+        case lconst_0:
+        case lconst_1:
+        case lload_0:
+        case lload_1:
+        case lload_2:
+        case lload_3:
+            state.push(syms.longType);
+            break;
+        case fconst_0:
+        case fconst_1:
+        case fconst_2:
+        case fload_0:
+        case fload_1:
+        case fload_2:
+        case fload_3:
+            state.push(syms.floatType);
+            break;
+        case dconst_0:
+        case dconst_1:
+        case dload_0:
+        case dload_1:
+        case dload_2:
+        case dload_3:
+            state.push(syms.doubleType);
+            break;
+        case aload_0:
+            state.push(lvar[0].sym.type);
+            break;
+        case aload_1:
+            state.push(lvar[1].sym.type);
+            break;
+        case aload_2:
+            state.push(lvar[2].sym.type);
+            break;
+        case aload_3:
+            state.push(lvar[3].sym.type);
+            break;
+        case iaload:
+        case baload:
+        case caload:
+        case saload:
+            state.pop(2);
+            state.push(syms.intType);
+            break;
+        case laload:
+            state.pop(2);
+            state.push(syms.longType);
+            break;
+        case faload:
+            state.pop(2);
+            state.push(syms.floatType);
+            break;
+        case daload:
+            state.pop(2);
+            state.push(syms.doubleType);
+            break;
+        case istore_0:
+        case istore_1:
+        case istore_2:
+        case istore_3:
+        case fstore_0:
+        case fstore_1:
+        case fstore_2:
+        case fstore_3:
+        case astore_0:
+        case astore_1:
+        case astore_2:
+        case astore_3:
+        case pop:
+        case lshr:
+        case lshl:
+        case lushr:
+            state.pop(1);
+            break;
+        case areturn:
+        case ireturn:
+        case freturn:
+            Assert.check(state.nlocks == 0);
+            state.pop(1);
+            markDead();
+            break;
+        case athrow:
+            state.pop(1);
+            markDead();
+            break;
+        case lstore_0:
+        case lstore_1:
+        case lstore_2:
+        case lstore_3:
+        case dstore_0:
+        case dstore_1:
+        case dstore_2:
+        case dstore_3:
+        case pop2:
+            state.pop(2);
+            break;
+        case lreturn:
+        case dreturn:
+            Assert.check(state.nlocks == 0);
+            state.pop(2);
+            markDead();
+            break;
+        case dup:
+            state.push(state.stack[state.stacksize-1]);
+            break;
+        case return_:
+            Assert.check(state.nlocks == 0);
+            markDead();
+            break;
+        case arraylength:
+            state.pop(1);
+            state.push(syms.intType);
+            break;
+        case isub:
+        case iadd:
+        case imul:
+        case idiv:
+        case imod:
+        case ishl:
+        case ishr:
+        case iushr:
+        case iand:
+        case ior:
+        case ixor:
+            state.pop(1);
+            // state.pop(1);
+            // state.push(syms.intType);
+            break;
+        case aastore:
+            state.pop(3);
+            break;
+        case land:
+        case lor:
+        case lxor:
+        case lmod:
+        case ldiv:
+        case lmul:
+        case lsub:
+        case ladd:
+            state.pop(2);
+            break;
+        case lcmp:
+            state.pop(4);
+            state.push(syms.intType);
+            break;
+        case l2i:
+            state.pop(2);
+            state.push(syms.intType);
+            break;
+        case i2l:
+            state.pop(1);
+            state.push(syms.longType);
+            break;
+        case i2f:
+            state.pop(1);
+            state.push(syms.floatType);
+            break;
+        case i2d:
+            state.pop(1);
+            state.push(syms.doubleType);
+            break;
+        case l2f:
+            state.pop(2);
+            state.push(syms.floatType);
+            break;
+        case l2d:
+            state.pop(2);
+            state.push(syms.doubleType);
+            break;
+        case f2i:
+            state.pop(1);
+            state.push(syms.intType);
+            break;
+        case f2l:
+            state.pop(1);
+            state.push(syms.longType);
+            break;
+        case f2d:
+            state.pop(1);
+            state.push(syms.doubleType);
+            break;
+        case d2i:
+            state.pop(2);
+            state.push(syms.intType);
+            break;
+        case d2l:
+            state.pop(2);
+            state.push(syms.longType);
+            break;
+        case d2f:
+            state.pop(2);
+            state.push(syms.floatType);
+            break;
+        case tableswitch:
+        case lookupswitch:
+            state.pop(1);
+            // the caller is responsible for patching up the state
+            break;
+        case dup_x1: {
+            Type val1 = state.pop1();
+            Type val2 = state.pop1();
+            state.push(val1);
+            state.push(val2);
+            state.push(val1);
+            break;
+        }
+        case bastore:
+            state.pop(3);
+            break;
+        case int2byte:
+        case int2char:
+        case int2short:
+            break;
+        case fmul:
+        case fadd:
+        case fsub:
+        case fdiv:
+        case fmod:
+            state.pop(1);
+            break;
+        case castore:
+        case iastore:
+        case fastore:
+        case sastore:
+            state.pop(3);
+            break;
+        case lastore:
+        case dastore:
+            state.pop(4);
+            break;
+        case dup2:
+            if (state.stack[state.stacksize-1] != null) {
+                Type value1 = state.pop1();
+                Type value2 = state.pop1();
+                state.push(value2);
+                state.push(value1);
+                state.push(value2);
+                state.push(value1);
+            } else {
+                Type value = state.pop2();
+                state.push(value);
+                state.push(value);
+            }
+            break;
+        case dup2_x1:
+            if (state.stack[state.stacksize-1] != null) {
+                Type value1 = state.pop1();
+                Type value2 = state.pop1();
+                Type value3 = state.pop1();
+                state.push(value2);
+                state.push(value1);
+                state.push(value3);
+                state.push(value2);
+                state.push(value1);
+            } else {
+                Type value1 = state.pop2();
+                Type value2 = state.pop1();
+                state.push(value1);
+                state.push(value2);
+                state.push(value1);
+            }
+            break;
+        case dup2_x2:
+            if (state.stack[state.stacksize-1] != null) {
+                Type value1 = state.pop1();
+                Type value2 = state.pop1();
+                if (state.stack[state.stacksize-1] != null) {
+                    // form 1
+                    Type value3 = state.pop1();
+                    Type value4 = state.pop1();
+                    state.push(value2);
+                    state.push(value1);
+                    state.push(value4);
+                    state.push(value3);
+                    state.push(value2);
+                    state.push(value1);
+                } else {
+                    // form 3
+                    Type value3 = state.pop2();
+                    state.push(value2);
+                    state.push(value1);
+                    state.push(value3);
+                    state.push(value2);
+                    state.push(value1);
+                }
+            } else {
+                Type value1 = state.pop2();
+                if (state.stack[state.stacksize-1] != null) {
+                    // form 2
+                    Type value2 = state.pop1();
+                    Type value3 = state.pop1();
+                    state.push(value1);
+                    state.push(value3);
+                    state.push(value2);
+                    state.push(value1);
+                } else {
+                    // form 4
+                    Type value2 = state.pop2();
+                    state.push(value1);
+                    state.push(value2);
+                    state.push(value1);
+                }
+            }
+            break;
+        case dup_x2: {
+            Type value1 = state.pop1();
+            if (state.stack[state.stacksize-1] != null) {
+                // form 1
+                Type value2 = state.pop1();
+                Type value3 = state.pop1();
+                state.push(value1);
+                state.push(value3);
+                state.push(value2);
+                state.push(value1);
+            } else {
+                // form 2
+                Type value2 = state.pop2();
+                state.push(value1);
+                state.push(value2);
+                state.push(value1);
+            }
+        }
+            break;
+        case fcmpl:
+        case fcmpg:
+            state.pop(2);
+            state.push(syms.intType);
+            break;
+        case dcmpl:
+        case dcmpg:
+            state.pop(4);
+            state.push(syms.intType);
+            break;
+        case swap: {
+            Type value1 = state.pop1();
+            Type value2 = state.pop1();
+            state.push(value1);
+            state.push(value2);
+            break;
+        }
+        case dadd:
+        case dsub:
+        case dmul:
+        case ddiv:
+        case dmod:
+            state.pop(2);
+            break;
+        case ret:
+            markDead();
+            break;
+        case wide:
+            // must be handled by the caller.
+            return;
+        case monitorenter:
+        case monitorexit:
+            state.pop(1);
+            break;
+
+        default:
+            throw new AssertionError(mnem(op));
+        }
+        postop();
+    }
+
+    /** Emit an opcode with a one-byte operand field.
+     */
+    public void emitop1(int op, int od) {
+        emitop(op);
+        if (!alive) return;
+        emit1(od);
+        switch (op) {
+        case bipush:
+            state.push(syms.intType);
+            break;
+        case ldc1:
+            state.push(typeForPool(pool.pool[od]));
+            break;
+        default:
+            throw new AssertionError(mnem(op));
+        }
+        postop();
+    }
+
+    /** The type of a constant pool entry. */
+    private Type typeForPool(Object o) {
+        if (o instanceof Integer) return syms.intType;
+        if (o instanceof Float) return syms.floatType;
+        if (o instanceof String) return syms.stringType;
+        if (o instanceof Long) return syms.longType;
+        if (o instanceof Double) return syms.doubleType;
+        if (o instanceof ClassSymbol) return syms.classType;
+        if (o instanceof Pool.MethodHandle) return syms.methodHandleType;
+        if (o instanceof UniqueType) return typeForPool(((UniqueType)o).type);
+        if (o instanceof Type) {
+            Type ty = ((Type)o).unannotatedType();
+
+            if (ty instanceof ArrayType) return syms.classType;
+            if (ty instanceof MethodType) return syms.methodTypeType;
+        }
+        throw new AssertionError("Invalid type of constant pool entry: " + o.getClass());
+    }
+
+    /** Emit an opcode with a one-byte operand field;
+     *  widen if field does not fit in a byte.
+     */
+    public void emitop1w(int op, int od) {
+        if (od > 0xFF) {
+            emitop(wide);
+            emitop(op);
+            emit2(od);
+        } else {
+            emitop(op);
+            emit1(od);
+        }
+        if (!alive) return;
+        switch (op) {
+        case iload:
+            state.push(syms.intType);
+            break;
+        case lload:
+            state.push(syms.longType);
+            break;
+        case fload:
+            state.push(syms.floatType);
+            break;
+        case dload:
+            state.push(syms.doubleType);
+            break;
+        case aload:
+            state.push(lvar[od].sym.type);
+            break;
+        case lstore:
+        case dstore:
+            state.pop(2);
+            break;
+        case istore:
+        case fstore:
+        case astore:
+            state.pop(1);
+            break;
+        case ret:
+            markDead();
+            break;
+        default:
+            throw new AssertionError(mnem(op));
+        }
+        postop();
+    }
+
+    /** Emit an opcode with two one-byte operand fields;
+     *  widen if either field does not fit in a byte.
+     */
+    public void emitop1w(int op, int od1, int od2) {
+        if (od1 > 0xFF || od2 < -128 || od2 > 127) {
+            emitop(wide);
+            emitop(op);
+            emit2(od1);
+            emit2(od2);
+        } else {
+            emitop(op);
+            emit1(od1);
+            emit1(od2);
+        }
+        if (!alive) return;
+        switch (op) {
+        case iinc:
+            break;
+        default:
+            throw new AssertionError(mnem(op));
+        }
+    }
+
+    /** Emit an opcode with a two-byte operand field.
+     */
+    public void emitop2(int op, int od) {
+        emitop(op);
+        if (!alive) return;
+        emit2(od);
+        switch (op) {
+        case getstatic:
+            state.push(((Symbol)(pool.pool[od])).erasure(types));
+            break;
+        case putstatic:
+            state.pop(((Symbol)(pool.pool[od])).erasure(types));
+            break;
+        case new_:
+            Symbol sym;
+            if (pool.pool[od] instanceof UniqueType) {
+                // Required by change in Gen.makeRef to allow
+                // annotated types.
+                // TODO: is this needed anywhere else?
+                sym = ((UniqueType)(pool.pool[od])).type.tsym;
+            } else {
+                sym = (Symbol)(pool.pool[od]);
+            }
+            state.push(uninitializedObject(sym.erasure(types), cp-3));
+            break;
+        case sipush:
+            state.push(syms.intType);
+            break;
+        case if_acmp_null:
+        case if_acmp_nonnull:
+        case ifeq:
+        case ifne:
+        case iflt:
+        case ifge:
+        case ifgt:
+        case ifle:
+            state.pop(1);
+            break;
+        case if_icmpeq:
+        case if_icmpne:
+        case if_icmplt:
+        case if_icmpge:
+        case if_icmpgt:
+        case if_icmple:
+        case if_acmpeq:
+        case if_acmpne:
+            state.pop(2);
+            break;
+        case goto_:
+            markDead();
+            break;
+        case putfield:
+            state.pop(((Symbol)(pool.pool[od])).erasure(types));
+            state.pop(1); // object ref
+            break;
+        case getfield:
+            state.pop(1); // object ref
+            state.push(((Symbol)(pool.pool[od])).erasure(types));
+            break;
+        case checkcast: {
+            state.pop(1); // object ref
+            Object o = pool.pool[od];
+            Type t = (o instanceof Symbol)
+                ? ((Symbol)o).erasure(types)
+                : types.erasure((((UniqueType)o).type));
+            state.push(t);
+            break; }
+        case ldc2w:
+            state.push(typeForPool(pool.pool[od]));
+            break;
+        case instanceof_:
+            state.pop(1);
+            state.push(syms.intType);
+            break;
+        case ldc2:
+            state.push(typeForPool(pool.pool[od]));
+            break;
+        case jsr:
+            break;
+        default:
+            throw new AssertionError(mnem(op));
+        }
+        // postop();
+    }
+
+    /** Emit an opcode with a four-byte operand field.
+     */
+    public void emitop4(int op, int od) {
+        emitop(op);
+        if (!alive) return;
+        emit4(od);
+        switch (op) {
+        case goto_w:
+            markDead();
+            break;
+        case jsr_w:
+            break;
+        default:
+            throw new AssertionError(mnem(op));
+        }
+        // postop();
+    }
+
+    /** Align code pointer to next `incr' boundary.
+     */
+    public void align(int incr) {
+        if (alive)
+            while (cp % incr != 0) emitop0(nop);
+    }
+
+    /** Place a byte into code at address pc.
+     *  Pre: {@literal pc + 1 <= cp }.
+     */
+    private void put1(int pc, int op) {
+        code[pc] = (byte)op;
+    }
+
+    /** Place two bytes into code at address pc.
+     *  Pre: {@literal pc + 2 <= cp }.
+     */
+    private void put2(int pc, int od) {
+        // pre: pc + 2 <= cp
+        put1(pc, od >> 8);
+        put1(pc+1, od);
+    }
+
+    /** Place four  bytes into code at address pc.
+     *  Pre: {@literal pc + 4 <= cp }.
+     */
+    public void put4(int pc, int od) {
+        // pre: pc + 4 <= cp
+        put1(pc  , od >> 24);
+        put1(pc+1, od >> 16);
+        put1(pc+2, od >> 8);
+        put1(pc+3, od);
+    }
+
+    /** Return code byte at position pc as an unsigned int.
+     */
+    private int get1(int pc) {
+        return code[pc] & 0xFF;
+    }
+
+    /** Return two code bytes at position pc as an unsigned int.
+     */
+    private int get2(int pc) {
+        return (get1(pc) << 8) | get1(pc+1);
+    }
+
+    /** Return four code bytes at position pc as an int.
+     */
+    public int get4(int pc) {
+        // pre: pc + 4 <= cp
+        return
+            (get1(pc) << 24) |
+            (get1(pc+1) << 16) |
+            (get1(pc+2) << 8) |
+            (get1(pc+3));
+    }
+
+    /** Is code generation currently enabled?
+     */
+    public boolean isAlive() {
+        return alive || pendingJumps != null;
+    }
+
+    /** Switch code generation on/off.
+     */
+    public void markDead() {
+        alive = false;
+    }
+
+    /** Declare an entry point; return current code pointer
+     */
+    public int entryPoint() {
+        int pc = curCP();
+        alive = true;
+        pendingStackMap = needStackMap;
+        return pc;
+    }
+
+    /** Declare an entry point with initial state;
+     *  return current code pointer
+     */
+    public int entryPoint(State state) {
+        int pc = curCP();
+        alive = true;
+        State newState = state.dup();
+        setDefined(newState.defined);
+        this.state = newState;
+        Assert.check(state.stacksize <= max_stack);
+        if (debugCode) System.err.println("entry point " + state);
+        pendingStackMap = needStackMap;
+        return pc;
+    }
+
+    /** Declare an entry point with initial state plus a pushed value;
+     *  return current code pointer
+     */
+    public int entryPoint(State state, Type pushed) {
+        int pc = curCP();
+        alive = true;
+        State newState = state.dup();
+        setDefined(newState.defined);
+        this.state = newState;
+        Assert.check(state.stacksize <= max_stack);
+        this.state.push(pushed);
+        if (debugCode) System.err.println("entry point " + state);
+        pendingStackMap = needStackMap;
+        return pc;
+    }
+
+
+/**************************************************************************
+ * Stack map generation
+ *************************************************************************/
+
+    /** An entry in the stack map. */
+    static class StackMapFrame {
+        int pc;
+        Type[] locals;
+        Type[] stack;
+    }
+
+    /** A buffer of cldc stack map entries. */
+    StackMapFrame[] stackMapBuffer = null;
+
+    /** A buffer of compressed StackMapTable entries. */
+    StackMapTableFrame[] stackMapTableBuffer = null;
+    int stackMapBufferSize = 0;
+
+    /** The last PC at which we generated a stack map. */
+    int lastStackMapPC = -1;
+
+    /** The last stack map frame in StackMapTable. */
+    StackMapFrame lastFrame = null;
+
+    /** The stack map frame before the last one. */
+    StackMapFrame frameBeforeLast = null;
+
+    /** Emit a stack map entry.  */
+    public void emitStackMap() {
+        int pc = curCP();
+        if (!needStackMap) return;
+
+
+
+        switch (stackMap) {
+            case CLDC:
+                emitCLDCStackMap(pc, getLocalsSize());
+                break;
+            case JSR202:
+                emitStackMapFrame(pc, getLocalsSize());
+                break;
+            default:
+                throw new AssertionError("Should have chosen a stackmap format");
+        }
+        // DEBUG code follows
+        if (debugCode) state.dump(pc);
+    }
+
+    private int getLocalsSize() {
+        int nextLocal = 0;
+        for (int i=max_locals-1; i>=0; i--) {
+            if (state.defined.isMember(i) && lvar[i] != null) {
+                nextLocal = i + width(lvar[i].sym.erasure(types));
+                break;
+            }
+        }
+        return nextLocal;
+    }
+
+    /** Emit a CLDC stack map frame. */
+    void emitCLDCStackMap(int pc, int localsSize) {
+        if (lastStackMapPC == pc) {
+            // drop existing stackmap at this offset
+            stackMapBuffer[--stackMapBufferSize] = null;
+        }
+        lastStackMapPC = pc;
+
+        if (stackMapBuffer == null) {
+            stackMapBuffer = new StackMapFrame[20];
+        } else {
+            stackMapBuffer = ArrayUtils.ensureCapacity(stackMapBuffer, stackMapBufferSize);
+        }
+        StackMapFrame frame =
+            stackMapBuffer[stackMapBufferSize++] = new StackMapFrame();
+        frame.pc = pc;
+
+        frame.locals = new Type[localsSize];
+        for (int i=0; i<localsSize; i++) {
+            if (state.defined.isMember(i) && lvar[i] != null) {
+                Type vtype = lvar[i].sym.type;
+                if (!(vtype instanceof UninitializedType))
+                    vtype = types.erasure(vtype);
+                frame.locals[i] = vtype;
+            }
+        }
+        frame.stack = new Type[state.stacksize];
+        for (int i=0; i<state.stacksize; i++)
+            frame.stack[i] = state.stack[i];
+    }
+
+    void emitStackMapFrame(int pc, int localsSize) {
+        if (lastFrame == null) {
+            // first frame
+            lastFrame = getInitialFrame();
+        } else if (lastFrame.pc == pc) {
+            // drop existing stackmap at this offset
+            stackMapTableBuffer[--stackMapBufferSize] = null;
+            lastFrame = frameBeforeLast;
+            frameBeforeLast = null;
+        }
+
+        StackMapFrame frame = new StackMapFrame();
+        frame.pc = pc;
+
+        int localCount = 0;
+        Type[] locals = new Type[localsSize];
+        for (int i=0; i<localsSize; i++, localCount++) {
+            if (state.defined.isMember(i) && lvar[i] != null) {
+                Type vtype = lvar[i].sym.type;
+                if (!(vtype instanceof UninitializedType))
+                    vtype = types.erasure(vtype);
+                locals[i] = vtype;
+                if (width(vtype) > 1) i++;
+            }
+        }
+        frame.locals = new Type[localCount];
+        for (int i=0, j=0; i<localsSize; i++, j++) {
+            Assert.check(j < localCount);
+            frame.locals[j] = locals[i];
+            if (width(locals[i]) > 1) i++;
+        }
+
+        int stackCount = 0;
+        for (int i=0; i<state.stacksize; i++) {
+            if (state.stack[i] != null) {
+                stackCount++;
+            }
+        }
+        frame.stack = new Type[stackCount];
+        stackCount = 0;
+        for (int i=0; i<state.stacksize; i++) {
+            if (state.stack[i] != null) {
+                frame.stack[stackCount++] = types.erasure(state.stack[i]);
+            }
+        }
+
+        if (stackMapTableBuffer == null) {
+            stackMapTableBuffer = new StackMapTableFrame[20];
+        } else {
+            stackMapTableBuffer = ArrayUtils.ensureCapacity(
+                                    stackMapTableBuffer,
+                                    stackMapBufferSize);
+        }
+        stackMapTableBuffer[stackMapBufferSize++] =
+                StackMapTableFrame.getInstance(frame, lastFrame.pc, lastFrame.locals, types);
+
+        frameBeforeLast = lastFrame;
+        lastFrame = frame;
+    }
+
+    StackMapFrame getInitialFrame() {
+        StackMapFrame frame = new StackMapFrame();
+        List<Type> arg_types = ((MethodType)meth.externalType(types)).argtypes;
+        int len = arg_types.length();
+        int count = 0;
+        if (!meth.isStatic()) {
+            Type thisType = meth.owner.type;
+            frame.locals = new Type[len+1];
+            if (meth.isConstructor() && thisType != syms.objectType) {
+                frame.locals[count++] = UninitializedType.uninitializedThis(thisType);
+            } else {
+                frame.locals[count++] = types.erasure(thisType);
+            }
+        } else {
+            frame.locals = new Type[len];
+        }
+        for (Type arg_type : arg_types) {
+            frame.locals[count++] = types.erasure(arg_type);
+        }
+        frame.pc = -1;
+        frame.stack = null;
+        return frame;
+    }
+
+
+/**************************************************************************
+ * Operations having to do with jumps
+ *************************************************************************/
+
+    /** A chain represents a list of unresolved jumps. Jump locations
+     *  are sorted in decreasing order.
+     */
+    public static class Chain {
+
+        /** The position of the jump instruction.
+         */
+        public final int pc;
+
+        /** The machine state after the jump instruction.
+         *  Invariant: all elements of a chain list have the same stacksize
+         *  and compatible stack and register contents.
+         */
+        State state;
+
+        /** The next jump in the list.
+         */
+        public final Chain next;
+
+        /** Construct a chain from its jump position, stacksize, previous
+         *  chain, and machine state.
+         */
+        public Chain(int pc, Chain next, State state) {
+            this.pc = pc;
+            this.next = next;
+            this.state = state;
+        }
+    }
+
+    /** Negate a branch opcode.
+     */
+    public static int negate(int opcode) {
+        if (opcode == if_acmp_null) return if_acmp_nonnull;
+        else if (opcode == if_acmp_nonnull) return if_acmp_null;
+        else return ((opcode + 1) ^ 1) - 1;
+    }
+
+    /** Emit a jump instruction.
+     *  Return code pointer of instruction to be patched.
+     */
+    public int emitJump(int opcode) {
+        if (fatcode) {
+            if (opcode == goto_ || opcode == jsr) {
+                emitop4(opcode + goto_w - goto_, 0);
+            } else {
+                emitop2(negate(opcode), 8);
+                emitop4(goto_w, 0);
+                alive = true;
+                pendingStackMap = needStackMap;
+            }
+            return cp - 5;
+        } else {
+            emitop2(opcode, 0);
+            return cp - 3;
+        }
+    }
+
+    /** Emit a branch with given opcode; return its chain.
+     *  branch differs from jump in that jsr is treated as no-op.
+     */
+    public Chain branch(int opcode) {
+        Chain result = null;
+        if (opcode == goto_) {
+            result = pendingJumps;
+            pendingJumps = null;
+        }
+        if (opcode != dontgoto && isAlive()) {
+            result = new Chain(emitJump(opcode),
+                               result,
+                               state.dup());
+            fixedPc = fatcode;
+            if (opcode == goto_) alive = false;
+        }
+        return result;
+    }
+
+    /** Resolve chain to point to given target.
+     */
+    public void resolve(Chain chain, int target) {
+        boolean changed = false;
+        State newState = state;
+        for (; chain != null; chain = chain.next) {
+            Assert.check(state != chain.state
+                    && (target > chain.pc || state.stacksize == 0));
+            if (target >= cp) {
+                target = cp;
+            } else if (get1(target) == goto_) {
+                if (fatcode) target = target + get4(target + 1);
+                else target = target + get2(target + 1);
+            }
+            if (get1(chain.pc) == goto_ &&
+                chain.pc + 3 == target && target == cp && !fixedPc) {
+                // If goto the next instruction, the jump is not needed:
+                // compact the code.
+                if (varDebugInfo) {
+                    adjustAliveRanges(cp, -3);
+                }
+                cp = cp - 3;
+                target = target - 3;
+                if (chain.next == null) {
+                    // This is the only jump to the target. Exit the loop
+                    // without setting new state. The code is reachable
+                    // from the instruction before goto_.
+                    alive = true;
+                    break;
+                }
+            } else {
+                if (fatcode)
+                    put4(chain.pc + 1, target - chain.pc);
+                else if (target - chain.pc < Short.MIN_VALUE ||
+                         target - chain.pc > Short.MAX_VALUE)
+                    fatcode = true;
+                else
+                    put2(chain.pc + 1, target - chain.pc);
+                Assert.check(!alive ||
+                    chain.state.stacksize == newState.stacksize &&
+                    chain.state.nlocks == newState.nlocks);
+            }
+            fixedPc = true;
+            if (cp == target) {
+                changed = true;
+                if (debugCode)
+                    System.err.println("resolving chain state=" + chain.state);
+                if (alive) {
+                    newState = chain.state.join(newState);
+                } else {
+                    newState = chain.state;
+                    alive = true;
+                }
+            }
+        }
+        Assert.check(!changed || state != newState);
+        if (state != newState) {
+            setDefined(newState.defined);
+            state = newState;
+            pendingStackMap = needStackMap;
+        }
+    }
+
+    /** Resolve chain to point to current code pointer.
+     */
+    public void resolve(Chain chain) {
+        Assert.check(
+            !alive ||
+            chain==null ||
+            state.stacksize == chain.state.stacksize &&
+            state.nlocks == chain.state.nlocks);
+        pendingJumps = mergeChains(chain, pendingJumps);
+    }
+
+    /** Resolve any pending jumps.
+     */
+    public void resolvePending() {
+        Chain x = pendingJumps;
+        pendingJumps = null;
+        resolve(x, cp);
+    }
+
+    /** Merge the jumps in of two chains into one.
+     */
+    public static Chain mergeChains(Chain chain1, Chain chain2) {
+        // recursive merge sort
+        if (chain2 == null) return chain1;
+        if (chain1 == null) return chain2;
+        Assert.check(
+            chain1.state.stacksize == chain2.state.stacksize &&
+            chain1.state.nlocks == chain2.state.nlocks);
+        if (chain1.pc < chain2.pc)
+            return new Chain(
+                chain2.pc,
+                mergeChains(chain1, chain2.next),
+                chain2.state);
+        return new Chain(
+                chain1.pc,
+                mergeChains(chain1.next, chain2),
+                chain1.state);
+    }
+
+
+/* **************************************************************************
+ * Catch clauses
+ ****************************************************************************/
+
+    /** Add a catch clause to code.
+     */
+    public void addCatch(
+        char startPc, char endPc, char handlerPc, char catchType) {
+            catchInfo.append(new char[]{startPc, endPc, handlerPc, catchType});
+        }
+
+
+    public void compressCatchTable() {
+        ListBuffer<char[]> compressedCatchInfo = new ListBuffer<>();
+        List<Integer> handlerPcs = List.nil();
+        for (char[] catchEntry : catchInfo) {
+            handlerPcs = handlerPcs.prepend((int)catchEntry[2]);
+        }
+        for (char[] catchEntry : catchInfo) {
+            int startpc = catchEntry[0];
+            int endpc = catchEntry[1];
+            if (startpc == endpc ||
+                    (startpc == (endpc - 1) &&
+                    handlerPcs.contains(startpc))) {
+                continue;
+            } else {
+                compressedCatchInfo.append(catchEntry);
+            }
+        }
+        catchInfo = compressedCatchInfo;
+    }
+
+
+/* **************************************************************************
+ * Line numbers
+ ****************************************************************************/
+
+    /** Add a line number entry.
+     */
+    public void addLineNumber(char startPc, char lineNumber) {
+        if (lineDebugInfo) {
+            if (lineInfo.nonEmpty() && lineInfo.head[0] == startPc)
+                lineInfo = lineInfo.tail;
+            if (lineInfo.isEmpty() || lineInfo.head[1] != lineNumber)
+                lineInfo = lineInfo.prepend(new char[]{startPc, lineNumber});
+        }
+    }
+
+    /** Mark beginning of statement.
+     */
+    public void statBegin(int pos) {
+        if (pos != Position.NOPOS) {
+            pendingStatPos = pos;
+        }
+    }
+
+    /** Force stat begin eagerly
+     */
+    public void markStatBegin() {
+        if (alive && lineDebugInfo) {
+            int line = lineMap.getLineNumber(pendingStatPos);
+            char cp1 = (char)cp;
+            char line1 = (char)line;
+            if (cp1 == cp && line1 == line)
+                addLineNumber(cp1, line1);
+        }
+        pendingStatPos = Position.NOPOS;
+    }
+
+
+/* **************************************************************************
+ * Simulated VM machine state
+ ****************************************************************************/
+
+    class State implements Cloneable {
+        /** The set of registers containing values. */
+        Bits defined;
+
+        /** The (types of the) contents of the machine stack. */
+        Type[] stack;
+
+        /** The first stack position currently unused. */
+        int stacksize;
+
+        /** The numbers of registers containing locked monitors. */
+        int[] locks;
+        int nlocks;
+
+        State() {
+            defined = new Bits();
+            stack = new Type[16];
+        }
+
+        State dup() {
+            try {
+                State state = (State)super.clone();
+                state.defined = new Bits(defined);
+                state.stack = stack.clone();
+                if (locks != null) state.locks = locks.clone();
+                if (debugCode) {
+                    System.err.println("duping state " + this);
+                    dump();
+                }
+                return state;
+            } catch (CloneNotSupportedException ex) {
+                throw new AssertionError(ex);
+            }
+        }
+
+        void lock(int register) {
+            if (locks == null) {
+                locks = new int[20];
+            } else {
+                locks = ArrayUtils.ensureCapacity(locks, nlocks);
+            }
+            locks[nlocks] = register;
+            nlocks++;
+        }
+
+        void unlock(int register) {
+            nlocks--;
+            Assert.check(locks[nlocks] == register);
+            locks[nlocks] = -1;
+        }
+
+        void push(Type t) {
+            if (debugCode) System.err.println("   pushing " + t);
+            switch (t.getTag()) {
+            case VOID:
+                return;
+            case BYTE:
+            case CHAR:
+            case SHORT:
+            case BOOLEAN:
+                t = syms.intType;
+                break;
+            default:
+                break;
+            }
+            stack = ArrayUtils.ensureCapacity(stack, stacksize+2);
+            stack[stacksize++] = t;
+            switch (width(t)) {
+            case 1:
+                break;
+            case 2:
+                stack[stacksize++] = null;
+                break;
+            default:
+                throw new AssertionError(t);
+            }
+            if (stacksize > max_stack)
+                max_stack = stacksize;
+        }
+
+        Type pop1() {
+            if (debugCode) System.err.println("   popping " + 1);
+            stacksize--;
+            Type result = stack[stacksize];
+            stack[stacksize] = null;
+            Assert.check(result != null && width(result) == 1);
+            return result;
+        }
+
+        Type peek() {
+            return stack[stacksize-1];
+        }
+
+        Type pop2() {
+            if (debugCode) System.err.println("   popping " + 2);
+            stacksize -= 2;
+            Type result = stack[stacksize];
+            stack[stacksize] = null;
+            Assert.check(stack[stacksize+1] == null
+                    && result != null && width(result) == 2);
+            return result;
+        }
+
+        void pop(int n) {
+            if (debugCode) System.err.println("   popping " + n);
+            while (n > 0) {
+                stack[--stacksize] = null;
+                n--;
+            }
+        }
+
+        void pop(Type t) {
+            pop(width(t));
+        }
+
+        /** Force the top of the stack to be treated as this supertype
+         *  of its current type. */
+        void forceStackTop(Type t) {
+            if (!alive) return;
+            switch (t.getTag()) {
+            case CLASS:
+            case ARRAY:
+                int width = width(t);
+                Type old = stack[stacksize-width];
+                Assert.check(types.isSubtype(types.erasure(old),
+                                       types.erasure(t)));
+                stack[stacksize-width] = t;
+                break;
+            default:
+            }
+        }
+
+        void markInitialized(UninitializedType old) {
+            Type newtype = old.initializedType();
+            for (int i=0; i<stacksize; i++) {
+                if (stack[i] == old) stack[i] = newtype;
+            }
+            for (int i=0; i<lvar.length; i++) {
+                LocalVar lv = lvar[i];
+                if (lv != null && lv.sym.type == old) {
+                    VarSymbol sym = lv.sym;
+                    sym = sym.clone(sym.owner);
+                    sym.type = newtype;
+                    LocalVar newlv = lvar[i] = new LocalVar(sym);
+                    newlv.aliveRanges = lv.aliveRanges;
+                }
+            }
+        }
+
+        State join(State other) {
+            defined.andSet(other.defined);
+            Assert.check(stacksize == other.stacksize
+                    && nlocks == other.nlocks);
+            for (int i=0; i<stacksize; ) {
+                Type t = stack[i];
+                Type tother = other.stack[i];
+                Type result =
+                    t==tother ? t :
+                    types.isSubtype(t, tother) ? tother :
+                    types.isSubtype(tother, t) ? t :
+                    error();
+                int w = width(result);
+                stack[i] = result;
+                if (w == 2) Assert.checkNull(stack[i+1]);
+                i += w;
+            }
+            return this;
+        }
+
+        Type error() {
+            throw new AssertionError("inconsistent stack types at join point");
+        }
+
+        void dump() {
+            dump(-1);
+        }
+
+        void dump(int pc) {
+            System.err.print("stackMap for " + meth.owner + "." + meth);
+            if (pc == -1)
+                System.out.println();
+            else
+                System.out.println(" at " + pc);
+            System.err.println(" stack (from bottom):");
+            for (int i=0; i<stacksize; i++)
+                System.err.println("  " + i + ": " + stack[i]);
+
+            int lastLocal = 0;
+            for (int i=max_locals-1; i>=0; i--) {
+                if (defined.isMember(i)) {
+                    lastLocal = i;
+                    break;
+                }
+            }
+            if (lastLocal >= 0)
+                System.err.println(" locals:");
+            for (int i=0; i<=lastLocal; i++) {
+                System.err.print("  " + i + ": ");
+                if (defined.isMember(i)) {
+                    LocalVar var = lvar[i];
+                    if (var == null) {
+                        System.err.println("(none)");
+                    } else if (var.sym == null)
+                        System.err.println("UNKNOWN!");
+                    else
+                        System.err.println("" + var.sym + " of type " +
+                                           var.sym.erasure(types));
+                } else {
+                    System.err.println("undefined");
+                }
+            }
+            if (nlocks != 0) {
+                System.err.print(" locks:");
+                for (int i=0; i<nlocks; i++) {
+                    System.err.print(" " + locks[i]);
+                }
+                System.err.println();
+            }
+        }
+    }
+
+    static final Type jsrReturnValue = new JCPrimitiveType(INT, null);
+
+
+/* **************************************************************************
+ * Local variables
+ ****************************************************************************/
+
+    /** A live range of a local variable. */
+    static class LocalVar {
+        final VarSymbol sym;
+        final char reg;
+
+        class Range {
+            char start_pc = Character.MAX_VALUE;
+            char length = Character.MAX_VALUE;
+
+            Range() {}
+
+            Range(char start) {
+                this.start_pc = start;
+            }
+
+            Range(char start, char length) {
+                this.start_pc = start;
+                this.length = length;
+            }
+
+            boolean closed() {
+                return start_pc != Character.MAX_VALUE && length != Character.MAX_VALUE;
+            }
+
+            @Override
+            public String toString() {
+                int currentStartPC = start_pc;
+                int currentLength = length;
+                return "startpc = " + currentStartPC + " length " + currentLength;
+            }
+        }
+
+        java.util.List<Range> aliveRanges = new java.util.ArrayList<>();
+
+        LocalVar(VarSymbol v) {
+            this.sym = v;
+            this.reg = (char)v.adr;
+        }
+        public LocalVar dup() {
+            return new LocalVar(sym);
+        }
+
+        Range firstRange() {
+            return aliveRanges.isEmpty() ? null : aliveRanges.get(0);
+        }
+
+        Range lastRange() {
+            return aliveRanges.isEmpty() ? null : aliveRanges.get(aliveRanges.size() - 1);
+        }
+
+        void removeLastRange() {
+            Range lastRange = lastRange();
+            if (lastRange != null) {
+                aliveRanges.remove(lastRange);
+            }
+        }
+
+        @Override
+        public String toString() {
+            if (aliveRanges == null) {
+                return "empty local var";
+            }
+            StringBuilder sb = new StringBuilder().append(sym)
+                    .append(" in register ").append((int)reg).append(" \n");
+            for (Range r : aliveRanges) {
+                sb.append(" starts at pc=").append(Integer.toString(((int)r.start_pc)))
+                    .append(" length=").append(Integer.toString(((int)r.length)))
+                    .append("\n");
+            }
+            return sb.toString();
+        }
+
+        public void openRange(char start) {
+            if (!hasOpenRange()) {
+                aliveRanges.add(new Range(start));
+            }
+        }
+
+        public void closeRange(char length) {
+            if (isLastRangeInitialized() && length > 0) {
+                Range range = lastRange();
+                if (range != null) {
+                    if (range.length == Character.MAX_VALUE) {
+                        range.length = length;
+                    }
+                }
+            } else {
+                removeLastRange();
+            }
+        }
+
+        public boolean hasOpenRange() {
+            if (aliveRanges.isEmpty()) {
+                return false;
+            }
+            return lastRange().length == Character.MAX_VALUE;
+        }
+
+        public boolean isLastRangeInitialized() {
+            if (aliveRanges.isEmpty()) {
+                return false;
+            }
+            return lastRange().start_pc != Character.MAX_VALUE;
+        }
+
+        public Range getWidestRange() {
+            if (aliveRanges.isEmpty()) {
+                return new Range();
+            } else {
+                Range firstRange = firstRange();
+                Range lastRange = lastRange();
+                char length = (char)(lastRange.length + (lastRange.start_pc - firstRange.start_pc));
+                return new Range(firstRange.start_pc, length);
+            }
+         }
+
+    };
+
+    /** Local variables, indexed by register. */
+    LocalVar[] lvar;
+
+    /** Add a new local variable. */
+    private void addLocalVar(VarSymbol v) {
+        int adr = v.adr;
+        lvar = ArrayUtils.ensureCapacity(lvar, adr+1);
+        Assert.checkNull(lvar[adr]);
+        if (pendingJumps != null) {
+            resolvePending();
+        }
+        lvar[adr] = new LocalVar(v);
+        state.defined.excl(adr);
+    }
+
+    void adjustAliveRanges(int oldCP, int delta) {
+        for (LocalVar localVar: lvar) {
+            if (localVar != null) {
+                for (LocalVar.Range range: localVar.aliveRanges) {
+                    if (range.closed() && range.start_pc + range.length >= oldCP) {
+                        range.length += delta;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Calculates the size of the LocalVariableTable.
+     */
+    public int getLVTSize() {
+        int result = varBufferSize;
+        for (int i = 0; i < varBufferSize; i++) {
+            LocalVar var = varBuffer[i];
+            result += var.aliveRanges.size() - 1;
+        }
+        return result;
+    }
+
+    /** Set the current variable defined state. */
+    public void setDefined(Bits newDefined) {
+        if (alive && newDefined != state.defined) {
+            Bits diff = new Bits(state.defined).xorSet(newDefined);
+            for (int adr = diff.nextBit(0);
+                 adr >= 0;
+                 adr = diff.nextBit(adr+1)) {
+                if (adr >= nextreg)
+                    state.defined.excl(adr);
+                else if (state.defined.isMember(adr))
+                    setUndefined(adr);
+                else
+                    setDefined(adr);
+            }
+        }
+    }
+
+    /** Mark a register as being (possibly) defined. */
+    public void setDefined(int adr) {
+        LocalVar v = lvar[adr];
+        if (v == null) {
+            state.defined.excl(adr);
+        } else {
+            state.defined.incl(adr);
+            if (cp < Character.MAX_VALUE) {
+                v.openRange((char)cp);
+            }
+        }
+    }
+
+    /** Mark a register as being undefined. */
+    public void setUndefined(int adr) {
+        state.defined.excl(adr);
+        if (adr < lvar.length &&
+            lvar[adr] != null &&
+            lvar[adr].isLastRangeInitialized()) {
+            LocalVar v = lvar[adr];
+            char length = (char)(curCP() - v.lastRange().start_pc);
+            if (length < Character.MAX_VALUE) {
+                lvar[adr] = v.dup();
+                v.closeRange(length);
+                putVar(v);
+            } else {
+                v.removeLastRange();
+            }
+        }
+    }
+
+    /** End the scope of a variable. */
+    private void endScope(int adr) {
+        LocalVar v = lvar[adr];
+        if (v != null) {
+            if (v.isLastRangeInitialized()) {
+                char length = (char)(curCP() - v.lastRange().start_pc);
+                if (length < Character.MAX_VALUE) {
+                    v.closeRange(length);
+                    putVar(v);
+                    fillLocalVarPosition(v);
+                }
+            }
+            /** the call to curCP() can implicitly adjust the current cp, if so
+             * the alive range of local variables may be modified. Thus we need
+             * all of them. For this reason assigning null to the given address
+             * should be the last action to do.
+             */
+            lvar[adr] = null;
+        }
+        state.defined.excl(adr);
+    }
+
+    private void fillLocalVarPosition(LocalVar lv) {
+        if (lv == null || lv.sym == null || !lv.sym.hasTypeAnnotations())
+            return;
+        for (Attribute.TypeCompound ta : lv.sym.getRawTypeAttributes()) {
+            TypeAnnotationPosition p = ta.position;
+            LocalVar.Range widestRange = lv.getWidestRange();
+            p.lvarOffset = new int[] { (int)widestRange.start_pc };
+            p.lvarLength = new int[] { (int)widestRange.length };
+            p.lvarIndex = new int[] { (int)lv.reg };
+            p.isValidOffset = true;
+        }
+    }
+
+    // Method to be called after compressCatchTable to
+    // fill in the exception table index for type
+    // annotations on exception parameters.
+    public void fillExceptionParameterPositions() {
+        for (int i = 0; i < varBufferSize; ++i) {
+            LocalVar lv = varBuffer[i];
+            if (lv == null || lv.sym == null
+                    || !lv.sym.hasTypeAnnotations()
+                    || !lv.sym.isExceptionParameter())
+                continue;
+
+            for (Attribute.TypeCompound ta : lv.sym.getRawTypeAttributes()) {
+                TypeAnnotationPosition p = ta.position;
+                // At this point p.type_index contains the catch type index.
+                // Use that index to determine the exception table index.
+                // We can afterwards discard the type_index.
+                // A TA position is shared for all type annotations in the
+                // same location; updating one is enough.
+                // Use -666 as a marker that the exception_index was already updated.
+                if (p.type_index != -666) {
+                    p.exception_index = findExceptionIndex(p.type_index);
+                    p.type_index = -666;
+                }
+            }
+        }
+    }
+
+    private int findExceptionIndex(int catchType) {
+        if (catchType == Integer.MIN_VALUE) {
+            // We didn't set the catch type index correctly.
+            // This shouldn't happen.
+            // TODO: issue error?
+            return -1;
+        }
+        List<char[]> iter = catchInfo.toList();
+        int len = catchInfo.length();
+        for (int i = 0; i < len; ++i) {
+            char[] catchEntry = iter.head;
+            iter = iter.tail;
+            char ct = catchEntry[3];
+            if (catchType == ct) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** Put a live variable range into the buffer to be output to the
+     *  class file.
+     */
+    void putVar(LocalVar var) {
+        // Keep local variables if
+        // 1) we need them for debug information
+        // 2) it is an exception type and it contains type annotations
+        boolean keepLocalVariables = varDebugInfo ||
+            (var.sym.isExceptionParameter() && var.sym.hasTypeAnnotations());
+        if (!keepLocalVariables) return;
+        //don't keep synthetic vars, unless they are lambda method parameters
+        boolean ignoredSyntheticVar = (var.sym.flags() & Flags.SYNTHETIC) != 0 &&
+                ((var.sym.owner.flags() & Flags.LAMBDA_METHOD) == 0 ||
+                 (var.sym.flags() & Flags.PARAMETER) == 0);
+        if (ignoredSyntheticVar) return;
+        if (varBuffer == null)
+            varBuffer = new LocalVar[20];
+        else
+            varBuffer = ArrayUtils.ensureCapacity(varBuffer, varBufferSize);
+        varBuffer[varBufferSize++] = var;
+    }
+
+    /** Previously live local variables, to be put into the variable table. */
+    LocalVar[] varBuffer;
+    int varBufferSize;
+
+    /** Create a new local variable address and return it.
+     */
+    private int newLocal(int typecode) {
+        int reg = nextreg;
+        int w = width(typecode);
+        nextreg = reg + w;
+        if (nextreg > max_locals) max_locals = nextreg;
+        return reg;
+    }
+
+    private int newLocal(Type type) {
+        return newLocal(typecode(type));
+    }
+
+    public int newLocal(VarSymbol v) {
+        int reg = v.adr = newLocal(v.erasure(types));
+        addLocalVar(v);
+        return reg;
+    }
+
+    /** Start a set of fresh registers.
+     */
+    public void newRegSegment() {
+        nextreg = max_locals;
+    }
+
+    /** End scopes of all variables with registers &ge; first.
+     */
+    public void endScopes(int first) {
+        int prevNextReg = nextreg;
+        nextreg = first;
+        for (int i = nextreg; i < prevNextReg; i++) endScope(i);
+    }
+
+/**************************************************************************
+ * static tables
+ *************************************************************************/
+
+    public static String mnem(int opcode) {
+        return Mneumonics.mnem[opcode];
+    }
+
+    private static class Mneumonics {
+        private final static String[] mnem = new String[ByteCodeCount];
+        static {
+            mnem[nop] = "nop";
+            mnem[aconst_null] = "aconst_null";
+            mnem[iconst_m1] = "iconst_m1";
+            mnem[iconst_0] = "iconst_0";
+            mnem[iconst_1] = "iconst_1";
+            mnem[iconst_2] = "iconst_2";
+            mnem[iconst_3] = "iconst_3";
+            mnem[iconst_4] = "iconst_4";
+            mnem[iconst_5] = "iconst_5";
+            mnem[lconst_0] = "lconst_0";
+            mnem[lconst_1] = "lconst_1";
+            mnem[fconst_0] = "fconst_0";
+            mnem[fconst_1] = "fconst_1";
+            mnem[fconst_2] = "fconst_2";
+            mnem[dconst_0] = "dconst_0";
+            mnem[dconst_1] = "dconst_1";
+            mnem[bipush] = "bipush";
+            mnem[sipush] = "sipush";
+            mnem[ldc1] = "ldc1";
+            mnem[ldc2] = "ldc2";
+            mnem[ldc2w] = "ldc2w";
+            mnem[iload] = "iload";
+            mnem[lload] = "lload";
+            mnem[fload] = "fload";
+            mnem[dload] = "dload";
+            mnem[aload] = "aload";
+            mnem[iload_0] = "iload_0";
+            mnem[lload_0] = "lload_0";
+            mnem[fload_0] = "fload_0";
+            mnem[dload_0] = "dload_0";
+            mnem[aload_0] = "aload_0";
+            mnem[iload_1] = "iload_1";
+            mnem[lload_1] = "lload_1";
+            mnem[fload_1] = "fload_1";
+            mnem[dload_1] = "dload_1";
+            mnem[aload_1] = "aload_1";
+            mnem[iload_2] = "iload_2";
+            mnem[lload_2] = "lload_2";
+            mnem[fload_2] = "fload_2";
+            mnem[dload_2] = "dload_2";
+            mnem[aload_2] = "aload_2";
+            mnem[iload_3] = "iload_3";
+            mnem[lload_3] = "lload_3";
+            mnem[fload_3] = "fload_3";
+            mnem[dload_3] = "dload_3";
+            mnem[aload_3] = "aload_3";
+            mnem[iaload] = "iaload";
+            mnem[laload] = "laload";
+            mnem[faload] = "faload";
+            mnem[daload] = "daload";
+            mnem[aaload] = "aaload";
+            mnem[baload] = "baload";
+            mnem[caload] = "caload";
+            mnem[saload] = "saload";
+            mnem[istore] = "istore";
+            mnem[lstore] = "lstore";
+            mnem[fstore] = "fstore";
+            mnem[dstore] = "dstore";
+            mnem[astore] = "astore";
+            mnem[istore_0] = "istore_0";
+            mnem[lstore_0] = "lstore_0";
+            mnem[fstore_0] = "fstore_0";
+            mnem[dstore_0] = "dstore_0";
+            mnem[astore_0] = "astore_0";
+            mnem[istore_1] = "istore_1";
+            mnem[lstore_1] = "lstore_1";
+            mnem[fstore_1] = "fstore_1";
+            mnem[dstore_1] = "dstore_1";
+            mnem[astore_1] = "astore_1";
+            mnem[istore_2] = "istore_2";
+            mnem[lstore_2] = "lstore_2";
+            mnem[fstore_2] = "fstore_2";
+            mnem[dstore_2] = "dstore_2";
+            mnem[astore_2] = "astore_2";
+            mnem[istore_3] = "istore_3";
+            mnem[lstore_3] = "lstore_3";
+            mnem[fstore_3] = "fstore_3";
+            mnem[dstore_3] = "dstore_3";
+            mnem[astore_3] = "astore_3";
+            mnem[iastore] = "iastore";
+            mnem[lastore] = "lastore";
+            mnem[fastore] = "fastore";
+            mnem[dastore] = "dastore";
+            mnem[aastore] = "aastore";
+            mnem[bastore] = "bastore";
+            mnem[castore] = "castore";
+            mnem[sastore] = "sastore";
+            mnem[pop] = "pop";
+            mnem[pop2] = "pop2";
+            mnem[dup] = "dup";
+            mnem[dup_x1] = "dup_x1";
+            mnem[dup_x2] = "dup_x2";
+            mnem[dup2] = "dup2";
+            mnem[dup2_x1] = "dup2_x1";
+            mnem[dup2_x2] = "dup2_x2";
+            mnem[swap] = "swap";
+            mnem[iadd] = "iadd";
+            mnem[ladd] = "ladd";
+            mnem[fadd] = "fadd";
+            mnem[dadd] = "dadd";
+            mnem[isub] = "isub";
+            mnem[lsub] = "lsub";
+            mnem[fsub] = "fsub";
+            mnem[dsub] = "dsub";
+            mnem[imul] = "imul";
+            mnem[lmul] = "lmul";
+            mnem[fmul] = "fmul";
+            mnem[dmul] = "dmul";
+            mnem[idiv] = "idiv";
+            mnem[ldiv] = "ldiv";
+            mnem[fdiv] = "fdiv";
+            mnem[ddiv] = "ddiv";
+            mnem[imod] = "imod";
+            mnem[lmod] = "lmod";
+            mnem[fmod] = "fmod";
+            mnem[dmod] = "dmod";
+            mnem[ineg] = "ineg";
+            mnem[lneg] = "lneg";
+            mnem[fneg] = "fneg";
+            mnem[dneg] = "dneg";
+            mnem[ishl] = "ishl";
+            mnem[lshl] = "lshl";
+            mnem[ishr] = "ishr";
+            mnem[lshr] = "lshr";
+            mnem[iushr] = "iushr";
+            mnem[lushr] = "lushr";
+            mnem[iand] = "iand";
+            mnem[land] = "land";
+            mnem[ior] = "ior";
+            mnem[lor] = "lor";
+            mnem[ixor] = "ixor";
+            mnem[lxor] = "lxor";
+            mnem[iinc] = "iinc";
+            mnem[i2l] = "i2l";
+            mnem[i2f] = "i2f";
+            mnem[i2d] = "i2d";
+            mnem[l2i] = "l2i";
+            mnem[l2f] = "l2f";
+            mnem[l2d] = "l2d";
+            mnem[f2i] = "f2i";
+            mnem[f2l] = "f2l";
+            mnem[f2d] = "f2d";
+            mnem[d2i] = "d2i";
+            mnem[d2l] = "d2l";
+            mnem[d2f] = "d2f";
+            mnem[int2byte] = "int2byte";
+            mnem[int2char] = "int2char";
+            mnem[int2short] = "int2short";
+            mnem[lcmp] = "lcmp";
+            mnem[fcmpl] = "fcmpl";
+            mnem[fcmpg] = "fcmpg";
+            mnem[dcmpl] = "dcmpl";
+            mnem[dcmpg] = "dcmpg";
+            mnem[ifeq] = "ifeq";
+            mnem[ifne] = "ifne";
+            mnem[iflt] = "iflt";
+            mnem[ifge] = "ifge";
+            mnem[ifgt] = "ifgt";
+            mnem[ifle] = "ifle";
+            mnem[if_icmpeq] = "if_icmpeq";
+            mnem[if_icmpne] = "if_icmpne";
+            mnem[if_icmplt] = "if_icmplt";
+            mnem[if_icmpge] = "if_icmpge";
+            mnem[if_icmpgt] = "if_icmpgt";
+            mnem[if_icmple] = "if_icmple";
+            mnem[if_acmpeq] = "if_acmpeq";
+            mnem[if_acmpne] = "if_acmpne";
+            mnem[goto_] = "goto_";
+            mnem[jsr] = "jsr";
+            mnem[ret] = "ret";
+            mnem[tableswitch] = "tableswitch";
+            mnem[lookupswitch] = "lookupswitch";
+            mnem[ireturn] = "ireturn";
+            mnem[lreturn] = "lreturn";
+            mnem[freturn] = "freturn";
+            mnem[dreturn] = "dreturn";
+            mnem[areturn] = "areturn";
+            mnem[return_] = "return_";
+            mnem[getstatic] = "getstatic";
+            mnem[putstatic] = "putstatic";
+            mnem[getfield] = "getfield";
+            mnem[putfield] = "putfield";
+            mnem[invokevirtual] = "invokevirtual";
+            mnem[invokespecial] = "invokespecial";
+            mnem[invokestatic] = "invokestatic";
+            mnem[invokeinterface] = "invokeinterface";
+            mnem[invokedynamic] = "invokedynamic";
+            mnem[new_] = "new_";
+            mnem[newarray] = "newarray";
+            mnem[anewarray] = "anewarray";
+            mnem[arraylength] = "arraylength";
+            mnem[athrow] = "athrow";
+            mnem[checkcast] = "checkcast";
+            mnem[instanceof_] = "instanceof_";
+            mnem[monitorenter] = "monitorenter";
+            mnem[monitorexit] = "monitorexit";
+            mnem[wide] = "wide";
+            mnem[multianewarray] = "multianewarray";
+            mnem[if_acmp_null] = "if_acmp_null";
+            mnem[if_acmp_nonnull] = "if_acmp_nonnull";
+            mnem[goto_w] = "goto_w";
+            mnem[jsr_w] = "jsr_w";
+            mnem[breakpoint] = "breakpoint";
+        }
+    }
+}

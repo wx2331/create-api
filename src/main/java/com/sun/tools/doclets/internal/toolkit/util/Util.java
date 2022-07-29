@@ -1,798 +1,792 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.util;
-/*     */ 
-/*     */ import com.sun.javadoc.AnnotatedType;
-/*     */ import com.sun.javadoc.AnnotationDesc;
-/*     */ import com.sun.javadoc.AnnotationTypeDoc;
-/*     */ import com.sun.javadoc.AnnotationValue;
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.ExecutableMemberDoc;
-/*     */ import com.sun.javadoc.FieldDoc;
-/*     */ import com.sun.javadoc.MethodDoc;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.javadoc.Parameter;
-/*     */ import com.sun.javadoc.ParameterizedType;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.javadoc.SourcePosition;
-/*     */ import com.sun.javadoc.Tag;
-/*     */ import com.sun.javadoc.Type;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import com.sun.tools.javac.util.StringUtils;
-/*     */ import java.io.IOException;
-/*     */ import java.lang.annotation.Documented;
-/*     */ import java.lang.annotation.ElementType;
-/*     */ import java.lang.annotation.Target;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Collections;
-/*     */ import java.util.Comparator;
-/*     */ import java.util.LinkedHashMap;
-/*     */ import java.util.List;
-/*     */ import java.util.Map;
-/*     */ import java.util.TreeMap;
-/*     */ import javax.tools.StandardLocation;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class Util
-/*     */ {
-/*     */   public static ProgramElementDoc[] excludeDeprecatedMembers(ProgramElementDoc[] paramArrayOfProgramElementDoc) {
-/*  62 */     return 
-/*  63 */       toProgramElementDocArray(excludeDeprecatedMembersAsList(paramArrayOfProgramElementDoc));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static List<ProgramElementDoc> excludeDeprecatedMembersAsList(ProgramElementDoc[] paramArrayOfProgramElementDoc) {
-/*  77 */     ArrayList<ProgramElementDoc> arrayList = new ArrayList();
-/*  78 */     for (byte b = 0; b < paramArrayOfProgramElementDoc.length; b++) {
-/*  79 */       if ((paramArrayOfProgramElementDoc[b].tags("deprecated")).length == 0) {
-/*  80 */         arrayList.add(paramArrayOfProgramElementDoc[b]);
-/*     */       }
-/*     */     } 
-/*  83 */     Collections.sort(arrayList);
-/*  84 */     return arrayList;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static ProgramElementDoc[] toProgramElementDocArray(List<ProgramElementDoc> paramList) {
-/*  91 */     ProgramElementDoc[] arrayOfProgramElementDoc = new ProgramElementDoc[paramList.size()];
-/*  92 */     for (byte b = 0; b < paramList.size(); b++) {
-/*  93 */       arrayOfProgramElementDoc[b] = paramList.get(b);
-/*     */     }
-/*  95 */     return arrayOfProgramElementDoc;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static boolean nonPublicMemberFound(ProgramElementDoc[] paramArrayOfProgramElementDoc) {
-/* 105 */     for (byte b = 0; b < paramArrayOfProgramElementDoc.length; b++) {
-/* 106 */       if (!paramArrayOfProgramElementDoc[b].isPublic()) {
-/* 107 */         return true;
-/*     */       }
-/*     */     } 
-/* 110 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static MethodDoc findMethod(ClassDoc paramClassDoc, MethodDoc paramMethodDoc) {
-/* 121 */     MethodDoc[] arrayOfMethodDoc = paramClassDoc.methods();
-/* 122 */     for (byte b = 0; b < arrayOfMethodDoc.length; b++) {
-/* 123 */       if (executableMembersEqual((ExecutableMemberDoc)paramMethodDoc, (ExecutableMemberDoc)arrayOfMethodDoc[b])) {
-/* 124 */         return arrayOfMethodDoc[b];
-/*     */       }
-/*     */     } 
-/*     */     
-/* 128 */     return null;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static boolean executableMembersEqual(ExecutableMemberDoc paramExecutableMemberDoc1, ExecutableMemberDoc paramExecutableMemberDoc2) {
-/* 138 */     if (!(paramExecutableMemberDoc1 instanceof MethodDoc) || !(paramExecutableMemberDoc2 instanceof MethodDoc)) {
-/* 139 */       return false;
-/*     */     }
-/* 141 */     MethodDoc methodDoc1 = (MethodDoc)paramExecutableMemberDoc1;
-/* 142 */     MethodDoc methodDoc2 = (MethodDoc)paramExecutableMemberDoc2;
-/* 143 */     if (methodDoc1.isStatic() && methodDoc2.isStatic()) {
-/* 144 */       Parameter[] arrayOfParameter1 = methodDoc1.parameters();
-/*     */       Parameter[] arrayOfParameter2;
-/* 146 */       if (methodDoc1.name().equals(methodDoc2.name()) && (
-/* 147 */         arrayOfParameter2 = methodDoc2.parameters()).length == arrayOfParameter1.length) {
-/*     */         byte b;
-/*     */         
-/* 150 */         for (b = 0; b < arrayOfParameter1.length && (
-/* 151 */           arrayOfParameter1[b].typeName().equals(arrayOfParameter2[b]
-/* 152 */             .typeName()) || arrayOfParameter2[b]
-/* 153 */           .type() instanceof com.sun.javadoc.TypeVariable || arrayOfParameter1[b]
-/* 154 */           .type() instanceof com.sun.javadoc.TypeVariable); b++);
-/*     */ 
-/*     */ 
-/*     */         
-/* 158 */         if (b == arrayOfParameter1.length) {
-/* 159 */           return true;
-/*     */         }
-/*     */       } 
-/* 162 */       return false;
-/*     */     } 
-/* 164 */     return (methodDoc1.overrides(methodDoc2) || methodDoc2
-/* 165 */       .overrides(methodDoc1) || paramExecutableMemberDoc1 == paramExecutableMemberDoc2);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static boolean isCoreClass(ClassDoc paramClassDoc) {
-/* 176 */     return (paramClassDoc.containingClass() == null || paramClassDoc.isStatic());
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public static boolean matches(ProgramElementDoc paramProgramElementDoc1, ProgramElementDoc paramProgramElementDoc2) {
-/* 181 */     if (paramProgramElementDoc1 instanceof ExecutableMemberDoc && paramProgramElementDoc2 instanceof ExecutableMemberDoc) {
-/*     */       
-/* 183 */       ExecutableMemberDoc executableMemberDoc1 = (ExecutableMemberDoc)paramProgramElementDoc1;
-/* 184 */       ExecutableMemberDoc executableMemberDoc2 = (ExecutableMemberDoc)paramProgramElementDoc2;
-/* 185 */       return executableMembersEqual(executableMemberDoc1, executableMemberDoc2);
-/*     */     } 
-/* 187 */     return paramProgramElementDoc1.name().equals(paramProgramElementDoc2.name());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void copyDocFiles(Configuration paramConfiguration, PackageDoc paramPackageDoc) {
-/* 205 */     copyDocFiles(paramConfiguration, DocPath.forPackage(paramPackageDoc).resolve(DocPaths.DOC_FILES));
-/*     */   }
-/*     */   
-/*     */   public static void copyDocFiles(Configuration paramConfiguration, DocPath paramDocPath) {
-/*     */     try {
-/* 210 */       boolean bool = true;
-/* 211 */       for (DocFile docFile1 : DocFile.list(paramConfiguration, StandardLocation.SOURCE_PATH, paramDocPath)) {
-/* 212 */         if (!docFile1.isDirectory()) {
-/*     */           continue;
-/*     */         }
-/* 215 */         DocFile docFile2 = docFile1;
-/* 216 */         DocFile docFile3 = DocFile.createFileForOutput(paramConfiguration, paramDocPath);
-/* 217 */         if (docFile2.isSameFile(docFile3)) {
-/*     */           continue;
-/*     */         }
-/*     */         
-/* 221 */         for (DocFile docFile4 : docFile2.list()) {
-/* 222 */           DocFile docFile5 = docFile3.resolve(docFile4.getName());
-/* 223 */           if (docFile4.isFile()) {
-/* 224 */             if (docFile5.exists() && !bool) {
-/* 225 */               paramConfiguration.message.warning((SourcePosition)null, "doclet.Copy_Overwrite_warning", new Object[] { docFile4
-/*     */                     
-/* 227 */                     .getPath(), docFile3.getPath() }); continue;
-/*     */             } 
-/* 229 */             paramConfiguration.message.notice("doclet.Copying_File_0_To_Dir_1", new Object[] { docFile4
-/*     */                   
-/* 231 */                   .getPath(), docFile3.getPath() });
-/* 232 */             docFile5.copyFile(docFile4); continue;
-/*     */           } 
-/* 234 */           if (docFile4.isDirectory() && 
-/* 235 */             paramConfiguration.copydocfilesubdirs && 
-/* 236 */             !paramConfiguration.shouldExcludeDocFileDir(docFile4.getName())) {
-/* 237 */             copyDocFiles(paramConfiguration, paramDocPath.resolve(docFile4.getName()));
-/*     */           }
-/*     */         } 
-/*     */ 
-/*     */         
-/* 242 */         bool = false;
-/*     */       } 
-/* 244 */     } catch (SecurityException securityException) {
-/* 245 */       throw new DocletAbortException(securityException);
-/* 246 */     } catch (IOException iOException) {
-/* 247 */       throw new DocletAbortException(iOException);
-/*     */     } 
-/*     */   }
-/*     */   
-/*     */   private static class TypeComparator
-/*     */     implements Comparator<Type>
-/*     */   {
-/*     */     private TypeComparator() {}
-/*     */     
-/*     */     public int compare(Type param1Type1, Type param1Type2) {
-/* 257 */       return param1Type1.qualifiedTypeName().compareToIgnoreCase(param1Type2
-/* 258 */           .qualifiedTypeName());
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static List<Type> getAllInterfaces(Type paramType, Configuration paramConfiguration, boolean paramBoolean) {
-/* 276 */     Map<ClassDoc, Type> map = (Map<ClassDoc, Type>)(paramBoolean ? new TreeMap<>() : new LinkedHashMap<>());
-/* 277 */     Type[] arrayOfType = null;
-/* 278 */     Type type = null;
-/* 279 */     if (paramType instanceof ParameterizedType) {
-/* 280 */       arrayOfType = ((ParameterizedType)paramType).interfaceTypes();
-/* 281 */       type = ((ParameterizedType)paramType).superclassType();
-/* 282 */     } else if (paramType instanceof ClassDoc) {
-/* 283 */       arrayOfType = ((ClassDoc)paramType).interfaceTypes();
-/* 284 */       type = ((ClassDoc)paramType).superclassType();
-/*     */     } else {
-/* 286 */       arrayOfType = paramType.asClassDoc().interfaceTypes();
-/* 287 */       type = paramType.asClassDoc().superclassType();
-/*     */     } 
-/*     */     
-/* 290 */     for (byte b = 0; b < arrayOfType.length; b++) {
-/* 291 */       Type type1 = arrayOfType[b];
-/* 292 */       ClassDoc classDoc = type1.asClassDoc();
-/* 293 */       if (classDoc.isPublic() || paramConfiguration == null || 
-/*     */         
-/* 295 */         isLinkable(classDoc, paramConfiguration)) {
-/*     */ 
-/*     */         
-/* 298 */         map.put(classDoc, type1);
-/* 299 */         List<Type> list = getAllInterfaces(type1, paramConfiguration, paramBoolean);
-/* 300 */         for (Type type2 : list)
-/*     */         {
-/* 302 */           map.put(type2.asClassDoc(), type2); } 
-/*     */       } 
-/*     */     } 
-/* 305 */     if (type == null) {
-/* 306 */       return new ArrayList<>(map.values());
-/*     */     }
-/* 308 */     addAllInterfaceTypes(map, type, 
-/*     */         
-/* 310 */         interfaceTypesOf(type), false, paramConfiguration);
-/*     */     
-/* 312 */     ArrayList<?> arrayList = new ArrayList(map.values());
-/* 313 */     if (paramBoolean) {
-/* 314 */       Collections.sort(arrayList, new TypeComparator());
-/*     */     }
-/* 316 */     return (List)arrayList;
-/*     */   }
-/*     */   
-/*     */   private static Type[] interfaceTypesOf(Type paramType) {
-/* 320 */     if (paramType instanceof AnnotatedType)
-/* 321 */       paramType = ((AnnotatedType)paramType).underlyingType(); 
-/* 322 */     return (paramType instanceof ClassDoc) ? ((ClassDoc)paramType)
-/* 323 */       .interfaceTypes() : ((ParameterizedType)paramType)
-/* 324 */       .interfaceTypes();
-/*     */   }
-/*     */   
-/*     */   public static List<Type> getAllInterfaces(Type paramType, Configuration paramConfiguration) {
-/* 328 */     return getAllInterfaces(paramType, paramConfiguration, true);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   private static void findAllInterfaceTypes(Map<ClassDoc, Type> paramMap, ClassDoc paramClassDoc, boolean paramBoolean, Configuration paramConfiguration) {
-/* 333 */     Type type = paramClassDoc.superclassType();
-/* 334 */     if (type == null)
-/*     */       return; 
-/* 336 */     addAllInterfaceTypes(paramMap, type, 
-/* 337 */         interfaceTypesOf(type), paramBoolean, paramConfiguration);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static void findAllInterfaceTypes(Map<ClassDoc, Type> paramMap, ParameterizedType paramParameterizedType, Configuration paramConfiguration) {
-/* 343 */     Type type = paramParameterizedType.superclassType();
-/* 344 */     if (type == null)
-/*     */       return; 
-/* 346 */     addAllInterfaceTypes(paramMap, type, 
-/* 347 */         interfaceTypesOf(type), false, paramConfiguration);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static void addAllInterfaceTypes(Map<ClassDoc, Type> paramMap, Type paramType, Type[] paramArrayOfType, boolean paramBoolean, Configuration paramConfiguration) {
-/* 354 */     for (byte b = 0; b < paramArrayOfType.length; b++) {
-/* 355 */       Type type = paramArrayOfType[b];
-/* 356 */       ClassDoc classDoc = type.asClassDoc();
-/* 357 */       if (classDoc.isPublic() || (paramConfiguration != null && 
-/*     */         
-/* 359 */         isLinkable(classDoc, paramConfiguration))) {
-/*     */         ClassDoc classDoc1;
-/*     */         
-/* 362 */         if (paramBoolean)
-/* 363 */           classDoc1 = type.asClassDoc(); 
-/* 364 */         paramMap.put(classDoc, classDoc1);
-/* 365 */         List<Type> list = getAllInterfaces((Type)classDoc1, paramConfiguration);
-/* 366 */         for (Type type1 : list)
-/*     */         {
-/* 368 */           paramMap.put(type1.asClassDoc(), type1); } 
-/*     */       } 
-/*     */     } 
-/* 371 */     if (paramType instanceof AnnotatedType) {
-/* 372 */       paramType = ((AnnotatedType)paramType).underlyingType();
-/*     */     }
-/* 374 */     if (paramType instanceof ParameterizedType) {
-/* 375 */       findAllInterfaceTypes(paramMap, (ParameterizedType)paramType, paramConfiguration);
-/* 376 */     } else if ((((ClassDoc)paramType).typeParameters()).length == 0) {
-/* 377 */       findAllInterfaceTypes(paramMap, (ClassDoc)paramType, paramBoolean, paramConfiguration);
-/*     */     } else {
-/* 379 */       findAllInterfaceTypes(paramMap, (ClassDoc)paramType, true, paramConfiguration);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static String quote(String paramString) {
-/* 386 */     return "\"" + paramString + "\"";
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static String getPackageName(PackageDoc paramPackageDoc) {
-/* 395 */     return (paramPackageDoc == null || paramPackageDoc.name().length() == 0) ? "<Unnamed>" : paramPackageDoc
-/* 396 */       .name();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static String getPackageFileHeadName(PackageDoc paramPackageDoc) {
-/* 405 */     return (paramPackageDoc == null || paramPackageDoc.name().length() == 0) ? "default" : paramPackageDoc
-/* 406 */       .name();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static String replaceText(String paramString1, String paramString2, String paramString3) {
-/* 417 */     if (paramString2 == null || paramString3 == null || paramString2.equals(paramString3)) {
-/* 418 */       return paramString1;
-/*     */     }
-/* 420 */     return paramString1.replace(paramString2, paramString3);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static boolean isDocumentedAnnotation(AnnotationTypeDoc paramAnnotationTypeDoc) {
-/* 432 */     AnnotationDesc[] arrayOfAnnotationDesc = paramAnnotationTypeDoc.annotations();
-/* 433 */     for (byte b = 0; b < arrayOfAnnotationDesc.length; b++) {
-/* 434 */       if (arrayOfAnnotationDesc[b].annotationType().qualifiedName().equals(Documented.class
-/* 435 */           .getName())) {
-/* 436 */         return true;
-/*     */       }
-/*     */     } 
-/* 439 */     return false;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   private static boolean isDeclarationTarget(AnnotationDesc paramAnnotationDesc) {
-/* 444 */     AnnotationDesc.ElementValuePair[] arrayOfElementValuePair = paramAnnotationDesc.elementValues();
-/* 445 */     if (arrayOfElementValuePair == null || arrayOfElementValuePair.length != 1 || 
-/*     */       
-/* 447 */       !"value".equals(arrayOfElementValuePair[0].element().name()) || 
-/* 448 */       !(arrayOfElementValuePair[0].value().value() instanceof AnnotationValue[])) {
-/* 449 */       return true;
-/*     */     }
-/* 451 */     AnnotationValue[] arrayOfAnnotationValue = (AnnotationValue[])arrayOfElementValuePair[0].value().value();
-/* 452 */     for (byte b = 0; b < arrayOfAnnotationValue.length; b++) {
-/* 453 */       Object object = arrayOfAnnotationValue[b].value();
-/* 454 */       if (!(object instanceof FieldDoc)) {
-/* 455 */         return true;
-/*     */       }
-/* 457 */       FieldDoc fieldDoc = (FieldDoc)object;
-/* 458 */       if (isJava5DeclarationElementType(fieldDoc)) {
-/* 459 */         return true;
-/*     */       }
-/*     */     } 
-/*     */     
-/* 463 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static boolean isDeclarationAnnotation(AnnotationTypeDoc paramAnnotationTypeDoc, boolean paramBoolean) {
-/* 477 */     if (!paramBoolean)
-/* 478 */       return false; 
-/* 479 */     AnnotationDesc[] arrayOfAnnotationDesc = paramAnnotationTypeDoc.annotations();
-/*     */     
-/* 481 */     if (arrayOfAnnotationDesc.length == 0)
-/* 482 */       return true; 
-/* 483 */     for (byte b = 0; b < arrayOfAnnotationDesc.length; b++) {
-/* 484 */       if (arrayOfAnnotationDesc[b].annotationType().qualifiedName().equals(Target.class
-/* 485 */           .getName()))
-/* 486 */         if (isDeclarationTarget(arrayOfAnnotationDesc[b])) {
-/* 487 */           return true;
-/*     */         } 
-/*     */     } 
-/* 490 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static boolean isLinkable(ClassDoc paramClassDoc, Configuration paramConfiguration) {
-/* 508 */     return ((paramClassDoc
-/* 509 */       .isIncluded() && paramConfiguration.isGeneratedDoc(paramClassDoc)) || (paramConfiguration.extern
-/* 510 */       .isExternal((ProgramElementDoc)paramClassDoc) && (paramClassDoc
-/* 511 */       .isPublic() || paramClassDoc.isProtected())));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static Type getFirstVisibleSuperClass(ClassDoc paramClassDoc, Configuration paramConfiguration) {
-/* 524 */     if (paramClassDoc == null) {
-/* 525 */       return null;
-/*     */     }
-/* 527 */     Type type = paramClassDoc.superclassType();
-/* 528 */     ClassDoc classDoc = paramClassDoc.superclass();
-/* 529 */     while (type != null && 
-/* 530 */       !classDoc.isPublic() && 
-/* 531 */       !isLinkable(classDoc, paramConfiguration) && 
-/* 532 */       !classDoc.superclass().qualifiedName().equals(classDoc.qualifiedName())) {
-/*     */       
-/* 534 */       type = classDoc.superclassType();
-/* 535 */       classDoc = classDoc.superclass();
-/*     */     } 
-/* 537 */     if (paramClassDoc.equals(classDoc)) {
-/* 538 */       return null;
-/*     */     }
-/* 540 */     return type;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static ClassDoc getFirstVisibleSuperClassCD(ClassDoc paramClassDoc, Configuration paramConfiguration) {
-/* 553 */     if (paramClassDoc == null) {
-/* 554 */       return null;
-/*     */     }
-/* 556 */     ClassDoc classDoc = paramClassDoc.superclass();
-/* 557 */     while (classDoc != null && 
-/* 558 */       !classDoc.isPublic() && 
-/* 559 */       !isLinkable(classDoc, paramConfiguration)) {
-/* 560 */       classDoc = classDoc.superclass();
-/*     */     }
-/* 562 */     if (paramClassDoc.equals(classDoc)) {
-/* 563 */       return null;
-/*     */     }
-/* 565 */     return classDoc;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static String getTypeName(Configuration paramConfiguration, ClassDoc paramClassDoc, boolean paramBoolean) {
-/* 578 */     String str = "";
-/* 579 */     if (paramClassDoc.isOrdinaryClass()) {
-/* 580 */       str = "doclet.Class";
-/* 581 */     } else if (paramClassDoc.isInterface()) {
-/* 582 */       str = "doclet.Interface";
-/* 583 */     } else if (paramClassDoc.isException()) {
-/* 584 */       str = "doclet.Exception";
-/* 585 */     } else if (paramClassDoc.isError()) {
-/* 586 */       str = "doclet.Error";
-/* 587 */     } else if (paramClassDoc.isAnnotationType()) {
-/* 588 */       str = "doclet.AnnotationType";
-/* 589 */     } else if (paramClassDoc.isEnum()) {
-/* 590 */       str = "doclet.Enum";
-/*     */     } 
-/* 592 */     return paramConfiguration.getText(paramBoolean ? 
-/* 593 */         StringUtils.toLowerCase(str) : str);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static String replaceTabs(Configuration paramConfiguration, String paramString) {
-/* 605 */     if (paramString.indexOf("\t") == -1) {
-/* 606 */       return paramString;
-/*     */     }
-/* 608 */     int i = paramConfiguration.sourcetab;
-/* 609 */     String str = paramConfiguration.tabSpaces;
-/* 610 */     int j = paramString.length();
-/* 611 */     StringBuilder stringBuilder = new StringBuilder(j);
-/* 612 */     int k = 0;
-/* 613 */     int m = 0;
-/* 614 */     for (byte b = 0; b < j; b++) {
-/* 615 */       int n; char c = paramString.charAt(b);
-/* 616 */       switch (c) { case '\n':
-/*     */         case '\r':
-/* 618 */           m = 0;
-/*     */           break;
-/*     */         case '\t':
-/* 621 */           stringBuilder.append(paramString, k, b);
-/* 622 */           n = i - m % i;
-/* 623 */           stringBuilder.append(str, 0, n);
-/* 624 */           m += n;
-/* 625 */           k = b + 1;
-/*     */           break;
-/*     */         default:
-/* 628 */           m++; break; }
-/*     */     
-/*     */     } 
-/* 631 */     stringBuilder.append(paramString, k, j);
-/* 632 */     return stringBuilder.toString();
-/*     */   }
-/*     */   
-/*     */   public static String normalizeNewlines(String paramString) {
-/* 636 */     StringBuilder stringBuilder = new StringBuilder();
-/* 637 */     int i = paramString.length();
-/* 638 */     String str = DocletConstants.NL;
-/* 639 */     int j = 0;
-/* 640 */     for (byte b = 0; b < i; b++) {
-/* 641 */       char c = paramString.charAt(b);
-/* 642 */       switch (c) {
-/*     */         case '\n':
-/* 644 */           stringBuilder.append(paramString, j, b);
-/* 645 */           stringBuilder.append(str);
-/* 646 */           j = b + 1;
-/*     */           break;
-/*     */         case '\r':
-/* 649 */           stringBuilder.append(paramString, j, b);
-/* 650 */           stringBuilder.append(str);
-/* 651 */           if (b + 1 < i && paramString.charAt(b + 1) == '\n')
-/* 652 */             b++; 
-/* 653 */           j = b + 1;
-/*     */           break;
-/*     */       } 
-/*     */     } 
-/* 657 */     stringBuilder.append(paramString, j, i);
-/* 658 */     return stringBuilder.toString();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void setEnumDocumentation(Configuration paramConfiguration, ClassDoc paramClassDoc) {
-/* 667 */     MethodDoc[] arrayOfMethodDoc = paramClassDoc.methods();
-/* 668 */     for (byte b = 0; b < arrayOfMethodDoc.length; b++) {
-/* 669 */       MethodDoc methodDoc = arrayOfMethodDoc[b];
-/* 670 */       if (methodDoc.name().equals("values") && (methodDoc
-/* 671 */         .parameters()).length == 0) {
-/* 672 */         StringBuilder stringBuilder = new StringBuilder();
-/* 673 */         stringBuilder.append(paramConfiguration.getText("doclet.enum_values_doc.main", paramClassDoc.name()));
-/* 674 */         stringBuilder.append("\n@return ");
-/* 675 */         stringBuilder.append(paramConfiguration.getText("doclet.enum_values_doc.return"));
-/* 676 */         methodDoc.setRawCommentText(stringBuilder.toString());
-/* 677 */       } else if (methodDoc.name().equals("valueOf") && (methodDoc
-/* 678 */         .parameters()).length == 1) {
-/* 679 */         Type type = methodDoc.parameters()[0].type();
-/* 680 */         if (type != null && type
-/* 681 */           .qualifiedTypeName().equals(String.class.getName())) {
-/* 682 */           StringBuilder stringBuilder = new StringBuilder();
-/* 683 */           stringBuilder.append(paramConfiguration.getText("doclet.enum_valueof_doc.main", paramClassDoc.name()));
-/* 684 */           stringBuilder.append("\n@param name ");
-/* 685 */           stringBuilder.append(paramConfiguration.getText("doclet.enum_valueof_doc.param_name"));
-/* 686 */           stringBuilder.append("\n@return ");
-/* 687 */           stringBuilder.append(paramConfiguration.getText("doclet.enum_valueof_doc.return"));
-/* 688 */           stringBuilder.append("\n@throws IllegalArgumentException ");
-/* 689 */           stringBuilder.append(paramConfiguration.getText("doclet.enum_valueof_doc.throws_ila"));
-/* 690 */           stringBuilder.append("\n@throws NullPointerException ");
-/* 691 */           stringBuilder.append(paramConfiguration.getText("doclet.enum_valueof_doc.throws_npe"));
-/* 692 */           methodDoc.setRawCommentText(stringBuilder.toString());
-/*     */         } 
-/*     */       } 
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static boolean isDeprecated(Doc paramDoc) {
-/*     */     AnnotationDesc[] arrayOfAnnotationDesc;
-/* 705 */     if ((paramDoc.tags("deprecated")).length > 0) {
-/* 706 */       return true;
-/*     */     }
-/*     */     
-/* 709 */     if (paramDoc instanceof PackageDoc) {
-/* 710 */       arrayOfAnnotationDesc = ((PackageDoc)paramDoc).annotations();
-/*     */     } else {
-/* 712 */       arrayOfAnnotationDesc = ((ProgramElementDoc)paramDoc).annotations();
-/* 713 */     }  for (byte b = 0; b < arrayOfAnnotationDesc.length; b++) {
-/* 714 */       if (arrayOfAnnotationDesc[b].annotationType().qualifiedName().equals(Deprecated.class
-/* 715 */           .getName())) {
-/* 716 */         return true;
-/*     */       }
-/*     */     } 
-/* 719 */     return false;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static String propertyNameFromMethodName(Configuration paramConfiguration, String paramString) {
-/* 729 */     String str = null;
-/* 730 */     if (paramString.startsWith("get") || paramString.startsWith("set")) {
-/* 731 */       str = paramString.substring(3);
-/* 732 */     } else if (paramString.startsWith("is")) {
-/* 733 */       str = paramString.substring(2);
-/*     */     } 
-/* 735 */     if (str == null || str.isEmpty()) {
-/* 736 */       return "";
-/*     */     }
-/* 738 */     return str.substring(0, 1).toLowerCase(paramConfiguration.getLocale()) + str
-/* 739 */       .substring(1);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static ClassDoc[] filterOutPrivateClasses(ClassDoc[] paramArrayOfClassDoc, boolean paramBoolean) {
-/* 753 */     if (!paramBoolean) {
-/* 754 */       return paramArrayOfClassDoc;
-/*     */     }
-/* 756 */     ArrayList<ClassDoc> arrayList = new ArrayList(paramArrayOfClassDoc.length);
-/*     */     
-/* 758 */     for (ClassDoc classDoc : paramArrayOfClassDoc) {
-/* 759 */       if (!classDoc.isPrivate() && !classDoc.isPackagePrivate()) {
-/*     */ 
-/*     */         
-/* 762 */         Tag[] arrayOfTag = classDoc.tags("treatAsPrivate");
-/* 763 */         if (arrayOfTag == null || arrayOfTag.length <= 0)
-/*     */         {
-/*     */           
-/* 766 */           arrayList.add(classDoc); } 
-/*     */       } 
-/*     */     } 
-/* 769 */     return arrayList.<ClassDoc>toArray(new ClassDoc[0]);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static boolean isJava5DeclarationElementType(FieldDoc paramFieldDoc) {
-/* 783 */     return (paramFieldDoc.name().contentEquals(ElementType.ANNOTATION_TYPE.name()) || paramFieldDoc
-/* 784 */       .name().contentEquals(ElementType.CONSTRUCTOR.name()) || paramFieldDoc
-/* 785 */       .name().contentEquals(ElementType.FIELD.name()) || paramFieldDoc
-/* 786 */       .name().contentEquals(ElementType.LOCAL_VARIABLE.name()) || paramFieldDoc
-/* 787 */       .name().contentEquals(ElementType.METHOD.name()) || paramFieldDoc
-/* 788 */       .name().contentEquals(ElementType.PACKAGE.name()) || paramFieldDoc
-/* 789 */       .name().contentEquals(ElementType.PARAMETER.name()) || paramFieldDoc
-/* 790 */       .name().contentEquals(ElementType.TYPE.name()));
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolki\\util\Util.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.util;
+
+import java.io.*;
+import java.lang.annotation.ElementType;
+import java.util.*;
+import javax.tools.StandardLocation;
+
+import com.sun.javadoc.*;
+import com.sun.javadoc.AnnotationDesc.ElementValuePair;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.javac.util.StringUtils;
+
+/**
+ * Utilities Class for Doclets.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Atul M Dambalkar
+ * @author Jamie Ho
+ */
+public class Util {
+
+    /**
+     * Return array of class members whose documentation is to be generated.
+     * If the member is deprecated do not include such a member in the
+     * returned array.
+     *
+     * @param  members             Array of members to choose from.
+     * @return ProgramElementDoc[] Array of eligible members for whom
+     *                             documentation is getting generated.
+     */
+    public static ProgramElementDoc[] excludeDeprecatedMembers(
+        ProgramElementDoc[] members) {
+        return
+            toProgramElementDocArray(excludeDeprecatedMembersAsList(members));
+    }
+
+    /**
+     * Return array of class members whose documentation is to be generated.
+     * If the member is deprecated do not include such a member in the
+     * returned array.
+     *
+     * @param  members    Array of members to choose from.
+     * @return List       List of eligible members for whom
+     *                    documentation is getting generated.
+     */
+    public static List<ProgramElementDoc> excludeDeprecatedMembersAsList(
+        ProgramElementDoc[] members) {
+        List<ProgramElementDoc> list = new ArrayList<ProgramElementDoc>();
+        for (int i = 0; i < members.length; i++) {
+            if (members[i].tags("deprecated").length == 0) {
+                list.add(members[i]);
+            }
+        }
+        Collections.sort(list);
+        return list;
+    }
+
+    /**
+     * Return the list of ProgramElementDoc objects as Array.
+     */
+    public static ProgramElementDoc[] toProgramElementDocArray(List<ProgramElementDoc> list) {
+        ProgramElementDoc[] pgmarr = new ProgramElementDoc[list.size()];
+        for (int i = 0; i < list.size(); i++) {
+            pgmarr[i] = list.get(i);
+        }
+        return pgmarr;
+    }
+
+    /**
+     * Return true if a non-public member found in the given array.
+     *
+     * @param  members Array of members to look into.
+     * @return boolean True if non-public member found, false otherwise.
+     */
+    public static boolean nonPublicMemberFound(ProgramElementDoc[] members) {
+        for (int i = 0; i < members.length; i++) {
+            if (!members[i].isPublic()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Search for the given method in the given class.
+     *
+     * @param  cd        Class to search into.
+     * @param  method    Method to be searched.
+     * @return MethodDoc Method found, null otherwise.
+     */
+    public static MethodDoc findMethod(ClassDoc cd, MethodDoc method) {
+        MethodDoc[] methods = cd.methods();
+        for (int i = 0; i < methods.length; i++) {
+            if (executableMembersEqual(method, methods[i])) {
+                return methods[i];
+
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @param member1 the first method to compare.
+     * @param member2 the second method to compare.
+     * @return true if member1 overrides/hides or is overriden/hidden by member2.
+     */
+    public static boolean executableMembersEqual(ExecutableMemberDoc member1,
+            ExecutableMemberDoc member2) {
+        if (! (member1 instanceof MethodDoc && member2 instanceof MethodDoc))
+            return false;
+
+        MethodDoc method1 = (MethodDoc) member1;
+        MethodDoc method2 = (MethodDoc) member2;
+        if (method1.isStatic() && method2.isStatic()) {
+            Parameter[] targetParams = method1.parameters();
+            Parameter[] currentParams;
+            if (method1.name().equals(method2.name()) &&
+                   (currentParams = method2.parameters()).length ==
+                targetParams.length) {
+                int j;
+                for (j = 0; j < targetParams.length; j++) {
+                    if (! (targetParams[j].typeName().equals(
+                              currentParams[j].typeName()) ||
+                                   currentParams[j].type() instanceof TypeVariable ||
+                                   targetParams[j].type() instanceof TypeVariable)) {
+                        break;
+                    }
+                }
+                if (j == targetParams.length) {
+                    return true;
+                }
+            }
+            return false;
+        } else {
+                return method1.overrides(method2) ||
+                method2.overrides(method1) ||
+                                member1 == member2;
+        }
+    }
+
+    /**
+     * According to
+     * <cite>The Java&trade; Language Specification</cite>,
+     * all the outer classes and static inner classes are core classes.
+     */
+    public static boolean isCoreClass(ClassDoc cd) {
+        return cd.containingClass() == null || cd.isStatic();
+    }
+
+    public static boolean matches(ProgramElementDoc doc1,
+            ProgramElementDoc doc2) {
+        if (doc1 instanceof ExecutableMemberDoc &&
+            doc2 instanceof ExecutableMemberDoc) {
+            ExecutableMemberDoc ed1 = (ExecutableMemberDoc)doc1;
+            ExecutableMemberDoc ed2 = (ExecutableMemberDoc)doc2;
+            return executableMembersEqual(ed1, ed2);
+        } else {
+            return doc1.name().equals(doc2.name());
+        }
+    }
+
+    /**
+     * Copy the given directory contents from the source package directory
+     * to the generated documentation directory. For example for a package
+     * java.lang this method find out the source location of the package using
+     * {@link SourcePath} and if given directory is found in the source
+     * directory structure, copy the entire directory, to the generated
+     * documentation hierarchy.
+     *
+     * @param configuration The configuration of the current doclet.
+     * @param path The relative path to the directory to be copied.
+     * @param dir The original directory name to copy from.
+     * @param overwrite Overwrite files if true.
+     */
+    public static void copyDocFiles(Configuration configuration, PackageDoc pd) {
+        copyDocFiles(configuration, DocPath.forPackage(pd).resolve(DocPaths.DOC_FILES));
+    }
+
+    public static void copyDocFiles(Configuration configuration, DocPath dir) {
+        try {
+            boolean first = true;
+            for (DocFile f : DocFile.list(configuration, StandardLocation.SOURCE_PATH, dir)) {
+                if (!f.isDirectory()) {
+                    continue;
+                }
+                DocFile srcdir = f;
+                DocFile destdir = DocFile.createFileForOutput(configuration, dir);
+                if (srcdir.isSameFile(destdir)) {
+                    continue;
+                }
+
+                for (DocFile srcfile: srcdir.list()) {
+                    DocFile destfile = destdir.resolve(srcfile.getName());
+                    if (srcfile.isFile()) {
+                        if (destfile.exists() && !first) {
+                            configuration.message.warning((SourcePosition) null,
+                                    "doclet.Copy_Overwrite_warning",
+                                    srcfile.getPath(), destdir.getPath());
+                        } else {
+                            configuration.message.notice(
+                                    "doclet.Copying_File_0_To_Dir_1",
+                                    srcfile.getPath(), destdir.getPath());
+                            destfile.copyFile(srcfile);
+                        }
+                    } else if (srcfile.isDirectory()) {
+                        if (configuration.copydocfilesubdirs
+                                && !configuration.shouldExcludeDocFileDir(srcfile.getName())) {
+                            copyDocFiles(configuration, dir.resolve(srcfile.getName()));
+                        }
+                    }
+                }
+
+                first = false;
+            }
+        } catch (SecurityException exc) {
+            throw new DocletAbortException(exc);
+        } catch (IOException exc) {
+            throw new DocletAbortException(exc);
+        }
+    }
+
+    /**
+     * We want the list of types in alphabetical order.  However, types are not
+     * comparable.  We need a comparator for now.
+     */
+    private static class TypeComparator implements Comparator<Type> {
+        public int compare(Type type1, Type type2) {
+            return type1.qualifiedTypeName().compareToIgnoreCase(
+                type2.qualifiedTypeName());
+        }
+    }
+
+    /**
+     * For the class return all implemented interfaces including the
+     * superinterfaces of the implementing interfaces, also iterate over for
+     * all the superclasses. For interface return all the extended interfaces
+     * as well as superinterfaces for those extended interfaces.
+     *
+     * @param  type       type whose implemented or
+     *                    super interfaces are sought.
+     * @param  configuration the current configuration of the doclet.
+     * @param  sort if true, return list of interfaces sorted alphabetically.
+     * @return List of all the required interfaces.
+     */
+    public static List<Type> getAllInterfaces(Type type,
+            Configuration configuration, boolean sort) {
+        Map<ClassDoc,Type> results = sort ? new TreeMap<ClassDoc,Type>() : new LinkedHashMap<ClassDoc,Type>();
+        Type[] interfaceTypes = null;
+        Type superType = null;
+        if (type instanceof ParameterizedType) {
+            interfaceTypes = ((ParameterizedType) type).interfaceTypes();
+            superType = ((ParameterizedType) type).superclassType();
+        } else if (type instanceof ClassDoc) {
+            interfaceTypes = ((ClassDoc) type).interfaceTypes();
+            superType = ((ClassDoc) type).superclassType();
+        } else {
+            interfaceTypes = type.asClassDoc().interfaceTypes();
+            superType = type.asClassDoc().superclassType();
+        }
+
+        for (int i = 0; i < interfaceTypes.length; i++) {
+            Type interfaceType = interfaceTypes[i];
+            ClassDoc interfaceClassDoc = interfaceType.asClassDoc();
+            if (! (interfaceClassDoc.isPublic() ||
+                (configuration == null ||
+                isLinkable(interfaceClassDoc, configuration)))) {
+                continue;
+            }
+            results.put(interfaceClassDoc, interfaceType);
+            List<Type> superInterfaces = getAllInterfaces(interfaceType, configuration, sort);
+            for (Iterator<Type> iter = superInterfaces.iterator(); iter.hasNext(); ) {
+                Type t = iter.next();
+                results.put(t.asClassDoc(), t);
+            }
+        }
+        if (superType == null)
+            return new ArrayList<Type>(results.values());
+        //Try walking the tree.
+        addAllInterfaceTypes(results,
+            superType,
+            interfaceTypesOf(superType),
+            false, configuration);
+        List<Type> resultsList = new ArrayList<Type>(results.values());
+        if (sort) {
+                Collections.sort(resultsList, new TypeComparator());
+        }
+        return resultsList;
+    }
+
+    private static Type[] interfaceTypesOf(Type type) {
+        if (type instanceof AnnotatedType)
+            type = ((AnnotatedType)type).underlyingType();
+        return type instanceof ClassDoc ?
+                ((ClassDoc)type).interfaceTypes() :
+                ((ParameterizedType)type).interfaceTypes();
+    }
+
+    public static List<Type> getAllInterfaces(Type type, Configuration configuration) {
+        return getAllInterfaces(type, configuration, true);
+    }
+
+    private static void findAllInterfaceTypes(Map<ClassDoc,Type> results, ClassDoc c, boolean raw,
+            Configuration configuration) {
+        Type superType = c.superclassType();
+        if (superType == null)
+            return;
+        addAllInterfaceTypes(results, superType,
+                interfaceTypesOf(superType),
+                raw, configuration);
+    }
+
+    private static void findAllInterfaceTypes(Map<ClassDoc,Type> results, ParameterizedType p,
+            Configuration configuration) {
+        Type superType = p.superclassType();
+        if (superType == null)
+            return;
+        addAllInterfaceTypes(results, superType,
+                interfaceTypesOf(superType),
+                false, configuration);
+    }
+
+    private static void addAllInterfaceTypes(Map<ClassDoc,Type> results, Type type,
+            Type[] interfaceTypes, boolean raw,
+            Configuration configuration) {
+        for (int i = 0; i < interfaceTypes.length; i++) {
+            Type interfaceType = interfaceTypes[i];
+            ClassDoc interfaceClassDoc = interfaceType.asClassDoc();
+            if (! (interfaceClassDoc.isPublic() ||
+                (configuration != null &&
+                isLinkable(interfaceClassDoc, configuration)))) {
+                continue;
+            }
+            if (raw)
+                interfaceType = interfaceType.asClassDoc();
+            results.put(interfaceClassDoc, interfaceType);
+            List<Type> superInterfaces = getAllInterfaces(interfaceType, configuration);
+            for (Iterator<Type> iter = superInterfaces.iterator(); iter.hasNext(); ) {
+                Type superInterface = iter.next();
+                results.put(superInterface.asClassDoc(), superInterface);
+            }
+        }
+        if (type instanceof AnnotatedType)
+            type = ((AnnotatedType)type).underlyingType();
+
+        if (type instanceof ParameterizedType)
+            findAllInterfaceTypes(results, (ParameterizedType) type, configuration);
+        else if (((ClassDoc) type).typeParameters().length == 0)
+            findAllInterfaceTypes(results, (ClassDoc) type, raw, configuration);
+        else
+            findAllInterfaceTypes(results, (ClassDoc) type, true, configuration);
+    }
+
+    /**
+     * Enclose in quotes, used for paths and filenames that contains spaces
+     */
+    public static String quote(String filepath) {
+        return ("\"" + filepath + "\"");
+    }
+
+    /**
+     * Given a package, return its name.
+     * @param packageDoc the package to check.
+     * @return the name of the given package.
+     */
+    public static String getPackageName(PackageDoc packageDoc) {
+        return packageDoc == null || packageDoc.name().length() == 0 ?
+            DocletConstants.DEFAULT_PACKAGE_NAME : packageDoc.name();
+    }
+
+    /**
+     * Given a package, return its file name without the extension.
+     * @param packageDoc the package to check.
+     * @return the file name of the given package.
+     */
+    public static String getPackageFileHeadName(PackageDoc packageDoc) {
+        return packageDoc == null || packageDoc.name().length() == 0 ?
+            DocletConstants.DEFAULT_PACKAGE_FILE_NAME : packageDoc.name();
+    }
+
+    /**
+     * Given a string, replace all occurrences of 'newStr' with 'oldStr'.
+     * @param originalStr the string to modify.
+     * @param oldStr the string to replace.
+     * @param newStr the string to insert in place of the old string.
+     */
+    public static String replaceText(String originalStr, String oldStr,
+            String newStr) {
+        if (oldStr == null || newStr == null || oldStr.equals(newStr)) {
+            return originalStr;
+        }
+        return originalStr.replace(oldStr, newStr);
+    }
+
+    /**
+     * Given an annotation, return true if it should be documented and false
+     * otherwise.
+     *
+     * @param annotationDoc the annotation to check.
+     *
+     * @return true return true if it should be documented and false otherwise.
+     */
+    public static boolean isDocumentedAnnotation(AnnotationTypeDoc annotationDoc) {
+        AnnotationDesc[] annotationDescList = annotationDoc.annotations();
+        for (int i = 0; i < annotationDescList.length; i++) {
+            if (annotationDescList[i].annotationType().qualifiedName().equals(
+                   java.lang.annotation.Documented.class.getName())){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isDeclarationTarget(AnnotationDesc targetAnno) {
+        // The error recovery steps here are analogous to TypeAnnotations
+        ElementValuePair[] elems = targetAnno.elementValues();
+        if (elems == null
+            || elems.length != 1
+            || !"value".equals(elems[0].element().name())
+            || !(elems[0].value().value() instanceof AnnotationValue[]))
+            return true;    // error recovery
+
+        AnnotationValue[] values = (AnnotationValue[])elems[0].value().value();
+        for (int i = 0; i < values.length; i++) {
+            Object value = values[i].value();
+            if (!(value instanceof FieldDoc))
+                return true; // error recovery
+
+            FieldDoc eValue = (FieldDoc)value;
+            if (Util.isJava5DeclarationElementType(eValue)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Returns true if the {@code annotationDoc} is to be treated
+     * as a declaration annotation, when targeting the
+     * {@code elemType} element type.
+     *
+     * @param annotationDoc the annotationDoc to check
+     * @param elemType  the targeted elemType
+     * @return true if annotationDoc is a declaration annotation
+     */
+    public static boolean isDeclarationAnnotation(AnnotationTypeDoc annotationDoc,
+            boolean isJava5DeclarationLocation) {
+        if (!isJava5DeclarationLocation)
+            return false;
+        AnnotationDesc[] annotationDescList = annotationDoc.annotations();
+        // Annotations with no target are treated as declaration as well
+        if (annotationDescList.length==0)
+            return true;
+        for (int i = 0; i < annotationDescList.length; i++) {
+            if (annotationDescList[i].annotationType().qualifiedName().equals(
+                    java.lang.annotation.Target.class.getName())) {
+                if (isDeclarationTarget(annotationDescList[i]))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Return true if this class is linkable and false if we can't link to the
+     * desired class.
+     * <br>
+     * <b>NOTE:</b>  You can only link to external classes if they are public or
+     * protected.
+     *
+     * @param classDoc the class to check.
+     * @param configuration the current configuration of the doclet.
+     *
+     * @return true if this class is linkable and false if we can't link to the
+     * desired class.
+     */
+    public static boolean isLinkable(ClassDoc classDoc,
+            Configuration configuration) {
+        return
+            ((classDoc.isIncluded() && configuration.isGeneratedDoc(classDoc))) ||
+            (configuration.extern.isExternal(classDoc) &&
+                (classDoc.isPublic() || classDoc.isProtected()));
+    }
+
+    /**
+     * Given a class, return the closest visible super class.
+     *
+     * @param classDoc the class we are searching the parent for.
+     * @param configuration the current configuration of the doclet.
+     * @return the closest visible super class.  Return null if it cannot
+     *         be found (i.e. classDoc is java.lang.Object).
+     */
+    public static Type getFirstVisibleSuperClass(ClassDoc classDoc,
+            Configuration configuration) {
+        if (classDoc == null) {
+            return null;
+        }
+        Type sup = classDoc.superclassType();
+        ClassDoc supClassDoc = classDoc.superclass();
+        while (sup != null &&
+                  (! (supClassDoc.isPublic() ||
+                              isLinkable(supClassDoc, configuration))) ) {
+            if (supClassDoc.superclass().qualifiedName().equals(supClassDoc.qualifiedName()))
+                break;
+            sup = supClassDoc.superclassType();
+            supClassDoc = supClassDoc.superclass();
+        }
+        if (classDoc.equals(supClassDoc)) {
+            return null;
+        }
+        return sup;
+    }
+
+    /**
+     * Given a class, return the closest visible super class.
+     *
+     * @param classDoc the class we are searching the parent for.
+     * @param configuration the current configuration of the doclet.
+     * @return the closest visible super class.  Return null if it cannot
+     *         be found (i.e. classDoc is java.lang.Object).
+     */
+    public static ClassDoc getFirstVisibleSuperClassCD(ClassDoc classDoc,
+            Configuration configuration) {
+        if (classDoc == null) {
+            return null;
+        }
+        ClassDoc supClassDoc = classDoc.superclass();
+        while (supClassDoc != null &&
+                  (! (supClassDoc.isPublic() ||
+                              isLinkable(supClassDoc, configuration))) ) {
+            supClassDoc = supClassDoc.superclass();
+        }
+        if (classDoc.equals(supClassDoc)) {
+            return null;
+        }
+        return supClassDoc;
+    }
+
+    /**
+     * Given a ClassDoc, return the name of its type (Class, Interface, etc.).
+     *
+     * @param cd the ClassDoc to check.
+     * @param lowerCaseOnly true if you want the name returned in lower case.
+     *                      If false, the first letter of the name is capitalized.
+     * @return
+     */
+    public static String getTypeName(Configuration config,
+        ClassDoc cd, boolean lowerCaseOnly) {
+        String typeName = "";
+        if (cd.isOrdinaryClass()) {
+            typeName = "doclet.Class";
+        } else if (cd.isInterface()) {
+            typeName = "doclet.Interface";
+        } else if (cd.isException()) {
+            typeName = "doclet.Exception";
+        } else if (cd.isError()) {
+            typeName = "doclet.Error";
+        } else if (cd.isAnnotationType()) {
+            typeName = "doclet.AnnotationType";
+        } else if (cd.isEnum()) {
+            typeName = "doclet.Enum";
+        }
+        return config.getText(
+            lowerCaseOnly ? StringUtils.toLowerCase(typeName) : typeName);
+    }
+
+    /**
+     * Replace all tabs in a string with the appropriate number of spaces.
+     * The string may be a multi-line string.
+     * @param configuration the doclet configuration defining the setting for the
+     *                      tab length.
+     * @param text the text for which the tabs should be expanded
+     * @return the text with all tabs expanded
+     */
+    public static String replaceTabs(Configuration configuration, String text) {
+        if (text.indexOf("\t") == -1)
+            return text;
+
+        final int tabLength = configuration.sourcetab;
+        final String whitespace = configuration.tabSpaces;
+        final int textLength = text.length();
+        StringBuilder result = new StringBuilder(textLength);
+        int pos = 0;
+        int lineLength = 0;
+        for (int i = 0; i < textLength; i++) {
+            char ch = text.charAt(i);
+            switch (ch) {
+                case '\n': case '\r':
+                    lineLength = 0;
+                    break;
+                case '\t':
+                    result.append(text, pos, i);
+                    int spaceCount = tabLength - lineLength % tabLength;
+                    result.append(whitespace, 0, spaceCount);
+                    lineLength += spaceCount;
+                    pos = i + 1;
+                    break;
+                default:
+                    lineLength++;
+            }
+        }
+        result.append(text, pos, textLength);
+        return result.toString();
+    }
+
+    public static String normalizeNewlines(String text) {
+        StringBuilder sb = new StringBuilder();
+        final int textLength = text.length();
+        final String NL = DocletConstants.NL;
+        int pos = 0;
+        for (int i = 0; i < textLength; i++) {
+            char ch = text.charAt(i);
+            switch (ch) {
+                case '\n':
+                    sb.append(text, pos, i);
+                    sb.append(NL);
+                    pos = i + 1;
+                    break;
+                case '\r':
+                    sb.append(text, pos, i);
+                    sb.append(NL);
+                    if (i + 1 < textLength && text.charAt(i + 1) == '\n')
+                        i++;
+                    pos = i + 1;
+                    break;
+            }
+        }
+        sb.append(text, pos, textLength);
+        return sb.toString();
+    }
+
+    /**
+     * The documentation for values() and valueOf() in Enums are set by the
+     * doclet.
+     */
+    public static void setEnumDocumentation(Configuration configuration,
+            ClassDoc classDoc) {
+        MethodDoc[] methods = classDoc.methods();
+        for (int j = 0; j < methods.length; j++) {
+            MethodDoc currentMethod = methods[j];
+            if (currentMethod.name().equals("values") &&
+                    currentMethod.parameters().length == 0) {
+                StringBuilder sb = new StringBuilder();
+                sb.append(configuration.getText("doclet.enum_values_doc.main", classDoc.name()));
+                sb.append("\n@return ");
+                sb.append(configuration.getText("doclet.enum_values_doc.return"));
+                currentMethod.setRawCommentText(sb.toString());
+            } else if (currentMethod.name().equals("valueOf") &&
+                    currentMethod.parameters().length == 1) {
+                Type paramType = currentMethod.parameters()[0].type();
+                if (paramType != null &&
+                        paramType.qualifiedTypeName().equals(String.class.getName())) {
+                StringBuilder sb = new StringBuilder();
+                sb.append(configuration.getText("doclet.enum_valueof_doc.main", classDoc.name()));
+                sb.append("\n@param name ");
+                sb.append(configuration.getText("doclet.enum_valueof_doc.param_name"));
+                sb.append("\n@return ");
+                sb.append(configuration.getText("doclet.enum_valueof_doc.return"));
+                sb.append("\n@throws IllegalArgumentException ");
+                sb.append(configuration.getText("doclet.enum_valueof_doc.throws_ila"));
+                sb.append("\n@throws NullPointerException ");
+                sb.append(configuration.getText("doclet.enum_valueof_doc.throws_npe"));
+                currentMethod.setRawCommentText(sb.toString());
+                }
+            }
+        }
+    }
+
+    /**
+     *  Return true if the given Doc is deprecated.
+     *
+     * @param doc the Doc to check.
+     * @return true if the given Doc is deprecated.
+     */
+    public static boolean isDeprecated(Doc doc) {
+        if (doc.tags("deprecated").length > 0) {
+            return true;
+        }
+        AnnotationDesc[] annotationDescList;
+        if (doc instanceof PackageDoc)
+            annotationDescList = ((PackageDoc)doc).annotations();
+        else
+            annotationDescList = ((ProgramElementDoc)doc).annotations();
+        for (int i = 0; i < annotationDescList.length; i++) {
+            if (annotationDescList[i].annotationType().qualifiedName().equals(
+                   Deprecated.class.getName())){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A convenience method to get property name from the name of the
+     * getter or setter method.
+     * @param name name of the getter or setter method.
+     * @return the name of the property of the given setter of getter.
+     */
+    public static String propertyNameFromMethodName(Configuration configuration, String name) {
+        String propertyName = null;
+        if (name.startsWith("get") || name.startsWith("set")) {
+            propertyName = name.substring(3);
+        } else if (name.startsWith("is")) {
+            propertyName = name.substring(2);
+        }
+        if ((propertyName == null) || propertyName.isEmpty()){
+            return "";
+        }
+        return propertyName.substring(0, 1).toLowerCase(configuration.getLocale())
+                + propertyName.substring(1);
+    }
+
+    /**
+     * In case of JavaFX mode on, filters out classes that are private,
+     * package private or having the @treatAsPrivate annotation. Those are not
+     * documented in JavaFX mode.
+     *
+     * @param classes array of classes to be filtered.
+     * @param javafx set to true if in JavaFX mode.
+     * @return list of filtered classes.
+     */
+    public static ClassDoc[] filterOutPrivateClasses(final ClassDoc[] classes,
+                                                     boolean javafx) {
+        if (!javafx) {
+            return classes;
+        }
+        final List<ClassDoc> filteredOutClasses =
+                new ArrayList<ClassDoc>(classes.length);
+        for (ClassDoc classDoc : classes) {
+            if (classDoc.isPrivate() || classDoc.isPackagePrivate()) {
+                continue;
+            }
+            Tag[] aspTags = classDoc.tags("treatAsPrivate");
+            if (aspTags != null && aspTags.length > 0) {
+                continue;
+            }
+            filteredOutClasses.add(classDoc);
+        }
+
+        return filteredOutClasses.toArray(new ClassDoc[0]);
+    }
+
+    /**
+     * Test whether the given FieldDoc is one of the declaration annotation ElementTypes
+     * defined in Java 5.
+     * Instead of testing for one of the new enum constants added in Java 8, test for
+     * the old constants. This prevents bootstrapping problems.
+     *
+     * @param elt The FieldDoc to test
+     * @return true, iff the given ElementType is one of the constants defined in Java 5
+     * @since 1.8
+     */
+    public static boolean isJava5DeclarationElementType(FieldDoc elt) {
+        return elt.name().contentEquals(ElementType.ANNOTATION_TYPE.name()) ||
+                elt.name().contentEquals(ElementType.CONSTRUCTOR.name()) ||
+                elt.name().contentEquals(ElementType.FIELD.name()) ||
+                elt.name().contentEquals(ElementType.LOCAL_VARIABLE.name()) ||
+                elt.name().contentEquals(ElementType.METHOD.name()) ||
+                elt.name().contentEquals(ElementType.PACKAGE.name()) ||
+                elt.name().contentEquals(ElementType.PARAMETER.name()) ||
+                elt.name().contentEquals(ElementType.TYPE.name());
+    }
+}

@@ -1,785 +1,780 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.util;
-/*     */
-/*     */ import com.sun.javadoc.AnnotationTypeDoc;
-/*     */ import com.sun.javadoc.AnnotationTypeElementDoc;
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.ConstructorDoc;
-/*     */ import com.sun.javadoc.ExecutableMemberDoc;
-/*     */ import com.sun.javadoc.FieldDoc;
-/*     */ import com.sun.javadoc.MethodDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.javadoc.Tag;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Configuration;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.List;
-/*     */ import java.util.Map;
-/*     */ import java.util.Set;
-/*     */ import java.util.regex.Pattern;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class VisibleMemberMap
-/*     */ {
-/*     */   private boolean noVisibleMembers = true;
-/*     */   public static final int INNERCLASSES = 0;
-/*     */   public static final int ENUM_CONSTANTS = 1;
-/*     */   public static final int FIELDS = 2;
-/*     */   public static final int CONSTRUCTORS = 3;
-/*     */   public static final int METHODS = 4;
-/*     */   public static final int ANNOTATION_TYPE_FIELDS = 5;
-/*     */   public static final int ANNOTATION_TYPE_MEMBER_OPTIONAL = 6;
-/*     */   public static final int ANNOTATION_TYPE_MEMBER_REQUIRED = 7;
-/*     */   public static final int PROPERTIES = 8;
-/*     */   public static final int NUM_MEMBER_TYPES = 9;
-/*     */   public static final String STARTLEVEL = "start";
-/*  73 */   private final List<ClassDoc> visibleClasses = new ArrayList<>();
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*  80 */   private final Map<Object, Map<ProgramElementDoc, String>> memberNameMap = new HashMap<>();
-/*     */
-/*     */
-/*     */
-/*     */
-/*  85 */   private final Map<ClassDoc, ClassMembers> classMap = new HashMap<>();
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private final ClassDoc classdoc;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private final int kind;
-/*     */
-/*     */
-/*     */
-/*     */   private final Configuration configuration;
-/*     */
-/*     */
-/*     */
-/* 103 */   private static final Map<ClassDoc, ProgramElementDoc[]> propertiesCache = (Map)new HashMap<>();
-/*     */
-/* 105 */   private static final Map<ProgramElementDoc, ProgramElementDoc> classPropertiesMap = new HashMap<>();
-/*     */
-/* 107 */   private static final Map<ProgramElementDoc, GetterSetter> getterSetterMap = new HashMap<>();
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public VisibleMemberMap(ClassDoc paramClassDoc, int paramInt, Configuration paramConfiguration) {
-/* 124 */     this.classdoc = paramClassDoc;
-/* 125 */     this.kind = paramInt;
-/* 126 */     this.configuration = paramConfiguration;
-/* 127 */     (new ClassMembers(paramClassDoc, "start")).build();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public List<ClassDoc> getVisibleClassesList() {
-/* 136 */     sort(this.visibleClasses);
-/* 137 */     return this.visibleClasses;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public ProgramElementDoc getPropertyMemberDoc(ProgramElementDoc paramProgramElementDoc) {
-/* 146 */     return classPropertiesMap.get(paramProgramElementDoc);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public ProgramElementDoc getGetterForProperty(ProgramElementDoc paramProgramElementDoc) {
-/* 155 */     return ((GetterSetter)getterSetterMap.get(paramProgramElementDoc)).getGetter();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public ProgramElementDoc getSetterForProperty(ProgramElementDoc paramProgramElementDoc) {
-/* 164 */     return ((GetterSetter)getterSetterMap.get(paramProgramElementDoc)).getSetter();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private List<ProgramElementDoc> getInheritedPackagePrivateMethods(Configuration paramConfiguration) {
-/* 175 */     ArrayList<ProgramElementDoc> arrayList = new ArrayList();
-/* 176 */     for (ClassDoc classDoc : this.visibleClasses) {
-/*     */
-/* 178 */       if (classDoc != this.classdoc && classDoc
-/* 179 */         .isPackagePrivate() &&
-/* 180 */         !Util.isLinkable(classDoc, paramConfiguration))
-/*     */       {
-/*     */
-/* 183 */         arrayList.addAll(getMembersFor(classDoc));
-/*     */       }
-/*     */     }
-/* 186 */     return arrayList;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public List<ProgramElementDoc> getLeafClassMembers(Configuration paramConfiguration) {
-/* 197 */     List<ProgramElementDoc> list = getMembersFor(this.classdoc);
-/* 198 */     list.addAll(getInheritedPackagePrivateMethods(paramConfiguration));
-/* 199 */     return list;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public List<ProgramElementDoc> getMembersFor(ClassDoc paramClassDoc) {
-/* 210 */     ClassMembers classMembers = this.classMap.get(paramClassDoc);
-/* 211 */     if (classMembers == null) {
-/* 212 */       return new ArrayList<>();
-/*     */     }
-/* 214 */     return classMembers.getMembers();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private void sort(List<ClassDoc> paramList) {
-/* 222 */     ArrayList<ClassDoc> arrayList1 = new ArrayList();
-/* 223 */     ArrayList<ClassDoc> arrayList2 = new ArrayList();
-/* 224 */     for (byte b = 0; b < paramList.size(); b++) {
-/* 225 */       ClassDoc classDoc = paramList.get(b);
-/* 226 */       if (classDoc.isClass()) {
-/* 227 */         arrayList1.add(classDoc);
-/*     */       } else {
-/* 229 */         arrayList2.add(classDoc);
-/*     */       }
-/*     */     }
-/* 232 */     paramList.clear();
-/* 233 */     paramList.addAll(arrayList1);
-/* 234 */     paramList.addAll(arrayList2);
-/*     */   }
-/*     */
-/*     */   private void fillMemberLevelMap(List<ProgramElementDoc> paramList, String paramString) {
-/* 238 */     for (byte b = 0; b < paramList.size(); b++) {
-/* 239 */       Object object = getMemberKey(paramList.get(b));
-/* 240 */       Map<Object, Object> map = (Map)this.memberNameMap.get(object);
-/* 241 */       if (map == null) {
-/* 242 */         map = new HashMap<>();
-/* 243 */         this.memberNameMap.put(object, map);
-/*     */       }
-/* 245 */       map.put(paramList.get(b), paramString);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   private void purgeMemberLevelMap(List<ProgramElementDoc> paramList, String paramString) {
-/* 250 */     for (byte b = 0; b < paramList.size(); b++) {
-/* 251 */       Object object = getMemberKey(paramList.get(b));
-/* 252 */       Map map = this.memberNameMap.get(object);
-/* 253 */       if (map != null && paramString.equals(map.get(paramList.get(b)))) {
-/* 254 */         map.remove(paramList.get(b));
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   private class ClassMember
-/*     */   {
-/*     */     private Set<ProgramElementDoc> members;
-/*     */
-/*     */
-/*     */     public ClassMember(ProgramElementDoc param1ProgramElementDoc) {
-/* 267 */       this.members = new HashSet<>();
-/* 268 */       this.members.add(param1ProgramElementDoc);
-/*     */     }
-/*     */
-/*     */     public void addMember(ProgramElementDoc param1ProgramElementDoc) {
-/* 272 */       this.members.add(param1ProgramElementDoc);
-/*     */     }
-/*     */
-/*     */     public boolean isEqual(MethodDoc param1MethodDoc) {
-/* 276 */       for (MethodDoc methodDoc : this.members) {
-/*     */
-/* 278 */         if (Util.executableMembersEqual((ExecutableMemberDoc)param1MethodDoc, (ExecutableMemberDoc)methodDoc)) {
-/* 279 */           this.members.add(param1MethodDoc);
-/* 280 */           return true;
-/*     */         }
-/*     */       }
-/* 283 */       return false;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private class ClassMembers
-/*     */   {
-/*     */     private ClassDoc mappingClass;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 302 */     private List<ProgramElementDoc> members = new ArrayList<>();
-/*     */
-/*     */
-/*     */
-/*     */     private String level;
-/*     */
-/*     */
-/*     */
-/*     */     private final Pattern pattern;
-/*     */
-/*     */
-/*     */
-/*     */     public List<ProgramElementDoc> getMembers() {
-/* 315 */       return this.members;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     private void build() {
-/* 338 */       if (VisibleMemberMap.this.kind == 3) {
-/* 339 */         addMembers(this.mappingClass);
-/*     */       } else {
-/* 341 */         mapClass();
-/*     */       }
-/*     */     }
-/*     */
-/*     */     private void mapClass() {
-/* 346 */       addMembers(this.mappingClass);
-/* 347 */       ClassDoc[] arrayOfClassDoc = this.mappingClass.interfaces();
-/* 348 */       for (byte b = 0; b < arrayOfClassDoc.length; b++) {
-/* 349 */         String str = this.level + '\001';
-/* 350 */         ClassMembers classMembers = new ClassMembers(arrayOfClassDoc[b], str);
-/* 351 */         classMembers.mapClass();
-/*     */       }
-/* 353 */       if (this.mappingClass.isClass()) {
-/* 354 */         ClassDoc classDoc = this.mappingClass.superclass();
-/* 355 */         if (classDoc != null && !this.mappingClass.equals(classDoc)) {
-/* 356 */           ClassMembers classMembers = new ClassMembers(classDoc, this.level + "c");
-/*     */
-/* 358 */           classMembers.mapClass();
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     private void addMembers(ClassDoc param1ClassDoc) {
-/* 372 */       List<ProgramElementDoc> list = getClassMembers(param1ClassDoc, true);
-/* 373 */       ArrayList<ProgramElementDoc> arrayList = new ArrayList();
-/* 374 */       for (byte b = 0; b < list.size(); b++) {
-/* 375 */         ProgramElementDoc programElementDoc = list.get(b);
-/* 376 */         if (!found(this.members, programElementDoc) &&
-/* 377 */           memberIsVisible(programElementDoc) &&
-/* 378 */           !isOverridden(programElementDoc, this.level) &&
-/* 379 */           !isTreatedAsPrivate(programElementDoc)) {
-/* 380 */           arrayList.add(programElementDoc);
-/*     */         }
-/*     */       }
-/* 383 */       if (arrayList.size() > 0) {
-/* 384 */         VisibleMemberMap.this.noVisibleMembers = false;
-/*     */       }
-/* 386 */       this.members.addAll(arrayList);
-/* 387 */       VisibleMemberMap.this.fillMemberLevelMap(getClassMembers(param1ClassDoc, false), this.level);
-/*     */     }
-/*     */
-/*     */     private boolean isTreatedAsPrivate(ProgramElementDoc param1ProgramElementDoc) {
-/* 391 */       if (!VisibleMemberMap.this.configuration.javafx) {
-/* 392 */         return false;
-/*     */       }
-/*     */
-/* 395 */       Tag[] arrayOfTag = param1ProgramElementDoc.tags("@treatAsPrivate");
-/* 396 */       return (arrayOfTag != null && arrayOfTag.length > 0);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     private boolean memberIsVisible(ProgramElementDoc param1ProgramElementDoc) {
-/* 407 */       if (param1ProgramElementDoc.containingClass().equals(VisibleMemberMap.this.classdoc))
-/*     */       {
-/*     */
-/* 410 */         return true; }
-/* 411 */       if (param1ProgramElementDoc.isPrivate())
-/*     */       {
-/*     */
-/* 414 */         return false; }
-/* 415 */       if (param1ProgramElementDoc.isPackagePrivate())
-/*     */       {
-/*     */
-/* 418 */         return param1ProgramElementDoc.containingClass().containingPackage().equals(VisibleMemberMap.this
-/* 419 */             .classdoc.containingPackage());
-/*     */       }
-/*     */
-/* 422 */       return true;
-/*     */     } private List<ProgramElementDoc> getClassMembers(ClassDoc param1ClassDoc, boolean param1Boolean) {
-/*     */       AnnotationTypeElementDoc[] arrayOfAnnotationTypeElementDoc;
-/*     */       ClassDoc[] arrayOfClassDoc;
-/*     */       FieldDoc[] arrayOfFieldDoc1;
-/*     */       ConstructorDoc[] arrayOfConstructorDoc;
-/*     */       MethodDoc[] arrayOfMethodDoc;
-/*     */       ProgramElementDoc[] arrayOfProgramElementDoc;
-/* 430 */       if (param1ClassDoc.isEnum() && VisibleMemberMap.this.kind == 3)
-/*     */       {
-/*     */
-/* 433 */         return Arrays.asList(new ProgramElementDoc[0]);
-/*     */       }
-/* 435 */       FieldDoc[] arrayOfFieldDoc2 = null;
-/* 436 */       switch (VisibleMemberMap.this.kind) {
-/*     */         case 5:
-/* 438 */           arrayOfFieldDoc2 = param1ClassDoc.fields(param1Boolean);
-/*     */           break;
-/*     */
-/*     */         case 6:
-/* 442 */           arrayOfAnnotationTypeElementDoc = param1ClassDoc.isAnnotationType() ? filter((AnnotationTypeDoc)param1ClassDoc, false) : new AnnotationTypeElementDoc[0];
-/*     */           break;
-/*     */
-/*     */
-/*     */         case 7:
-/* 447 */           arrayOfAnnotationTypeElementDoc = param1ClassDoc.isAnnotationType() ? filter((AnnotationTypeDoc)param1ClassDoc, true) : new AnnotationTypeElementDoc[0];
-/*     */           break;
-/*     */
-/*     */         case 0:
-/* 451 */           arrayOfClassDoc = param1ClassDoc.innerClasses(param1Boolean);
-/*     */           break;
-/*     */         case 1:
-/* 454 */           arrayOfFieldDoc1 = param1ClassDoc.enumConstants();
-/*     */           break;
-/*     */         case 2:
-/* 457 */           arrayOfFieldDoc1 = param1ClassDoc.fields(param1Boolean);
-/*     */           break;
-/*     */         case 3:
-/* 460 */           arrayOfConstructorDoc = param1ClassDoc.constructors();
-/*     */           break;
-/*     */         case 4:
-/* 463 */           arrayOfMethodDoc = param1ClassDoc.methods(param1Boolean);
-/* 464 */           checkOnPropertiesTags(arrayOfMethodDoc);
-/*     */           break;
-/*     */         case 8:
-/* 467 */           arrayOfProgramElementDoc = properties(param1ClassDoc, param1Boolean);
-/*     */           break;
-/*     */         default:
-/* 470 */           arrayOfProgramElementDoc = new ProgramElementDoc[0];
-/*     */           break;
-/*     */       }
-/* 473 */       if (VisibleMemberMap.this.configuration.nodeprecated) {
-/* 474 */         return Util.excludeDeprecatedMembersAsList(arrayOfProgramElementDoc);
-/*     */       }
-/* 476 */       return Arrays.asList(arrayOfProgramElementDoc);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     private AnnotationTypeElementDoc[] filter(AnnotationTypeDoc param1AnnotationTypeDoc, boolean param1Boolean) {
-/* 492 */       AnnotationTypeElementDoc[] arrayOfAnnotationTypeElementDoc = param1AnnotationTypeDoc.elements();
-/* 493 */       ArrayList<AnnotationTypeElementDoc> arrayList = new ArrayList();
-/* 494 */       for (byte b = 0; b < arrayOfAnnotationTypeElementDoc.length; b++) {
-/* 495 */         if ((param1Boolean && arrayOfAnnotationTypeElementDoc[b].defaultValue() == null) || (!param1Boolean && arrayOfAnnotationTypeElementDoc[b]
-/* 496 */           .defaultValue() != null)) {
-/* 497 */           arrayList.add(arrayOfAnnotationTypeElementDoc[b]);
-/*     */         }
-/*     */       }
-/* 500 */       return arrayList.<AnnotationTypeElementDoc>toArray(new AnnotationTypeElementDoc[0]);
-/*     */     }
-/*     */
-/*     */     private boolean found(List<ProgramElementDoc> param1List, ProgramElementDoc param1ProgramElementDoc) {
-/* 504 */       for (byte b = 0; b < param1List.size(); b++) {
-/* 505 */         ProgramElementDoc programElementDoc = param1List.get(b);
-/* 506 */         if (Util.matches(programElementDoc, param1ProgramElementDoc)) {
-/* 507 */           return true;
-/*     */         }
-/*     */       }
-/* 510 */       return false;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     private boolean isOverridden(ProgramElementDoc param1ProgramElementDoc, String param1String) {
-/* 520 */       Map map = (Map)VisibleMemberMap.this.memberNameMap.get(VisibleMemberMap.this.getMemberKey(param1ProgramElementDoc));
-/* 521 */       if (map == null)
-/* 522 */         return false;
-/* 523 */       String str = null;
-/* 524 */       Iterator<String> iterator = map.values().iterator();
-/* 525 */       while (iterator.hasNext()) {
-/* 526 */         str = iterator.next();
-/* 527 */         if (str.equals("start") || (param1String
-/* 528 */           .startsWith(str) &&
-/* 529 */           !param1String.equals(str))) {
-/* 530 */           return true;
-/*     */         }
-/*     */       }
-/* 533 */       return false;
-/*     */     }
-/*     */
-/*     */     private ProgramElementDoc[] properties(ClassDoc param1ClassDoc, boolean param1Boolean) {
-/* 537 */       MethodDoc[] arrayOfMethodDoc = param1ClassDoc.methods(param1Boolean);
-/* 538 */       FieldDoc[] arrayOfFieldDoc = param1ClassDoc.fields(false);
-/*     */
-/* 540 */       if (VisibleMemberMap.propertiesCache.containsKey(param1ClassDoc)) {
-/* 541 */         return (ProgramElementDoc[])VisibleMemberMap.propertiesCache.get(param1ClassDoc);
-/*     */       }
-/*     */
-/* 544 */       ArrayList<MethodDoc> arrayList = new ArrayList();
-/*     */
-/* 546 */       for (MethodDoc methodDoc : arrayOfMethodDoc) {
-/*     */
-/* 548 */         if (isPropertyMethod(methodDoc)) {
-/*     */
-/*     */
-/*     */
-/* 552 */           MethodDoc methodDoc1 = getterForField(arrayOfMethodDoc, methodDoc);
-/* 553 */           MethodDoc methodDoc2 = setterForField(arrayOfMethodDoc, methodDoc);
-/* 554 */           FieldDoc fieldDoc = fieldForProperty(arrayOfFieldDoc, methodDoc);
-/*     */
-/* 556 */           addToPropertiesMap(methodDoc2, methodDoc1, methodDoc, fieldDoc);
-/* 557 */           VisibleMemberMap.getterSetterMap.put(methodDoc, new GetterSetter((ProgramElementDoc)methodDoc1, (ProgramElementDoc)methodDoc2));
-/* 558 */           arrayList.add(methodDoc);
-/*     */         }
-/*     */       }
-/* 561 */       ProgramElementDoc[] arrayOfProgramElementDoc = arrayList.<ProgramElementDoc>toArray(new ProgramElementDoc[arrayList.size()]);
-/* 562 */       VisibleMemberMap.propertiesCache.put(param1ClassDoc, arrayOfProgramElementDoc);
-/* 563 */       return arrayOfProgramElementDoc;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     private void addToPropertiesMap(MethodDoc param1MethodDoc1, MethodDoc param1MethodDoc2, MethodDoc param1MethodDoc3, FieldDoc param1FieldDoc) {
-/* 570 */       if (param1FieldDoc == null || param1FieldDoc
-/* 571 */         .getRawCommentText() == null || param1FieldDoc
-/* 572 */         .getRawCommentText().length() == 0) {
-/* 573 */         addToPropertiesMap((ProgramElementDoc)param1MethodDoc1, (ProgramElementDoc)param1MethodDoc3);
-/* 574 */         addToPropertiesMap((ProgramElementDoc)param1MethodDoc2, (ProgramElementDoc)param1MethodDoc3);
-/* 575 */         addToPropertiesMap((ProgramElementDoc)param1MethodDoc3, (ProgramElementDoc)param1MethodDoc3);
-/*     */       } else {
-/* 577 */         addToPropertiesMap((ProgramElementDoc)param1MethodDoc2, (ProgramElementDoc)param1FieldDoc);
-/* 578 */         addToPropertiesMap((ProgramElementDoc)param1MethodDoc1, (ProgramElementDoc)param1FieldDoc);
-/* 579 */         addToPropertiesMap((ProgramElementDoc)param1MethodDoc3, (ProgramElementDoc)param1FieldDoc);
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */     private void addToPropertiesMap(ProgramElementDoc param1ProgramElementDoc1, ProgramElementDoc param1ProgramElementDoc2) {
-/* 585 */       if (null == param1ProgramElementDoc1 || null == param1ProgramElementDoc2) {
-/*     */         return;
-/*     */       }
-/* 588 */       String str = param1ProgramElementDoc1.getRawCommentText();
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 594 */       if (null == str || 0 == str.length() || param1ProgramElementDoc1
-/* 595 */         .equals(param1ProgramElementDoc2)) {
-/* 596 */         VisibleMemberMap.classPropertiesMap.put(param1ProgramElementDoc1, param1ProgramElementDoc2);
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */     private MethodDoc getterForField(MethodDoc[] param1ArrayOfMethodDoc, MethodDoc param1MethodDoc) {
-/* 602 */       String str4, str1 = param1MethodDoc.name();
-/*     */
-/* 604 */       String str2 = str1.substring(0, str1
-/* 605 */           .lastIndexOf("Property"));
-/*     */
-/*     */
-/* 608 */       String str3 = "" + Character.toUpperCase(str2.charAt(0)) + str2.substring(1);
-/*     */
-/* 610 */       String str5 = param1MethodDoc.returnType().toString();
-/* 611 */       if ("boolean".equals(str5) || str5
-/* 612 */         .endsWith("BooleanProperty")) {
-/* 613 */         str4 = "(is|get)" + str3;
-/*     */       } else {
-/* 615 */         str4 = "get" + str3;
-/*     */       }
-/*     */
-/* 618 */       for (MethodDoc methodDoc : param1ArrayOfMethodDoc) {
-/* 619 */         if (Pattern.matches(str4, methodDoc.name()) &&
-/* 620 */           0 == (methodDoc.parameters()).length && (methodDoc
-/* 621 */           .isPublic() || methodDoc.isProtected())) {
-/* 622 */           return methodDoc;
-/*     */         }
-/*     */       }
-/*     */
-/* 626 */       return null;
-/*     */     }
-/*     */
-/*     */
-/*     */     private MethodDoc setterForField(MethodDoc[] param1ArrayOfMethodDoc, MethodDoc param1MethodDoc) {
-/* 631 */       String str1 = param1MethodDoc.name();
-/*     */
-/* 633 */       String str2 = str1.substring(0, str1
-/* 634 */           .lastIndexOf("Property"));
-/*     */
-/*     */
-/* 637 */       String str3 = "" + Character.toUpperCase(str2.charAt(0)) + str2.substring(1);
-/* 638 */       String str4 = "set" + str3;
-/*     */
-/* 640 */       for (MethodDoc methodDoc : param1ArrayOfMethodDoc) {
-/* 641 */         if (str4.equals(methodDoc.name()) &&
-/* 642 */           1 == (methodDoc.parameters()).length && "void"
-/* 643 */           .equals(methodDoc.returnType().simpleTypeName()) && (methodDoc
-/* 644 */           .isPublic() || methodDoc.isProtected())) {
-/* 645 */           return methodDoc;
-/*     */         }
-/*     */       }
-/*     */
-/* 649 */       return null;
-/*     */     }
-/*     */
-/*     */
-/*     */     private FieldDoc fieldForProperty(FieldDoc[] param1ArrayOfFieldDoc, MethodDoc param1MethodDoc) {
-/* 654 */       for (FieldDoc fieldDoc : param1ArrayOfFieldDoc) {
-/* 655 */         String str1 = fieldDoc.name();
-/* 656 */         String str2 = str1 + "Property";
-/* 657 */         if (str2.equals(param1MethodDoc.name())) {
-/* 658 */           return fieldDoc;
-/*     */         }
-/*     */       }
-/* 661 */       return null;
-/*     */     }
-/*     */
-/*     */     private ClassMembers(ClassDoc param1ClassDoc, String param1String) {
-/* 665 */       this.pattern = Pattern.compile("[sg]et\\p{Upper}.*"); this.mappingClass = param1ClassDoc; this.level = param1String; if (VisibleMemberMap.this.classMap.containsKey(param1ClassDoc) && param1String.startsWith((VisibleMemberMap.this.classMap.get(param1ClassDoc)).level)) { VisibleMemberMap.this.purgeMemberLevelMap(getClassMembers(param1ClassDoc, false), (VisibleMemberMap.this.classMap.get(param1ClassDoc)).level); VisibleMemberMap.this.classMap.remove(param1ClassDoc); VisibleMemberMap.this.visibleClasses.remove(param1ClassDoc); }
-/*     */        if (!VisibleMemberMap.this.classMap.containsKey(param1ClassDoc)) { VisibleMemberMap.this.classMap.put(param1ClassDoc, this); VisibleMemberMap.this.visibleClasses.add(param1ClassDoc); }
-/* 667 */        } private boolean isPropertyMethod(MethodDoc param1MethodDoc) { if (!VisibleMemberMap.this.configuration.javafx) {
-/* 668 */         return false;
-/*     */       }
-/* 670 */       if (!param1MethodDoc.name().endsWith("Property")) {
-/* 671 */         return false;
-/*     */       }
-/*     */
-/* 674 */       if (!memberIsVisible((ProgramElementDoc)param1MethodDoc)) {
-/* 675 */         return false;
-/*     */       }
-/*     */
-/* 678 */       if (this.pattern.matcher(param1MethodDoc.name()).matches()) {
-/* 679 */         return false;
-/*     */       }
-/* 681 */       if ((param1MethodDoc.typeParameters()).length > 0) {
-/* 682 */         return false;
-/*     */       }
-/* 684 */       return (0 == (param1MethodDoc.parameters()).length &&
-/* 685 */         !"void".equals(param1MethodDoc.returnType().simpleTypeName())); }
-/*     */
-/*     */
-/*     */     private void checkOnPropertiesTags(MethodDoc[] param1ArrayOfMethodDoc) {
-/* 689 */       for (MethodDoc methodDoc : param1ArrayOfMethodDoc) {
-/* 690 */         if (methodDoc.isIncluded()) {
-/* 691 */           for (Tag tag : methodDoc.tags()) {
-/* 692 */             String str = tag.name();
-/* 693 */             if (str.equals("@propertySetter") || str
-/* 694 */               .equals("@propertyGetter") || str
-/* 695 */               .equals("@propertyDescription")) {
-/* 696 */               if (!isPropertyGetterOrSetter(param1ArrayOfMethodDoc, methodDoc)) {
-/* 697 */                 VisibleMemberMap.this.configuration.message.warning(tag.position(), "doclet.javafx_tag_misuse", new Object[0]);
-/*     */               }
-/*     */               break;
-/*     */             }
-/*     */           }
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */     private boolean isPropertyGetterOrSetter(MethodDoc[] param1ArrayOfMethodDoc, MethodDoc param1MethodDoc) {
-/* 709 */       boolean bool = false;
-/* 710 */       String str = Util.propertyNameFromMethodName(VisibleMemberMap.this.configuration, param1MethodDoc.name());
-/* 711 */       if (!str.isEmpty()) {
-/* 712 */         String str1 = str + "Property";
-/* 713 */         for (MethodDoc methodDoc : param1ArrayOfMethodDoc) {
-/* 714 */           if (methodDoc.name().equals(str1)) {
-/* 715 */             bool = true;
-/*     */             break;
-/*     */           }
-/*     */         }
-/*     */       }
-/* 720 */       return bool;
-/*     */     }
-/*     */   }
-/*     */
-/*     */   private class GetterSetter {
-/*     */     private final ProgramElementDoc getter;
-/*     */     private final ProgramElementDoc setter;
-/*     */
-/*     */     public GetterSetter(ProgramElementDoc param1ProgramElementDoc1, ProgramElementDoc param1ProgramElementDoc2) {
-/* 729 */       this.getter = param1ProgramElementDoc1;
-/* 730 */       this.setter = param1ProgramElementDoc2;
-/*     */     }
-/*     */
-/*     */     public ProgramElementDoc getGetter() {
-/* 734 */       return this.getter;
-/*     */     }
-/*     */
-/*     */     public ProgramElementDoc getSetter() {
-/* 738 */       return this.setter;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public boolean noVisibleMembers() {
-/* 748 */     return this.noVisibleMembers;
-/*     */   }
-/*     */
-/*     */   private ClassMember getClassMember(MethodDoc paramMethodDoc) {
-/* 752 */     for (ClassMember classMember : this.memberNameMap.keySet()) {
-/*     */
-/* 754 */       if (classMember instanceof String)
-/*     */         continue;
-/* 756 */       if (((ClassMember)classMember).isEqual(paramMethodDoc)) {
-/* 757 */         return classMember;
-/*     */       }
-/*     */     }
-/* 760 */     return new ClassMember((ProgramElementDoc)paramMethodDoc);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private Object getMemberKey(ProgramElementDoc paramProgramElementDoc) {
-/* 767 */     if (paramProgramElementDoc.isConstructor())
-/* 768 */       return paramProgramElementDoc.name() + ((ExecutableMemberDoc)paramProgramElementDoc).signature();
-/* 769 */     if (paramProgramElementDoc.isMethod())
-/* 770 */       return getClassMember((MethodDoc)paramProgramElementDoc);
-/* 771 */     if (paramProgramElementDoc.isField() || paramProgramElementDoc.isEnumConstant() || paramProgramElementDoc.isAnnotationTypeElement()) {
-/* 772 */       return paramProgramElementDoc.name();
-/*     */     }
-/* 774 */     String str = paramProgramElementDoc.name();
-/*     */
-/* 776 */     str = (str.indexOf('.') != 0) ? str.substring(str.lastIndexOf('.'), str.length()) : str;
-/* 777 */     return "clint" + str;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolki\\util\VisibleMemberMap.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2016, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.util;
+
+import java.util.*;
+import java.util.regex.Pattern;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+
+/**
+ * A data structure that encapsulates the visible members of a particular
+ * type for a given class tree.  To use this data structor, you must specify
+ * the type of member you are interested in (nested class, field, constructor
+ * or method) and the leaf of the class tree.  The data structure will map
+ * all visible members in the leaf and classes above the leaf in the tree.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Atul M Dambalkar
+ * @author Jamie Ho (rewrite)
+ */
+public class VisibleMemberMap {
+
+    private boolean noVisibleMembers = true;
+
+    public static final int INNERCLASSES    = 0;
+    public static final int ENUM_CONSTANTS  = 1;
+    public static final int FIELDS          = 2;
+    public static final int CONSTRUCTORS    = 3;
+    public static final int METHODS         = 4;
+    public static final int ANNOTATION_TYPE_FIELDS = 5;
+    public static final int ANNOTATION_TYPE_MEMBER_OPTIONAL = 6;
+    public static final int ANNOTATION_TYPE_MEMBER_REQUIRED = 7;
+    public static final int PROPERTIES      = 8;
+
+    /**
+     * The total number of member types is {@value}.
+     */
+    public static final int NUM_MEMBER_TYPES = 9;
+
+    public static final String STARTLEVEL = "start";
+
+    /**
+     * List of ClassDoc objects for which ClassMembers objects are built.
+     */
+    private final List<ClassDoc> visibleClasses = new ArrayList<ClassDoc>();
+
+    /**
+     * Map for each member name on to a map which contains members with same
+     * name-signature. The mapped map will contain mapping for each MemberDoc
+     * onto it's respecive level string.
+     */
+    private final Map<Object,Map<ProgramElementDoc,String>> memberNameMap = new HashMap<Object,Map<ProgramElementDoc,String>>();
+
+    /**
+     * Map of class and it's ClassMembers object.
+     */
+    private final Map<ClassDoc,ClassMembers> classMap = new HashMap<ClassDoc,ClassMembers>();
+
+    /**
+     * Type whose visible members are requested.  This is the leaf of
+     * the class tree being mapped.
+     */
+    private final ClassDoc classdoc;
+
+    /**
+     * Member kind: InnerClasses/Fields/Methods?
+     */
+    private final int kind;
+
+    /**
+     * The configuration this VisibleMemberMap was created with.
+     */
+    private final Configuration configuration;
+
+    private static final Map<ClassDoc, ProgramElementDoc[]> propertiesCache =
+            new HashMap<ClassDoc, ProgramElementDoc[]>();
+    private static final Map<ProgramElementDoc, ProgramElementDoc> classPropertiesMap =
+            new HashMap<ProgramElementDoc, ProgramElementDoc>();
+    private static final Map<ProgramElementDoc, GetterSetter> getterSetterMap =
+            new HashMap<ProgramElementDoc, GetterSetter>();
+
+    /**
+     * Construct a VisibleMemberMap of the given type for the given
+     * class.
+     *
+     * @param classdoc the class whose members are being mapped.
+     * @param kind the kind of member that is being mapped.
+     * @param configuration the configuration to use to construct this
+     * VisibleMemberMap. If the field configuration.nodeprecated is true the
+     * deprecated members are excluded from the map. If the field
+     * configuration.javafx is true the JavaFX features are used.
+     */
+    public VisibleMemberMap(ClassDoc classdoc,
+                            int kind,
+                            Configuration configuration) {
+        this.classdoc = classdoc;
+        this.kind = kind;
+        this.configuration = configuration;
+        new ClassMembers(classdoc, STARTLEVEL).build();
+    }
+
+    /**
+     * Return the list of visible classes in this map.
+     *
+     * @return the list of visible classes in this map.
+     */
+    public List<ClassDoc> getVisibleClassesList() {
+        sort(visibleClasses);
+        return visibleClasses;
+    }
+
+    /**
+     * Returns the property field documentation belonging to the given member.
+     * @param ped the member for which the property documentation is needed.
+     * @return the property field documentation, null if there is none.
+     */
+    public ProgramElementDoc getPropertyMemberDoc(ProgramElementDoc ped) {
+        return classPropertiesMap.get(ped);
+    }
+
+    /**
+     * Returns the getter documentation belonging to the given property method.
+     * @param propertyMethod the method for which the getter is needed.
+     * @return the getter documentation, null if there is none.
+     */
+    public ProgramElementDoc getGetterForProperty(ProgramElementDoc propertyMethod) {
+        return getterSetterMap.get(propertyMethod).getGetter();
+    }
+
+    /**
+     * Returns the setter documentation belonging to the given property method.
+     * @param propertyMethod the method for which the setter is needed.
+     * @return the setter documentation, null if there is none.
+     */
+    public ProgramElementDoc getSetterForProperty(ProgramElementDoc propertyMethod) {
+        return getterSetterMap.get(propertyMethod).getSetter();
+    }
+
+    /**
+     * Return the package private members inherited by the class.  Only return
+     * if parent is package private and not documented.
+     *
+     * @param configuration the current configuration of the doclet.
+     * @return the package private members inherited by the class.
+     */
+    private List<ProgramElementDoc> getInheritedPackagePrivateMethods(Configuration configuration) {
+        List<ProgramElementDoc> results = new ArrayList<ProgramElementDoc>();
+        for (Iterator<ClassDoc> iter = visibleClasses.iterator(); iter.hasNext(); ) {
+            ClassDoc currentClass = iter.next();
+            if (currentClass != classdoc &&
+                currentClass.isPackagePrivate() &&
+                !Util.isLinkable(currentClass, configuration)) {
+                // Document these members in the child class because
+                // the parent is inaccessible.
+                results.addAll(getMembersFor(currentClass));
+            }
+        }
+        return results;
+    }
+
+    /**
+     * Return the visible members of the class being mapped.  Also append at the
+     * end of the list members that are inherited by inaccessible parents. We
+     * document these members in the child because the parent is not documented.
+     *
+     * @param configuration the current configuration of the doclet.
+     */
+    public List<ProgramElementDoc> getLeafClassMembers(Configuration configuration) {
+        List<ProgramElementDoc> result = getMembersFor(classdoc);
+        result.addAll(getInheritedPackagePrivateMethods(configuration));
+        return result;
+    }
+
+    /**
+     * Retrn the list of members for the given class.
+     *
+     * @param cd the class to retrieve the list of visible members for.
+     *
+     * @return the list of members for the given class.
+     */
+    public List<ProgramElementDoc> getMembersFor(ClassDoc cd) {
+        ClassMembers clmembers = classMap.get(cd);
+        if (clmembers == null) {
+            return new ArrayList<ProgramElementDoc>();
+        }
+        return clmembers.getMembers();
+    }
+
+    /**
+     * Sort the given mixed list of classes and interfaces to a list of
+     * classes followed by interfaces traversed. Don't sort alphabetically.
+     */
+    private void sort(List<ClassDoc> list) {
+        List<ClassDoc> classes = new ArrayList<ClassDoc>();
+        List<ClassDoc> interfaces = new ArrayList<ClassDoc>();
+        for (int i = 0; i < list.size(); i++) {
+            ClassDoc cd = list.get(i);
+            if (cd.isClass()) {
+                classes.add(cd);
+            } else {
+                interfaces.add(cd);
+            }
+        }
+        list.clear();
+        list.addAll(classes);
+        list.addAll(interfaces);
+    }
+
+    private void fillMemberLevelMap(List<ProgramElementDoc> list, String level) {
+        for (int i = 0; i < list.size(); i++) {
+            Object key = getMemberKey(list.get(i));
+            Map<ProgramElementDoc,String> memberLevelMap = memberNameMap.get(key);
+            if (memberLevelMap == null) {
+                memberLevelMap = new HashMap<ProgramElementDoc,String>();
+                memberNameMap.put(key, memberLevelMap);
+            }
+            memberLevelMap.put(list.get(i), level);
+        }
+    }
+
+    private void purgeMemberLevelMap(List<ProgramElementDoc> list, String level) {
+        for (int i = 0; i < list.size(); i++) {
+            Object key = getMemberKey(list.get(i));
+            Map<ProgramElementDoc, String> memberLevelMap = memberNameMap.get(key);
+            if (memberLevelMap != null && level.equals(memberLevelMap.get(list.get(i))))
+                memberLevelMap.remove(list.get(i));
+        }
+    }
+
+    /**
+     * Represents a class member.  We should be able to just use a
+     * ProgramElementDoc instead of this class, but that doesn't take
+     * type variables in consideration when comparing.
+     */
+    private class ClassMember {
+        private Set<ProgramElementDoc> members;
+
+        public ClassMember(ProgramElementDoc programElementDoc) {
+            members = new HashSet<ProgramElementDoc>();
+            members.add(programElementDoc);
+        }
+
+        public void addMember(ProgramElementDoc programElementDoc) {
+            members.add(programElementDoc);
+        }
+
+        public boolean isEqual(MethodDoc member) {
+            for (Iterator<ProgramElementDoc> iter = members.iterator(); iter.hasNext(); ) {
+                MethodDoc member2 = (MethodDoc) iter.next();
+                if (Util.executableMembersEqual(member, member2)) {
+                    members.add(member);
+                        return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /**
+     * A data structure that represents the class members for
+     * a visible class.
+     */
+    private class ClassMembers {
+
+        /**
+         * The mapping class, whose inherited members are put in the
+         * {@link #members} list.
+         */
+        private ClassDoc mappingClass;
+
+        /**
+         * List of inherited members from the mapping class.
+         */
+        private List<ProgramElementDoc> members = new ArrayList<ProgramElementDoc>();
+
+        /**
+         * Level/Depth of inheritance.
+         */
+        private String level;
+
+        /**
+         * Return list of inherited members from mapping class.
+         *
+         * @return List Inherited members.
+         */
+        public List<ProgramElementDoc> getMembers() {
+            return members;
+        }
+
+        private ClassMembers(ClassDoc mappingClass, String level) {
+            this.mappingClass = mappingClass;
+            this.level = level;
+            if (classMap.containsKey(mappingClass) &&
+                        level.startsWith(classMap.get(mappingClass).level)) {
+                //Remove lower level class so that it can be replaced with
+                //same class found at higher level.
+                purgeMemberLevelMap(getClassMembers(mappingClass, false),
+                    classMap.get(mappingClass).level);
+                classMap.remove(mappingClass);
+                visibleClasses.remove(mappingClass);
+            }
+            if (!classMap.containsKey(mappingClass)) {
+                classMap.put(mappingClass, this);
+                visibleClasses.add(mappingClass);
+            }
+
+        }
+
+        private void build() {
+            if (kind == CONSTRUCTORS) {
+                addMembers(mappingClass);
+            } else {
+                mapClass();
+            }
+        }
+
+        private void mapClass() {
+            addMembers(mappingClass);
+            ClassDoc[] interfaces = mappingClass.interfaces();
+            for (int i = 0; i < interfaces.length; i++) {
+                String locallevel = level + 1;
+                ClassMembers cm = new ClassMembers(interfaces[i], locallevel);
+                cm.mapClass();
+            }
+            if (mappingClass.isClass()) {
+                ClassDoc superclass = mappingClass.superclass();
+                if (!(superclass == null || mappingClass.equals(superclass))) {
+                    ClassMembers cm = new ClassMembers(superclass,
+                                                       level + "c");
+                    cm.mapClass();
+                }
+            }
+        }
+
+        /**
+         * Get all the valid members from the mapping class. Get the list of
+         * members for the class to be included into(ctii), also get the level
+         * string for ctii. If mapping class member is not already in the
+         * inherited member list and if it is visible in the ctii and not
+         * overridden, put such a member in the inherited member list.
+         * Adjust member-level-map, class-map.
+         */
+        private void addMembers(ClassDoc fromClass) {
+            List<ProgramElementDoc> cdmembers = getClassMembers(fromClass, true);
+            List<ProgramElementDoc> incllist = new ArrayList<ProgramElementDoc>();
+            for (int i = 0; i < cdmembers.size(); i++) {
+                ProgramElementDoc pgmelem = cdmembers.get(i);
+                if (!found(members, pgmelem) &&
+                    memberIsVisible(pgmelem) &&
+                    !isOverridden(pgmelem, level) &&
+                    !isTreatedAsPrivate(pgmelem)) {
+                        incllist.add(pgmelem);
+                }
+            }
+            if (incllist.size() > 0) {
+                noVisibleMembers = false;
+            }
+            members.addAll(incllist);
+            fillMemberLevelMap(getClassMembers(fromClass, false), level);
+        }
+
+        private boolean isTreatedAsPrivate(ProgramElementDoc pgmelem) {
+            if (!configuration.javafx) {
+                return false;
+            }
+
+            Tag[] aspTags = pgmelem.tags("@treatAsPrivate");
+            boolean result = (aspTags != null) && (aspTags.length > 0);
+            return result;
+        }
+
+        /**
+         * Is given doc item visible in given classdoc in terms fo inheritance?
+         * The given doc item is visible in the given classdoc if it is public
+         * or protected and if it is package-private if it's containing class
+         * is in the same package as the given classdoc.
+         */
+        private boolean memberIsVisible(ProgramElementDoc pgmdoc) {
+            if (pgmdoc.containingClass().equals(classdoc)) {
+                //Member is in class that we are finding visible members for.
+                //Of course it is visible.
+                return true;
+            } else if (pgmdoc.isPrivate()) {
+                //Member is in super class or implemented interface.
+                //Private, so not inherited.
+                return false;
+            } else if (pgmdoc.isPackagePrivate()) {
+                //Member is package private.  Only return true if its class is in
+                //same package.
+                return pgmdoc.containingClass().containingPackage().equals(
+                    classdoc.containingPackage());
+            } else {
+                //Public members are always inherited.
+                return true;
+            }
+        }
+
+        /**
+         * Return all available class members.
+         */
+        private List<ProgramElementDoc> getClassMembers(ClassDoc cd, boolean filter) {
+            if (cd.isEnum() && kind == CONSTRUCTORS) {
+                //If any of these rules are hit, return empty array because
+                //we don't document these members ever.
+                return Arrays.asList(new ProgramElementDoc[] {});
+            }
+            ProgramElementDoc[] members = null;
+            switch (kind) {
+                case ANNOTATION_TYPE_FIELDS:
+                    members = cd.fields(filter);
+                    break;
+                case ANNOTATION_TYPE_MEMBER_OPTIONAL:
+                    members = cd.isAnnotationType() ?
+                        filter((AnnotationTypeDoc) cd, false) :
+                        new AnnotationTypeElementDoc[] {};
+                    break;
+                case ANNOTATION_TYPE_MEMBER_REQUIRED:
+                    members = cd.isAnnotationType() ?
+                        filter((AnnotationTypeDoc) cd, true) :
+                        new AnnotationTypeElementDoc[] {};
+                    break;
+                case INNERCLASSES:
+                    members = cd.innerClasses(filter);
+                    break;
+                case ENUM_CONSTANTS:
+                    members = cd.enumConstants();
+                    break;
+                case FIELDS:
+                    members = cd.fields(filter);
+                    break;
+                case CONSTRUCTORS:
+                    members = cd.constructors();
+                    break;
+                case METHODS:
+                    members = cd.methods(filter);
+                    checkOnPropertiesTags((MethodDoc[])members);
+                    break;
+                case PROPERTIES:
+                    members = properties(cd, filter);
+                    break;
+                default:
+                    members = new ProgramElementDoc[0];
+            }
+            // Deprected members should be excluded or not?
+            if (configuration.nodeprecated) {
+                return Util.excludeDeprecatedMembersAsList(members);
+            }
+            return Arrays.asList(members);
+        }
+
+        /**
+         * Filter the annotation type members and return either the required
+         * members or the optional members, depending on the value of the
+         * required parameter.
+         *
+         * @param doc The annotation type to process.
+         * @param required
+         * @return the annotation type members and return either the required
+         * members or the optional members, depending on the value of the
+         * required parameter.
+         */
+        private AnnotationTypeElementDoc[] filter(AnnotationTypeDoc doc,
+            boolean required) {
+            AnnotationTypeElementDoc[] members = doc.elements();
+            List<AnnotationTypeElementDoc> targetMembers = new ArrayList<AnnotationTypeElementDoc>();
+            for (int i = 0; i < members.length; i++) {
+                if ((required && members[i].defaultValue() == null) ||
+                     ((!required) && members[i].defaultValue() != null)){
+                    targetMembers.add(members[i]);
+                }
+            }
+            return targetMembers.toArray(new AnnotationTypeElementDoc[]{});
+        }
+
+        private boolean found(List<ProgramElementDoc> list, ProgramElementDoc elem) {
+            for (int i = 0; i < list.size(); i++) {
+                ProgramElementDoc pgmelem = list.get(i);
+                if (Util.matches(pgmelem, elem)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+
+        /**
+         * Is member overridden? The member is overridden if it is found in the
+         * same level hierarchy e.g. member at level "11" overrides member at
+         * level "111".
+         */
+        private boolean isOverridden(ProgramElementDoc pgmdoc, String level) {
+            Map<?,String> memberLevelMap = (Map<?,String>) memberNameMap.get(getMemberKey(pgmdoc));
+            if (memberLevelMap == null)
+                return false;
+            String mappedlevel = null;
+            Iterator<String> iterator = memberLevelMap.values().iterator();
+            while (iterator.hasNext()) {
+                mappedlevel = iterator.next();
+                if (mappedlevel.equals(STARTLEVEL) ||
+                    (level.startsWith(mappedlevel) &&
+                     !level.equals(mappedlevel))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private ProgramElementDoc[] properties(final ClassDoc cd, final boolean filter) {
+            final MethodDoc[] allMethods = cd.methods(filter);
+            final FieldDoc[] allFields = cd.fields(false);
+
+            if (propertiesCache.containsKey(cd)) {
+                return propertiesCache.get(cd);
+            }
+
+            final List<MethodDoc> result = new ArrayList<MethodDoc>();
+
+            for (final MethodDoc propertyMethod : allMethods) {
+
+                if (!isPropertyMethod(propertyMethod)) {
+                    continue;
+                }
+
+                final MethodDoc getter = getterForField(allMethods, propertyMethod);
+                final MethodDoc setter = setterForField(allMethods, propertyMethod);
+                final FieldDoc field = fieldForProperty(allFields, propertyMethod);
+
+                addToPropertiesMap(setter, getter, propertyMethod, field);
+                getterSetterMap.put(propertyMethod, new GetterSetter(getter, setter));
+                result.add(propertyMethod);
+            }
+            final ProgramElementDoc[] resultAray =
+                    result.toArray(new ProgramElementDoc[result.size()]);
+            propertiesCache.put(cd, resultAray);
+            return resultAray;
+        }
+
+        private void addToPropertiesMap(MethodDoc setter,
+                                        MethodDoc getter,
+                                        MethodDoc propertyMethod,
+                                        FieldDoc field) {
+            if ((field == null)
+                    || (field.getRawCommentText() == null)
+                    || field.getRawCommentText().length() == 0) {
+                addToPropertiesMap(setter, propertyMethod);
+                addToPropertiesMap(getter, propertyMethod);
+                addToPropertiesMap(propertyMethod, propertyMethod);
+            } else {
+                addToPropertiesMap(getter, field);
+                addToPropertiesMap(setter, field);
+                addToPropertiesMap(propertyMethod, field);
+            }
+        }
+
+        private void addToPropertiesMap(ProgramElementDoc propertyMethod,
+                                        ProgramElementDoc commentSource) {
+            if (null == propertyMethod || null == commentSource) {
+                return;
+            }
+            final String methodRawCommentText = propertyMethod.getRawCommentText();
+
+            /* The second condition is required for the property buckets. In
+             * this case the comment is at the property method (not at the field)
+             * and it needs to be listed in the map.
+             */
+            if ((null == methodRawCommentText || 0 == methodRawCommentText.length())
+                    || propertyMethod.equals(commentSource)) {
+                classPropertiesMap.put(propertyMethod, commentSource);
+            }
+        }
+
+        private MethodDoc getterForField(MethodDoc[] methods,
+                                         MethodDoc propertyMethod) {
+            final String propertyMethodName = propertyMethod.name();
+            final String fieldName =
+                    propertyMethodName.substring(0,
+                            propertyMethodName.lastIndexOf("Property"));
+            final String fieldNameUppercased =
+                    "" + Character.toUpperCase(fieldName.charAt(0))
+                                            + fieldName.substring(1);
+            final String getterNamePattern;
+            final String fieldTypeName = propertyMethod.returnType().toString();
+            if ("boolean".equals(fieldTypeName)
+                    || fieldTypeName.endsWith("BooleanProperty")) {
+                getterNamePattern = "(is|get)" + fieldNameUppercased;
+            } else {
+                getterNamePattern = "get" + fieldNameUppercased;
+            }
+
+            for (MethodDoc methodDoc : methods) {
+                if (Pattern.matches(getterNamePattern, methodDoc.name())) {
+                    if (0 == methodDoc.parameters().length
+                            && (methodDoc.isPublic() || methodDoc.isProtected())) {
+                        return methodDoc;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private MethodDoc setterForField(MethodDoc[] methods,
+                                         MethodDoc propertyMethod) {
+            final String propertyMethodName = propertyMethod.name();
+            final String fieldName =
+                    propertyMethodName.substring(0,
+                            propertyMethodName.lastIndexOf("Property"));
+            final String fieldNameUppercased =
+                    "" + Character.toUpperCase(fieldName.charAt(0))
+                                             + fieldName.substring(1);
+            final String setter = "set" + fieldNameUppercased;
+
+            for (MethodDoc methodDoc : methods) {
+                if (setter.equals(methodDoc.name())) {
+                    if (1 == methodDoc.parameters().length
+                            && "void".equals(methodDoc.returnType().simpleTypeName())
+                            && (methodDoc.isPublic() || methodDoc.isProtected())) {
+                        return methodDoc;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private FieldDoc fieldForProperty(FieldDoc[] fields, MethodDoc property) {
+
+            for (FieldDoc field : fields) {
+                final String fieldName = field.name();
+                final String propertyName = fieldName + "Property";
+                if (propertyName.equals(property.name())) {
+                    return field;
+                }
+            }
+            return null;
+        }
+
+        // properties aren't named setA* or getA*
+        private final Pattern pattern = Pattern.compile("[sg]et\\p{Upper}.*");
+        private boolean isPropertyMethod(MethodDoc method) {
+            if (!configuration.javafx) {
+               return false;
+            }
+            if (!method.name().endsWith("Property")) {
+                return false;
+            }
+
+            if (! memberIsVisible(method)) {
+                return false;
+            }
+
+            if (pattern.matcher(method.name()).matches()) {
+                return false;
+            }
+            if (method.typeParameters().length > 0) {
+                return false;
+            }
+            return 0 == method.parameters().length
+                    && !"void".equals(method.returnType().simpleTypeName());
+        }
+
+        private void checkOnPropertiesTags(MethodDoc[] members) {
+            for (MethodDoc methodDoc: members) {
+                if (methodDoc.isIncluded()) {
+                    for (Tag tag: methodDoc.tags()) {
+                        String tagName = tag.name();
+                        if (tagName.equals("@propertySetter")
+                                || tagName.equals("@propertyGetter")
+                                || tagName.equals("@propertyDescription")) {
+                            if (!isPropertyGetterOrSetter(members, methodDoc)) {
+                                configuration.message.warning(tag.position(),
+                                        "doclet.javafx_tag_misuse");
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        private boolean isPropertyGetterOrSetter(MethodDoc[] members,
+                                                 MethodDoc methodDoc) {
+            boolean found = false;
+            String propertyName = Util.propertyNameFromMethodName(configuration, methodDoc.name());
+            if (!propertyName.isEmpty()) {
+                String propertyMethodName = propertyName + "Property";
+                for (MethodDoc member: members) {
+                    if (member.name().equals(propertyMethodName)) {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            return found;
+        }
+    }
+
+    private class GetterSetter {
+        private final ProgramElementDoc getter;
+        private final ProgramElementDoc setter;
+
+        public GetterSetter(ProgramElementDoc getter, ProgramElementDoc setter) {
+            this.getter = getter;
+            this.setter = setter;
+        }
+
+        public ProgramElementDoc getGetter() {
+            return getter;
+        }
+
+        public ProgramElementDoc getSetter() {
+            return setter;
+        }
+    }
+
+    /**
+     * Return true if this map has no visible members.
+     *
+     * @return true if this map has no visible members.
+     */
+    public boolean noVisibleMembers() {
+        return noVisibleMembers;
+    }
+
+    private ClassMember getClassMember(MethodDoc member) {
+        for (Iterator<?> iter = memberNameMap.keySet().iterator(); iter.hasNext();) {
+            Object key = iter.next();
+            if (key instanceof String) {
+                continue;
+            } else if (((ClassMember) key).isEqual(member)) {
+                return (ClassMember) key;
+            }
+        }
+        return new ClassMember(member);
+    }
+
+    /**
+     * Return the key to the member map for the given member.
+     */
+    private Object getMemberKey(ProgramElementDoc doc) {
+        if (doc.isConstructor()) {
+            return doc.name() + ((ExecutableMemberDoc)doc).signature();
+        } else if (doc.isMethod()) {
+            return getClassMember((MethodDoc) doc);
+        } else if (doc.isField() || doc.isEnumConstant() || doc.isAnnotationTypeElement()) {
+            return doc.name();
+        } else { // it's a class or interface
+            String classOrIntName = doc.name();
+            //Strip off the containing class name because we only want the member name.
+            classOrIntName = classOrIntName.indexOf('.') != 0 ? classOrIntName.substring(classOrIntName.lastIndexOf('.'), classOrIntName.length()) : classOrIntName;
+            return "clint" + classOrIntName;
+        }
+    }
+}

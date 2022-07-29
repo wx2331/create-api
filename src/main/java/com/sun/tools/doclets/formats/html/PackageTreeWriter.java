@@ -1,211 +1,206 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlConstants;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.ClassTree;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPath;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPaths;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocletAbortException;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.Util;
-/*     */ import java.io.IOException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class PackageTreeWriter
-/*     */   extends AbstractTreeWriter
-/*     */ {
-/*     */   protected PackageDoc packagedoc;
-/*     */   protected PackageDoc prev;
-/*     */   protected PackageDoc next;
-/*     */   
-/*     */   public PackageTreeWriter(ConfigurationImpl paramConfigurationImpl, DocPath paramDocPath, PackageDoc paramPackageDoc1, PackageDoc paramPackageDoc2, PackageDoc paramPackageDoc3) throws IOException {
-/*  74 */     super(paramConfigurationImpl, paramDocPath, new ClassTree(paramConfigurationImpl.classDocCatalog
-/*     */           
-/*  76 */           .allClasses(paramPackageDoc1), paramConfigurationImpl));
-/*     */     
-/*  78 */     this.packagedoc = paramPackageDoc1;
-/*  79 */     this.prev = paramPackageDoc2;
-/*  80 */     this.next = paramPackageDoc3;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void generate(ConfigurationImpl paramConfigurationImpl, PackageDoc paramPackageDoc1, PackageDoc paramPackageDoc2, PackageDoc paramPackageDoc3, boolean paramBoolean) {
-/*  98 */     DocPath docPath = DocPath.forPackage(paramPackageDoc1).resolve(DocPaths.PACKAGE_TREE);
-/*     */     try {
-/* 100 */       PackageTreeWriter packageTreeWriter = new PackageTreeWriter(paramConfigurationImpl, docPath, paramPackageDoc1, paramPackageDoc2, paramPackageDoc3);
-/*     */       
-/* 102 */       packageTreeWriter.generatePackageTreeFile();
-/* 103 */       packageTreeWriter.close();
-/* 104 */     } catch (IOException iOException) {
-/* 105 */       paramConfigurationImpl.standardmessage.error("doclet.exception_encountered", new Object[] { iOException
-/*     */             
-/* 107 */             .toString(), docPath.getPath() });
-/* 108 */       throw new DocletAbortException(iOException);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void generatePackageTreeFile() throws IOException {
-/* 116 */     Content content1 = getPackageTreeHeader();
-/* 117 */     Content content2 = getResource("doclet.Hierarchy_For_Package", 
-/* 118 */         Util.getPackageName(this.packagedoc));
-/* 119 */     HtmlTree htmlTree1 = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, false, HtmlStyle.title, content2);
-/*     */     
-/* 121 */     HtmlTree htmlTree2 = HtmlTree.DIV(HtmlStyle.header, (Content)htmlTree1);
-/* 122 */     if (this.configuration.packages.length > 1) {
-/* 123 */       addLinkToMainTree((Content)htmlTree2);
-/*     */     }
-/* 125 */     content1.addContent((Content)htmlTree2);
-/* 126 */     HtmlTree htmlTree3 = new HtmlTree(HtmlTag.DIV);
-/* 127 */     htmlTree3.addStyle(HtmlStyle.contentContainer);
-/* 128 */     addTree(this.classtree.baseclasses(), "doclet.Class_Hierarchy", (Content)htmlTree3);
-/* 129 */     addTree(this.classtree.baseinterfaces(), "doclet.Interface_Hierarchy", (Content)htmlTree3);
-/* 130 */     addTree(this.classtree.baseAnnotationTypes(), "doclet.Annotation_Type_Hierarchy", (Content)htmlTree3);
-/* 131 */     addTree(this.classtree.baseEnums(), "doclet.Enum_Hierarchy", (Content)htmlTree3);
-/* 132 */     content1.addContent((Content)htmlTree3);
-/* 133 */     addNavLinks(false, content1);
-/* 134 */     addBottom(content1);
-/* 135 */     printHtmlDocument((String[])null, true, content1);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getPackageTreeHeader() {
-/* 145 */     String str = this.packagedoc.name() + " " + this.configuration.getText("doclet.Window_Class_Hierarchy");
-/* 146 */     HtmlTree htmlTree = getBody(true, getWindowTitle(str));
-/* 147 */     addTop((Content)htmlTree);
-/* 148 */     addNavLinks(true, (Content)htmlTree);
-/* 149 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addLinkToMainTree(Content paramContent) {
-/* 158 */     HtmlTree htmlTree1 = HtmlTree.SPAN(HtmlStyle.packageHierarchyLabel, 
-/* 159 */         getResource("doclet.Package_Hierarchies"));
-/* 160 */     paramContent.addContent((Content)htmlTree1);
-/* 161 */     HtmlTree htmlTree2 = new HtmlTree(HtmlTag.UL);
-/* 162 */     htmlTree2.addStyle(HtmlStyle.horizontal);
-/* 163 */     htmlTree2.addContent(getNavLinkMainTree(this.configuration.getText("doclet.All_Packages")));
-/* 164 */     paramContent.addContent((Content)htmlTree2);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getNavLinkPrevious() {
-/* 173 */     if (this.prev == null) {
-/* 174 */       return getNavLinkPrevious((DocPath)null);
-/*     */     }
-/* 176 */     DocPath docPath = DocPath.relativePath(this.packagedoc, this.prev);
-/* 177 */     return getNavLinkPrevious(docPath.resolve(DocPaths.PACKAGE_TREE));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getNavLinkNext() {
-/* 187 */     if (this.next == null) {
-/* 188 */       return getNavLinkNext((DocPath)null);
-/*     */     }
-/* 190 */     DocPath docPath = DocPath.relativePath(this.packagedoc, this.next);
-/* 191 */     return getNavLinkNext(docPath.resolve(DocPaths.PACKAGE_TREE));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Content getNavLinkPackage() {
-/* 201 */     Content content = getHyperLink(DocPaths.PACKAGE_SUMMARY, this.packageLabel);
-/*     */     
-/* 203 */     return (Content)HtmlTree.LI(content);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\PackageTreeWriter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1998, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Class to generate Tree page for a package. The name of the file generated is
+ * "package-tree.html" and it is generated in the respective package directory.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Atul M Dambalkar
+ * @author Bhavesh Patel (Modified)
+ */
+public class PackageTreeWriter extends AbstractTreeWriter {
+
+    /**
+     * Package for which tree is to be generated.
+     */
+    protected PackageDoc packagedoc;
+
+    /**
+     * The previous package name in the alpha-order list.
+     */
+    protected PackageDoc prev;
+
+    /**
+     * The next package name in the alpha-order list.
+     */
+    protected PackageDoc next;
+
+    /**
+     * Constructor.
+     * @throws IOException
+     * @throws DocletAbortException
+     */
+    public PackageTreeWriter(ConfigurationImpl configuration,
+                             DocPath path,
+                             PackageDoc packagedoc,
+                             PackageDoc prev, PackageDoc next)
+                      throws IOException {
+        super(configuration, path,
+              new ClassTree(
+                configuration.classDocCatalog.allClasses(packagedoc),
+                configuration));
+        this.packagedoc = packagedoc;
+        this.prev = prev;
+        this.next = next;
+    }
+
+    /**
+     * Construct a PackageTreeWriter object and then use it to generate the
+     * package tree page.
+     *
+     * @param pkg      Package for which tree file is to be generated.
+     * @param prev     Previous package in the alpha-ordered list.
+     * @param next     Next package in the alpha-ordered list.
+     * @param noDeprecated  If true, do not generate any information for
+     * deprecated classe or interfaces.
+     * @throws DocletAbortException
+     */
+    public static void generate(ConfigurationImpl configuration,
+                                PackageDoc pkg, PackageDoc prev,
+                                PackageDoc next, boolean noDeprecated) {
+        PackageTreeWriter packgen;
+        DocPath path = DocPath.forPackage(pkg).resolve(DocPaths.PACKAGE_TREE);
+        try {
+            packgen = new PackageTreeWriter(configuration, path, pkg,
+                prev, next);
+            packgen.generatePackageTreeFile();
+            packgen.close();
+        } catch (IOException exc) {
+            configuration.standardmessage.error(
+                        "doclet.exception_encountered",
+                        exc.toString(), path.getPath());
+            throw new DocletAbortException(exc);
+        }
+    }
+
+    /**
+     * Generate a separate tree file for each package.
+     */
+    protected void generatePackageTreeFile() throws IOException {
+        Content body = getPackageTreeHeader();
+        Content headContent = getResource("doclet.Hierarchy_For_Package",
+                Util.getPackageName(packagedoc));
+        Content heading = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, false,
+                HtmlStyle.title, headContent);
+        Content div = HtmlTree.DIV(HtmlStyle.header, heading);
+        if (configuration.packages.length > 1) {
+            addLinkToMainTree(div);
+        }
+        body.addContent(div);
+        HtmlTree divTree = new HtmlTree(HtmlTag.DIV);
+        divTree.addStyle(HtmlStyle.contentContainer);
+        addTree(classtree.baseclasses(), "doclet.Class_Hierarchy", divTree);
+        addTree(classtree.baseinterfaces(), "doclet.Interface_Hierarchy", divTree);
+        addTree(classtree.baseAnnotationTypes(), "doclet.Annotation_Type_Hierarchy", divTree);
+        addTree(classtree.baseEnums(), "doclet.Enum_Hierarchy", divTree);
+        body.addContent(divTree);
+        addNavLinks(false, body);
+        addBottom(body);
+        printHtmlDocument(null, true, body);
+    }
+
+    /**
+     * Get the package tree header.
+     *
+     * @return a content tree for the header
+     */
+    protected Content getPackageTreeHeader() {
+        String title = packagedoc.name() + " " +
+                configuration.getText("doclet.Window_Class_Hierarchy");
+        Content bodyTree = getBody(true, getWindowTitle(title));
+        addTop(bodyTree);
+        addNavLinks(true, bodyTree);
+        return bodyTree;
+    }
+
+    /**
+     * Add a link to the tree for all the packages.
+     *
+     * @param div the content tree to which the link will be added
+     */
+    protected void addLinkToMainTree(Content div) {
+        Content span = HtmlTree.SPAN(HtmlStyle.packageHierarchyLabel,
+                getResource("doclet.Package_Hierarchies"));
+        div.addContent(span);
+        HtmlTree ul = new HtmlTree (HtmlTag.UL);
+        ul.addStyle(HtmlStyle.horizontal);
+        ul.addContent(getNavLinkMainTree(configuration.getText("doclet.All_Packages")));
+        div.addContent(ul);
+    }
+
+    /**
+     * Get link for the previous package tree file.
+     *
+     * @return a content tree for the link
+     */
+    protected Content getNavLinkPrevious() {
+        if (prev == null) {
+            return getNavLinkPrevious(null);
+        } else {
+            DocPath path = DocPath.relativePath(packagedoc, prev);
+            return getNavLinkPrevious(path.resolve(DocPaths.PACKAGE_TREE));
+        }
+    }
+
+    /**
+     * Get link for the next package tree file.
+     *
+     * @return a content tree for the link
+     */
+    protected Content getNavLinkNext() {
+        if (next == null) {
+            return getNavLinkNext(null);
+        } else {
+            DocPath path = DocPath.relativePath(packagedoc, next);
+            return getNavLinkNext(path.resolve(DocPaths.PACKAGE_TREE));
+        }
+    }
+
+    /**
+     * Get link to the package summary page for the package of this tree.
+     *
+     * @return a content tree for the package link
+     */
+    protected Content getNavLinkPackage() {
+        Content linkContent = getHyperLink(DocPaths.PACKAGE_SUMMARY,
+                packageLabel);
+        Content li = HtmlTree.LI(linkContent);
+        return li;
+    }
+}

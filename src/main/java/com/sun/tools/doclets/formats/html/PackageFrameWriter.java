@@ -1,201 +1,195 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlConstants;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.formats.html.markup.StringContent;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPath;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPaths;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocletAbortException;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.Util;
-/*     */ import java.io.IOException;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.HashSet;
-/*     */ import java.util.Set;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class PackageFrameWriter
-/*     */   extends HtmlDocletWriter
-/*     */ {
-/*     */   private PackageDoc packageDoc;
-/*     */   private Set<ClassDoc> documentedClasses;
-/*     */   
-/*     */   public PackageFrameWriter(ConfigurationImpl paramConfigurationImpl, PackageDoc paramPackageDoc) throws IOException {
-/*  76 */     super(paramConfigurationImpl, DocPath.forPackage(paramPackageDoc).resolve(DocPaths.PACKAGE_FRAME));
-/*  77 */     this.packageDoc = paramPackageDoc;
-/*  78 */     if ((paramConfigurationImpl.root.specifiedPackages()).length == 0) {
-/*  79 */       this.documentedClasses = new HashSet<>(Arrays.asList(paramConfigurationImpl.root.classes()));
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static void generate(ConfigurationImpl paramConfigurationImpl, PackageDoc paramPackageDoc) {
-/*     */     try {
-/*  94 */       PackageFrameWriter packageFrameWriter = new PackageFrameWriter(paramConfigurationImpl, paramPackageDoc);
-/*  95 */       String str = Util.getPackageName(paramPackageDoc);
-/*  96 */       HtmlTree htmlTree1 = packageFrameWriter.getBody(false, packageFrameWriter.getWindowTitle(str));
-/*  97 */       StringContent stringContent = new StringContent(str);
-/*  98 */       HtmlTree htmlTree2 = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, HtmlStyle.bar, packageFrameWriter
-/*  99 */           .getTargetPackageLink(paramPackageDoc, "classFrame", (Content)stringContent));
-/* 100 */       htmlTree1.addContent((Content)htmlTree2);
-/* 101 */       HtmlTree htmlTree3 = new HtmlTree(HtmlTag.DIV);
-/* 102 */       htmlTree3.addStyle(HtmlStyle.indexContainer);
-/* 103 */       packageFrameWriter.addClassListing((Content)htmlTree3);
-/* 104 */       htmlTree1.addContent((Content)htmlTree3);
-/* 105 */       packageFrameWriter.printHtmlDocument(paramConfigurationImpl.metakeywords
-/* 106 */           .getMetaKeywords(paramPackageDoc), false, (Content)htmlTree1);
-/* 107 */       packageFrameWriter.close();
-/* 108 */     } catch (IOException iOException) {
-/* 109 */       paramConfigurationImpl.standardmessage.error("doclet.exception_encountered", new Object[] { iOException
-/*     */             
-/* 111 */             .toString(), DocPaths.PACKAGE_FRAME.getPath() });
-/* 112 */       throw new DocletAbortException(iOException);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addClassListing(Content paramContent) {
-/* 124 */     ConfigurationImpl configurationImpl = this.configuration;
-/* 125 */     if (this.packageDoc.isIncluded()) {
-/* 126 */       addClassKindListing(this.packageDoc.interfaces(), 
-/* 127 */           getResource("doclet.Interfaces"), paramContent);
-/* 128 */       addClassKindListing(this.packageDoc.ordinaryClasses(), 
-/* 129 */           getResource("doclet.Classes"), paramContent);
-/* 130 */       addClassKindListing(this.packageDoc.enums(), 
-/* 131 */           getResource("doclet.Enums"), paramContent);
-/* 132 */       addClassKindListing(this.packageDoc.exceptions(), 
-/* 133 */           getResource("doclet.Exceptions"), paramContent);
-/* 134 */       addClassKindListing(this.packageDoc.errors(), 
-/* 135 */           getResource("doclet.Errors"), paramContent);
-/* 136 */       addClassKindListing((ClassDoc[])this.packageDoc.annotationTypes(), 
-/* 137 */           getResource("doclet.AnnotationTypes"), paramContent);
-/*     */     } else {
-/* 139 */       String str = Util.getPackageName(this.packageDoc);
-/* 140 */       addClassKindListing(configurationImpl.classDocCatalog.interfaces(str), 
-/* 141 */           getResource("doclet.Interfaces"), paramContent);
-/* 142 */       addClassKindListing(configurationImpl.classDocCatalog.ordinaryClasses(str), 
-/* 143 */           getResource("doclet.Classes"), paramContent);
-/* 144 */       addClassKindListing(configurationImpl.classDocCatalog.enums(str), 
-/* 145 */           getResource("doclet.Enums"), paramContent);
-/* 146 */       addClassKindListing(configurationImpl.classDocCatalog.exceptions(str), 
-/* 147 */           getResource("doclet.Exceptions"), paramContent);
-/* 148 */       addClassKindListing(configurationImpl.classDocCatalog.errors(str), 
-/* 149 */           getResource("doclet.Errors"), paramContent);
-/* 150 */       addClassKindListing(configurationImpl.classDocCatalog.annotationTypes(str), 
-/* 151 */           getResource("doclet.AnnotationTypes"), paramContent);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void addClassKindListing(ClassDoc[] paramArrayOfClassDoc, Content paramContent1, Content paramContent2) {
-/* 164 */     paramArrayOfClassDoc = Util.filterOutPrivateClasses(paramArrayOfClassDoc, this.configuration.javafx);
-/* 165 */     if (paramArrayOfClassDoc.length > 0) {
-/* 166 */       Arrays.sort((Object[])paramArrayOfClassDoc);
-/* 167 */       boolean bool = false;
-/* 168 */       HtmlTree htmlTree = new HtmlTree(HtmlTag.UL);
-/* 169 */       htmlTree.setTitle(paramContent1);
-/* 170 */       for (byte b = 0; b < paramArrayOfClassDoc.length; b++) {
-/* 171 */         if (this.documentedClasses == null || this.documentedClasses
-/* 172 */           .contains(paramArrayOfClassDoc[b]))
-/*     */         {
-/*     */           
-/* 175 */           if (Util.isCoreClass(paramArrayOfClassDoc[b]) && this.configuration
-/* 176 */             .isGeneratedDoc(paramArrayOfClassDoc[b])) {
-/*     */             HtmlTree htmlTree1;
-/*     */             
-/* 179 */             if (!bool) {
-/* 180 */               htmlTree1 = HtmlTree.HEADING(HtmlConstants.CONTENT_HEADING, true, paramContent1);
-/*     */               
-/* 182 */               paramContent2.addContent((Content)htmlTree1);
-/* 183 */               bool = true;
-/*     */             } 
-/* 185 */             StringContent stringContent = new StringContent(paramArrayOfClassDoc[b].name());
-/* 186 */             if (paramArrayOfClassDoc[b].isInterface()) htmlTree1 = HtmlTree.SPAN(HtmlStyle.interfaceName, (Content)stringContent); 
-/* 187 */             Content content = getLink((new LinkInfoImpl(this.configuration, LinkInfoImpl.Kind.PACKAGE_FRAME, paramArrayOfClassDoc[b]))
-/* 188 */                 .label((Content)htmlTree1).target("classFrame"));
-/* 189 */             HtmlTree htmlTree2 = HtmlTree.LI(content);
-/* 190 */             htmlTree.addContent((Content)htmlTree2);
-/*     */           }  } 
-/* 192 */       }  paramContent2.addContent((Content)htmlTree);
-/*     */     } 
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\PackageFrameWriter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1998, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+import java.util.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Class to generate file for each package contents in the left-hand bottom
+ * frame. This will list all the Class Kinds in the package. A click on any
+ * class-kind will update the right-hand frame with the clicked class-kind page.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Atul M Dambalkar
+ * @author Bhavesh Patel (Modified)
+ */
+public class PackageFrameWriter extends HtmlDocletWriter {
+
+    /**
+     * The package being documented.
+     */
+    private PackageDoc packageDoc;
+
+    /**
+     * The classes to be documented.  Use this to filter out classes
+     * that will not be documented.
+     */
+    private Set<ClassDoc> documentedClasses;
+
+    /**
+     * Constructor to construct PackageFrameWriter object and to generate
+     * "package-frame.html" file in the respective package directory.
+     * For example for package "java.lang" this will generate file
+     * "package-frame.html" file in the "java/lang" directory. It will also
+     * create "java/lang" directory in the current or the destination directory
+     * if it doesn't exist.
+     *
+     * @param configuration the configuration of the doclet.
+     * @param packageDoc PackageDoc under consideration.
+     */
+    public PackageFrameWriter(ConfigurationImpl configuration,
+                              PackageDoc packageDoc)
+                              throws IOException {
+        super(configuration, DocPath.forPackage(packageDoc).resolve(DocPaths.PACKAGE_FRAME));
+        this.packageDoc = packageDoc;
+        if (configuration.root.specifiedPackages().length == 0) {
+            documentedClasses = new HashSet<ClassDoc>(Arrays.asList(configuration.root.classes()));
+        }
+    }
+
+    /**
+     * Generate a package summary page for the left-hand bottom frame. Construct
+     * the PackageFrameWriter object and then uses it generate the file.
+     *
+     * @param configuration the current configuration of the doclet.
+     * @param packageDoc The package for which "pacakge-frame.html" is to be generated.
+     */
+    public static void generate(ConfigurationImpl configuration,
+            PackageDoc packageDoc) {
+        PackageFrameWriter packgen;
+        try {
+            packgen = new PackageFrameWriter(configuration, packageDoc);
+            String pkgName = Util.getPackageName(packageDoc);
+            Content body = packgen.getBody(false, packgen.getWindowTitle(pkgName));
+            Content pkgNameContent = new StringContent(pkgName);
+            Content heading = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, HtmlStyle.bar,
+                    packgen.getTargetPackageLink(packageDoc, "classFrame", pkgNameContent));
+            body.addContent(heading);
+            HtmlTree div = new HtmlTree(HtmlTag.DIV);
+            div.addStyle(HtmlStyle.indexContainer);
+            packgen.addClassListing(div);
+            body.addContent(div);
+            packgen.printHtmlDocument(
+                    configuration.metakeywords.getMetaKeywords(packageDoc), false, body);
+            packgen.close();
+        } catch (IOException exc) {
+            configuration.standardmessage.error(
+                    "doclet.exception_encountered",
+                    exc.toString(), DocPaths.PACKAGE_FRAME.getPath());
+            throw new DocletAbortException(exc);
+        }
+    }
+
+    /**
+     * Add class listing for all the classes in this package. Divide class
+     * listing as per the class kind and generate separate listing for
+     * Classes, Interfaces, Exceptions and Errors.
+     *
+     * @param contentTree the content tree to which the listing will be added
+     */
+    protected void addClassListing(Content contentTree) {
+        Configuration config = configuration;
+        if (packageDoc.isIncluded()) {
+            addClassKindListing(packageDoc.interfaces(),
+                getResource("doclet.Interfaces"), contentTree);
+            addClassKindListing(packageDoc.ordinaryClasses(),
+                getResource("doclet.Classes"), contentTree);
+            addClassKindListing(packageDoc.enums(),
+                getResource("doclet.Enums"), contentTree);
+            addClassKindListing(packageDoc.exceptions(),
+                getResource("doclet.Exceptions"), contentTree);
+            addClassKindListing(packageDoc.errors(),
+                getResource("doclet.Errors"), contentTree);
+            addClassKindListing(packageDoc.annotationTypes(),
+                getResource("doclet.AnnotationTypes"), contentTree);
+        } else {
+            String name = Util.getPackageName(packageDoc);
+            addClassKindListing(config.classDocCatalog.interfaces(name),
+                getResource("doclet.Interfaces"), contentTree);
+            addClassKindListing(config.classDocCatalog.ordinaryClasses(name),
+                getResource("doclet.Classes"), contentTree);
+            addClassKindListing(config.classDocCatalog.enums(name),
+                getResource("doclet.Enums"), contentTree);
+            addClassKindListing(config.classDocCatalog.exceptions(name),
+                getResource("doclet.Exceptions"), contentTree);
+            addClassKindListing(config.classDocCatalog.errors(name),
+                getResource("doclet.Errors"), contentTree);
+            addClassKindListing(config.classDocCatalog.annotationTypes(name),
+                getResource("doclet.AnnotationTypes"), contentTree);
+        }
+    }
+
+    /**
+     * Add specific class kind listing. Also add label to the listing.
+     *
+     * @param arr Array of specific class kinds, namely Class or Interface or Exception or Error
+     * @param labelContent content tree of the label to be added
+     * @param contentTree the content tree to which the class kind listing will be added
+     */
+    protected void addClassKindListing(ClassDoc[] arr, Content labelContent,
+            Content contentTree) {
+        arr = Util.filterOutPrivateClasses(arr, configuration.javafx);
+        if(arr.length > 0) {
+            Arrays.sort(arr);
+            boolean printedHeader = false;
+            HtmlTree ul = new HtmlTree(HtmlTag.UL);
+            ul.setTitle(labelContent);
+            for (int i = 0; i < arr.length; i++) {
+                if (documentedClasses != null &&
+                        !documentedClasses.contains(arr[i])) {
+                    continue;
+                }
+                if (!Util.isCoreClass(arr[i]) || !
+                        configuration.isGeneratedDoc(arr[i])) {
+                    continue;
+                }
+                if (!printedHeader) {
+                    Content heading = HtmlTree.HEADING(HtmlConstants.CONTENT_HEADING,
+                            true, labelContent);
+                    contentTree.addContent(heading);
+                    printedHeader = true;
+                }
+                Content arr_i_name = new StringContent(arr[i].name());
+                if (arr[i].isInterface()) arr_i_name = HtmlTree.SPAN(HtmlStyle.interfaceName, arr_i_name);
+                Content link = getLink(new LinkInfoImpl(configuration,
+                        LinkInfoImpl.Kind.PACKAGE_FRAME, arr[i]).label(arr_i_name).target("classFrame"));
+                Content li = HtmlTree.LI(link);
+                ul.addContent(li);
+            }
+            contentTree.addContent(ul);
+        }
+    }
+}

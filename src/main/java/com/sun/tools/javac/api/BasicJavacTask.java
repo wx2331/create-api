@@ -1,167 +1,161 @@
-/*     */ package com.sun.tools.javac.api;
-/*     */ 
-/*     */ import com.sun.source.tree.CompilationUnitTree;
-/*     */ import com.sun.source.tree.Tree;
-/*     */ import com.sun.source.util.JavacTask;
-/*     */ import com.sun.source.util.TaskListener;
-/*     */ import com.sun.tools.javac.model.JavacElements;
-/*     */ import com.sun.tools.javac.model.JavacTypes;
-/*     */ import com.sun.tools.javac.tree.JCTree;
-/*     */ import com.sun.tools.javac.util.Context;
-/*     */ import java.io.IOException;
-/*     */ import java.util.Collection;
-/*     */ import java.util.Locale;
-/*     */ import javax.annotation.processing.Processor;
-/*     */ import javax.lang.model.element.Element;
-/*     */ import javax.lang.model.type.TypeMirror;
-/*     */ import javax.lang.model.util.Elements;
-/*     */ import javax.lang.model.util.Types;
-/*     */ import javax.tools.JavaFileObject;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class BasicJavacTask
-/*     */   extends JavacTask
-/*     */ {
-/*     */   protected Context context;
-/*     */   private TaskListener taskListener;
-/*     */   
-/*     */   public static JavacTask instance(Context paramContext) {
-/*  61 */     JavacTask javacTask = (JavacTask)paramContext.get(JavacTask.class);
-/*  62 */     if (javacTask == null)
-/*  63 */       javacTask = new BasicJavacTask(paramContext, true); 
-/*  64 */     return javacTask;
-/*     */   }
-/*     */   
-/*     */   public BasicJavacTask(Context paramContext, boolean paramBoolean) {
-/*  68 */     this.context = paramContext;
-/*  69 */     if (paramBoolean) {
-/*  70 */       this.context.put(JavacTask.class, this);
-/*     */     }
-/*     */   }
-/*     */   
-/*     */   public Iterable<? extends CompilationUnitTree> parse() throws IOException {
-/*  75 */     throw new IllegalStateException();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public Iterable<? extends Element> analyze() throws IOException {
-/*  80 */     throw new IllegalStateException();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public Iterable<? extends JavaFileObject> generate() throws IOException {
-/*  85 */     throw new IllegalStateException();
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public void setTaskListener(TaskListener paramTaskListener) {
-/*  90 */     MultiTaskListener multiTaskListener = MultiTaskListener.instance(this.context);
-/*  91 */     if (this.taskListener != null)
-/*  92 */       multiTaskListener.remove(this.taskListener); 
-/*  93 */     if (paramTaskListener != null)
-/*  94 */       multiTaskListener.add(paramTaskListener); 
-/*  95 */     this.taskListener = paramTaskListener;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public void addTaskListener(TaskListener paramTaskListener) {
-/* 100 */     MultiTaskListener multiTaskListener = MultiTaskListener.instance(this.context);
-/* 101 */     multiTaskListener.add(paramTaskListener);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public void removeTaskListener(TaskListener paramTaskListener) {
-/* 106 */     MultiTaskListener multiTaskListener = MultiTaskListener.instance(this.context);
-/* 107 */     multiTaskListener.remove(paramTaskListener);
-/*     */   }
-/*     */   
-/*     */   public Collection<TaskListener> getTaskListeners() {
-/* 111 */     MultiTaskListener multiTaskListener = MultiTaskListener.instance(this.context);
-/* 112 */     return multiTaskListener.getTaskListeners();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public TypeMirror getTypeMirror(Iterable<? extends Tree> paramIterable) {
-/* 118 */     Tree tree = null;
-/* 119 */     for (Tree tree1 : paramIterable)
-/* 120 */       tree = tree1; 
-/* 121 */     return (TypeMirror)((JCTree)tree).type;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public Elements getElements() {
-/* 126 */     return (Elements)JavacElements.instance(this.context);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public Types getTypes() {
-/* 131 */     return (Types)JavacTypes.instance(this.context);
-/*     */   }
-/*     */   
-/*     */   public void setProcessors(Iterable<? extends Processor> paramIterable) {
-/* 135 */     throw new IllegalStateException();
-/*     */   }
-/*     */   
-/*     */   public void setLocale(Locale paramLocale) {
-/* 139 */     throw new IllegalStateException();
-/*     */   }
-/*     */   
-/*     */   public Boolean call() {
-/* 143 */     throw new IllegalStateException();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Context getContext() {
-/* 151 */     return this.context;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void updateContext(Context paramContext) {
-/* 159 */     this.context = paramContext;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\api\BasicJavacTask.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2005, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.api;
+
+import java.io.IOException;
+import java.util.Collection;
+import java.util.Locale;
+
+import javax.annotation.processing.Processor;
+import javax.lang.model.element.Element;
+import javax.lang.model.type.TypeMirror;
+import javax.lang.model.util.Elements;
+import javax.lang.model.util.Types;
+import javax.tools.JavaFileObject;
+
+import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.util.JavacTask;
+import com.sun.source.util.TaskListener;
+import com.sun.tools.javac.model.JavacElements;
+import com.sun.tools.javac.model.JavacTypes;
+import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.util.Context;
+
+/**
+ * Provides basic functionality for implementations of JavacTask.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own
+ * risk.  This code and its internal interfaces are subject to change
+ * or deletion without notice.</b></p>
+ */
+public class BasicJavacTask extends JavacTask {
+    protected Context context;
+    private TaskListener taskListener;
+
+    public static JavacTask instance(Context context) {
+        JavacTask instance = context.get(JavacTask.class);
+        if (instance == null)
+            instance = new BasicJavacTask(context, true);
+        return instance;
+    }
+
+    public BasicJavacTask(Context c, boolean register) {
+        context = c;
+        if (register)
+            context.put(JavacTask.class, this);
+    }
+
+    @Override
+    public Iterable<? extends CompilationUnitTree> parse() throws IOException {
+        throw new IllegalStateException();
+    }
+
+    @Override
+    public Iterable<? extends Element> analyze() throws IOException {
+        throw new IllegalStateException();
+    }
+
+    @Override
+    public Iterable<? extends JavaFileObject> generate() throws IOException {
+        throw new IllegalStateException();
+    }
+
+    @Override
+    public void setTaskListener(TaskListener tl) {
+        MultiTaskListener mtl = MultiTaskListener.instance(context);
+        if (taskListener != null)
+            mtl.remove(taskListener);
+        if (tl != null)
+            mtl.add(tl);
+        taskListener = tl;
+    }
+
+    @Override
+    public void addTaskListener(TaskListener taskListener) {
+        MultiTaskListener mtl = MultiTaskListener.instance(context);
+        mtl.add(taskListener);
+    }
+
+    @Override
+    public void removeTaskListener(TaskListener taskListener) {
+        MultiTaskListener mtl = MultiTaskListener.instance(context);
+        mtl.remove(taskListener);
+    }
+
+    public Collection<TaskListener> getTaskListeners() {
+        MultiTaskListener mtl = MultiTaskListener.instance(context);
+        return mtl.getTaskListeners();
+    }
+
+    @Override
+    public TypeMirror getTypeMirror(Iterable<? extends Tree> path) {
+        // TODO: Should complete attribution if necessary
+        Tree last = null;
+        for (Tree node : path)
+            last = node;
+        return ((JCTree)last).type;
+    }
+
+    @Override
+    public Elements getElements() {
+        return JavacElements.instance(context);
+    }
+
+    @Override
+    public Types getTypes() {
+        return JavacTypes.instance(context);
+    }
+
+    public void setProcessors(Iterable<? extends Processor> processors) {
+        throw new IllegalStateException();
+    }
+
+    public void setLocale(Locale locale) {
+        throw new IllegalStateException();
+    }
+
+    public Boolean call() {
+        throw new IllegalStateException();
+    }
+
+    /**
+     * For internal use only.  This method will be
+     * removed without warning.
+     */
+    public Context getContext() {
+        return context;
+    }
+
+    /**
+     * For internal use only.  This method will be
+     * removed without warning.
+     */
+    public void updateContext(Context newContext) {
+        context = newContext;
+    }
+}

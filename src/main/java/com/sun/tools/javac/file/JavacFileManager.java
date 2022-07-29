@@ -1,899 +1,881 @@
-/*     */ package com.sun.tools.javac.file;
-/*     */
-/*     */ import com.sun.tools.javac.util.BaseFileManager;
-/*     */ import com.sun.tools.javac.util.Context;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import com.sun.tools.javac.util.ListBuffer;
-/*     */ import java.io.ByteArrayOutputStream;
-/*     */ import java.io.File;
-/*     */ import java.io.FileNotFoundException;
-/*     */ import java.io.IOException;
-/*     */ import java.io.OutputStreamWriter;
-/*     */ import java.io.UnsupportedEncodingException;
-/*     */ import java.net.MalformedURLException;
-/*     */ import java.net.URI;
-/*     */ import java.net.URISyntaxException;
-/*     */ import java.net.URL;
-/*     */ import java.nio.CharBuffer;
-/*     */ import java.nio.charset.Charset;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.Collection;
-/*     */ import java.util.Collections;
-/*     */ import java.util.Comparator;
-/*     */ import java.util.EnumSet;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.Map;
-/*     */ import java.util.Set;
-/*     */ import java.util.zip.ZipFile;
-/*     */ import javax.lang.model.SourceVersion;
-/*     */ import javax.tools.FileObject;
-/*     */ import javax.tools.JavaFileManager;
-/*     */ import javax.tools.JavaFileObject;
-/*     */ import javax.tools.StandardJavaFileManager;
-/*     */ import javax.tools.StandardLocation;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class JavacFileManager
-/*     */   extends BaseFileManager
-/*     */   implements StandardJavaFileManager
-/*     */ {
-/*     */   private FSInfo fsInfo;
-/*     */   private boolean contextUseOptimizedZip;
-/*     */   private ZipFileIndexCache zipFileIndexCache;
-/*     */
-/*     */   public static char[] toArray(CharBuffer paramCharBuffer) {
-/*  78 */     if (paramCharBuffer.hasArray()) {
-/*  79 */       return ((CharBuffer)paramCharBuffer.compact().flip()).array();
-/*     */     }
-/*  81 */     return paramCharBuffer.toString().toCharArray();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*  90 */   private final Set<JavaFileObject.Kind> sourceOrClass = EnumSet.of(JavaFileObject.Kind.SOURCE, JavaFileObject.Kind.CLASS);
-/*     */   protected boolean mmappedIO;
-/*     */   protected boolean symbolFileEnabled;
-/*     */   protected SortFiles sortFiles;
-/*     */
-/*     */   protected enum SortFiles implements Comparator<File> {
-/*  96 */     FORWARD {
-/*     */       public int compare(File param2File1, File param2File2) {
-/*  98 */         return param2File1.getName().compareTo(param2File2.getName());
-/*     */       }
-/*     */     },
-/* 101 */     REVERSE {
-/*     */       public int compare(File param2File1, File param2File2) {
-/* 103 */         return -param2File1.getName().compareTo(param2File2.getName());
-/*     */       }
-/*     */     };
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static void preRegister(Context paramContext) {
-/* 113 */     paramContext.put(JavaFileManager.class, new Context.Factory<JavaFileManager>() {
-/*     */           public JavaFileManager make(Context param1Context) {
-/* 115 */             return new JavacFileManager(param1Context, true, null);
-/*     */           }
-/*     */         });
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public JavacFileManager(Context paramContext, boolean paramBoolean, Charset paramCharset) {
-/* 125 */     super(paramCharset);
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/* 448 */     this.archives = new HashMap<>(); if (paramBoolean) paramContext.put(JavaFileManager.class, this);  setContext(paramContext);
-/*     */   }
-/* 450 */   public void setContext(Context paramContext) { super.setContext(paramContext); this.fsInfo = FSInfo.instance(paramContext); this.contextUseOptimizedZip = this.options.getBoolean("useOptimizedZip", true); if (this.contextUseOptimizedZip) this.zipFileIndexCache = ZipFileIndexCache.getSharedInstance();  this.mmappedIO = this.options.isSet("mmappedIO"); this.symbolFileEnabled = !this.options.isSet("ignore.symbol.file"); String str = this.options.get("sortFiles"); if (str != null) this.sortFiles = str.equals("reverse") ? SortFiles.REVERSE : SortFiles.FORWARD;  } public void setSymbolFileEnabled(boolean paramBoolean) { this.symbolFileEnabled = paramBoolean; } public boolean isDefaultBootClassPath() { return this.locations.isDefaultBootClassPath(); } public JavaFileObject getFileForInput(String paramString) { return getRegularFile(new File(paramString)); } public JavaFileObject getRegularFile(File paramFile) { return new RegularFileObject(this, paramFile); } public JavaFileObject getFileForOutput(String paramString, JavaFileObject.Kind paramKind, JavaFileObject paramJavaFileObject) throws IOException { return getJavaFileForOutput(StandardLocation.CLASS_OUTPUT, paramString, paramKind, paramJavaFileObject); } public Iterable<? extends JavaFileObject> getJavaFileObjectsFromStrings(Iterable<String> paramIterable) { ListBuffer listBuffer = new ListBuffer(); for (String str : paramIterable) listBuffer.append(new File((String)nullCheck(str)));  return getJavaFileObjectsFromFiles((Iterable<? extends File>)listBuffer.toList()); } public Iterable<? extends JavaFileObject> getJavaFileObjects(String... paramVarArgs) { return getJavaFileObjectsFromStrings(Arrays.asList((Object[])nullCheck(paramVarArgs))); } private static boolean isValidName(String paramString) { for (String str : paramString.split("\\.", -1)) { if (!SourceVersion.isIdentifier(str)) return false;  }  return true; } private static void validateClassName(String paramString) { if (!isValidName(paramString)) throw new IllegalArgumentException("Invalid class name: " + paramString);  } private static final String[] symbolFileLocation = new String[] { "lib", "ct.sym" }; private static void validatePackageName(String paramString) { if (paramString.length() > 0 && !isValidName(paramString)) throw new IllegalArgumentException("Invalid packageName name: " + paramString);  } public static void testName(String paramString, boolean paramBoolean1, boolean paramBoolean2) { try { validatePackageName(paramString); if (!paramBoolean1) throw new AssertionError("Invalid package name accepted: " + paramString);  printAscii("Valid package name: \"%s\"", new Object[] { paramString }); } catch (IllegalArgumentException illegalArgumentException) { if (paramBoolean1) throw new AssertionError("Valid package name rejected: " + paramString);  printAscii("Invalid package name: \"%s\"", new Object[] { paramString }); }  try { validateClassName(paramString); if (!paramBoolean2) throw new AssertionError("Invalid class name accepted: " + paramString);  printAscii("Valid class name: \"%s\"", new Object[] { paramString }); } catch (IllegalArgumentException illegalArgumentException) { if (paramBoolean2) throw new AssertionError("Valid class name rejected: " + paramString);  printAscii("Invalid class name: \"%s\"", new Object[] { paramString }); }  } private static void printAscii(String paramString, Object... paramVarArgs) { String str; try { str = new String(String.format(null, paramString, paramVarArgs).getBytes("US-ASCII"), "US-ASCII"); } catch (UnsupportedEncodingException unsupportedEncodingException) { throw new AssertionError(unsupportedEncodingException); }  System.out.println(str); } private void listDirectory(File paramFile, RelativePath.RelativeDirectory paramRelativeDirectory, Set<JavaFileObject.Kind> paramSet, boolean paramBoolean, ListBuffer<JavaFileObject> paramListBuffer) { File file = paramRelativeDirectory.getFile(paramFile); if (!caseMapCheck(file, paramRelativeDirectory)) return;  File[] arrayOfFile = file.listFiles(); if (arrayOfFile == null) return;  if (this.sortFiles != null) Arrays.sort(arrayOfFile, this.sortFiles);  for (File file1 : arrayOfFile) { String str = file1.getName(); if (file1.isDirectory()) { if (paramBoolean && SourceVersion.isIdentifier(str)) listDirectory(paramFile, new RelativePath.RelativeDirectory(paramRelativeDirectory, str), paramSet, paramBoolean, paramListBuffer);  } else if (isValidFile(str, paramSet)) { RegularFileObject regularFileObject = new RegularFileObject(this, str, new File(file, str)); paramListBuffer.append(regularFileObject); }  }  } private void listArchive(Archive paramArchive, RelativePath.RelativeDirectory paramRelativeDirectory, Set<JavaFileObject.Kind> paramSet, boolean paramBoolean, ListBuffer<JavaFileObject> paramListBuffer) { List<String> list = paramArchive.getFiles(paramRelativeDirectory); if (list != null) for (; !list.isEmpty(); list = list.tail) { String str = (String)list.head; if (isValidFile(str, paramSet)) paramListBuffer.append(paramArchive.getFileObject(paramRelativeDirectory, str));  }   if (paramBoolean) for (RelativePath.RelativeDirectory relativeDirectory : paramArchive.getSubdirectories()) { if (paramRelativeDirectory.contains(relativeDirectory)) listArchive(paramArchive, relativeDirectory, paramSet, false, paramListBuffer);  }   } private void listContainer(File paramFile, RelativePath.RelativeDirectory paramRelativeDirectory, Set<JavaFileObject.Kind> paramSet, boolean paramBoolean, ListBuffer<JavaFileObject> paramListBuffer) { Archive archive = this.archives.get(paramFile); if (archive == null) { if (this.fsInfo.isDirectory(paramFile)) { listDirectory(paramFile, paramRelativeDirectory, paramSet, paramBoolean, paramListBuffer); return; }  try { archive = openArchive(paramFile); } catch (IOException iOException) { this.log.error("error.reading.file", new Object[] { paramFile, getMessage(iOException) }); return; }  }  listArchive(archive, paramRelativeDirectory, paramSet, paramBoolean, paramListBuffer); } private boolean isValidFile(String paramString, Set<JavaFileObject.Kind> paramSet) { JavaFileObject.Kind kind = getKind(paramString); return paramSet.contains(kind); } private static final boolean fileSystemIsCaseSensitive = (File.separatorChar == '/'); Map<File, Archive> archives; private boolean caseMapCheck(File paramFile, RelativePath paramRelativePath) { String str; if (fileSystemIsCaseSensitive) return true;  try { str = paramFile.getCanonicalPath(); } catch (IOException iOException) { return false; }  char[] arrayOfChar1 = str.toCharArray(); char[] arrayOfChar2 = paramRelativePath.path.toCharArray(); int i = arrayOfChar1.length - 1; int j = arrayOfChar2.length - 1; while (i >= 0 && j >= 0) { for (; i >= 0 && arrayOfChar1[i] == File.separatorChar; i--); for (; j >= 0 && arrayOfChar2[j] == '/'; j--); if (i >= 0 && j >= 0) { if (arrayOfChar1[i] != arrayOfChar2[j]) return false;  i--; j--; }  }  return (j < 0); } public class MissingArchive implements Archive {
-/* 451 */     final File zipFileName; public MissingArchive(File param1File) { this.zipFileName = param1File; } public boolean contains(RelativePath param1RelativePath) { return false; } public void close() {} public JavaFileObject getFileObject(RelativePath.RelativeDirectory param1RelativeDirectory, String param1String) { return null; } public List<String> getFiles(RelativePath.RelativeDirectory param1RelativeDirectory) { return List.nil(); } public Set<RelativePath.RelativeDirectory> getSubdirectories() { return Collections.emptySet(); } public String toString() { return "MissingArchive[" + this.zipFileName + "]"; } } private static final RelativePath.RelativeDirectory symbolFilePrefix = new RelativePath.RelativeDirectory("META-INF/sym/rt.jar/");
-/*     */
-/*     */
-/*     */
-/*     */   private String defaultEncodingName;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   protected Archive openArchive(File paramFile) throws IOException {
-/*     */     try {
-/* 462 */       return openArchive(paramFile, this.contextUseOptimizedZip);
-/* 463 */     } catch (IOException iOException) {
-/* 464 */       if (iOException instanceof ZipFileIndex.ZipFormatException) {
-/* 465 */         return openArchive(paramFile, false);
-/*     */       }
-/* 467 */       throw iOException;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   private Archive openArchive(File paramFile, boolean paramBoolean) throws IOException {
-/*     */     MissingArchive missingArchive;
-/* 475 */     File file = paramFile;
-/* 476 */     if (this.symbolFileEnabled && this.locations.isDefaultBootClassPathRtJar(paramFile)) {
-/* 477 */       File file1 = paramFile.getParentFile().getParentFile();
-/* 478 */       if ((new File(file1.getName())).equals(new File("jre"))) {
-/* 479 */         file1 = file1.getParentFile();
-/*     */       }
-/* 481 */       for (String str : symbolFileLocation) {
-/* 482 */         file1 = new File(file1, str);
-/*     */       }
-/* 484 */       if (file1.exists()) {
-/* 485 */         paramFile = file1;
-/*     */       }
-/*     */     }
-/*     */
-/*     */
-/*     */     try {
-/* 491 */       ZipFile zipFile = null;
-/*     */
-/* 493 */       boolean bool = false;
-/* 494 */       String str = null;
-/*     */
-/* 496 */       if (!paramBoolean) {
-/* 497 */         zipFile = new ZipFile(paramFile);
-/*     */       } else {
-/* 499 */         bool = this.options.isSet("usezipindex");
-/* 500 */         str = this.options.get("java.io.tmpdir");
-/* 501 */         String str1 = this.options.get("cachezipindexdir");
-/*     */
-/* 503 */         if (str1 != null && str1.length() != 0) {
-/* 504 */           if (str1.startsWith("\"")) {
-/* 505 */             if (str1.endsWith("\"")) {
-/* 506 */               str1 = str1.substring(1, str1.length() - 1);
-/*     */             } else {
-/*     */
-/* 509 */               str1 = str1.substring(1);
-/*     */             }
-/*     */           }
-/*     */
-/* 513 */           File file1 = new File(str1);
-/* 514 */           if (file1.exists() && file1.canWrite()) {
-/* 515 */             str = str1;
-/* 516 */             if (!str.endsWith("/") &&
-/* 517 */               !str.endsWith(File.separator)) {
-/* 518 */               str = str + File.separator;
-/*     */             }
-/*     */           }
-/*     */         }
-/*     */       }
-/*     */
-/* 524 */       if (file == paramFile) {
-/* 525 */         if (!paramBoolean) {
-/* 526 */           ZipArchive zipArchive = new ZipArchive(this, zipFile);
-/*     */         } else {
-/*     */
-/* 529 */           ZipFileIndexArchive zipFileIndexArchive = new ZipFileIndexArchive(this, this.zipFileIndexCache.getZipFileIndex(paramFile, null, bool, str, this.options
-/*     */
-/*     */
-/*     */
-/* 533 */                 .isSet("writezipindexfiles")));
-/*     */         }
-/*     */
-/* 536 */       } else if (!paramBoolean) {
-/* 537 */         SymbolArchive symbolArchive = new SymbolArchive(this, file, zipFile, symbolFilePrefix);
-/*     */       } else {
-/*     */
-/* 540 */         ZipFileIndexArchive zipFileIndexArchive = new ZipFileIndexArchive(this, this.zipFileIndexCache.getZipFileIndex(paramFile, symbolFilePrefix, bool, str, this.options
-/*     */
-/*     */
-/*     */
-/* 544 */               .isSet("writezipindexfiles")));
-/*     */       }
-/*     */
-/* 547 */     } catch (FileNotFoundException fileNotFoundException) {
-/* 548 */       missingArchive = new MissingArchive(paramFile);
-/* 549 */     } catch (ZipFormatException zipFormatException) {
-/* 550 */       throw zipFormatException;
-/* 551 */     } catch (IOException iOException) {
-/* 552 */       if (paramFile.exists())
-/* 553 */         this.log.error("error.reading.file", new Object[] { paramFile, getMessage(iOException) });
-/* 554 */       missingArchive = new MissingArchive(paramFile);
-/*     */     }
-/*     */
-/* 557 */     this.archives.put(file, missingArchive);
-/* 558 */     return missingArchive;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public void flush() {
-/* 564 */     this.contentCache.clear();
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void close() {
-/* 571 */     for (Iterator<Archive> iterator = this.archives.values().iterator(); iterator.hasNext(); ) {
-/* 572 */       Archive archive = iterator.next();
-/* 573 */       iterator.remove();
-/*     */       try {
-/* 575 */         archive.close();
-/* 576 */       } catch (IOException iOException) {}
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   private String getDefaultEncodingName() {
-/* 583 */     if (this.defaultEncodingName == null) {
-/* 584 */       this
-/* 585 */         .defaultEncodingName = (new OutputStreamWriter(new ByteArrayOutputStream())).getEncoding();
-/*     */     }
-/* 587 */     return this.defaultEncodingName;
-/*     */   }
-/*     */
-/*     */   public ClassLoader getClassLoader(Location paramLocation) {
-/* 591 */     nullCheck(paramLocation);
-/* 592 */     Iterable<? extends File> iterable = getLocation(paramLocation);
-/* 593 */     if (iterable == null)
-/* 594 */       return null;
-/* 595 */     ListBuffer listBuffer = new ListBuffer();
-/* 596 */     for (File file : iterable) {
-/*     */       try {
-/* 598 */         listBuffer.append(file.toURI().toURL());
-/* 599 */       } catch (MalformedURLException malformedURLException) {
-/* 600 */         throw new AssertionError(malformedURLException);
-/*     */       }
-/*     */     }
-/*     */
-/* 604 */     return getClassLoader((URL[])listBuffer.toArray((Object[])new URL[listBuffer.size()]));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Iterable<JavaFileObject> list(Location paramLocation, String paramString, Set<JavaFileObject.Kind> paramSet, boolean paramBoolean) throws IOException {
-/* 614 */     nullCheck(paramString);
-/* 615 */     nullCheck(paramSet);
-/*     */
-/* 617 */     Iterable<? extends File> iterable = getLocation(paramLocation);
-/* 618 */     if (iterable == null)
-/* 619 */       return (Iterable<JavaFileObject>)List.nil();
-/* 620 */     RelativePath.RelativeDirectory relativeDirectory = RelativePath.RelativeDirectory.forPackage(paramString);
-/* 621 */     ListBuffer<JavaFileObject> listBuffer = new ListBuffer();
-/*     */
-/* 623 */     for (File file : iterable)
-/* 624 */       listContainer(file, relativeDirectory, paramSet, paramBoolean, listBuffer);
-/* 625 */     return (Iterable<JavaFileObject>)listBuffer.toList();
-/*     */   }
-/*     */
-/*     */   public String inferBinaryName(Location paramLocation, JavaFileObject paramJavaFileObject) {
-/* 629 */     paramJavaFileObject.getClass();
-/* 630 */     paramLocation.getClass();
-/*     */
-/* 632 */     Iterable<? extends File> iterable = getLocation(paramLocation);
-/* 633 */     if (iterable == null) {
-/* 634 */       return null;
-/*     */     }
-/*     */
-/* 637 */     if (paramJavaFileObject instanceof BaseFileObject) {
-/* 638 */       return ((BaseFileObject)paramJavaFileObject).inferBinaryName(iterable);
-/*     */     }
-/* 640 */     throw new IllegalArgumentException(paramJavaFileObject.getClass().getName());
-/*     */   }
-/*     */
-/*     */   public boolean isSameFile(FileObject paramFileObject1, FileObject paramFileObject2) {
-/* 644 */     nullCheck(paramFileObject1);
-/* 645 */     nullCheck(paramFileObject2);
-/* 646 */     if (!(paramFileObject1 instanceof BaseFileObject))
-/* 647 */       throw new IllegalArgumentException("Not supported: " + paramFileObject1);
-/* 648 */     if (!(paramFileObject2 instanceof BaseFileObject))
-/* 649 */       throw new IllegalArgumentException("Not supported: " + paramFileObject2);
-/* 650 */     return paramFileObject1.equals(paramFileObject2);
-/*     */   }
-/*     */
-/*     */   public boolean hasLocation(Location paramLocation) {
-/* 654 */     return (getLocation(paramLocation) != null);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public JavaFileObject getJavaFileForInput(Location paramLocation, String paramString, JavaFileObject.Kind paramKind) throws IOException {
-/* 662 */     nullCheck(paramLocation);
-/*     */
-/* 664 */     nullCheck(paramString);
-/* 665 */     nullCheck(paramKind);
-/* 666 */     if (!this.sourceOrClass.contains(paramKind))
-/* 667 */       throw new IllegalArgumentException("Invalid kind: " + paramKind);
-/* 668 */     return getFileForInput(paramLocation, RelativePath.RelativeFile.forClass(paramString, paramKind));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public FileObject getFileForInput(Location paramLocation, String paramString1, String paramString2) throws IOException {
-/* 676 */     nullCheck(paramLocation);
-/*     */
-/* 678 */     nullCheck(paramString1);
-/* 679 */     if (!isRelativeUri(paramString2)) {
-/* 680 */       throw new IllegalArgumentException("Invalid relative name: " + paramString2);
-/*     */     }
-/*     */
-/* 683 */     RelativePath.RelativeFile relativeFile = (paramString1.length() == 0) ? new RelativePath.RelativeFile(paramString2) : new RelativePath.RelativeFile(RelativePath.RelativeDirectory.forPackage(paramString1), paramString2);
-/* 684 */     return getFileForInput(paramLocation, relativeFile);
-/*     */   }
-/*     */
-/*     */   private JavaFileObject getFileForInput(Location paramLocation, RelativePath.RelativeFile paramRelativeFile) throws IOException {
-/* 688 */     Iterable<? extends File> iterable = getLocation(paramLocation);
-/* 689 */     if (iterable == null) {
-/* 690 */       return null;
-/*     */     }
-/* 692 */     for (File file : iterable) {
-/* 693 */       Archive archive = this.archives.get(file);
-/* 694 */       if (archive == null) {
-/* 695 */         if (this.fsInfo.isDirectory(file)) {
-/* 696 */           File file1 = paramRelativeFile.getFile(file);
-/* 697 */           if (file1.exists()) {
-/* 698 */             return new RegularFileObject(this, file1);
-/*     */           }
-/*     */           continue;
-/*     */         }
-/* 702 */         archive = openArchive(file);
-/*     */       }
-/*     */
-/* 705 */       if (archive.contains(paramRelativeFile)) {
-/* 706 */         return archive.getFileObject(paramRelativeFile.dirname(), paramRelativeFile.basename());
-/*     */       }
-/*     */     }
-/* 709 */     return null;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public JavaFileObject getJavaFileForOutput(Location paramLocation, String paramString, JavaFileObject.Kind paramKind, FileObject paramFileObject) throws IOException {
-/* 718 */     nullCheck(paramLocation);
-/*     */
-/* 720 */     nullCheck(paramString);
-/* 721 */     nullCheck(paramKind);
-/* 722 */     if (!this.sourceOrClass.contains(paramKind))
-/* 723 */       throw new IllegalArgumentException("Invalid kind: " + paramKind);
-/* 724 */     return getFileForOutput(paramLocation, RelativePath.RelativeFile.forClass(paramString, paramKind), paramFileObject);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public FileObject getFileForOutput(Location paramLocation, String paramString1, String paramString2, FileObject paramFileObject) throws IOException {
-/* 733 */     nullCheck(paramLocation);
-/*     */
-/* 735 */     nullCheck(paramString1);
-/* 736 */     if (!isRelativeUri(paramString2)) {
-/* 737 */       throw new IllegalArgumentException("Invalid relative name: " + paramString2);
-/*     */     }
-/*     */
-/* 740 */     RelativePath.RelativeFile relativeFile = (paramString1.length() == 0) ? new RelativePath.RelativeFile(paramString2) : new RelativePath.RelativeFile(RelativePath.RelativeDirectory.forPackage(paramString1), paramString2);
-/* 741 */     return getFileForOutput(paramLocation, relativeFile, paramFileObject);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private JavaFileObject getFileForOutput(Location paramLocation, RelativePath.RelativeFile paramRelativeFile, FileObject paramFileObject) throws IOException {
-/*     */     File file1;
-/* 750 */     if (paramLocation == StandardLocation.CLASS_OUTPUT) {
-/* 751 */       if (getClassOutDir() != null) {
-/* 752 */         file1 = getClassOutDir();
-/*     */       } else {
-/* 754 */         File file = null;
-/* 755 */         if (paramFileObject != null && paramFileObject instanceof RegularFileObject) {
-/* 756 */           file = ((RegularFileObject)paramFileObject).file.getParentFile();
-/*     */         }
-/* 758 */         return new RegularFileObject(this, new File(file, paramRelativeFile.basename()));
-/*     */       }
-/* 760 */     } else if (paramLocation == StandardLocation.SOURCE_OUTPUT) {
-/* 761 */       file1 = (getSourceOutDir() != null) ? getSourceOutDir() : getClassOutDir();
-/*     */     } else {
-/* 763 */       Collection<File> collection = this.locations.getLocation(paramLocation);
-/* 764 */       file1 = null;
-/* 765 */       Iterator<File> iterator = collection.iterator(); if (iterator.hasNext()) { File file = iterator.next();
-/* 766 */         file1 = file; }
-/*     */
-/*     */     }
-/*     */
-/*     */
-/* 771 */     File file2 = paramRelativeFile.getFile(file1);
-/* 772 */     return new RegularFileObject(this, file2);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public Iterable<? extends JavaFileObject> getJavaFileObjectsFromFiles(Iterable<? extends File> paramIterable) {
-/*     */     ArrayList<RegularFileObject> arrayList;
-/* 780 */     if (paramIterable instanceof Collection) {
-/* 781 */       arrayList = new ArrayList(((Collection)paramIterable).size());
-/*     */     } else {
-/* 783 */       arrayList = new ArrayList();
-/* 784 */     }  for (File file : paramIterable)
-/* 785 */       arrayList.add(new RegularFileObject(this, (File)nullCheck(file)));
-/* 786 */     return (Iterable)arrayList;
-/*     */   }
-/*     */
-/*     */   public Iterable<? extends JavaFileObject> getJavaFileObjects(File... paramVarArgs) {
-/* 790 */     return getJavaFileObjectsFromFiles(Arrays.asList((Object[])nullCheck(paramVarArgs)));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void setLocation(Location paramLocation, Iterable<? extends File> paramIterable) throws IOException {
-/* 797 */     nullCheck(paramLocation);
-/* 798 */     this.locations.setLocation(paramLocation, paramIterable);
-/*     */   }
-/*     */
-/*     */   public Iterable<? extends File> getLocation(Location paramLocation) {
-/* 802 */     nullCheck(paramLocation);
-/* 803 */     return this.locations.getLocation(paramLocation);
-/*     */   }
-/*     */
-/*     */   private File getClassOutDir() {
-/* 807 */     return this.locations.getOutputLocation(StandardLocation.CLASS_OUTPUT);
-/*     */   }
-/*     */
-/*     */   private File getSourceOutDir() {
-/* 811 */     return this.locations.getOutputLocation(StandardLocation.SOURCE_OUTPUT);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   protected static boolean isRelativeUri(URI paramURI) {
-/* 822 */     if (paramURI.isAbsolute())
-/* 823 */       return false;
-/* 824 */     String str = paramURI.normalize().getPath();
-/* 825 */     if (str.length() == 0)
-/* 826 */       return false;
-/* 827 */     if (!str.equals(paramURI.getPath()))
-/* 828 */       return false;
-/* 829 */     if (str.startsWith("/") || str.startsWith("./") || str.startsWith("../"))
-/* 830 */       return false;
-/* 831 */     return true;
-/*     */   }
-/*     */
-/*     */
-/*     */   protected static boolean isRelativeUri(String paramString) {
-/*     */     try {
-/* 837 */       return isRelativeUri(new URI(paramString));
-/* 838 */     } catch (URISyntaxException uRISyntaxException) {
-/* 839 */       return false;
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static String getRelativeName(File paramFile) {
-/* 855 */     if (!paramFile.isAbsolute()) {
-/* 856 */       String str = paramFile.getPath().replace(File.separatorChar, '/');
-/* 857 */       if (isRelativeUri(str))
-/* 858 */         return str;
-/*     */     }
-/* 860 */     throw new IllegalArgumentException("Invalid relative path: " + paramFile);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static String getMessage(IOException paramIOException) {
-/* 873 */     String str = paramIOException.getLocalizedMessage();
-/* 874 */     if (str != null)
-/* 875 */       return str;
-/* 876 */     str = paramIOException.getMessage();
-/* 877 */     if (str != null)
-/* 878 */       return str;
-/* 879 */     return paramIOException.toString();
-/*     */   }
-/*     */
-/*     */   public static interface Archive {
-/*     */     void close() throws IOException;
-/*     */
-/*     */     boolean contains(RelativePath param1RelativePath);
-/*     */
-/*     */     JavaFileObject getFileObject(RelativePath.RelativeDirectory param1RelativeDirectory, String param1String);
-/*     */
-/*     */     List<String> getFiles(RelativePath.RelativeDirectory param1RelativeDirectory);
-/*     */
-/*     */     Set<RelativePath.RelativeDirectory> getSubdirectories();
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\file\JavacFileManager.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2005, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.file;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+import java.util.zip.ZipFile;
+
+import javax.lang.model.SourceVersion;
+import javax.tools.FileObject;
+import javax.tools.JavaFileManager;
+import javax.tools.JavaFileObject;
+import javax.tools.StandardJavaFileManager;
+
+import com.sun.tools.javac.file.RelativePath.RelativeFile;
+import com.sun.tools.javac.file.RelativePath.RelativeDirectory;
+import com.sun.tools.javac.util.BaseFileManager;
+import com.sun.tools.javac.util.Context;
+import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.ListBuffer;
+
+import static javax.tools.StandardLocation.*;
+
+/**
+ * This class provides access to the source, class and other files
+ * used by the compiler and related tools.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own risk.
+ * This code and its internal interfaces are subject to change or
+ * deletion without notice.</b>
+ */
+public class JavacFileManager extends BaseFileManager implements StandardJavaFileManager {
+
+    public static char[] toArray(CharBuffer buffer) {
+        if (buffer.hasArray())
+            return ((CharBuffer)buffer.compact().flip()).array();
+        else
+            return buffer.toString().toCharArray();
+    }
+
+    private FSInfo fsInfo;
+
+    private boolean contextUseOptimizedZip;
+    private ZipFileIndexCache zipFileIndexCache;
+
+    private final Set<JavaFileObject.Kind> sourceOrClass =
+        EnumSet.of(JavaFileObject.Kind.SOURCE, JavaFileObject.Kind.CLASS);
+
+    protected boolean mmappedIO;
+    protected boolean symbolFileEnabled;
+
+    protected enum SortFiles implements Comparator<File> {
+        FORWARD {
+            public int compare(File f1, File f2) {
+                return f1.getName().compareTo(f2.getName());
+            }
+        },
+        REVERSE {
+            public int compare(File f1, File f2) {
+                return -f1.getName().compareTo(f2.getName());
+            }
+        };
+    };
+    protected SortFiles sortFiles;
+
+    /**
+     * Register a Context.Factory to create a JavacFileManager.
+     */
+    public static void preRegister(Context context) {
+        context.put(JavaFileManager.class, new Context.Factory<JavaFileManager>() {
+            public JavaFileManager make(Context c) {
+                return new JavacFileManager(c, true, null);
+            }
+        });
+    }
+
+    /**
+     * Create a JavacFileManager using a given context, optionally registering
+     * it as the JavaFileManager for that context.
+     */
+    public JavacFileManager(Context context, boolean register, Charset charset) {
+        super(charset);
+        if (register)
+            context.put(JavaFileManager.class, this);
+        setContext(context);
+    }
+
+    /**
+     * Set the context for JavacFileManager.
+     */
+    @Override
+    public void setContext(Context context) {
+        super.setContext(context);
+
+        fsInfo = FSInfo.instance(context);
+
+        contextUseOptimizedZip = options.getBoolean("useOptimizedZip", true);
+        if (contextUseOptimizedZip)
+            zipFileIndexCache = ZipFileIndexCache.getSharedInstance();
+
+        mmappedIO = options.isSet("mmappedIO");
+        symbolFileEnabled = !options.isSet("ignore.symbol.file");
+
+        String sf = options.get("sortFiles");
+        if (sf != null) {
+            sortFiles = (sf.equals("reverse") ? SortFiles.REVERSE : SortFiles.FORWARD);
+        }
+    }
+
+    /**
+     * Set whether or not to use ct.sym as an alternate to rt.jar.
+     */
+    public void setSymbolFileEnabled(boolean b) {
+        symbolFileEnabled = b;
+    }
+
+    @Override
+    public boolean isDefaultBootClassPath() {
+        return locations.isDefaultBootClassPath();
+    }
+
+    public JavaFileObject getFileForInput(String name) {
+        return getRegularFile(new File(name));
+    }
+
+    public JavaFileObject getRegularFile(File file) {
+        return new RegularFileObject(this, file);
+    }
+
+    public JavaFileObject getFileForOutput(String classname,
+                                           JavaFileObject.Kind kind,
+                                           JavaFileObject sibling)
+        throws IOException
+    {
+        return getJavaFileForOutput(CLASS_OUTPUT, classname, kind, sibling);
+    }
+
+    public Iterable<? extends JavaFileObject> getJavaFileObjectsFromStrings(Iterable<String> names) {
+        ListBuffer<File> files = new ListBuffer<File>();
+        for (String name : names)
+            files.append(new File(nullCheck(name)));
+        return getJavaFileObjectsFromFiles(files.toList());
+    }
+
+    public Iterable<? extends JavaFileObject> getJavaFileObjects(String... names) {
+        return getJavaFileObjectsFromStrings(Arrays.asList(nullCheck(names)));
+    }
+
+    private static boolean isValidName(String name) {
+        // Arguably, isValidName should reject keywords (such as in SourceVersion.isName() ),
+        // but the set of keywords depends on the source level, and we don't want
+        // impls of JavaFileManager to have to be dependent on the source level.
+        // Therefore we simply check that the argument is a sequence of identifiers
+        // separated by ".".
+        for (String s : name.split("\\.", -1)) {
+            if (!SourceVersion.isIdentifier(s))
+                return false;
+        }
+        return true;
+    }
+
+    private static void validateClassName(String className) {
+        if (!isValidName(className))
+            throw new IllegalArgumentException("Invalid class name: " + className);
+    }
+
+    private static void validatePackageName(String packageName) {
+        if (packageName.length() > 0 && !isValidName(packageName))
+            throw new IllegalArgumentException("Invalid packageName name: " + packageName);
+    }
+
+    public static void testName(String name,
+                                boolean isValidPackageName,
+                                boolean isValidClassName)
+    {
+        try {
+            validatePackageName(name);
+            if (!isValidPackageName)
+                throw new AssertionError("Invalid package name accepted: " + name);
+            printAscii("Valid package name: \"%s\"", name);
+        } catch (IllegalArgumentException e) {
+            if (isValidPackageName)
+                throw new AssertionError("Valid package name rejected: " + name);
+            printAscii("Invalid package name: \"%s\"", name);
+        }
+        try {
+            validateClassName(name);
+            if (!isValidClassName)
+                throw new AssertionError("Invalid class name accepted: " + name);
+            printAscii("Valid class name: \"%s\"", name);
+        } catch (IllegalArgumentException e) {
+            if (isValidClassName)
+                throw new AssertionError("Valid class name rejected: " + name);
+            printAscii("Invalid class name: \"%s\"", name);
+        }
+    }
+
+    private static void printAscii(String format, Object... args) {
+        String message;
+        try {
+            final String ascii = "US-ASCII";
+            message = new String(String.format(null, format, args).getBytes(ascii), ascii);
+        } catch (java.io.UnsupportedEncodingException ex) {
+            throw new AssertionError(ex);
+        }
+        System.out.println(message);
+    }
+
+
+    /**
+     * Insert all files in subdirectory subdirectory of directory directory
+     * which match fileKinds into resultList
+     */
+    private void listDirectory(File directory,
+                               RelativeDirectory subdirectory,
+                               Set<JavaFileObject.Kind> fileKinds,
+                               boolean recurse,
+                               ListBuffer<JavaFileObject> resultList) {
+        File d = subdirectory.getFile(directory);
+        if (!caseMapCheck(d, subdirectory))
+            return;
+
+        File[] files = d.listFiles();
+        if (files == null)
+            return;
+
+        if (sortFiles != null)
+            Arrays.sort(files, sortFiles);
+
+        for (File f: files) {
+            String fname = f.getName();
+            if (f.isDirectory()) {
+                if (recurse && SourceVersion.isIdentifier(fname)) {
+                    listDirectory(directory,
+                                  new RelativeDirectory(subdirectory, fname),
+                                  fileKinds,
+                                  recurse,
+                                  resultList);
+                }
+            } else {
+                if (isValidFile(fname, fileKinds)) {
+                    JavaFileObject fe =
+                        new RegularFileObject(this, fname, new File(d, fname));
+                    resultList.append(fe);
+                }
+            }
+        }
+    }
+
+    /**
+     * Insert all files in subdirectory subdirectory of archive archive
+     * which match fileKinds into resultList
+     */
+    private void listArchive(Archive archive,
+                               RelativeDirectory subdirectory,
+                               Set<JavaFileObject.Kind> fileKinds,
+                               boolean recurse,
+                               ListBuffer<JavaFileObject> resultList) {
+        // Get the files directly in the subdir
+        List<String> files = archive.getFiles(subdirectory);
+        if (files != null) {
+            for (; !files.isEmpty(); files = files.tail) {
+                String file = files.head;
+                if (isValidFile(file, fileKinds)) {
+                    resultList.append(archive.getFileObject(subdirectory, file));
+                }
+            }
+        }
+        if (recurse) {
+            for (RelativeDirectory s: archive.getSubdirectories()) {
+                if (subdirectory.contains(s)) {
+                    // Because the archive map is a flat list of directories,
+                    // the enclosing loop will pick up all child subdirectories.
+                    // Therefore, there is no need to recurse deeper.
+                    listArchive(archive, s, fileKinds, false, resultList);
+                }
+            }
+        }
+    }
+
+    /**
+     * container is a directory, a zip file, or a non-existant path.
+     * Insert all files in subdirectory subdirectory of container which
+     * match fileKinds into resultList
+     */
+    private void listContainer(File container,
+                               RelativeDirectory subdirectory,
+                               Set<JavaFileObject.Kind> fileKinds,
+                               boolean recurse,
+                               ListBuffer<JavaFileObject> resultList) {
+        Archive archive = archives.get(container);
+        if (archive == null) {
+            // archives are not created for directories.
+            if  (fsInfo.isDirectory(container)) {
+                listDirectory(container,
+                              subdirectory,
+                              fileKinds,
+                              recurse,
+                              resultList);
+                return;
+            }
+
+            // Not a directory; either a file or non-existant, create the archive
+            try {
+                archive = openArchive(container);
+            } catch (IOException ex) {
+                log.error("error.reading.file",
+                          container, getMessage(ex));
+                return;
+            }
+        }
+        listArchive(archive,
+                    subdirectory,
+                    fileKinds,
+                    recurse,
+                    resultList);
+    }
+
+    private boolean isValidFile(String s, Set<JavaFileObject.Kind> fileKinds) {
+        JavaFileObject.Kind kind = getKind(s);
+        return fileKinds.contains(kind);
+    }
+
+    private static final boolean fileSystemIsCaseSensitive =
+        File.separatorChar == '/';
+
+    /** Hack to make Windows case sensitive. Test whether given path
+     *  ends in a string of characters with the same case as given name.
+     *  Ignore file separators in both path and name.
+     */
+    private boolean caseMapCheck(File f, RelativePath name) {
+        if (fileSystemIsCaseSensitive) return true;
+        // Note that getCanonicalPath() returns the case-sensitive
+        // spelled file name.
+        String path;
+        try {
+            path = f.getCanonicalPath();
+        } catch (IOException ex) {
+            return false;
+        }
+        char[] pcs = path.toCharArray();
+        char[] ncs = name.path.toCharArray();
+        int i = pcs.length - 1;
+        int j = ncs.length - 1;
+        while (i >= 0 && j >= 0) {
+            while (i >= 0 && pcs[i] == File.separatorChar) i--;
+            while (j >= 0 && ncs[j] == '/') j--;
+            if (i >= 0 && j >= 0) {
+                if (pcs[i] != ncs[j]) return false;
+                i--;
+                j--;
+            }
+        }
+        return j < 0;
+    }
+
+    /**
+     * An archive provides a flat directory structure of a ZipFile by
+     * mapping directory names to lists of files (basenames).
+     */
+    public interface Archive {
+        void close() throws IOException;
+
+        boolean contains(RelativePath name);
+
+        JavaFileObject getFileObject(RelativeDirectory subdirectory, String file);
+
+        List<String> getFiles(RelativeDirectory subdirectory);
+
+        Set<RelativeDirectory> getSubdirectories();
+    }
+
+    public class MissingArchive implements Archive {
+        final File zipFileName;
+        public MissingArchive(File name) {
+            zipFileName = name;
+        }
+        public boolean contains(RelativePath name) {
+            return false;
+        }
+
+        public void close() {
+        }
+
+        public JavaFileObject getFileObject(RelativeDirectory subdirectory, String file) {
+            return null;
+        }
+
+        public List<String> getFiles(RelativeDirectory subdirectory) {
+            return List.nil();
+        }
+
+        public Set<RelativeDirectory> getSubdirectories() {
+            return Collections.emptySet();
+        }
+
+        @Override
+        public String toString() {
+            return "MissingArchive[" + zipFileName + "]";
+        }
+    }
+
+    /** A directory of zip files already opened.
+     */
+    Map<File, Archive> archives = new HashMap<File,Archive>();
+
+    private static final String[] symbolFileLocation = { "lib", "ct.sym" };
+    private static final RelativeDirectory symbolFilePrefix
+            = new RelativeDirectory("META-INF/sym/rt.jar/");
+
+    /*
+     * This method looks for a ZipFormatException and takes appropriate
+     * evasive action. If there is a failure in the fast mode then we
+     * fail over to the platform zip, and allow it to deal with a potentially
+     * non compliant zip file.
+     */
+    protected Archive openArchive(File zipFilename) throws IOException {
+        try {
+            return openArchive(zipFilename, contextUseOptimizedZip);
+        } catch (IOException ioe) {
+            if (ioe instanceof ZipFileIndex.ZipFormatException) {
+                return openArchive(zipFilename, false);
+            } else {
+                throw ioe;
+            }
+        }
+    }
+
+    /** Open a new zip file directory, and cache it.
+     */
+    private Archive openArchive(File zipFileName, boolean useOptimizedZip) throws IOException {
+        File origZipFileName = zipFileName;
+        if (symbolFileEnabled && locations.isDefaultBootClassPathRtJar(zipFileName)) {
+            File file = zipFileName.getParentFile().getParentFile(); // ${java.home}
+            if (new File(file.getName()).equals(new File("jre")))
+                file = file.getParentFile();
+            // file == ${jdk.home}
+            for (String name : symbolFileLocation)
+                file = new File(file, name);
+            // file == ${jdk.home}/lib/ct.sym
+            if (file.exists())
+                zipFileName = file;
+        }
+
+        Archive archive;
+        try {
+
+            ZipFile zdir = null;
+
+            boolean usePreindexedCache = false;
+            String preindexCacheLocation = null;
+
+            if (!useOptimizedZip) {
+                zdir = new ZipFile(zipFileName);
+            } else {
+                usePreindexedCache = options.isSet("usezipindex");
+                preindexCacheLocation = options.get("java.io.tmpdir");
+                String optCacheLoc = options.get("cachezipindexdir");
+
+                if (optCacheLoc != null && optCacheLoc.length() != 0) {
+                    if (optCacheLoc.startsWith("\"")) {
+                        if (optCacheLoc.endsWith("\"")) {
+                            optCacheLoc = optCacheLoc.substring(1, optCacheLoc.length() - 1);
+                        }
+                        else {
+                            optCacheLoc = optCacheLoc.substring(1);
+                        }
+                    }
+
+                    File cacheDir = new File(optCacheLoc);
+                    if (cacheDir.exists() && cacheDir.canWrite()) {
+                        preindexCacheLocation = optCacheLoc;
+                        if (!preindexCacheLocation.endsWith("/") &&
+                            !preindexCacheLocation.endsWith(File.separator)) {
+                            preindexCacheLocation += File.separator;
+                        }
+                    }
+                }
+            }
+
+            if (origZipFileName == zipFileName) {
+                if (!useOptimizedZip) {
+                    archive = new ZipArchive(this, zdir);
+                } else {
+                    archive = new ZipFileIndexArchive(this,
+                                    zipFileIndexCache.getZipFileIndex(zipFileName,
+                                    null,
+                                    usePreindexedCache,
+                                    preindexCacheLocation,
+                                    options.isSet("writezipindexfiles")));
+                }
+            } else {
+                if (!useOptimizedZip) {
+                    archive = new SymbolArchive(this, origZipFileName, zdir, symbolFilePrefix);
+                } else {
+                    archive = new ZipFileIndexArchive(this,
+                                    zipFileIndexCache.getZipFileIndex(zipFileName,
+                                    symbolFilePrefix,
+                                    usePreindexedCache,
+                                    preindexCacheLocation,
+                                    options.isSet("writezipindexfiles")));
+                }
+            }
+        } catch (FileNotFoundException ex) {
+            archive = new MissingArchive(zipFileName);
+        } catch (ZipFileIndex.ZipFormatException zfe) {
+            throw zfe;
+        } catch (IOException ex) {
+            if (zipFileName.exists())
+                log.error("error.reading.file", zipFileName, getMessage(ex));
+            archive = new MissingArchive(zipFileName);
+        }
+
+        archives.put(origZipFileName, archive);
+        return archive;
+    }
+
+    /** Flush any output resources.
+     */
+    public void flush() {
+        contentCache.clear();
+    }
+
+    /**
+     * Close the JavaFileManager, releasing resources.
+     */
+    public void close() {
+        for (Iterator<Archive> i = archives.values().iterator(); i.hasNext(); ) {
+            Archive a = i.next();
+            i.remove();
+            try {
+                a.close();
+            } catch (IOException e) {
+            }
+        }
+    }
+
+    private String defaultEncodingName;
+    private String getDefaultEncodingName() {
+        if (defaultEncodingName == null) {
+            defaultEncodingName =
+                new OutputStreamWriter(new ByteArrayOutputStream()).getEncoding();
+        }
+        return defaultEncodingName;
+    }
+
+    public ClassLoader getClassLoader(Location location) {
+        nullCheck(location);
+        Iterable<? extends File> path = getLocation(location);
+        if (path == null)
+            return null;
+        ListBuffer<URL> lb = new ListBuffer<URL>();
+        for (File f: path) {
+            try {
+                lb.append(f.toURI().toURL());
+            } catch (MalformedURLException e) {
+                throw new AssertionError(e);
+            }
+        }
+
+        return getClassLoader(lb.toArray(new URL[lb.size()]));
+    }
+
+    public Iterable<JavaFileObject> list(Location location,
+                                         String packageName,
+                                         Set<JavaFileObject.Kind> kinds,
+                                         boolean recurse)
+        throws IOException
+    {
+        // validatePackageName(packageName);
+        nullCheck(packageName);
+        nullCheck(kinds);
+
+        Iterable<? extends File> path = getLocation(location);
+        if (path == null)
+            return List.nil();
+        RelativeDirectory subdirectory = RelativeDirectory.forPackage(packageName);
+        ListBuffer<JavaFileObject> results = new ListBuffer<JavaFileObject>();
+
+        for (File directory : path)
+            listContainer(directory, subdirectory, kinds, recurse, results);
+        return results.toList();
+    }
+
+    public String inferBinaryName(Location location, JavaFileObject file) {
+        file.getClass(); // null check
+        location.getClass(); // null check
+        // Need to match the path semantics of list(location, ...)
+        Iterable<? extends File> path = getLocation(location);
+        if (path == null) {
+            return null;
+        }
+
+        if (file instanceof BaseFileObject) {
+            return ((BaseFileObject) file).inferBinaryName(path);
+        } else
+            throw new IllegalArgumentException(file.getClass().getName());
+    }
+
+    public boolean isSameFile(FileObject a, FileObject b) {
+        nullCheck(a);
+        nullCheck(b);
+        if (!(a instanceof BaseFileObject))
+            throw new IllegalArgumentException("Not supported: " + a);
+        if (!(b instanceof BaseFileObject))
+            throw new IllegalArgumentException("Not supported: " + b);
+        return a.equals(b);
+    }
+
+    public boolean hasLocation(Location location) {
+        return getLocation(location) != null;
+    }
+
+    public JavaFileObject getJavaFileForInput(Location location,
+                                              String className,
+                                              JavaFileObject.Kind kind)
+        throws IOException
+    {
+        nullCheck(location);
+        // validateClassName(className);
+        nullCheck(className);
+        nullCheck(kind);
+        if (!sourceOrClass.contains(kind))
+            throw new IllegalArgumentException("Invalid kind: " + kind);
+        return getFileForInput(location, RelativeFile.forClass(className, kind));
+    }
+
+    public FileObject getFileForInput(Location location,
+                                      String packageName,
+                                      String relativeName)
+        throws IOException
+    {
+        nullCheck(location);
+        // validatePackageName(packageName);
+        nullCheck(packageName);
+        if (!isRelativeUri(relativeName))
+            throw new IllegalArgumentException("Invalid relative name: " + relativeName);
+        RelativeFile name = packageName.length() == 0
+            ? new RelativeFile(relativeName)
+            : new RelativeFile(RelativeDirectory.forPackage(packageName), relativeName);
+        return getFileForInput(location, name);
+    }
+
+    private JavaFileObject getFileForInput(Location location, RelativeFile name) throws IOException {
+        Iterable<? extends File> path = getLocation(location);
+        if (path == null)
+            return null;
+
+        for (File dir: path) {
+            Archive a = archives.get(dir);
+            if (a == null) {
+                if (fsInfo.isDirectory(dir)) {
+                    File f = name.getFile(dir);
+                    if (f.exists())
+                        return new RegularFileObject(this, f);
+                    continue;
+                }
+                // Not a directory, create the archive
+                a = openArchive(dir);
+            }
+            // Process the archive
+            if (a.contains(name)) {
+                return a.getFileObject(name.dirname(), name.basename());
+            }
+        }
+        return null;
+    }
+
+    public JavaFileObject getJavaFileForOutput(Location location,
+                                               String className,
+                                               JavaFileObject.Kind kind,
+                                               FileObject sibling)
+        throws IOException
+    {
+        nullCheck(location);
+        // validateClassName(className);
+        nullCheck(className);
+        nullCheck(kind);
+        if (!sourceOrClass.contains(kind))
+            throw new IllegalArgumentException("Invalid kind: " + kind);
+        return getFileForOutput(location, RelativeFile.forClass(className, kind), sibling);
+    }
+
+    public FileObject getFileForOutput(Location location,
+                                       String packageName,
+                                       String relativeName,
+                                       FileObject sibling)
+        throws IOException
+    {
+        nullCheck(location);
+        // validatePackageName(packageName);
+        nullCheck(packageName);
+        if (!isRelativeUri(relativeName))
+            throw new IllegalArgumentException("Invalid relative name: " + relativeName);
+        RelativeFile name = packageName.length() == 0
+            ? new RelativeFile(relativeName)
+            : new RelativeFile(RelativeDirectory.forPackage(packageName), relativeName);
+        return getFileForOutput(location, name, sibling);
+    }
+
+    private JavaFileObject getFileForOutput(Location location,
+                                            RelativeFile fileName,
+                                            FileObject sibling)
+        throws IOException
+    {
+        File dir;
+        if (location == CLASS_OUTPUT) {
+            if (getClassOutDir() != null) {
+                dir = getClassOutDir();
+            } else {
+                File siblingDir = null;
+                if (sibling != null && sibling instanceof RegularFileObject) {
+                    siblingDir = ((RegularFileObject)sibling).file.getParentFile();
+                }
+                return new RegularFileObject(this, new File(siblingDir, fileName.basename()));
+            }
+        } else if (location == SOURCE_OUTPUT) {
+            dir = (getSourceOutDir() != null ? getSourceOutDir() : getClassOutDir());
+        } else {
+            Iterable<? extends File> path = locations.getLocation(location);
+            dir = null;
+            for (File f: path) {
+                dir = f;
+                break;
+            }
+        }
+
+        File file = fileName.getFile(dir); // null-safe
+        return new RegularFileObject(this, file);
+
+    }
+
+    public Iterable<? extends JavaFileObject> getJavaFileObjectsFromFiles(
+        Iterable<? extends File> files)
+    {
+        ArrayList<RegularFileObject> result;
+        if (files instanceof Collection<?>)
+            result = new ArrayList<RegularFileObject>(((Collection<?>)files).size());
+        else
+            result = new ArrayList<RegularFileObject>();
+        for (File f: files)
+            result.add(new RegularFileObject(this, nullCheck(f)));
+        return result;
+    }
+
+    public Iterable<? extends JavaFileObject> getJavaFileObjects(File... files) {
+        return getJavaFileObjectsFromFiles(Arrays.asList(nullCheck(files)));
+    }
+
+    public void setLocation(Location location,
+                            Iterable<? extends File> path)
+        throws IOException
+    {
+        nullCheck(location);
+        locations.setLocation(location, path);
+    }
+
+    public Iterable<? extends File> getLocation(Location location) {
+        nullCheck(location);
+        return locations.getLocation(location);
+    }
+
+    private File getClassOutDir() {
+        return locations.getOutputLocation(CLASS_OUTPUT);
+    }
+
+    private File getSourceOutDir() {
+        return locations.getOutputLocation(SOURCE_OUTPUT);
+    }
+
+    /**
+     * Enforces the specification of a "relative" name as used in
+     * {@linkplain #getFileForInput(Location,String,String)
+     * getFileForInput}.  This method must follow the rules defined in
+     * that method, do not make any changes without consulting the
+     * specification.
+     */
+    protected static boolean isRelativeUri(URI uri) {
+        if (uri.isAbsolute())
+            return false;
+        String path = uri.normalize().getPath();
+        if (path.length() == 0 /* isEmpty() is mustang API */)
+            return false;
+        if (!path.equals(uri.getPath())) // implicitly checks for embedded . and ..
+            return false;
+        if (path.startsWith("/") || path.startsWith("./") || path.startsWith("../"))
+            return false;
+        return true;
+    }
+
+    // Convenience method
+    protected static boolean isRelativeUri(String u) {
+        try {
+            return isRelativeUri(new URI(u));
+        } catch (URISyntaxException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Converts a relative file name to a relative URI.  This is
+     * different from File.toURI as this method does not canonicalize
+     * the file before creating the URI.  Furthermore, no schema is
+     * used.
+     * @param file a relative file name
+     * @return a relative URI
+     * @throws IllegalArgumentException if the file name is not
+     * relative according to the definition given in {@link
+     * JavaFileManager#getFileForInput}
+     */
+    public static String getRelativeName(File file) {
+        if (!file.isAbsolute()) {
+            String result = file.getPath().replace(File.separatorChar, '/');
+            if (isRelativeUri(result))
+                return result;
+        }
+        throw new IllegalArgumentException("Invalid relative path: " + file);
+    }
+
+    /**
+     * Get a detail message from an IOException.
+     * Most, but not all, instances of IOException provide a non-null result
+     * for getLocalizedMessage().  But some instances return null: in these
+     * cases, fallover to getMessage(), and if even that is null, return the
+     * name of the exception itself.
+     * @param e an IOException
+     * @return a string to include in a compiler diagnostic
+     */
+    public static String getMessage(IOException e) {
+        String s = e.getLocalizedMessage();
+        if (s != null)
+            return s;
+        s = e.getMessage();
+        if (s != null)
+            return s;
+        return e.toString();
+    }
+}

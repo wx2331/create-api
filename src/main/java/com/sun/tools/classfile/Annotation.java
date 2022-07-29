@@ -1,247 +1,244 @@
-/*     */ package com.sun.tools.classfile;
-/*     */
-/*     */ import java.io.IOException;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class Annotation
-/*     */ {
-/*     */   public final int type_index;
-/*     */   public final int num_element_value_pairs;
-/*     */   public final element_value_pair[] element_value_pairs;
-/*     */
-/*     */   static class InvalidAnnotation
-/*     */     extends AttributeException
-/*     */   {
-/*     */     private static final long serialVersionUID = -4620480740735772708L;
-/*     */
-/*     */     InvalidAnnotation(String param1String) {
-/*  42 */       super(param1String);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   Annotation(ClassReader paramClassReader) throws IOException, InvalidAnnotation {
-/*  47 */     this.type_index = paramClassReader.readUnsignedShort();
-/*  48 */     this.num_element_value_pairs = paramClassReader.readUnsignedShort();
-/*  49 */     this.element_value_pairs = new element_value_pair[this.num_element_value_pairs];
-/*  50 */     for (byte b = 0; b < this.element_value_pairs.length; b++) {
-/*  51 */       this.element_value_pairs[b] = new element_value_pair(paramClassReader);
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */   public Annotation(ConstantPool paramConstantPool, int paramInt, element_value_pair[] paramArrayOfelement_value_pair) {
-/*  57 */     this.type_index = paramInt;
-/*  58 */     this.num_element_value_pairs = paramArrayOfelement_value_pair.length;
-/*  59 */     this.element_value_pairs = paramArrayOfelement_value_pair;
-/*     */   }
-/*     */
-/*     */   public int length() {
-/*  63 */     int i = 4;
-/*  64 */     for (element_value_pair element_value_pair1 : this.element_value_pairs)
-/*  65 */       i += element_value_pair1.length();
-/*  66 */     return i;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static abstract class element_value
-/*     */   {
-/*     */     public final int tag;
-/*     */
-/*     */
-/*     */
-/*     */     public static element_value read(ClassReader param1ClassReader) throws IOException, InvalidAnnotation {
-/*  79 */       int i = param1ClassReader.readUnsignedByte();
-/*  80 */       switch (i) {
-/*     */         case 66:
-/*     */         case 67:
-/*     */         case 68:
-/*     */         case 70:
-/*     */         case 73:
-/*     */         case 74:
-/*     */         case 83:
-/*     */         case 90:
-/*     */         case 115:
-/*  90 */           return new Primitive_element_value(param1ClassReader, i);
-/*     */
-/*     */         case 101:
-/*  93 */           return new Enum_element_value(param1ClassReader, i);
-/*     */
-/*     */         case 99:
-/*  96 */           return new Class_element_value(param1ClassReader, i);
-/*     */
-/*     */         case 64:
-/*  99 */           return new Annotation_element_value(param1ClassReader, i);
-/*     */
-/*     */         case 91:
-/* 102 */           return new Array_element_value(param1ClassReader, i);
-/*     */       }
-/*     */
-/* 105 */       throw new InvalidAnnotation("unrecognized tag: " + i);
-/*     */     }
-/*     */     public abstract int length();
-/*     */     public abstract <R, P> R accept(Visitor<R, P> param1Visitor, P param1P);
-/*     */     protected element_value(int param1Int) {
-/* 110 */       this.tag = param1Int;
-/*     */     }
-/*     */
-/*     */     public static interface Visitor<R, P>
-/*     */     {
-/*     */       R visitPrimitive(Primitive_element_value param2Primitive_element_value, P param2P);
-/*     */
-/*     */       R visitEnum(Enum_element_value param2Enum_element_value, P param2P);
-/*     */
-/*     */       R visitClass(Class_element_value param2Class_element_value, P param2P);
-/*     */
-/*     */       R visitAnnotation(Annotation_element_value param2Annotation_element_value, P param2P);
-/*     */
-/*     */       R visitArray(Array_element_value param2Array_element_value, P param2P);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static class Primitive_element_value
-/*     */     extends element_value {
-/*     */     Primitive_element_value(ClassReader param1ClassReader, int param1Int) throws IOException {
-/* 130 */       super(param1Int);
-/* 131 */       this.const_value_index = param1ClassReader.readUnsignedShort();
-/*     */     }
-/*     */     public final int const_value_index;
-/*     */
-/*     */     public int length() {
-/* 136 */       return 2;
-/*     */     }
-/*     */
-/*     */     public <R, P> R accept(Visitor<R, P> param1Visitor, P param1P) {
-/* 140 */       return param1Visitor.visitPrimitive(this, param1P);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static class Enum_element_value extends element_value {
-/*     */     public final int type_name_index;
-/*     */     public final int const_name_index;
-/*     */
-/*     */     Enum_element_value(ClassReader param1ClassReader, int param1Int) throws IOException {
-/* 149 */       super(param1Int);
-/* 150 */       this.type_name_index = param1ClassReader.readUnsignedShort();
-/* 151 */       this.const_name_index = param1ClassReader.readUnsignedShort();
-/*     */     }
-/*     */
-/*     */
-/*     */     public int length() {
-/* 156 */       return 4;
-/*     */     }
-/*     */
-/*     */     public <R, P> R accept(Visitor<R, P> param1Visitor, P param1P) {
-/* 160 */       return param1Visitor.visitEnum(this, param1P);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static class Class_element_value
-/*     */     extends element_value {
-/*     */     public final int class_info_index;
-/*     */
-/*     */     Class_element_value(ClassReader param1ClassReader, int param1Int) throws IOException {
-/* 169 */       super(param1Int);
-/* 170 */       this.class_info_index = param1ClassReader.readUnsignedShort();
-/*     */     }
-/*     */
-/*     */
-/*     */     public int length() {
-/* 175 */       return 2;
-/*     */     }
-/*     */
-/*     */     public <R, P> R accept(Visitor<R, P> param1Visitor, P param1P) {
-/* 179 */       return param1Visitor.visitClass(this, param1P);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static class Annotation_element_value
-/*     */     extends element_value {
-/*     */     public final Annotation annotation_value;
-/*     */
-/*     */     Annotation_element_value(ClassReader param1ClassReader, int param1Int) throws IOException, InvalidAnnotation {
-/* 188 */       super(param1Int);
-/* 189 */       this.annotation_value = new Annotation(param1ClassReader);
-/*     */     }
-/*     */
-/*     */
-/*     */     public int length() {
-/* 194 */       return this.annotation_value.length();
-/*     */     }
-/*     */
-/*     */     public <R, P> R accept(Visitor<R, P> param1Visitor, P param1P) {
-/* 198 */       return param1Visitor.visitAnnotation(this, param1P);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static class Array_element_value extends element_value {
-/*     */     public final int num_values;
-/*     */     public final element_value[] values;
-/*     */
-/*     */     Array_element_value(ClassReader param1ClassReader, int param1Int) throws IOException, InvalidAnnotation {
-/* 207 */       super(param1Int);
-/* 208 */       this.num_values = param1ClassReader.readUnsignedShort();
-/* 209 */       this.values = new element_value[this.num_values];
-/* 210 */       for (byte b = 0; b < this.values.length; b++) {
-/* 211 */         this.values[b] = element_value.read(param1ClassReader);
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public int length() {
-/* 216 */       int i = 2;
-/* 217 */       for (byte b = 0; b < this.values.length; b++)
-/* 218 */         i += this.values[b].length();
-/* 219 */       return i;
-/*     */     }
-/*     */
-/*     */     public <R, P> R accept(Visitor<R, P> param1Visitor, P param1P) {
-/* 223 */       return param1Visitor.visitArray(this, param1P);
-/*     */     }
-/*     */   }
-/*     */
-/*     */   public static class element_value_pair
-/*     */   {
-/*     */     public final int element_name_index;
-/*     */     public final element_value value;
-/*     */
-/*     */     element_value_pair(ClassReader param1ClassReader) throws IOException, InvalidAnnotation {
-/* 233 */       this.element_name_index = param1ClassReader.readUnsignedShort();
-/* 234 */       this.value = element_value.read(param1ClassReader);
-/*     */     }
-/*     */
-/*     */     public int length() {
-/* 238 */       return 2 + this.value.length();
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\classfile\Annotation.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2007, 2009, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.classfile;
+
+import java.io.IOException;
+
+/**
+ * See JVMS, section 4.8.16.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Annotation {
+    static class InvalidAnnotation extends AttributeException {
+        private static final long serialVersionUID = -4620480740735772708L;
+        InvalidAnnotation(String msg) {
+            super(msg);
+        }
+    }
+
+    Annotation(ClassReader cr) throws IOException, InvalidAnnotation {
+        type_index = cr.readUnsignedShort();
+        num_element_value_pairs = cr.readUnsignedShort();
+        element_value_pairs = new element_value_pair[num_element_value_pairs];
+        for (int i = 0; i < element_value_pairs.length; i++)
+            element_value_pairs[i] = new element_value_pair(cr);
+    }
+
+    public Annotation(ConstantPool constant_pool,
+            int type_index,
+            element_value_pair[] element_value_pairs) {
+        this.type_index = type_index;
+        num_element_value_pairs = element_value_pairs.length;
+        this.element_value_pairs = element_value_pairs;
+    }
+
+    public int length() {
+        int n = 2 /*type_index*/ + 2 /*num_element_value_pairs*/;
+        for (element_value_pair pair: element_value_pairs)
+            n += pair.length();
+        return n;
+    }
+
+    public final int type_index;
+    public final int num_element_value_pairs;
+    public final element_value_pair element_value_pairs[];
+
+    /**
+     * See JVMS, section 4.8.16.1.
+     */
+    public static abstract class element_value {
+        public static element_value read(ClassReader cr)
+                throws IOException, InvalidAnnotation {
+            int tag = cr.readUnsignedByte();
+            switch (tag) {
+            case 'B':
+            case 'C':
+            case 'D':
+            case 'F':
+            case 'I':
+            case 'J':
+            case 'S':
+            case 'Z':
+            case 's':
+                return new Primitive_element_value(cr, tag);
+
+            case 'e':
+                return new Enum_element_value(cr, tag);
+
+            case 'c':
+                return new Class_element_value(cr, tag);
+
+            case '@':
+                return new Annotation_element_value(cr, tag);
+
+            case '[':
+                return new Array_element_value(cr, tag);
+
+            default:
+                throw new InvalidAnnotation("unrecognized tag: " + tag);
+            }
+        }
+
+        protected element_value(int tag) {
+            this.tag = tag;
+        }
+
+        public abstract int length();
+
+        public abstract <R,P> R accept(Visitor<R,P> visitor, P p);
+
+        public interface Visitor<R,P> {
+            R visitPrimitive(Primitive_element_value ev, P p);
+            R visitEnum(Enum_element_value ev, P p);
+            R visitClass(Class_element_value ev, P p);
+            R visitAnnotation(Annotation_element_value ev, P p);
+            R visitArray(Array_element_value ev, P p);
+        }
+
+        public final int tag;
+    }
+
+    public static class Primitive_element_value extends element_value {
+        Primitive_element_value(ClassReader cr, int tag) throws IOException {
+            super(tag);
+            const_value_index = cr.readUnsignedShort();
+        }
+
+        @Override
+        public int length() {
+            return 2;
+        }
+
+        public <R,P> R accept(Visitor<R,P> visitor, P p) {
+            return visitor.visitPrimitive(this, p);
+        }
+
+        public final int const_value_index;
+
+    }
+
+    public static class Enum_element_value extends element_value {
+        Enum_element_value(ClassReader cr, int tag) throws IOException {
+            super(tag);
+            type_name_index = cr.readUnsignedShort();
+            const_name_index = cr.readUnsignedShort();
+        }
+
+        @Override
+        public int length() {
+            return 4;
+        }
+
+        public <R,P> R accept(Visitor<R,P> visitor, P p) {
+            return visitor.visitEnum(this, p);
+        }
+
+        public final int type_name_index;
+        public final int const_name_index;
+    }
+
+    public static class Class_element_value extends element_value {
+        Class_element_value(ClassReader cr, int tag) throws IOException {
+            super(tag);
+            class_info_index = cr.readUnsignedShort();
+        }
+
+        @Override
+        public int length() {
+            return 2;
+        }
+
+        public <R,P> R accept(Visitor<R,P> visitor, P p) {
+            return visitor.visitClass(this, p);
+        }
+
+        public final int class_info_index;
+    }
+
+    public static class Annotation_element_value extends element_value {
+        Annotation_element_value(ClassReader cr, int tag)
+                throws IOException, InvalidAnnotation {
+            super(tag);
+            annotation_value = new Annotation(cr);
+        }
+
+        @Override
+        public int length() {
+            return annotation_value.length();
+        }
+
+        public <R,P> R accept(Visitor<R,P> visitor, P p) {
+            return visitor.visitAnnotation(this, p);
+        }
+
+        public final Annotation annotation_value;
+    }
+
+    public static class Array_element_value extends element_value {
+        Array_element_value(ClassReader cr, int tag)
+                throws IOException, InvalidAnnotation {
+            super(tag);
+            num_values = cr.readUnsignedShort();
+            values = new element_value[num_values];
+            for (int i = 0; i < values.length; i++)
+                values[i] = element_value.read(cr);
+        }
+
+        @Override
+        public int length() {
+            int n = 2;
+            for (int i = 0; i < values.length; i++)
+                n += values[i].length();
+            return n;
+        }
+
+        public <R,P> R accept(Visitor<R,P> visitor, P p) {
+            return visitor.visitArray(this, p);
+        }
+
+        public final int num_values;
+        public final element_value[] values;
+    }
+
+    public static class element_value_pair {
+        element_value_pair(ClassReader cr)
+                throws IOException, InvalidAnnotation {
+            element_name_index = cr.readUnsignedShort();
+            value = element_value.read(cr);
+        }
+
+        public int length() {
+            return 2 + value.length();
+        }
+
+        public final int element_name_index;
+        public final element_value value;
+    }
+}

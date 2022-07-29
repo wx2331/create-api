@@ -1,207 +1,197 @@
-/*     */ package com.sun.tools.javac.util;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class GraphUtils
-/*     */ {
-/*     */   public static abstract class Node<D>
-/*     */   {
-/*     */     public final D data;
-/*     */
-/*     */     public Node(D param1D) {
-/*  55 */       this.data = param1D;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public abstract DependencyKind[] getSupportedDependencyKinds();
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public abstract Iterable<? extends Node<D>> getAllDependencies();
-/*     */
-/*     */
-/*     */
-/*     */     public abstract String getDependencyName(Node<D> param1Node, DependencyKind param1DependencyKind);
-/*     */
-/*     */
-/*     */
-/*     */     public String toString() {
-/*  75 */       return this.data.toString();
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */   public static abstract class TarjanNode<D>
-/*     */     extends Node<D>
-/*     */     implements Comparable<TarjanNode<D>>
-/*     */   {
-/*  84 */     int index = -1;
-/*     */     int lowlink;
-/*     */     boolean active;
-/*     */
-/*     */     public TarjanNode(D param1D) {
-/*  89 */       super(param1D);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public int compareTo(TarjanNode<D> param1TarjanNode) {
-/*  97 */       return (this.index < param1TarjanNode.index) ? -1 : ((this.index == param1TarjanNode.index) ? 0 : 1);
-/*     */     }
-/*     */
-/*     */     public abstract Iterable<? extends TarjanNode<D>> getAllDependencies();
-/*     */
-/*     */     public abstract Iterable<? extends TarjanNode<D>> getDependenciesByKind(DependencyKind param1DependencyKind);
-/*     */   }
-/*     */
-/*     */   public static <D, N extends TarjanNode<D>> List<? extends List<? extends N>> tarjan(Iterable<? extends N> paramIterable) {
-/* 106 */     Tarjan<Object, TarjanNode<?>> tarjan = new Tarjan<>();
-/* 107 */     return tarjan.findSCC(paramIterable);
-/*     */   }
-/*     */
-/*     */   private static class Tarjan<D, N extends TarjanNode<D>> {
-/*     */     int index;
-/*     */
-/*     */     private Tarjan() {
-/* 114 */       this.index = 0;
-/*     */
-/*     */
-/* 117 */       this.sccs = new ListBuffer<>();
-/*     */
-/*     */
-/* 120 */       this.stack = new ListBuffer<>();
-/*     */     } ListBuffer<List<N>> sccs; ListBuffer<N> stack;
-/*     */     private List<? extends List<? extends N>> findSCC(Iterable<? extends N> param1Iterable) {
-/* 123 */       for (TarjanNode tarjanNode : param1Iterable) {
-/* 124 */         if (tarjanNode.index == -1) {
-/* 125 */           findSCC((N)tarjanNode);
-/*     */         }
-/*     */       }
-/* 128 */       return this.sccs.toList();
-/*     */     }
-/*     */
-/*     */     private void findSCC(N param1N) {
-/* 132 */       visitNode(param1N);
-/* 133 */       for (TarjanNode tarjanNode1 : param1N.getAllDependencies()) {
-/*     */
-/* 135 */         TarjanNode tarjanNode2 = tarjanNode1;
-/* 136 */         if (tarjanNode2.index == -1) {
-/*     */
-/* 138 */           findSCC((N)tarjanNode2);
-/* 139 */           ((TarjanNode)param1N).lowlink = Math.min(((TarjanNode)param1N).lowlink, tarjanNode2.lowlink); continue;
-/* 140 */         }  if (this.stack.contains(tarjanNode2))
-/*     */         {
-/* 142 */           ((TarjanNode)param1N).lowlink = Math.min(((TarjanNode)param1N).lowlink, tarjanNode2.index);
-/*     */         }
-/*     */       }
-/* 145 */       if (((TarjanNode)param1N).lowlink == ((TarjanNode)param1N).index)
-/*     */       {
-/* 147 */         addSCC(param1N);
-/*     */       }
-/*     */     }
-/*     */
-/*     */     private void visitNode(N param1N) {
-/* 152 */       ((TarjanNode)param1N).index = this.index;
-/* 153 */       ((TarjanNode)param1N).lowlink = this.index;
-/* 154 */       this.index++;
-/* 155 */       this.stack.prepend(param1N);
-/* 156 */       ((TarjanNode)param1N).active = true;
-/*     */     }
-/*     */
-/*     */
-/*     */     private void addSCC(N param1N) {
-/* 161 */       ListBuffer<TarjanNode> listBuffer = new ListBuffer();
-/*     */       while (true) {
-/* 163 */         TarjanNode tarjanNode = (TarjanNode)this.stack.remove();
-/* 164 */         tarjanNode.active = false;
-/* 165 */         listBuffer.add(tarjanNode);
-/* 166 */         if (tarjanNode == param1N) {
-/* 167 */           this.sccs.add((List)listBuffer.toList());
-/*     */           return;
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static <D> String toDot(Iterable<? extends TarjanNode<D>> paramIterable, String paramString1, String paramString2) {
-/* 178 */     StringBuilder stringBuilder = new StringBuilder();
-/* 179 */     stringBuilder.append(String.format("digraph %s {\n", new Object[] { paramString1 }));
-/* 180 */     stringBuilder.append(String.format("label = \"%s\";\n", new Object[] { paramString2 }));
-/*     */
-/* 182 */     for (TarjanNode<D> tarjanNode : paramIterable) {
-/* 183 */       stringBuilder.append(String.format("%s [label = \"%s\"];\n", new Object[] { Integer.valueOf(tarjanNode.hashCode()), tarjanNode.toString() }));
-/*     */     }
-/*     */
-/* 186 */     for (TarjanNode<D> tarjanNode : paramIterable) {
-/* 187 */       for (DependencyKind dependencyKind : tarjanNode.getSupportedDependencyKinds()) {
-/* 188 */         for (TarjanNode tarjanNode1 : tarjanNode.getDependenciesByKind(dependencyKind)) {
-/* 189 */           stringBuilder.append(String.format("%s -> %s [label = \" %s \" style = %s ];\n", new Object[] {
-/* 190 */                   Integer.valueOf(tarjanNode.hashCode()), Integer.valueOf(tarjanNode1.hashCode()), tarjanNode.getDependencyName(tarjanNode1, dependencyKind), dependencyKind.getDotStyle() }));
-/*     */         }
-/*     */       }
-/*     */     }
-/* 194 */     stringBuilder.append("}\n");
-/* 195 */     return stringBuilder.toString();
-/*     */   }
-/*     */
-/*     */   public static interface DependencyKind {
-/*     */     String getDotStyle();
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\java\\util\GraphUtils.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.util;
+
+/** <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class GraphUtils {
+
+    /**
+     * Basic interface for defining various dependency kinds. All dependency kinds
+     * must at least support basic capabilities to tell the DOT engine how to render them.
+     */
+    public interface DependencyKind {
+        /**
+         * Returns the DOT representation (to be used in a {@code style} attribute
+         * that's most suited for this dependency kind.
+         */
+        String getDotStyle();
+    }
+
+    /**
+     * This class is a basic abstract class for representing a node.
+     * A node is associated with a given data.
+     */
+    public static abstract class Node<D> {
+        public final D data;
+
+        public Node(D data) {
+            this.data = data;
+        }
+
+        /**
+         * Get an array of the dependency kinds supported by this node.
+         */
+        public abstract DependencyKind[] getSupportedDependencyKinds();
+
+        /**
+         * Get all dependencies, regardless of their kind.
+         */
+        public abstract Iterable<? extends Node<D>> getAllDependencies();
+
+        /**
+         * Get a name for the dependency (of given kind) linking this node to a given node
+         */
+        public abstract String getDependencyName(Node<D> to, DependencyKind dk);
+
+        @Override
+        public String toString() {
+            return data.toString();
+        }
+    }
+
+    /**
+     * This class specialized Node, by adding elements that are required in order
+     * to perform Tarjan computation of strongly connected components.
+     */
+    public static abstract class TarjanNode<D> extends Node<D> implements Comparable<TarjanNode<D>> {
+        int index = -1;
+        int lowlink;
+        boolean active;
+
+        public TarjanNode(D data) {
+            super(data);
+        }
+
+        public abstract Iterable<? extends TarjanNode<D>> getAllDependencies();
+
+        public abstract Iterable<? extends TarjanNode<D>> getDependenciesByKind(DependencyKind dk);
+
+        public int compareTo(TarjanNode<D> o) {
+            return (index < o.index) ? -1 : (index == o.index) ? 0 : 1;
+        }
+    }
+
+    /**
+     * Tarjan's algorithm to determine strongly connected components of a
+     * directed graph in linear time. Works on TarjanNode.
+     */
+    public static <D, N extends TarjanNode<D>> List<? extends List<? extends N>> tarjan(Iterable<? extends N> nodes) {
+        Tarjan<D, N> tarjan = new Tarjan<>();
+        return tarjan.findSCC(nodes);
+    }
+
+    //where
+    private static class Tarjan<D, N extends TarjanNode<D>> {
+
+        /** Unique node identifier. */
+        int index = 0;
+
+        /** List of SCCs found so far. */
+        ListBuffer<List<N>> sccs = new ListBuffer<>();
+
+        /** Stack of all reacheable nodes from given root. */
+        ListBuffer<N> stack = new ListBuffer<>();
+
+        private List<? extends List<? extends N>> findSCC(Iterable<? extends N> nodes) {
+            for (N node : nodes) {
+                if (node.index == -1) {
+                    findSCC(node);
+                }
+            }
+            return sccs.toList();
+        }
+
+        private void findSCC(N v) {
+            visitNode(v);
+            for (TarjanNode<D> tn : v.getAllDependencies()) {
+                @SuppressWarnings("unchecked")
+                N n = (N)tn;
+                if (n.index == -1) {
+                    //it's the first time we see this node
+                    findSCC(n);
+                    v.lowlink = Math.min(v.lowlink, n.lowlink);
+                } else if (stack.contains(n)) {
+                    //this node is already reachable from current root
+                    v.lowlink = Math.min(v.lowlink, n.index);
+                }
+            }
+            if (v.lowlink == v.index) {
+                //v is the root of a SCC
+                addSCC(v);
+            }
+        }
+
+        private void visitNode(N n) {
+            n.index = index;
+            n.lowlink = index;
+            index++;
+            stack.prepend(n);
+            n.active = true;
+        }
+
+        private void addSCC(N v) {
+            N n;
+            ListBuffer<N> cycle = new ListBuffer<>();
+            do {
+                n = stack.remove();
+                n.active = false;
+                cycle.add(n);
+            } while (n != v);
+            sccs.add(cycle.toList());
+        }
+    }
+
+    /**
+     * Debugging: dot representation of a set of connected nodes. The resulting
+     * dot representation will use {@code Node.toString} to display node labels
+     * and {@code Node.printDependency} to display edge labels. The resulting
+     * representation is also customizable with a graph name and a header.
+     */
+    public static <D> String toDot(Iterable<? extends TarjanNode<D>> nodes, String name, String header) {
+        StringBuilder buf = new StringBuilder();
+        buf.append(String.format("digraph %s {\n", name));
+        buf.append(String.format("label = \"%s\";\n", header));
+        //dump nodes
+        for (TarjanNode<D> n : nodes) {
+            buf.append(String.format("%s [label = \"%s\"];\n", n.hashCode(), n.toString()));
+        }
+        //dump arcs
+        for (TarjanNode<D> from : nodes) {
+            for (DependencyKind dk : from.getSupportedDependencyKinds()) {
+                for (TarjanNode<D> to : from.getDependenciesByKind(dk)) {
+                    buf.append(String.format("%s -> %s [label = \" %s \" style = %s ];\n",
+                            from.hashCode(), to.hashCode(), from.getDependencyName(to, dk), dk.getDotStyle()));
+                }
+            }
+        }
+        buf.append("}\n");
+        return buf.toString();
+    }
+}

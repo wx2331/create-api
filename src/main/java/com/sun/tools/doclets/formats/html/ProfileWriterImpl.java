@@ -1,239 +1,233 @@
-/*     */ package com.sun.tools.doclets.formats.html;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.Doc;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.javadoc.Tag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlConstants;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlStyle;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTag;
-/*     */ import com.sun.tools.doclets.formats.html.markup.HtmlTree;
-/*     */ import com.sun.tools.doclets.formats.html.markup.RawHtml;
-/*     */ import com.sun.tools.doclets.formats.html.markup.StringContent;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.ProfileSummaryWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocPaths;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.Util;
-/*     */ import com.sun.tools.javac.jvm.Profile;
-/*     */ import java.io.IOException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class ProfileWriterImpl
-/*     */   extends HtmlDocletWriter
-/*     */   implements ProfileSummaryWriter
-/*     */ {
-/*     */   protected Profile prevProfile;
-/*     */   protected Profile nextProfile;
-/*     */   protected Profile profile;
-/*     */   
-/*     */   public ProfileWriterImpl(ConfigurationImpl paramConfigurationImpl, Profile paramProfile1, Profile paramProfile2, Profile paramProfile3) throws IOException {
-/*  80 */     super(paramConfigurationImpl, DocPaths.profileSummary(paramProfile1.name));
-/*  81 */     this.prevProfile = paramProfile2;
-/*  82 */     this.nextProfile = paramProfile3;
-/*  83 */     this.profile = paramProfile1;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getProfileHeader(String paramString) {
-/*  90 */     String str = this.profile.name;
-/*  91 */     HtmlTree htmlTree1 = getBody(true, getWindowTitle(str));
-/*  92 */     addTop((Content)htmlTree1);
-/*  93 */     addNavLinks(true, (Content)htmlTree1);
-/*  94 */     HtmlTree htmlTree2 = new HtmlTree(HtmlTag.DIV);
-/*  95 */     htmlTree2.addStyle(HtmlStyle.header);
-/*  96 */     HtmlTree htmlTree3 = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, true, HtmlStyle.title, this.profileLabel);
-/*     */     
-/*  98 */     htmlTree3.addContent(getSpace());
-/*  99 */     RawHtml rawHtml = new RawHtml(paramString);
-/* 100 */     htmlTree3.addContent((Content)rawHtml);
-/* 101 */     htmlTree2.addContent((Content)htmlTree3);
-/* 102 */     htmlTree1.addContent((Content)htmlTree2);
-/* 103 */     return (Content)htmlTree1;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getContentHeader() {
-/* 110 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.DIV);
-/* 111 */     htmlTree.addStyle(HtmlStyle.contentContainer);
-/* 112 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getSummaryHeader() {
-/* 119 */     HtmlTree htmlTree = new HtmlTree(HtmlTag.LI);
-/* 120 */     htmlTree.addStyle(HtmlStyle.blockList);
-/* 121 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getSummaryTree(Content paramContent) {
-/* 128 */     HtmlTree htmlTree = HtmlTree.UL(HtmlStyle.blockList, paramContent);
-/* 129 */     return (Content)HtmlTree.DIV(HtmlStyle.summary, (Content)htmlTree);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getPackageSummaryHeader(PackageDoc paramPackageDoc) {
-/* 137 */     Content content = getTargetProfilePackageLink(paramPackageDoc, "classFrame", (Content)new StringContent(paramPackageDoc
-/* 138 */           .name()), this.profile.name);
-/* 139 */     HtmlTree htmlTree1 = HtmlTree.HEADING(HtmlTag.H3, content);
-/* 140 */     HtmlTree htmlTree2 = HtmlTree.LI(HtmlStyle.blockList, (Content)htmlTree1);
-/* 141 */     addPackageDeprecationInfo((Content)htmlTree2, paramPackageDoc);
-/* 142 */     return (Content)htmlTree2;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getPackageSummaryTree(Content paramContent) {
-/* 149 */     return (Content)HtmlTree.UL(HtmlStyle.blockList, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addClassesSummary(ClassDoc[] paramArrayOfClassDoc, String paramString1, String paramString2, String[] paramArrayOfString, Content paramContent) {
-/* 158 */     addClassesSummary(paramArrayOfClassDoc, paramString1, paramString2, paramArrayOfString, paramContent, this.profile.value);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addProfileFooter(Content paramContent) {
-/* 166 */     addNavLinks(false, paramContent);
-/* 167 */     addBottom(paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void printDocument(Content paramContent) throws IOException {
-/* 174 */     printHtmlDocument(this.configuration.metakeywords.getMetaKeywords(this.profile), true, paramContent);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addPackageDeprecationInfo(Content paramContent, PackageDoc paramPackageDoc) {
-/* 186 */     if (Util.isDeprecated((Doc)paramPackageDoc)) {
-/* 187 */       Tag[] arrayOfTag = paramPackageDoc.tags("deprecated");
-/* 188 */       HtmlTree htmlTree1 = new HtmlTree(HtmlTag.DIV);
-/* 189 */       htmlTree1.addStyle(HtmlStyle.deprecatedContent);
-/* 190 */       HtmlTree htmlTree2 = HtmlTree.SPAN(HtmlStyle.deprecatedLabel, this.deprecatedPhrase);
-/* 191 */       htmlTree1.addContent((Content)htmlTree2);
-/* 192 */       if (arrayOfTag.length > 0) {
-/* 193 */         Tag[] arrayOfTag1 = arrayOfTag[0].inlineTags();
-/* 194 */         if (arrayOfTag1.length > 0) {
-/* 195 */           addInlineDeprecatedComment((Doc)paramPackageDoc, arrayOfTag[0], (Content)htmlTree1);
-/*     */         }
-/*     */       } 
-/* 198 */       paramContent.addContent((Content)htmlTree1);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getNavLinkPrevious() {
-/*     */     HtmlTree htmlTree;
-/* 209 */     if (this.prevProfile == null) {
-/* 210 */       htmlTree = HtmlTree.LI(this.prevprofileLabel);
-/*     */     } else {
-/* 212 */       htmlTree = HtmlTree.LI(getHyperLink(this.pathToRoot.resolve(DocPaths.profileSummary(this.prevProfile.name)), this.prevprofileLabel, "", ""));
-/*     */     } 
-/*     */     
-/* 215 */     return (Content)htmlTree;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Content getNavLinkNext() {
-/*     */     HtmlTree htmlTree;
-/* 225 */     if (this.nextProfile == null) {
-/* 226 */       htmlTree = HtmlTree.LI(this.nextprofileLabel);
-/*     */     } else {
-/* 228 */       htmlTree = HtmlTree.LI(getHyperLink(this.pathToRoot.resolve(DocPaths.profileSummary(this.nextProfile.name)), this.nextprofileLabel, "", ""));
-/*     */     } 
-/*     */     
-/* 231 */     return (Content)htmlTree;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\ProfileWriterImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html;
+
+import java.io.*;
+import java.util.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.javac.jvm.Profile;
+import com.sun.tools.doclets.formats.html.markup.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Class to generate file for each profile contents in the right-hand
+ * frame. This will list all the packages and Class Kinds in the profile. A click on any
+ * class-kind will update the frame with the clicked class-kind page. A click on any
+ * package will update the frame with the clicked profile package page.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Bhavesh Patel
+ */
+public class ProfileWriterImpl extends HtmlDocletWriter
+    implements ProfileSummaryWriter {
+
+    /**
+     * The prev profile name in the alpha-order list.
+     */
+    protected Profile prevProfile;
+
+    /**
+     * The next profile name in the alpha-order list.
+     */
+    protected Profile nextProfile;
+
+    /**
+     * The profile being documented.
+     */
+    protected Profile profile;
+
+    /**
+     * Constructor to construct ProfileWriter object and to generate
+     * "profileName-summary.html" file.
+     *
+     * @param configuration the configuration of the doclet.
+     * @param profile       Profile under consideration.
+     * @param prevProfile   Previous profile in the sorted array.
+     * @param nextProfile   Next profile in the sorted array.
+     */
+    public ProfileWriterImpl(ConfigurationImpl configuration,
+            Profile profile, Profile prevProfile, Profile nextProfile)
+            throws IOException {
+        super(configuration, DocPaths.profileSummary(profile.name));
+        this.prevProfile = prevProfile;
+        this.nextProfile = nextProfile;
+        this.profile = profile;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getProfileHeader(String heading) {
+        String profileName = profile.name;
+        Content bodyTree = getBody(true, getWindowTitle(profileName));
+        addTop(bodyTree);
+        addNavLinks(true, bodyTree);
+        HtmlTree div = new HtmlTree(HtmlTag.DIV);
+        div.addStyle(HtmlStyle.header);
+        Content tHeading = HtmlTree.HEADING(HtmlConstants.TITLE_HEADING, true,
+                HtmlStyle.title, profileLabel);
+        tHeading.addContent(getSpace());
+        Content profileHead = new RawHtml(heading);
+        tHeading.addContent(profileHead);
+        div.addContent(tHeading);
+        bodyTree.addContent(div);
+        return bodyTree;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getContentHeader() {
+        HtmlTree div = new HtmlTree(HtmlTag.DIV);
+        div.addStyle(HtmlStyle.contentContainer);
+        return div;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getSummaryHeader() {
+        HtmlTree li = new HtmlTree(HtmlTag.LI);
+        li.addStyle(HtmlStyle.blockList);
+        return li;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getSummaryTree(Content summaryContentTree) {
+        HtmlTree ul = HtmlTree.UL(HtmlStyle.blockList, summaryContentTree);
+        HtmlTree div = HtmlTree.DIV(HtmlStyle.summary, ul);
+        return div;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getPackageSummaryHeader(PackageDoc pkg) {
+        Content pkgName = getTargetProfilePackageLink(pkg,
+                    "classFrame", new StringContent(pkg.name()), profile.name);
+        Content heading = HtmlTree.HEADING(HtmlTag.H3, pkgName);
+        HtmlTree li = HtmlTree.LI(HtmlStyle.blockList, heading);
+        addPackageDeprecationInfo(li, pkg);
+        return li;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Content getPackageSummaryTree(Content packageSummaryContentTree) {
+        HtmlTree ul = HtmlTree.UL(HtmlStyle.blockList, packageSummaryContentTree);
+        return ul;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addClassesSummary(ClassDoc[] classes, String label,
+            String tableSummary, String[] tableHeader, Content packageSummaryContentTree) {
+        addClassesSummary(classes, label, tableSummary, tableHeader,
+                packageSummaryContentTree, profile.value);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void addProfileFooter(Content contentTree) {
+        addNavLinks(false, contentTree);
+        addBottom(contentTree);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void printDocument(Content contentTree) throws IOException {
+        printHtmlDocument(configuration.metakeywords.getMetaKeywords(profile),
+                true, contentTree);
+    }
+
+    /**
+     * Add the profile package deprecation information to the documentation tree.
+     *
+     * @param li the content tree to which the deprecation information will be added
+     * @param pkg the PackageDoc that is added
+     */
+    public void addPackageDeprecationInfo(Content li, PackageDoc pkg) {
+        Tag[] deprs;
+        if (Util.isDeprecated(pkg)) {
+            deprs = pkg.tags("deprecated");
+            HtmlTree deprDiv = new HtmlTree(HtmlTag.DIV);
+            deprDiv.addStyle(HtmlStyle.deprecatedContent);
+            Content deprPhrase = HtmlTree.SPAN(HtmlStyle.deprecatedLabel, deprecatedPhrase);
+            deprDiv.addContent(deprPhrase);
+            if (deprs.length > 0) {
+                Tag[] commentTags = deprs[0].inlineTags();
+                if (commentTags.length > 0) {
+                    addInlineDeprecatedComment(pkg, deprs[0], deprDiv);
+                }
+            }
+            li.addContent(deprDiv);
+        }
+    }
+
+    /**
+     * Get "PREV PROFILE" link in the navigation bar.
+     *
+     * @return a content tree for the previous link
+     */
+    public Content getNavLinkPrevious() {
+        Content li;
+        if (prevProfile == null) {
+            li = HtmlTree.LI(prevprofileLabel);
+        } else {
+            li = HtmlTree.LI(getHyperLink(pathToRoot.resolve(DocPaths.profileSummary(
+                    prevProfile.name)), prevprofileLabel, "", ""));
+        }
+        return li;
+    }
+
+    /**
+     * Get "NEXT PROFILE" link in the navigation bar.
+     *
+     * @return a content tree for the next link
+     */
+    public Content getNavLinkNext() {
+        Content li;
+        if (nextProfile == null) {
+            li = HtmlTree.LI(nextprofileLabel);
+        } else {
+            li = HtmlTree.LI(getHyperLink(pathToRoot.resolve(DocPaths.profileSummary(
+                    nextProfile.name)), nextprofileLabel, "", ""));
+        }
+        return li;
+    }
+}

@@ -1,187 +1,183 @@
-/*     */ package com.sun.tools.javac.util;
-/*     */
-/*     */ import java.lang.ref.WeakReference;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class UnsharedNameTable
-/*     */   extends Name.Table
-/*     */ {
-/*     */   public static Name.Table create(Names paramNames) {
-/*  42 */     return new UnsharedNameTable(paramNames);
-/*     */   }
-/*     */
-/*     */   static class HashEntry
-/*     */     extends WeakReference<NameImpl> {
-/*     */     HashEntry(NameImpl param1NameImpl) {
-/*  48 */       super(param1NameImpl);
-/*     */     }
-/*     */
-/*     */     HashEntry next;
-/*     */   }
-/*     */
-/*  54 */   private HashEntry[] hashes = null;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   private int hashMask;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public int index;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public UnsharedNameTable(Names paramNames, int paramInt) {
-/*  70 */     super(paramNames);
-/*  71 */     this.hashMask = paramInt - 1;
-/*  72 */     this.hashes = new HashEntry[paramInt];
-/*     */   }
-/*     */
-/*     */   public UnsharedNameTable(Names paramNames) {
-/*  76 */     this(paramNames, 32768);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public Name fromChars(char[] paramArrayOfchar, int paramInt1, int paramInt2) {
-/*  82 */     byte[] arrayOfByte = new byte[paramInt2 * 3];
-/*  83 */     int i = Convert.chars2utf(paramArrayOfchar, paramInt1, arrayOfByte, 0, paramInt2);
-/*  84 */     return fromUtf(arrayOfByte, 0, i);
-/*     */   }
-/*     */
-/*     */
-/*     */   public Name fromUtf(byte[] paramArrayOfbyte, int paramInt1, int paramInt2) {
-/*  89 */     int i = hashValue(paramArrayOfbyte, paramInt1, paramInt2) & this.hashMask;
-/*     */
-/*  91 */     HashEntry hashEntry1 = this.hashes[i];
-/*     */
-/*  93 */     NameImpl nameImpl = null;
-/*     */
-/*  95 */     HashEntry hashEntry2 = null;
-/*  96 */     HashEntry hashEntry3 = hashEntry1;
-/*     */
-/*  98 */     while (hashEntry1 != null &&
-/*  99 */       hashEntry1 != null) {
-/*     */
-/*     */
-/*     */
-/* 103 */       nameImpl = hashEntry1.get();
-/*     */
-/* 105 */       if (nameImpl == null) {
-/* 106 */         if (hashEntry3 == hashEntry1) {
-/* 107 */           this.hashes[i] = hashEntry3 = hashEntry1.next;
-/*     */         } else {
-/*     */
-/* 110 */           Assert.checkNonNull(hashEntry2, "previousNonNullTableEntry cannot be null here.");
-/* 111 */           hashEntry2.next = hashEntry1.next;
-/*     */         }
-/*     */       } else {
-/*     */
-/* 115 */         if (nameImpl.getByteLength() == paramInt2 && equals(nameImpl.bytes, 0, paramArrayOfbyte, paramInt1, paramInt2)) {
-/* 116 */           return nameImpl;
-/*     */         }
-/* 118 */         hashEntry2 = hashEntry1;
-/*     */       }
-/*     */
-/* 121 */       hashEntry1 = hashEntry1.next;
-/*     */     }
-/*     */
-/* 124 */     byte[] arrayOfByte = new byte[paramInt2];
-/* 125 */     System.arraycopy(paramArrayOfbyte, paramInt1, arrayOfByte, 0, paramInt2);
-/* 126 */     nameImpl = new NameImpl(this, arrayOfByte, this.index++);
-/*     */
-/* 128 */     HashEntry hashEntry4 = new HashEntry(nameImpl);
-/*     */
-/* 130 */     if (hashEntry2 == null) {
-/* 131 */       this.hashes[i] = hashEntry4;
-/*     */     } else {
-/*     */
-/* 134 */       Assert.checkNull(hashEntry2.next, "previousNonNullTableEntry.next must be null.");
-/* 135 */       hashEntry2.next = hashEntry4;
-/*     */     }
-/*     */
-/* 138 */     return nameImpl;
-/*     */   }
-/*     */
-/*     */
-/*     */   public void dispose() {
-/* 143 */     this.hashes = null;
-/*     */   }
-/*     */
-/*     */   static class NameImpl extends Name {
-/*     */     NameImpl(UnsharedNameTable param1UnsharedNameTable, byte[] param1ArrayOfbyte, int param1Int) {
-/* 148 */       super(param1UnsharedNameTable);
-/* 149 */       this.bytes = param1ArrayOfbyte;
-/* 150 */       this.index = param1Int;
-/*     */     }
-/*     */
-/*     */
-/*     */     final byte[] bytes;
-/*     */     final int index;
-/*     */
-/*     */     public int getIndex() {
-/* 158 */       return this.index;
-/*     */     }
-/*     */
-/*     */
-/*     */     public int getByteLength() {
-/* 163 */       return this.bytes.length;
-/*     */     }
-/*     */
-/*     */
-/*     */     public byte getByteAt(int param1Int) {
-/* 168 */       return this.bytes[param1Int];
-/*     */     }
-/*     */
-/*     */
-/*     */     public byte[] getByteArray() {
-/* 173 */       return this.bytes;
-/*     */     }
-/*     */
-/*     */
-/*     */     public int getByteOffset() {
-/* 178 */       return 0;
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\java\\util\UnsharedNameTable.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.util;
+
+import java.lang.ref.WeakReference;
+
+/**
+ * Implementation of Name.Table that stores names in individual arrays
+ * using weak references. It is recommended for use when a single shared
+ * byte array is unsuitable.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class UnsharedNameTable extends Name.Table {
+    static public Name.Table create(Names names) {
+        return new UnsharedNameTable(names);
+    }
+
+    static class HashEntry extends WeakReference<NameImpl> {
+        HashEntry next;
+        HashEntry(NameImpl referent) {
+            super(referent);
+        }
+    }
+
+    /** The hash table for names.
+     */
+    private HashEntry[] hashes = null;
+
+    /** The mask to be used for hashing
+     */
+    private int hashMask;
+
+    /** Index counter for names in this table.
+     */
+    public int index;
+
+    /** Allocator
+     *  @param names The main name table
+     *  @param hashSize the (constant) size to be used for the hash table
+     *                  needs to be a power of two.
+     */
+    public UnsharedNameTable(Names names, int hashSize) {
+        super(names);
+        hashMask = hashSize - 1;
+        hashes = new HashEntry[hashSize];
+    }
+
+    public UnsharedNameTable(Names names) {
+        this(names, 0x8000);
+    }
+
+
+    @Override
+    public Name fromChars(char[] cs, int start, int len) {
+        byte[] name = new byte[len * 3];
+        int nbytes = Convert.chars2utf(cs, start, name, 0, len);
+        return fromUtf(name, 0, nbytes);
+    }
+
+    @Override
+    public Name fromUtf(byte[] cs, int start, int len) {
+        int h = hashValue(cs, start, len) & hashMask;
+
+        HashEntry element = hashes[h];
+
+        NameImpl n = null;
+
+        HashEntry previousNonNullTableEntry = null;
+        HashEntry firstTableEntry = element;
+
+        while (element != null) {
+            if (element == null) {
+                break;
+            }
+
+            n = element.get();
+
+            if (n == null) {
+                if (firstTableEntry == element) {
+                    hashes[h] = firstTableEntry = element.next;
+                }
+                else {
+                    Assert.checkNonNull(previousNonNullTableEntry, "previousNonNullTableEntry cannot be null here.");
+                    previousNonNullTableEntry.next = element.next;
+                }
+            }
+            else {
+                if (n.getByteLength() == len && equals(n.bytes, 0, cs, start, len)) {
+                    return n;
+                }
+                previousNonNullTableEntry = element;
+            }
+
+            element = element.next;
+        }
+
+        byte[] bytes = new byte[len];
+        System.arraycopy(cs, start, bytes, 0, len);
+        n = new NameImpl(this, bytes, index++);
+
+        HashEntry newEntry = new HashEntry(n);
+
+        if (previousNonNullTableEntry == null) { // We are not the first name with that hashCode.
+            hashes[h] = newEntry;
+        }
+        else {
+            Assert.checkNull(previousNonNullTableEntry.next, "previousNonNullTableEntry.next must be null.");
+            previousNonNullTableEntry.next = newEntry;
+        }
+
+        return n;
+    }
+
+    @Override
+    public void dispose() {
+        hashes = null;
+    }
+
+    static class NameImpl extends Name {
+        NameImpl(UnsharedNameTable table, byte[] bytes, int index) {
+            super(table);
+            this.bytes = bytes;
+            this.index = index;
+        }
+
+        final byte[] bytes;
+        final int index;
+
+        @Override
+        public int getIndex() {
+            return index;
+        }
+
+        @Override
+        public int getByteLength() {
+            return bytes.length;
+        }
+
+        @Override
+        public byte getByteAt(int i) {
+            return bytes[i];
+        }
+
+        @Override
+        public byte[] getByteArray() {
+            return bytes;
+        }
+
+        @Override
+        public int getByteOffset() {
+            return 0;
+        }
+
+    }
+
+}

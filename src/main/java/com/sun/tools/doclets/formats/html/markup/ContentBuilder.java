@@ -1,101 +1,95 @@
-/*    */ package com.sun.tools.doclets.formats.html.markup;
-/*    */ 
-/*    */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*    */ import java.io.IOException;
-/*    */ import java.io.Writer;
-/*    */ import java.util.ArrayList;
-/*    */ import java.util.Collections;
-/*    */ import java.util.List;
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ 
-/*    */ public class ContentBuilder
-/*    */   extends Content
-/*    */ {
-/* 39 */   protected List<Content> contents = Collections.emptyList();
-/*    */ 
-/*    */   
-/*    */   public void addContent(Content paramContent) {
-/* 43 */     nullCheck(paramContent);
-/* 44 */     ensureMutableContents();
-/* 45 */     if (paramContent instanceof ContentBuilder) {
-/* 46 */       this.contents.addAll(((ContentBuilder)paramContent).contents);
-/*    */     } else {
-/* 48 */       this.contents.add(paramContent);
-/*    */     } 
-/*    */   }
-/*    */   public void addContent(String paramString) {
-/*    */     StringContent stringContent;
-/* 53 */     if (paramString.isEmpty())
-/*    */       return; 
-/* 55 */     ensureMutableContents();
-/* 56 */     Content content = this.contents.isEmpty() ? null : this.contents.get(this.contents.size() - 1);
-/*    */     
-/* 58 */     if (content != null && content instanceof StringContent) {
-/* 59 */       stringContent = (StringContent)content;
-/*    */     } else {
-/* 61 */       this.contents.add(stringContent = new StringContent());
-/*    */     } 
-/* 63 */     stringContent.addContent(paramString);
-/*    */   }
-/*    */ 
-/*    */   
-/*    */   public boolean write(Writer paramWriter, boolean paramBoolean) throws IOException {
-/* 68 */     for (Content content : this.contents) {
-/* 69 */       paramBoolean = content.write(paramWriter, paramBoolean);
-/*    */     }
-/* 71 */     return paramBoolean;
-/*    */   }
-/*    */ 
-/*    */   
-/*    */   public boolean isEmpty() {
-/* 76 */     for (Content content : this.contents) {
-/* 77 */       if (!content.isEmpty())
-/* 78 */         return false; 
-/*    */     } 
-/* 80 */     return true;
-/*    */   }
-/*    */ 
-/*    */   
-/*    */   public int charCount() {
-/* 85 */     int i = 0;
-/* 86 */     for (Content content : this.contents)
-/* 87 */       i += content.charCount(); 
-/* 88 */     return i;
-/*    */   }
-/*    */   
-/*    */   private void ensureMutableContents() {
-/* 92 */     if (this.contents.isEmpty())
-/* 93 */       this.contents = new ArrayList<>(); 
-/*    */   }
-/*    */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\markup\ContentBuilder.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html.markup;
+
+import java.io.IOException;
+import java.io.Writer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import com.sun.tools.doclets.internal.toolkit.Content;
+
+/**
+ * A sequence of Content nodes.
+ */
+public class ContentBuilder extends Content {
+    protected List<Content> contents = Collections.<Content>emptyList();
+
+    @Override
+    public void addContent(Content content) {
+        nullCheck(content);
+        ensureMutableContents();
+        if (content instanceof ContentBuilder) {
+            contents.addAll(((ContentBuilder) content).contents);
+        } else
+            contents.add(content);
+    }
+
+    @Override
+    public void addContent(String text) {
+        if (text.isEmpty())
+            return;
+        ensureMutableContents();
+        Content c = contents.isEmpty() ? null : contents.get(contents.size() - 1);
+        StringContent sc;
+        if (c != null && c instanceof StringContent) {
+            sc = (StringContent) c;
+        } else {
+            contents.add(sc = new StringContent());
+        }
+        sc.addContent(text);
+    }
+
+    @Override
+    public boolean write(Writer writer, boolean atNewline) throws IOException {
+        for (Content content: contents) {
+            atNewline = content.write(writer, atNewline);
+        }
+        return atNewline;
+    }
+
+    @Override
+    public boolean isEmpty() {
+        for (Content content: contents) {
+            if (!content.isEmpty())
+                return false;
+        }
+        return true;
+    }
+
+    @Override
+    public int charCount() {
+        int n = 0;
+        for (Content c : contents)
+            n += c.charCount();
+        return n;
+    }
+
+    private void ensureMutableContents() {
+        if (contents.isEmpty())
+            contents = new ArrayList<Content>();
+    }
+}

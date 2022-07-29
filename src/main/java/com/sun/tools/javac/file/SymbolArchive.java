@@ -1,111 +1,107 @@
-/*     */ package com.sun.tools.javac.file;
-/*     */
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import java.io.File;
-/*     */ import java.io.IOException;
-/*     */ import java.util.zip.ZipEntry;
-/*     */ import java.util.zip.ZipFile;
-/*     */ import javax.tools.JavaFileObject;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class SymbolArchive
-/*     */   extends ZipArchive
-/*     */ {
-/*     */   final File origFile;
-/*     */   final RelativePath.RelativeDirectory prefix;
-/*     */
-/*     */   public SymbolArchive(JavacFileManager paramJavacFileManager, File paramFile, ZipFile paramZipFile, RelativePath.RelativeDirectory paramRelativeDirectory) throws IOException {
-/*  50 */     super(paramJavacFileManager, paramZipFile, false);
-/*  51 */     this.origFile = paramFile;
-/*  52 */     this.prefix = paramRelativeDirectory;
-/*  53 */     initMap();
-/*     */   }
-/*     */
-/*     */
-/*     */   void addZipEntry(ZipEntry paramZipEntry) {
-/*  58 */     String str1 = paramZipEntry.getName();
-/*  59 */     if (!str1.startsWith(this.prefix.path)) {
-/*     */       return;
-/*     */     }
-/*  62 */     str1 = str1.substring(this.prefix.path.length());
-/*  63 */     int i = str1.lastIndexOf('/');
-/*  64 */     RelativePath.RelativeDirectory relativeDirectory = new RelativePath.RelativeDirectory(str1.substring(0, i + 1));
-/*  65 */     String str2 = str1.substring(i + 1);
-/*  66 */     if (str2.length() == 0) {
-/*     */       return;
-/*     */     }
-/*  69 */     List<String> list = this.map.get(relativeDirectory);
-/*  70 */     if (list == null)
-/*  71 */       list = List.nil();
-/*  72 */     list = list.prepend(str2);
-/*  73 */     this.map.put(relativeDirectory, list);
-/*     */   }
-/*     */
-/*     */
-/*     */   public JavaFileObject getFileObject(RelativePath.RelativeDirectory paramRelativeDirectory, String paramString) {
-/*  78 */     RelativePath.RelativeDirectory relativeDirectory = new RelativePath.RelativeDirectory(this.prefix, paramRelativeDirectory.path);
-/*  79 */     ZipEntry zipEntry = (new RelativePath.RelativeFile(relativeDirectory, paramString)).getZipEntry(this.zfile);
-/*  80 */     return new SymbolFileObject(this, paramString, zipEntry);
-/*     */   }
-/*     */
-/*     */
-/*     */   public String toString() {
-/*  85 */     return "SymbolArchive[" + this.zfile.getName() + "]";
-/*     */   }
-/*     */
-/*     */
-/*     */   public static class SymbolFileObject
-/*     */     extends ZipFileObject
-/*     */   {
-/*     */     protected SymbolFileObject(SymbolArchive param1SymbolArchive, String param1String, ZipEntry param1ZipEntry) {
-/*  93 */       super(param1SymbolArchive, param1String, param1ZipEntry);
-/*     */     }
-/*     */
-/*     */
-/*     */     protected String inferBinaryName(Iterable<? extends File> param1Iterable) {
-/*  98 */       String str1 = this.entry.getName();
-/*  99 */       String str2 = ((SymbolArchive)this.zarch).prefix.path;
-/* 100 */       if (str1.startsWith(str2))
-/* 101 */         str1 = str1.substring(str2.length());
-/* 102 */       return removeExtension(str1).replace('/', '.');
-/*     */     }
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\file\SymbolArchive.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2005, 2009, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.file;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import javax.tools.JavaFileObject;
+
+import com.sun.tools.javac.file.RelativePath.RelativeDirectory;
+import com.sun.tools.javac.file.RelativePath.RelativeFile;
+import com.sun.tools.javac.util.List;
+
+/**
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own risk.
+ * This code and its internal interfaces are subject to change or
+ * deletion without notice.</b>
+*/
+public class SymbolArchive extends ZipArchive {
+
+    final File origFile;
+    final RelativeDirectory prefix;
+
+    public SymbolArchive(JavacFileManager fileManager, File orig, ZipFile zdir, RelativeDirectory prefix) throws IOException {
+        super(fileManager, zdir, false);
+        this.origFile = orig;
+        this.prefix = prefix;
+        initMap();
+    }
+
+    @Override
+    void addZipEntry(ZipEntry entry) {
+        String name = entry.getName();
+        if (!name.startsWith(prefix.path)) {
+            return;
+        }
+        name = name.substring(prefix.path.length());
+        int i = name.lastIndexOf('/');
+        RelativeDirectory dirname = new RelativeDirectory(name.substring(0, i+1));
+        String basename = name.substring(i + 1);
+        if (basename.length() == 0) {
+            return;
+        }
+        List<String> list = map.get(dirname);
+        if (list == null)
+            list = List.nil();
+        list = list.prepend(basename);
+        map.put(dirname, list);
+    }
+
+    @Override
+    public JavaFileObject getFileObject(RelativeDirectory subdirectory, String file) {
+        RelativeDirectory prefix_subdir = new RelativeDirectory(prefix, subdirectory.path);
+        ZipEntry ze = new RelativeFile(prefix_subdir, file).getZipEntry(zfile);
+        return new SymbolFileObject(this, file, ze);
+    }
+
+    @Override
+    public String toString() {
+        return "SymbolArchive[" + zfile.getName() + "]";
+    }
+
+    /**
+     * A subclass of JavaFileObject representing zip entries in a symbol file.
+     */
+    public static class SymbolFileObject extends ZipFileObject {
+        protected SymbolFileObject(SymbolArchive zarch, String name, ZipEntry entry) {
+            super(zarch, name, entry);
+        }
+
+        @Override
+        protected String inferBinaryName(Iterable<? extends File> path) {
+            String entryName = entry.getName();
+            String prefix = ((SymbolArchive) zarch).prefix.path;
+            if (entryName.startsWith(prefix))
+                entryName = entryName.substring(prefix.length());
+            return removeExtension(entryName).replace('/', '.');
+        }
+    }
+
+
+}

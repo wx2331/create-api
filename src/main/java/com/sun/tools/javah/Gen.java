@@ -1,393 +1,384 @@
-/*     */ package com.sun.tools.javah;
-/*     */ 
-/*     */ import java.io.ByteArrayOutputStream;
-/*     */ import java.io.FileNotFoundException;
-/*     */ import java.io.IOException;
-/*     */ import java.io.InputStream;
-/*     */ import java.io.OutputStream;
-/*     */ import java.io.OutputStreamWriter;
-/*     */ import java.io.PrintWriter;
-/*     */ import java.io.UnsupportedEncodingException;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.List;
-/*     */ import java.util.Set;
-/*     */ import java.util.Stack;
-/*     */ import javax.annotation.processing.ProcessingEnvironment;
-/*     */ import javax.lang.model.element.ExecutableElement;
-/*     */ import javax.lang.model.element.Modifier;
-/*     */ import javax.lang.model.element.Name;
-/*     */ import javax.lang.model.element.TypeElement;
-/*     */ import javax.lang.model.element.VariableElement;
-/*     */ import javax.lang.model.util.ElementFilter;
-/*     */ import javax.lang.model.util.Elements;
-/*     */ import javax.lang.model.util.Types;
-/*     */ import javax.tools.FileObject;
-/*     */ import javax.tools.JavaFileManager;
-/*     */ import javax.tools.JavaFileObject;
-/*     */ import javax.tools.StandardLocation;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public abstract class Gen
-/*     */ {
-/*  71 */   protected String lineSep = System.getProperty("line.separator");
-/*     */ 
-/*     */   
-/*     */   protected ProcessingEnvironment processingEnvironment;
-/*     */ 
-/*     */   
-/*     */   protected Types types;
-/*     */ 
-/*     */   
-/*     */   protected Elements elems;
-/*     */   
-/*     */   protected Mangle mangler;
-/*     */   
-/*     */   protected Util util;
-/*     */   
-/*     */   protected Set<TypeElement> classes;
-/*     */   
-/*  88 */   private static final boolean isWindows = System.getProperty("os.name").startsWith("Windows");
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected JavaFileManager fileManager;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected JavaFileObject outFile;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected boolean force;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void setFileManager(JavaFileManager paramJavaFileManager) {
-/* 110 */     this.fileManager = paramJavaFileManager;
-/*     */   }
-/*     */   
-/*     */   public void setOutFile(JavaFileObject paramJavaFileObject) {
-/* 114 */     this.outFile = paramJavaFileObject;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   public void setClasses(Set<TypeElement> paramSet) {
-/* 119 */     this.classes = paramSet;
-/*     */   }
-/*     */   
-/*     */   void setProcessingEnvironment(ProcessingEnvironment paramProcessingEnvironment) {
-/* 123 */     this.processingEnvironment = paramProcessingEnvironment;
-/* 124 */     this.elems = paramProcessingEnvironment.getElementUtils();
-/* 125 */     this.types = paramProcessingEnvironment.getTypeUtils();
-/* 126 */     this.mangler = new Mangle(this.elems, this.types);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected Gen(Util paramUtil) {
-/* 132 */     this.force = false;
-/*     */     this.util = paramUtil;
-/*     */   } public void setForce(boolean paramBoolean) {
-/* 135 */     this.force = paramBoolean;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected PrintWriter wrapWriter(OutputStream paramOutputStream) throws Util.Exit {
-/*     */     try {
-/* 144 */       return new PrintWriter(new OutputStreamWriter(paramOutputStream, "ISO8859_1"), true);
-/* 145 */     } catch (UnsupportedEncodingException unsupportedEncodingException) {
-/* 146 */       this.util.bug("encoding.iso8859_1.not.found");
-/* 147 */       return null;
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void run() throws IOException, ClassNotFoundException, Util.Exit {
-/* 159 */     boolean bool = false;
-/* 160 */     if (this.outFile != null) {
-/*     */       
-/* 162 */       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(8192);
-/* 163 */       writeFileTop(byteArrayOutputStream);
-/*     */       
-/* 165 */       for (TypeElement typeElement : this.classes) {
-/* 166 */         write(byteArrayOutputStream, typeElement);
-/*     */       }
-/*     */       
-/* 169 */       writeIfChanged(byteArrayOutputStream.toByteArray(), this.outFile);
-/*     */     } else {
-/*     */       
-/* 172 */       for (TypeElement typeElement : this.classes) {
-/* 173 */         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(8192);
-/* 174 */         writeFileTop(byteArrayOutputStream);
-/* 175 */         write(byteArrayOutputStream, typeElement);
-/* 176 */         writeIfChanged(byteArrayOutputStream.toByteArray(), getFileObject(typeElement.getQualifiedName()));
-/*     */       } 
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private void writeIfChanged(byte[] paramArrayOfbyte, FileObject paramFileObject) throws IOException {
-/* 187 */     boolean bool = false;
-/* 188 */     String str = "[No need to update file ";
-/*     */     
-/* 190 */     if (this.force) {
-/* 191 */       bool = true;
-/* 192 */       str = "[Forcefully writing file ";
-/*     */     } else {
-/*     */ 
-/*     */       
-/*     */       try {
-/*     */ 
-/*     */ 
-/*     */         
-/* 200 */         InputStream inputStream = paramFileObject.openInputStream();
-/* 201 */         byte[] arrayOfByte = readBytes(inputStream);
-/* 202 */         if (!Arrays.equals(arrayOfByte, paramArrayOfbyte)) {
-/* 203 */           bool = true;
-/* 204 */           str = "[Overwriting file ";
-/*     */         }
-/*     */       
-/* 207 */       } catch (FileNotFoundException fileNotFoundException) {
-/* 208 */         bool = true;
-/* 209 */         str = "[Creating file ";
-/*     */       } 
-/*     */     } 
-/*     */     
-/* 213 */     if (this.util.verbose) {
-/* 214 */       this.util.log(str + paramFileObject + "]");
-/*     */     }
-/* 216 */     if (bool) {
-/* 217 */       OutputStream outputStream = paramFileObject.openOutputStream();
-/* 218 */       outputStream.write(paramArrayOfbyte);
-/* 219 */       outputStream.close();
-/*     */     } 
-/*     */   }
-/*     */   
-/*     */   protected byte[] readBytes(InputStream paramInputStream) throws IOException {
-/*     */     try {
-/* 225 */       byte[] arrayOfByte = new byte[paramInputStream.available() + 1];
-/* 226 */       int i = 0;
-/*     */       int j;
-/* 228 */       while ((j = paramInputStream.read(arrayOfByte, i, arrayOfByte.length - i)) != -1) {
-/* 229 */         i += j;
-/* 230 */         if (i == arrayOfByte.length) {
-/* 231 */           arrayOfByte = Arrays.copyOf(arrayOfByte, arrayOfByte.length * 2);
-/*     */         }
-/*     */       } 
-/* 234 */       return Arrays.copyOf(arrayOfByte, i);
-/*     */     } finally {
-/* 236 */       paramInputStream.close();
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   protected String defineForStatic(TypeElement paramTypeElement, VariableElement paramVariableElement) throws Util.Exit {
-/* 242 */     Name name1 = paramTypeElement.getQualifiedName();
-/* 243 */     Name name2 = paramVariableElement.getSimpleName();
-/*     */     
-/* 245 */     String str1 = this.mangler.mangle(name1, 1);
-/* 246 */     String str2 = this.mangler.mangle(name2, 2);
-/*     */     
-/* 248 */     if (!paramVariableElement.getModifiers().contains(Modifier.STATIC)) {
-/* 249 */       this.util.bug("tried.to.define.non.static");
-/*     */     }
-/* 251 */     if (paramVariableElement.getModifiers().contains(Modifier.FINAL)) {
-/* 252 */       Object object = null;
-/*     */       
-/* 254 */       object = paramVariableElement.getConstantValue();
-/*     */       
-/* 256 */       if (object != null) {
-/* 257 */         String str = null;
-/* 258 */         if (object instanceof Integer || object instanceof Byte || object instanceof Short) {
-/*     */ 
-/*     */ 
-/*     */           
-/* 262 */           str = object.toString() + "L";
-/* 263 */         } else if (object instanceof Boolean) {
-/* 264 */           str = ((Boolean)object).booleanValue() ? "1L" : "0L";
-/* 265 */         } else if (object instanceof Character) {
-/* 266 */           Character character = (Character)object;
-/* 267 */           str = String.valueOf(character.charValue() & Character.MAX_VALUE) + "L";
-/* 268 */         } else if (object instanceof Long) {
-/*     */           
-/* 270 */           if (isWindows)
-/* 271 */           { str = object.toString() + "i64"; }
-/*     */           else
-/* 273 */           { str = object.toString() + "LL"; } 
-/* 274 */         } else if (object instanceof Float) {
-/*     */           
-/* 276 */           float f = ((Float)object).floatValue();
-/* 277 */           if (Float.isInfinite(f))
-/* 278 */           { str = ((f < 0.0F) ? "-" : "") + "Inff"; }
-/*     */           else
-/* 280 */           { str = object.toString() + "f"; } 
-/* 281 */         } else if (object instanceof Double) {
-/*     */           
-/* 283 */           double d = ((Double)object).doubleValue();
-/* 284 */           if (Double.isInfinite(d)) {
-/* 285 */             str = ((d < 0.0D) ? "-" : "") + "InfD";
-/*     */           } else {
-/* 287 */             str = object.toString();
-/*     */           } 
-/* 289 */         }  if (str != null) {
-/* 290 */           StringBuilder stringBuilder = new StringBuilder("#undef ");
-/* 291 */           stringBuilder.append(str1); stringBuilder.append("_"); stringBuilder.append(str2); stringBuilder.append(this.lineSep);
-/* 292 */           stringBuilder.append("#define "); stringBuilder.append(str1); stringBuilder.append("_");
-/* 293 */           stringBuilder.append(str2); stringBuilder.append(" "); stringBuilder.append(str);
-/* 294 */           return stringBuilder.toString();
-/*     */         } 
-/*     */       } 
-/*     */     } 
-/*     */     
-/* 299 */     return null;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected String cppGuardBegin() {
-/* 306 */     return "#ifdef __cplusplus" + this.lineSep + "extern \"C\" {" + this.lineSep + "#endif";
-/*     */   }
-/*     */   
-/*     */   protected String cppGuardEnd() {
-/* 310 */     return "#ifdef __cplusplus" + this.lineSep + "}" + this.lineSep + "#endif";
-/*     */   }
-/*     */   
-/*     */   protected String guardBegin(String paramString) {
-/* 314 */     return "/* Header for class " + paramString + " */" + this.lineSep + this.lineSep + "#ifndef _Included_" + paramString + this.lineSep + "#define _Included_" + paramString;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected String guardEnd(String paramString) {
-/* 320 */     return "#endif";
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected void writeFileTop(OutputStream paramOutputStream) throws Util.Exit {
-/* 327 */     PrintWriter printWriter = wrapWriter(paramOutputStream);
-/* 328 */     printWriter.println("/* DO NOT EDIT THIS FILE - it is machine generated */" + this.lineSep + 
-/* 329 */         getIncludes());
-/*     */   }
-/*     */   
-/*     */   protected String baseFileName(CharSequence paramCharSequence) {
-/* 333 */     return this.mangler.mangle(paramCharSequence, 1);
-/*     */   }
-/*     */   
-/*     */   protected FileObject getFileObject(CharSequence paramCharSequence) throws IOException {
-/* 337 */     String str = baseFileName(paramCharSequence) + getFileSuffix();
-/* 338 */     return this.fileManager.getFileForOutput(StandardLocation.SOURCE_OUTPUT, "", str, null);
-/*     */   }
-/*     */   
-/*     */   protected String getFileSuffix() {
-/* 342 */     return ".h";
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   List<VariableElement> getAllFields(TypeElement paramTypeElement) {
-/* 350 */     ArrayList<VariableElement> arrayList = new ArrayList();
-/* 351 */     TypeElement typeElement = null;
-/* 352 */     Stack<TypeElement> stack = new Stack();
-/*     */     
-/* 354 */     typeElement = paramTypeElement;
-/*     */     while (true) {
-/* 356 */       stack.push(typeElement);
-/* 357 */       TypeElement typeElement1 = (TypeElement)this.types.asElement(typeElement.getSuperclass());
-/* 358 */       if (typeElement1 == null)
-/*     */         break; 
-/* 360 */       typeElement = typeElement1;
-/*     */     } 
-/*     */     
-/* 363 */     while (!stack.empty()) {
-/* 364 */       typeElement = stack.pop();
-/* 365 */       arrayList.addAll(ElementFilter.fieldsIn(typeElement.getEnclosedElements()));
-/*     */     } 
-/*     */     
-/* 368 */     return arrayList;
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   String signature(ExecutableElement paramExecutableElement) {
-/* 373 */     StringBuilder stringBuilder = new StringBuilder("(");
-/* 374 */     String str = "";
-/* 375 */     for (VariableElement variableElement : paramExecutableElement.getParameters()) {
-/* 376 */       stringBuilder.append(str);
-/* 377 */       stringBuilder.append(this.types.erasure(variableElement.asType()).toString());
-/* 378 */       str = ",";
-/*     */     } 
-/* 380 */     stringBuilder.append(")");
-/* 381 */     return stringBuilder.toString();
-/*     */   }
-/*     */   
-/*     */   protected abstract void write(OutputStream paramOutputStream, TypeElement paramTypeElement) throws Util.Exit;
-/*     */   
-/*     */   protected abstract String getIncludes();
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javah\Gen.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2002, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javah;
+
+import java.io.UnsupportedEncodingException;
+import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import java.util.Stack;
+
+import javax.annotation.processing.ProcessingEnvironment;
+
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.VariableElement;
+import javax.lang.model.util.ElementFilter;
+import javax.lang.model.util.Elements;
+import javax.lang.model.util.Types;
+
+import javax.tools.FileObject;
+import javax.tools.JavaFileManager;
+import javax.tools.JavaFileObject;
+import javax.tools.StandardLocation;
+
+/**
+ * An abstraction for generating support files required by native methods.
+ * Subclasses are for specific native interfaces. At the time of its
+ * original writing, this interface is rich enough to support JNI and the
+ * old 1.0-style native method interface.
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own
+ * risk.  This code and its internal interfaces are subject to change
+ * or deletion without notice.</b></p>
+ *
+ * @author  Sucheta Dambalkar(Revised)
+ */
+public abstract class Gen {
+    protected String lineSep = System.getProperty("line.separator");
+
+    protected ProcessingEnvironment processingEnvironment;
+    protected Types types;
+    protected Elements elems;
+    protected Mangle mangler;
+    protected Util util;
+
+    protected Gen(Util util) {
+        this.util = util;
+    }
+
+    /*
+     * List of classes for which we must generate output.
+     */
+    protected Set<TypeElement> classes;
+    static private final boolean isWindows =
+        System.getProperty("os.name").startsWith("Windows");
+
+
+    /**
+     * Override this abstract method, generating content for the named
+     * class into the outputstream.
+     */
+    protected abstract void write(OutputStream o, TypeElement clazz) throws Util.Exit;
+
+    /**
+     * Override this method to provide a list of #include statements
+     * required by the native interface.
+     */
+    protected abstract String getIncludes();
+
+    /*
+     * Output location.
+     */
+    protected JavaFileManager fileManager;
+    protected JavaFileObject outFile;
+
+    public void setFileManager(JavaFileManager fm) {
+        fileManager = fm;
+    }
+
+    public void setOutFile(JavaFileObject outFile) {
+        this.outFile = outFile;
+    }
+
+
+    public void setClasses(Set<TypeElement> classes) {
+        this.classes = classes;
+    }
+
+    void setProcessingEnvironment(ProcessingEnvironment pEnv) {
+        processingEnvironment = pEnv;
+        elems = pEnv.getElementUtils();
+        types = pEnv.getTypeUtils();
+        mangler = new Mangle(elems, types);
+    }
+
+    /*
+     * Smartness with generated files.
+     */
+    protected boolean force = false;
+
+    public void setForce(boolean state) {
+        force = state;
+    }
+
+    /**
+     * We explicitly need to write ASCII files because that is what C
+     * compilers understand.
+     */
+    protected PrintWriter wrapWriter(OutputStream o) throws Util.Exit {
+        try {
+            return new PrintWriter(new OutputStreamWriter(o, "ISO8859_1"), true);
+        } catch (UnsupportedEncodingException use) {
+            util.bug("encoding.iso8859_1.not.found");
+            return null; /* dead code */
+        }
+    }
+
+    /**
+     * After initializing state of an instance, use this method to start
+     * processing.
+     *
+     * Buffer size chosen as an approximation from a single sampling of:
+     *         expr `du -sk` / `ls *.h | wc -l`
+     */
+    public void run() throws IOException, ClassNotFoundException, Util.Exit {
+        int i = 0;
+        if (outFile != null) {
+            /* Everything goes to one big file... */
+            ByteArrayOutputStream bout = new ByteArrayOutputStream(8192);
+            writeFileTop(bout); /* only once */
+
+            for (TypeElement t: classes) {
+                write(bout, t);
+            }
+
+            writeIfChanged(bout.toByteArray(), outFile);
+        } else {
+            /* Each class goes to its own file... */
+            for (TypeElement t: classes) {
+                ByteArrayOutputStream bout = new ByteArrayOutputStream(8192);
+                writeFileTop(bout);
+                write(bout, t);
+                writeIfChanged(bout.toByteArray(), getFileObject(t.getQualifiedName()));
+            }
+        }
+    }
+
+    /*
+     * Write the contents of byte[] b to a file named file.  Writing
+     * is done if either the file doesn't exist or if the contents are
+     * different.
+     */
+    private void writeIfChanged(byte[] b, FileObject file) throws IOException {
+        boolean mustWrite = false;
+        String event = "[No need to update file ";
+
+        if (force) {
+            mustWrite = true;
+            event = "[Forcefully writing file ";
+        } else {
+            InputStream in;
+            byte[] a;
+            try {
+                // regrettably, there's no API to get the length in bytes
+                // for a FileObject, so we can't short-circuit reading the
+                // file here
+                in = file.openInputStream();
+                a = readBytes(in);
+                if (!Arrays.equals(a, b)) {
+                    mustWrite = true;
+                    event = "[Overwriting file ";
+
+                }
+            } catch (FileNotFoundException e) {
+                mustWrite = true;
+                event = "[Creating file ";
+            }
+        }
+
+        if (util.verbose)
+            util.log(event + file + "]");
+
+        if (mustWrite) {
+            OutputStream out = file.openOutputStream();
+            out.write(b); /* No buffering, just one big write! */
+            out.close();
+        }
+    }
+
+    protected byte[] readBytes(InputStream in) throws IOException {
+        try {
+            byte[] array = new byte[in.available() + 1];
+            int offset = 0;
+            int n;
+            while ((n = in.read(array, offset, array.length - offset)) != -1) {
+                offset += n;
+                if (offset == array.length)
+                    array = Arrays.copyOf(array, array.length * 2);
+            }
+
+            return Arrays.copyOf(array, offset);
+        } finally {
+            in.close();
+        }
+    }
+
+    protected String defineForStatic(TypeElement c, VariableElement f)
+            throws Util.Exit {
+        CharSequence cnamedoc = c.getQualifiedName();
+        CharSequence fnamedoc = f.getSimpleName();
+
+        String cname = mangler.mangle(cnamedoc, Mangle.Type.CLASS);
+        String fname = mangler.mangle(fnamedoc, Mangle.Type.FIELDSTUB);
+
+        if (!f.getModifiers().contains(Modifier.STATIC))
+            util.bug("tried.to.define.non.static");
+
+        if (f.getModifiers().contains(Modifier.FINAL)) {
+            Object value = null;
+
+            value = f.getConstantValue();
+
+            if (value != null) { /* so it is a ConstantExpression */
+                String constString = null;
+                if ((value instanceof Integer)
+                    || (value instanceof Byte)
+                    || (value instanceof Short)) {
+                    /* covers byte, short, int */
+                    constString = value.toString() + "L";
+                } else if (value instanceof Boolean) {
+                    constString = ((Boolean) value) ? "1L" : "0L";
+                } else if (value instanceof Character) {
+                    Character ch = (Character) value;
+                    constString = String.valueOf(((int) ch) & 0xffff) + "L";
+                } else if (value instanceof Long) {
+                    // Visual C++ supports the i64 suffix, not LL.
+                    if (isWindows)
+                        constString = value.toString() + "i64";
+                    else
+                        constString = value.toString() + "LL";
+                } else if (value instanceof Float) {
+                    /* bug for bug */
+                    float fv = ((Float)value).floatValue();
+                    if (Float.isInfinite(fv))
+                        constString = ((fv < 0) ? "-" : "") + "Inff";
+                    else
+                        constString = value.toString() + "f";
+                } else if (value instanceof Double) {
+                    /* bug for bug */
+                    double d = ((Double)value).doubleValue();
+                    if (Double.isInfinite(d))
+                        constString = ((d < 0) ? "-" : "") + "InfD";
+                    else
+                        constString = value.toString();
+                }
+                if (constString != null) {
+                    StringBuilder s = new StringBuilder("#undef ");
+                    s.append(cname); s.append("_"); s.append(fname); s.append(lineSep);
+                    s.append("#define "); s.append(cname); s.append("_");
+                    s.append(fname); s.append(" "); s.append(constString);
+                    return s.toString();
+                }
+
+            }
+        }
+        return null;
+    }
+
+    /*
+     * Deal with the C pre-processor.
+     */
+    protected String cppGuardBegin() {
+        return "#ifdef __cplusplus" + lineSep + "extern \"C\" {" + lineSep + "#endif";
+    }
+
+    protected String cppGuardEnd() {
+        return "#ifdef __cplusplus" + lineSep + "}" + lineSep + "#endif";
+    }
+
+    protected String guardBegin(String cname) {
+        return "/* Header for class " + cname + " */" + lineSep + lineSep +
+            "#ifndef _Included_" + cname + lineSep +
+            "#define _Included_" + cname;
+    }
+
+    protected String guardEnd(String cname) {
+        return "#endif";
+    }
+
+    /*
+     * File name and file preamble related operations.
+     */
+    protected void writeFileTop(OutputStream o) throws Util.Exit {
+        PrintWriter pw = wrapWriter(o);
+        pw.println("/* DO NOT EDIT THIS FILE - it is machine generated */" + lineSep +
+                   getIncludes());
+    }
+
+    protected String baseFileName(CharSequence className) {
+        return mangler.mangle(className, Mangle.Type.CLASS);
+    }
+
+    protected FileObject getFileObject(CharSequence className) throws IOException {
+        String name = baseFileName(className) + getFileSuffix();
+        return fileManager.getFileForOutput(StandardLocation.SOURCE_OUTPUT, "", name, null);
+    }
+
+    protected String getFileSuffix() {
+        return ".h";
+    }
+
+    /**
+     * Including super classes' fields.
+     */
+
+    List<VariableElement> getAllFields(TypeElement subclazz) {
+        List<VariableElement> fields = new ArrayList<VariableElement>();
+        TypeElement cd = null;
+        Stack<TypeElement> s = new Stack<TypeElement>();
+
+        cd = subclazz;
+        while (true) {
+            s.push(cd);
+            TypeElement c = (TypeElement) (types.asElement(cd.getSuperclass()));
+            if (c == null)
+                break;
+            cd = c;
+        }
+
+        while (!s.empty()) {
+            cd = s.pop();
+            fields.addAll(ElementFilter.fieldsIn(cd.getEnclosedElements()));
+        }
+
+        return fields;
+    }
+
+    // c.f. MethodDoc.signature
+    String signature(ExecutableElement e) {
+        StringBuilder sb = new StringBuilder("(");
+        String sep = "";
+        for (VariableElement p: e.getParameters()) {
+            sb.append(sep);
+            sb.append(types.erasure(p.asType()).toString());
+            sep = ",";
+        }
+        sb.append(")");
+        return sb.toString();
+    }
+}
+

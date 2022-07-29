@@ -1,247 +1,241 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.builders;
-/*     */
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.MemberDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.tools.doclets.internal.toolkit.AnnotationTypeRequiredMemberWriter;
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.VisibleMemberMap;
-/*     */ import java.util.ArrayList;
-/*     */ import java.util.Collections;
-/*     */ import java.util.List;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class AnnotationTypeRequiredMemberBuilder
-/*     */   extends AbstractMemberBuilder
-/*     */ {
-/*     */   protected ClassDoc classDoc;
-/*     */   protected VisibleMemberMap visibleMemberMap;
-/*     */   protected AnnotationTypeRequiredMemberWriter writer;
-/*     */   protected List<ProgramElementDoc> members;
-/*     */   protected int currentMemberIndex;
-/*     */
-/*     */   protected AnnotationTypeRequiredMemberBuilder(Context paramContext, ClassDoc paramClassDoc, AnnotationTypeRequiredMemberWriter paramAnnotationTypeRequiredMemberWriter, int paramInt) {
-/*  85 */     super(paramContext);
-/*  86 */     this.classDoc = paramClassDoc;
-/*  87 */     this.writer = paramAnnotationTypeRequiredMemberWriter;
-/*  88 */     this.visibleMemberMap = new VisibleMemberMap(paramClassDoc, paramInt, this.configuration);
-/*     */
-/*  90 */     this
-/*  91 */       .members = new ArrayList<>(this.visibleMemberMap.getMembersFor(paramClassDoc));
-/*  92 */     if (this.configuration.getMemberComparator() != null) {
-/*  93 */       Collections.sort(this.members, this.configuration.getMemberComparator());
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public static AnnotationTypeRequiredMemberBuilder getInstance(Context paramContext, ClassDoc paramClassDoc, AnnotationTypeRequiredMemberWriter paramAnnotationTypeRequiredMemberWriter) {
-/* 108 */     return new AnnotationTypeRequiredMemberBuilder(paramContext, paramClassDoc, paramAnnotationTypeRequiredMemberWriter, 7);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public String getName() {
-/* 117 */     return "AnnotationTypeRequiredMemberDetails";
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public List<ProgramElementDoc> members(ClassDoc paramClassDoc) {
-/* 129 */     return this.visibleMemberMap.getMembersFor(paramClassDoc);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public VisibleMemberMap getVisibleMemberMap() {
-/* 138 */     return this.visibleMemberMap;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public boolean hasMembersToDocument() {
-/* 145 */     return (this.members.size() > 0);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildAnnotationTypeRequiredMember(XMLNode paramXMLNode, Content paramContent) {
-/* 155 */     buildAnnotationTypeMember(paramXMLNode, paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildAnnotationTypeMember(XMLNode paramXMLNode, Content paramContent) {
-/* 165 */     if (this.writer == null) {
-/*     */       return;
-/*     */     }
-/* 168 */     int i = this.members.size();
-/* 169 */     if (i > 0) {
-/* 170 */       this.writer.addAnnotationDetailsMarker(paramContent);
-/* 171 */       for (this.currentMemberIndex = 0; this.currentMemberIndex < i;
-/* 172 */         this.currentMemberIndex++) {
-/* 173 */         Content content1 = this.writer.getMemberTreeHeader();
-/* 174 */         this.writer.addAnnotationDetailsTreeHeader(this.classDoc, content1);
-/* 175 */         Content content2 = this.writer.getAnnotationDocTreeHeader((MemberDoc)this.members
-/* 176 */             .get(this.currentMemberIndex), content1);
-/* 177 */         buildChildren(paramXMLNode, content2);
-/* 178 */         content1.addContent(this.writer.getAnnotationDoc(content2, (this.currentMemberIndex == i - 1)));
-/*     */
-/* 180 */         paramContent.addContent(this.writer.getAnnotationDetails(content1));
-/*     */       }
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildSignature(XMLNode paramXMLNode, Content paramContent) {
-/* 192 */     paramContent.addContent(this.writer
-/* 193 */         .getSignature((MemberDoc)this.members.get(this.currentMemberIndex)));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildDeprecationInfo(XMLNode paramXMLNode, Content paramContent) {
-/* 203 */     this.writer.addDeprecated((MemberDoc)this.members.get(this.currentMemberIndex), paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildMemberComments(XMLNode paramXMLNode, Content paramContent) {
-/* 215 */     if (!this.configuration.nocomment) {
-/* 216 */       this.writer.addComments((MemberDoc)this.members.get(this.currentMemberIndex), paramContent);
-/*     */     }
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public void buildTagInfo(XMLNode paramXMLNode, Content paramContent) {
-/* 228 */     this.writer.addTags((MemberDoc)this.members.get(this.currentMemberIndex), paramContent);
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public AnnotationTypeRequiredMemberWriter getWriter() {
-/* 239 */     return this.writer;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolkit\builders\AnnotationTypeRequiredMemberBuilder.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.builders;
+
+import java.util.*;
+
+import com.sun.javadoc.*;
+import com.sun.tools.doclets.internal.toolkit.*;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Builds documentation for required annotation type members.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Jamie Ho
+ * @author Bhavesh Patel (Modified)
+ * @since 1.5
+ */
+public class AnnotationTypeRequiredMemberBuilder extends AbstractMemberBuilder {
+
+    /**
+     * The annotation type whose members are being documented.
+     */
+    protected ClassDoc classDoc;
+
+    /**
+     * The visible members for the given class.
+     */
+    protected VisibleMemberMap visibleMemberMap;
+
+    /**
+     * The writer to output the member documentation.
+     */
+    protected AnnotationTypeRequiredMemberWriter writer;
+
+    /**
+     * The list of members being documented.
+     */
+    protected List<ProgramElementDoc> members;
+
+    /**
+     * The index of the current member that is being documented at this point
+     * in time.
+     */
+    protected int currentMemberIndex;
+
+    /**
+     * Construct a new AnnotationTypeRequiredMemberBuilder.
+     *
+     * @param context  the build context.
+     * @param classDoc the class whose members are being documented.
+     * @param writer the doclet specific writer.
+     */
+    protected AnnotationTypeRequiredMemberBuilder(Context context,
+            ClassDoc classDoc,
+            AnnotationTypeRequiredMemberWriter writer,
+            int memberType) {
+        super(context);
+        this.classDoc = classDoc;
+        this.writer = writer;
+        this.visibleMemberMap = new VisibleMemberMap(classDoc, memberType,
+            configuration);
+        this.members = new ArrayList<ProgramElementDoc>(
+            this.visibleMemberMap.getMembersFor(classDoc));
+        if (configuration.getMemberComparator() != null) {
+            Collections.sort(this.members, configuration.getMemberComparator());
+        }
+    }
+
+
+    /**
+     * Construct a new AnnotationTypeMemberBuilder.
+     *
+     * @param context  the build context.
+     * @param classDoc the class whose members are being documented.
+     * @param writer the doclet specific writer.
+     */
+    public static AnnotationTypeRequiredMemberBuilder getInstance(
+            Context context, ClassDoc classDoc,
+            AnnotationTypeRequiredMemberWriter writer) {
+        return new AnnotationTypeRequiredMemberBuilder(context, classDoc,
+                    writer,
+                    VisibleMemberMap.ANNOTATION_TYPE_MEMBER_REQUIRED);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String getName() {
+        return "AnnotationTypeRequiredMemberDetails";
+    }
+
+    /**
+     * Returns a list of members that will be documented for the given class.
+     * This information can be used for doclet specific documentation
+     * generation.
+     *
+     * @param classDoc the {@link ClassDoc} we want to check.
+     * @return a list of members that will be documented.
+     */
+    public List<ProgramElementDoc> members(ClassDoc classDoc) {
+        return visibleMemberMap.getMembersFor(classDoc);
+    }
+
+    /**
+     * Returns the visible member map for the members of this class.
+     *
+     * @return the visible member map for the members of this class.
+     */
+    public VisibleMemberMap getVisibleMemberMap() {
+        return visibleMemberMap;
+    }
+
+    /**
+     * summaryOrder.size()
+     */
+    public boolean hasMembersToDocument() {
+        return members.size() > 0;
+    }
+
+    /**
+     * Build the annotation type required member documentation.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param memberDetailsTree the content tree to which the documentation will be added
+     */
+    public void buildAnnotationTypeRequiredMember(XMLNode node, Content memberDetailsTree) {
+        buildAnnotationTypeMember(node, memberDetailsTree);
+    }
+
+    /**
+     * Build the member documentation.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param memberDetailsTree the content tree to which the documentation will be added
+     */
+    public void buildAnnotationTypeMember(XMLNode node, Content memberDetailsTree) {
+        if (writer == null) {
+            return;
+        }
+        int size = members.size();
+        if (size > 0) {
+            writer.addAnnotationDetailsMarker(memberDetailsTree);
+            for (currentMemberIndex = 0; currentMemberIndex < size;
+                    currentMemberIndex++) {
+                Content detailsTree = writer.getMemberTreeHeader();
+                writer.addAnnotationDetailsTreeHeader(classDoc, detailsTree);
+                Content annotationDocTree = writer.getAnnotationDocTreeHeader(
+                        (MemberDoc) members.get(currentMemberIndex), detailsTree);
+                buildChildren(node, annotationDocTree);
+                detailsTree.addContent(writer.getAnnotationDoc(
+                        annotationDocTree, (currentMemberIndex == size - 1)));
+                memberDetailsTree.addContent(writer.getAnnotationDetails(detailsTree));
+            }
+        }
+    }
+
+    /**
+     * Build the signature.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param annotationDocTree the content tree to which the documentation will be added
+     */
+    public void buildSignature(XMLNode node, Content annotationDocTree) {
+        annotationDocTree.addContent(
+                writer.getSignature((MemberDoc) members.get(currentMemberIndex)));
+    }
+
+    /**
+     * Build the deprecation information.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param annotationDocTree the content tree to which the documentation will be added
+     */
+    public void buildDeprecationInfo(XMLNode node, Content annotationDocTree) {
+        writer.addDeprecated((MemberDoc) members.get(currentMemberIndex),
+                annotationDocTree);
+    }
+
+    /**
+     * Build the comments for the member.  Do nothing if
+     * {@link Configuration#nocomment} is set to true.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param annotationDocTree the content tree to which the documentation will be added
+     */
+    public void buildMemberComments(XMLNode node, Content annotationDocTree) {
+        if(! configuration.nocomment){
+            writer.addComments((MemberDoc) members.get(currentMemberIndex),
+                    annotationDocTree);
+        }
+    }
+
+    /**
+     * Build the tag information.
+     *
+     * @param node the XML element that specifies which components to document
+     * @param annotationDocTree the content tree to which the documentation will be added
+     */
+    public void buildTagInfo(XMLNode node, Content annotationDocTree) {
+        writer.addTags((MemberDoc) members.get(currentMemberIndex),
+                annotationDocTree);
+    }
+
+    /**
+     * Return the annotation type required member writer for this builder.
+     *
+     * @return the annotation type required member constant writer for this
+     * builder.
+     */
+    public AnnotationTypeRequiredMemberWriter getWriter() {
+        return writer;
+    }
+}

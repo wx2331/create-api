@@ -1,197 +1,191 @@
-/*     */ package com.sun.tools.doclets.internal.toolkit.util;
-/*     */ 
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class DocPath
-/*     */ {
-/*     */   private final String path;
-/*  44 */   public static final DocPath empty = new DocPath("");
-/*     */ 
-/*     */   
-/*  47 */   public static final DocPath parent = new DocPath("..");
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static DocPath create(String paramString) {
-/*  53 */     return (paramString == null || paramString.isEmpty()) ? empty : new DocPath(paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static DocPath forClass(ClassDoc paramClassDoc) {
-/*  62 */     return (paramClassDoc == null) ? empty : 
-/*  63 */       forPackage(paramClassDoc.containingPackage()).resolve(forName(paramClassDoc));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static DocPath forName(ClassDoc paramClassDoc) {
-/*  72 */     return (paramClassDoc == null) ? empty : new DocPath(paramClassDoc.name() + ".html");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static DocPath forPackage(ClassDoc paramClassDoc) {
-/*  81 */     return (paramClassDoc == null) ? empty : forPackage(paramClassDoc.containingPackage());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static DocPath forPackage(PackageDoc paramPackageDoc) {
-/*  90 */     return (paramPackageDoc == null) ? empty : create(paramPackageDoc.name().replace('.', '/'));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static DocPath forRoot(PackageDoc paramPackageDoc) {
-/*  99 */     String str = (paramPackageDoc == null) ? "" : paramPackageDoc.name();
-/* 100 */     if (str.isEmpty())
-/* 101 */       return empty; 
-/* 102 */     return new DocPath(str.replace('.', '/').replaceAll("[^/]+", ".."));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public static DocPath relativePath(PackageDoc paramPackageDoc1, PackageDoc paramPackageDoc2) {
-/* 109 */     return forRoot(paramPackageDoc1).resolve(forPackage(paramPackageDoc2));
-/*     */   }
-/*     */   
-/*     */   protected DocPath(String paramString) {
-/* 113 */     this.path = paramString.endsWith("/") ? paramString.substring(0, paramString.length() - 1) : paramString;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean equals(Object paramObject) {
-/* 119 */     return (paramObject instanceof DocPath && this.path.equals(((DocPath)paramObject).path));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public int hashCode() {
-/* 125 */     return this.path.hashCode();
-/*     */   }
-/*     */   
-/*     */   public DocPath basename() {
-/* 129 */     int i = this.path.lastIndexOf("/");
-/* 130 */     return (i == -1) ? this : new DocPath(this.path.substring(i + 1));
-/*     */   }
-/*     */   
-/*     */   public DocPath parent() {
-/* 134 */     int i = this.path.lastIndexOf("/");
-/* 135 */     return (i == -1) ? empty : new DocPath(this.path.substring(0, i));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public DocPath resolve(String paramString) {
-/* 142 */     if (paramString == null || paramString.isEmpty())
-/* 143 */       return this; 
-/* 144 */     if (this.path.isEmpty())
-/* 145 */       return new DocPath(paramString); 
-/* 146 */     return new DocPath(this.path + "/" + paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public DocPath resolve(DocPath paramDocPath) {
-/* 153 */     if (paramDocPath == null || paramDocPath.isEmpty())
-/* 154 */       return this; 
-/* 155 */     if (this.path.isEmpty())
-/* 156 */       return paramDocPath; 
-/* 157 */     return new DocPath(this.path + "/" + paramDocPath.getPath());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public DocPath invert() {
-/* 165 */     return new DocPath(this.path.replaceAll("[^/]+", ".."));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isEmpty() {
-/* 172 */     return this.path.isEmpty();
-/*     */   }
-/*     */   
-/*     */   public DocLink fragment(String paramString) {
-/* 176 */     return new DocLink(this.path, null, paramString);
-/*     */   }
-/*     */   
-/*     */   public DocLink query(String paramString) {
-/* 180 */     return new DocLink(this.path, paramString, null);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getPath() {
-/* 189 */     return this.path;
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\internal\toolki\\util\DocPath.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1998, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.internal.toolkit.util;
+
+import com.sun.javadoc.ClassDoc;
+import com.sun.javadoc.PackageDoc;
+
+/**
+ * Abstraction for immutable relative paths.
+ * Paths always use '/' as a separator, and never begin or end with '/'.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class DocPath {
+    private final String path;
+
+    /** The empty path. */
+    public static final DocPath empty = new DocPath("");
+
+    /** The empty path. */
+    public static final DocPath parent = new DocPath("..");
+
+    /**
+     * Create a path from a string.
+     */
+    public static DocPath create(String p) {
+        return (p == null) || p.isEmpty() ? empty : new DocPath(p);
+    }
+
+    /**
+     * Return the path for a class.
+     * For example, if the class is java.lang.Object,
+     * the path is java/lang/Object.html.
+     */
+    public static DocPath forClass(ClassDoc cd) {
+        return (cd == null) ? empty :
+                forPackage(cd.containingPackage()).resolve(forName(cd));
+    }
+
+    /**
+     * Return the path for the simple name of the class.
+     * For example, if the class is java.lang.Object,
+     * the path is Object.html.
+     */
+    public static DocPath forName(ClassDoc cd) {
+        return (cd == null) ? empty : new DocPath(cd.name() + ".html");
+    }
+
+    /**
+     * Return the path for the package of a class.
+     * For example, if the class is java.lang.Object,
+     * the path is java/lang.
+     */
+    public static DocPath forPackage(ClassDoc cd) {
+        return (cd == null) ? empty : forPackage(cd.containingPackage());
+    }
+
+    /**
+     * Return the path for a package.
+     * For example, if the package is java.lang,
+     * the path is java/lang.
+     */
+    public static DocPath forPackage(PackageDoc pd) {
+        return (pd == null) ? empty : DocPath.create(pd.name().replace('.', '/'));
+    }
+
+    /**
+     * Return the inverse path for a package.
+     * For example, if the package is java.lang,
+     * the inverse path is ../...
+     */
+    public static DocPath forRoot(PackageDoc pd) {
+        String name = (pd == null) ? "" : pd.name();
+        if (name.isEmpty())
+            return empty;
+        return new DocPath(name.replace('.', '/').replaceAll("[^/]+", ".."));
+    }
+
+    /**
+     * Return the relative path from one package to another.
+     */
+    public static DocPath relativePath(PackageDoc from, PackageDoc to) {
+        return forRoot(from).resolve(forPackage(to));
+    }
+
+    protected DocPath(String p) {
+        path = (p.endsWith("/") ? p.substring(0, p.length() - 1) : p);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public boolean equals(Object other) {
+        return (other instanceof DocPath) && path.equals(((DocPath)other).path);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public int hashCode() {
+        return path.hashCode();
+    }
+
+    public DocPath basename() {
+        int sep = path.lastIndexOf("/");
+        return (sep == -1) ? this : new DocPath(path.substring(sep + 1));
+    }
+
+    public DocPath parent() {
+        int sep = path.lastIndexOf("/");
+        return (sep == -1) ? empty : new DocPath(path.substring(0, sep));
+    }
+
+    /**
+     * Return the path formed by appending the specified string to the current path.
+     */
+    public DocPath resolve(String p) {
+        if (p == null || p.isEmpty())
+            return this;
+        if (path.isEmpty())
+            return new DocPath(p);
+        return new DocPath(path + "/" + p);
+    }
+
+    /**
+     * Return the path by appending the specified path to the current path.
+     */
+    public DocPath resolve(DocPath p) {
+        if (p == null || p.isEmpty())
+            return this;
+        if (path.isEmpty())
+            return p;
+        return new DocPath(path + "/" + p.getPath());
+    }
+
+    /**
+     * Return the inverse path for this path.
+     * For example, if the path is a/b/c, the inverse path is ../../..
+     */
+    public DocPath invert() {
+        return new DocPath(path.replaceAll("[^/]+", ".."));
+    }
+
+    /**
+     * Return true if this path is empty.
+     */
+    public boolean isEmpty() {
+        return path.isEmpty();
+    }
+
+    public DocLink fragment(String fragment) {
+        return new DocLink(path, null, fragment);
+    }
+
+    public DocLink query(String query) {
+        return new DocLink(path, query, null);
+    }
+
+    /**
+     * Return this path as a string.
+     */
+    // This is provided instead of using toString() to help catch
+    // unintended use of toString() in string concatenation sequences.
+    public String getPath() {
+        return path;
+    }
+}

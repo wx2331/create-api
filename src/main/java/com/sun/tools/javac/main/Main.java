@@ -1,667 +1,699 @@
-/*     */ package com.sun.tools.javac.main;
-/*     */ 
-/*     */ import com.sun.source.util.JavacTask;
-/*     */ import com.sun.source.util.Plugin;
-/*     */ import com.sun.tools.doclint.DocLint;
-/*     */ import com.sun.tools.javac.api.BasicJavacTask;
-/*     */ import com.sun.tools.javac.code.Source;
-/*     */ import com.sun.tools.javac.file.CacheFSInfo;
-/*     */ import com.sun.tools.javac.file.JavacFileManager;
-/*     */ import com.sun.tools.javac.jvm.Profile;
-/*     */ import com.sun.tools.javac.jvm.Target;
-/*     */ import com.sun.tools.javac.processing.AnnotationProcessingError;
-/*     */ import com.sun.tools.javac.processing.JavacProcessingEnvironment;
-/*     */ import com.sun.tools.javac.util.ClientCodeException;
-/*     */ import com.sun.tools.javac.util.Context;
-/*     */ import com.sun.tools.javac.util.FatalError;
-/*     */ import com.sun.tools.javac.util.List;
-/*     */ import com.sun.tools.javac.util.ListBuffer;
-/*     */ import com.sun.tools.javac.util.Log;
-/*     */ import com.sun.tools.javac.util.Options;
-/*     */ import com.sun.tools.javac.util.PropagatedException;
-/*     */ import com.sun.tools.javac.util.ServiceLoader;
-/*     */ import java.io.File;
-/*     */ import java.io.FileNotFoundException;
-/*     */ import java.io.IOException;
-/*     */ import java.io.PrintWriter;
-/*     */ import java.net.URL;
-/*     */ import java.security.DigestInputStream;
-/*     */ import java.security.MessageDigest;
-/*     */ import java.util.Arrays;
-/*     */ import java.util.Collection;
-/*     */ import java.util.Iterator;
-/*     */ import java.util.LinkedHashSet;
-/*     */ import java.util.Set;
-/*     */ import javax.annotation.processing.ProcessingEnvironment;
-/*     */ import javax.annotation.processing.Processor;
-/*     */ import javax.tools.JavaFileManager;
-/*     */ import javax.tools.JavaFileObject;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class Main
-/*     */ {
-/*     */   String ownName;
-/*     */   PrintWriter out;
-/*     */   public Log log;
-/*     */   boolean apiMode;
-/*     */   
-/*     */   public enum Result
-/*     */   {
-/*  92 */     OK(0),
-/*  93 */     ERROR(1),
-/*  94 */     CMDERR(2),
-/*  95 */     SYSERR(3),
-/*  96 */     ABNORMAL(4); public final int exitCode;
-/*     */     
-/*     */     Result(int param1Int1) {
-/*  99 */       this.exitCode = param1Int1;
-/*     */     }
-/*     */     
-/*     */     public boolean isOK() {
-/* 103 */       return (this.exitCode == 0);
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/* 110 */   private Option[] recognizedOptions = Option.getJavaCompilerOptions().<Option>toArray(new Option[0]);
-/*     */   
-/* 112 */   private OptionHelper optionHelper = new OptionHelper()
-/*     */     {
-/*     */       public String get(Option param1Option) {
-/* 115 */         return Main.this.options.get(param1Option);
-/*     */       }
-/*     */ 
-/*     */       
-/*     */       public void put(String param1String1, String param1String2) {
-/* 120 */         Main.this.options.put(param1String1, param1String2);
-/*     */       }
-/*     */ 
-/*     */       
-/*     */       public void remove(String param1String) {
-/* 125 */         Main.this.options.remove(param1String);
-/*     */       }
-/*     */ 
-/*     */       
-/*     */       public Log getLog() {
-/* 130 */         return Main.this.log;
-/*     */       }
-/*     */ 
-/*     */       
-/*     */       public String getOwnName() {
-/* 135 */         return Main.this.ownName;
-/*     */       }
-/*     */ 
-/*     */       
-/*     */       public void error(String param1String, Object... param1VarArgs) {
-/* 140 */         Main.this.error(param1String, param1VarArgs);
-/*     */       }
-/*     */ 
-/*     */       
-/*     */       public void addFile(File param1File) {
-/* 145 */         Main.this.filenames.add(param1File);
-/*     */       }
-/*     */ 
-/*     */       
-/*     */       public void addClassName(String param1String) {
-/* 150 */         Main.this.classnames.append(param1String);
-/*     */       }
-/*     */     };
-/*     */   private Options options; public Set<File> filenames;
-/*     */   public ListBuffer<String> classnames;
-/*     */   private JavaFileManager fileManager;
-/*     */   public static final String javacBundleName = "com.sun.tools.javac.resources.javac";
-/*     */   
-/*     */   public Main(String paramString) {
-/* 159 */     this(paramString, new PrintWriter(System.err, true));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Main(String paramString, PrintWriter paramPrintWriter) {
-/* 171 */     this.options = null;
-/*     */ 
-/*     */ 
-/*     */     
-/* 175 */     this.filenames = null;
-/*     */ 
-/*     */ 
-/*     */     
-/* 179 */     this.classnames = null;
-/*     */     this.ownName = paramString;
-/*     */     this.out = paramPrintWriter;
-/*     */   }
-/*     */   void error(String paramString, Object... paramVarArgs) {
-/* 184 */     if (this.apiMode) {
-/* 185 */       String str = this.log.localize(Log.PrefixKind.JAVAC, paramString, paramVarArgs);
-/* 186 */       throw new PropagatedException(new IllegalStateException(str));
-/*     */     } 
-/* 188 */     warning(paramString, paramVarArgs);
-/* 189 */     this.log.printLines(Log.PrefixKind.JAVAC, "msg.usage", new Object[] { this.ownName });
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   void warning(String paramString, Object... paramVarArgs) {
-/* 195 */     this.log.printRawLines(this.ownName + ": " + this.log.localize(Log.PrefixKind.JAVAC, paramString, paramVarArgs));
-/*     */   }
-/*     */   
-/*     */   public Option getOption(String paramString) {
-/* 199 */     for (Option option : this.recognizedOptions) {
-/* 200 */       if (option.matches(paramString))
-/* 201 */         return option; 
-/*     */     } 
-/* 203 */     return null;
-/*     */   }
-/*     */   
-/*     */   public void setOptions(Options paramOptions) {
-/* 207 */     if (paramOptions == null)
-/* 208 */       throw new NullPointerException(); 
-/* 209 */     this.options = paramOptions;
-/*     */   }
-/*     */   
-/*     */   public void setAPIMode(boolean paramBoolean) {
-/* 213 */     this.apiMode = paramBoolean;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Collection<File> processArgs(String[] paramArrayOfString) {
-/* 221 */     return processArgs(paramArrayOfString, null);
-/*     */   }
-/*     */   
-/*     */   public Collection<File> processArgs(String[] paramArrayOfString1, String[] paramArrayOfString2) {
-/* 225 */     byte b = 0;
-/* 226 */     while (b < paramArrayOfString1.length) {
-/* 227 */       String str = paramArrayOfString1[b];
-/* 228 */       b++;
-/*     */       
-/* 230 */       Option option = null;
-/*     */       
-/* 232 */       if (str.length() > 0) {
-/*     */ 
-/*     */ 
-/*     */         
-/* 236 */         byte b1 = (str.charAt(0) == '-') ? 0 : (this.recognizedOptions.length - 1);
-/* 237 */         for (byte b2 = b1; b2 < this.recognizedOptions.length; b2++) {
-/* 238 */           if (this.recognizedOptions[b2].matches(str)) {
-/* 239 */             option = this.recognizedOptions[b2];
-/*     */             
-/*     */             break;
-/*     */           } 
-/*     */         } 
-/*     */       } 
-/* 245 */       if (option == null) {
-/* 246 */         error("err.invalid.flag", new Object[] { str });
-/* 247 */         return null;
-/*     */       } 
-/*     */       
-/* 250 */       if (option.hasArg()) {
-/* 251 */         if (b == paramArrayOfString1.length) {
-/* 252 */           error("err.req.arg", new Object[] { str });
-/* 253 */           return null;
-/*     */         } 
-/* 255 */         String str5 = paramArrayOfString1[b];
-/* 256 */         b++;
-/* 257 */         if (option.process(this.optionHelper, str, str5))
-/* 258 */           return null;  continue;
-/*     */       } 
-/* 260 */       if (option.process(this.optionHelper, str)) {
-/* 261 */         return null;
-/*     */       }
-/*     */     } 
-/*     */     
-/* 265 */     if (this.options.get(Option.PROFILE) != null && this.options.get(Option.BOOTCLASSPATH) != null) {
-/* 266 */       error("err.profile.bootclasspath.conflict", new Object[0]);
-/* 267 */       return null;
-/*     */     } 
-/*     */     
-/* 270 */     if (this.classnames != null && paramArrayOfString2 != null) {
-/* 271 */       this.classnames.addAll(Arrays.asList(paramArrayOfString2));
-/*     */     }
-/*     */     
-/* 274 */     if (!checkDirectory(Option.D))
-/* 275 */       return null; 
-/* 276 */     if (!checkDirectory(Option.S)) {
-/* 277 */       return null;
-/*     */     }
-/* 279 */     String str1 = this.options.get(Option.SOURCE);
-/*     */     
-/* 281 */     Source source = (str1 != null) ? Source.lookup(str1) : Source.DEFAULT;
-/*     */     
-/* 283 */     String str2 = this.options.get(Option.TARGET);
-/*     */     
-/* 285 */     Target target = (str2 != null) ? Target.lookup(str2) : Target.DEFAULT;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */     
-/* 292 */     if (Character.isDigit(target.name.charAt(0))) {
-/* 293 */       if (target.compareTo((Enum)source.requiredTarget()) < 0) {
-/* 294 */         if (str2 != null) {
-/* 295 */           if (str1 == null) {
-/* 296 */             warning("warn.target.default.source.conflict", new Object[] { str2, 
-/*     */                   
-/* 298 */                   (source.requiredTarget()).name });
-/*     */           } else {
-/* 300 */             warning("warn.source.target.conflict", new Object[] { str1, 
-/*     */                   
-/* 302 */                   (source.requiredTarget()).name });
-/*     */           } 
-/* 304 */           return null;
-/*     */         } 
-/* 306 */         target = source.requiredTarget();
-/* 307 */         this.options.put("-target", target.name);
-/*     */       
-/*     */       }
-/* 310 */       else if (str2 == null && !source.allowGenerics()) {
-/* 311 */         target = Target.JDK1_4;
-/* 312 */         this.options.put("-target", target.name);
-/*     */       } 
-/*     */     }
-/*     */ 
-/*     */     
-/* 317 */     String str3 = this.options.get(Option.PROFILE);
-/* 318 */     if (str3 != null) {
-/* 319 */       Profile profile = Profile.lookup(str3);
-/* 320 */       if (!profile.isValid(target)) {
-/* 321 */         warning("warn.profile.target.conflict", new Object[] { str3, target.name });
-/* 322 */         return null;
-/*     */       } 
-/*     */     } 
-/*     */ 
-/*     */     
-/* 327 */     String str4 = this.options.get("showClass");
-/* 328 */     if (str4 != null) {
-/* 329 */       if (str4.equals("showClass"))
-/* 330 */         str4 = "com.sun.tools.javac.Main"; 
-/* 331 */       showClass(str4);
-/*     */     } 
-/*     */     
-/* 334 */     this.options.notifyListeners();
-/*     */     
-/* 336 */     return this.filenames;
-/*     */   }
-/*     */   
-/*     */   private boolean checkDirectory(Option paramOption) {
-/* 340 */     String str = this.options.get(paramOption);
-/* 341 */     if (str == null)
-/* 342 */       return true; 
-/* 343 */     File file = new File(str);
-/* 344 */     if (!file.exists()) {
-/* 345 */       error("err.dir.not.found", new Object[] { str });
-/* 346 */       return false;
-/*     */     } 
-/* 348 */     if (!file.isDirectory()) {
-/* 349 */       error("err.file.not.directory", new Object[] { str });
-/* 350 */       return false;
-/*     */     } 
-/* 352 */     return true;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Result compile(String[] paramArrayOfString) {
-/* 359 */     Context context = new Context();
-/* 360 */     JavacFileManager.preRegister(context);
-/* 361 */     Result result = compile(paramArrayOfString, context);
-/* 362 */     if (this.fileManager instanceof JavacFileManager)
-/*     */     {
-/* 364 */       ((JavacFileManager)this.fileManager).close();
-/*     */     }
-/* 366 */     return result;
-/*     */   }
-/*     */   
-/*     */   public Result compile(String[] paramArrayOfString, Context paramContext) {
-/* 370 */     return compile(paramArrayOfString, paramContext, List.nil(), null);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Result compile(String[] paramArrayOfString, Context paramContext, List<JavaFileObject> paramList, Iterable<? extends Processor> paramIterable) {
-/* 381 */     return compile(paramArrayOfString, null, paramContext, paramList, paramIterable);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Result compile(String[] paramArrayOfString1, String[] paramArrayOfString2, Context paramContext, List<JavaFileObject> paramList, Iterable<? extends Processor> paramIterable) {
-/* 390 */     paramContext.put(Log.outKey, this.out);
-/* 391 */     this.log = Log.instance(paramContext);
-/*     */     
-/* 393 */     if (this.options == null) {
-/* 394 */       this.options = Options.instance(paramContext);
-/*     */     }
-/* 396 */     this.filenames = new LinkedHashSet<>();
-/* 397 */     this.classnames = new ListBuffer();
-/* 398 */     JavaCompiler javaCompiler = null;
-/*     */ 
-/*     */     
-/*     */     try {
-/*     */       Collection<File> collection;
-/*     */ 
-/*     */       
-/* 405 */       if (paramArrayOfString1.length == 0 && (paramArrayOfString2 == null || paramArrayOfString2.length == 0) && paramList
-/*     */         
-/* 407 */         .isEmpty()) {
-/* 408 */         Option.HELP.process(this.optionHelper, "-help");
-/* 409 */         return Result.CMDERR;
-/*     */       } 
-/*     */ 
-/*     */       
-/*     */       try {
-/* 414 */         collection = processArgs(CommandLine.parse(paramArrayOfString1), paramArrayOfString2);
-/* 415 */         if (collection == null)
-/*     */         {
-/* 417 */           return Result.CMDERR; } 
-/* 418 */         if (collection.isEmpty() && paramList.isEmpty() && this.classnames.isEmpty()) {
-/*     */           
-/* 420 */           if (this.options.isSet(Option.HELP) || this.options
-/* 421 */             .isSet(Option.X) || this.options
-/* 422 */             .isSet(Option.VERSION) || this.options
-/* 423 */             .isSet(Option.FULLVERSION))
-/* 424 */             return Result.OK; 
-/* 425 */           if (JavaCompiler.explicitAnnotationProcessingRequested(this.options)) {
-/* 426 */             error("err.no.source.files.classes", new Object[0]);
-/*     */           } else {
-/* 428 */             error("err.no.source.files", new Object[0]);
-/*     */           } 
-/* 430 */           return Result.CMDERR;
-/*     */         } 
-/* 432 */       } catch (FileNotFoundException fileNotFoundException) {
-/* 433 */         warning("err.file.not.found", new Object[] { fileNotFoundException.getMessage() });
-/* 434 */         return Result.SYSERR;
-/*     */       } 
-/*     */       
-/* 437 */       boolean bool = this.options.isSet("stdout");
-/* 438 */       if (bool) {
-/* 439 */         this.log.flush();
-/* 440 */         this.log.setWriters(new PrintWriter(System.out, true));
-/*     */       } 
-/*     */ 
-/*     */ 
-/*     */       
-/* 445 */       boolean bool1 = (this.options.isUnset("nonBatchMode") && System.getProperty("nonBatchMode") == null) ? true : false;
-/* 446 */       if (bool1) {
-/* 447 */         CacheFSInfo.preRegister(paramContext);
-/*     */       }
-/*     */ 
-/*     */       
-/* 451 */       String str1 = this.options.get(Option.PLUGIN);
-/* 452 */       if (str1 != null) {
-/* 453 */         JavacProcessingEnvironment javacProcessingEnvironment = JavacProcessingEnvironment.instance(paramContext);
-/* 454 */         ClassLoader classLoader = javacProcessingEnvironment.getProcessorClassLoader();
-/* 455 */         ServiceLoader serviceLoader = ServiceLoader.load(Plugin.class, classLoader);
-/* 456 */         LinkedHashSet<List> linkedHashSet = new LinkedHashSet();
-/* 457 */         for (String str : str1.split("\\x00")) {
-/* 458 */           linkedHashSet.add(List.from((Object[])str.split("\\s+")));
-/*     */         }
-/* 460 */         JavacTask javacTask = null;
-/* 461 */         Iterator<Plugin> iterator = serviceLoader.iterator();
-/* 462 */         while (iterator.hasNext()) {
-/* 463 */           Plugin plugin = iterator.next();
-/* 464 */           for (List list : linkedHashSet) {
-/* 465 */             if (plugin.getName().equals(list.head)) {
-/* 466 */               linkedHashSet.remove(list);
-/*     */               try {
-/* 468 */                 if (javacTask == null)
-/* 469 */                   javacTask = JavacTask.instance((ProcessingEnvironment)javacProcessingEnvironment); 
-/* 470 */                 plugin.init(javacTask, (String[])list.tail.toArray((Object[])new String[list.tail.size()]));
-/* 471 */               } catch (Throwable throwable) {
-/* 472 */                 if (this.apiMode)
-/* 473 */                   throw new RuntimeException(throwable); 
-/* 474 */                 pluginMessage(throwable);
-/* 475 */                 return Result.SYSERR;
-/*     */               } 
-/*     */             } 
-/*     */           } 
-/*     */         } 
-/* 480 */         for (List list : linkedHashSet) {
-/* 481 */           this.log.printLines(Log.PrefixKind.JAVAC, "msg.plugin.not.found", new Object[] { list.head });
-/*     */         } 
-/*     */       } 
-/*     */       
-/* 485 */       javaCompiler = JavaCompiler.instance(paramContext);
-/*     */ 
-/*     */       
-/* 488 */       String str2 = this.options.get(Option.XDOCLINT);
-/* 489 */       String str3 = this.options.get(Option.XDOCLINT_CUSTOM);
-/* 490 */       if (str2 != null || str3 != null) {
-/* 491 */         LinkedHashSet<String> linkedHashSet = new LinkedHashSet();
-/* 492 */         if (str2 != null)
-/* 493 */           linkedHashSet.add("-Xmsgs"); 
-/* 494 */         if (str3 != null)
-/* 495 */           for (String str : str3.split("\\s+")) {
-/* 496 */             if (!str.isEmpty())
-/*     */             {
-/* 498 */               linkedHashSet.add(str.replace(Option.XDOCLINT_CUSTOM.text, "-Xmsgs:"));
-/*     */             }
-/*     */           }  
-/* 501 */         if (linkedHashSet.size() != 1 || 
-/* 502 */           !((String)linkedHashSet.iterator().next()).equals("-Xmsgs:none")) {
-/* 503 */           JavacTask javacTask = BasicJavacTask.instance(paramContext);
-/*     */           
-/* 505 */           linkedHashSet.add("-XimplicitHeaders:2");
-/* 506 */           (new DocLint()).init(javacTask, linkedHashSet.<String>toArray(new String[linkedHashSet.size()]));
-/* 507 */           javaCompiler.keepComments = true;
-/*     */         } 
-/*     */       } 
-/*     */       
-/* 511 */       this.fileManager = (JavaFileManager)paramContext.get(JavaFileManager.class);
-/*     */       
-/* 513 */       if (!collection.isEmpty()) {
-/*     */         
-/* 515 */         javaCompiler = JavaCompiler.instance(paramContext);
-/* 516 */         List list = List.nil();
-/* 517 */         JavacFileManager javacFileManager = (JavacFileManager)this.fileManager;
-/* 518 */         for (JavaFileObject javaFileObject : javacFileManager.getJavaFileObjectsFromFiles(collection))
-/* 519 */           list = list.prepend(javaFileObject); 
-/* 520 */         for (JavaFileObject javaFileObject : list)
-/* 521 */           paramList = paramList.prepend(javaFileObject); 
-/*     */       } 
-/* 523 */       javaCompiler.compile(paramList, this.classnames
-/* 524 */           .toList(), paramIterable);
-/*     */ 
-/*     */       
-/* 527 */       if (this.log.expectDiagKeys != null) {
-/* 528 */         if (this.log.expectDiagKeys.isEmpty()) {
-/* 529 */           this.log.printRawLines("all expected diagnostics found");
-/* 530 */           return Result.OK;
-/*     */         } 
-/* 532 */         this.log.printRawLines("expected diagnostic keys not found: " + this.log.expectDiagKeys);
-/* 533 */         return Result.ERROR;
-/*     */       } 
-/*     */ 
-/*     */       
-/* 537 */       if (javaCompiler.errorCount() != 0)
-/* 538 */         return Result.ERROR; 
-/* 539 */     } catch (IOException iOException) {
-/* 540 */       ioMessage(iOException);
-/* 541 */       return Result.SYSERR;
-/* 542 */     } catch (OutOfMemoryError outOfMemoryError) {
-/* 543 */       resourceMessage(outOfMemoryError);
-/* 544 */       return Result.SYSERR;
-/* 545 */     } catch (StackOverflowError stackOverflowError) {
-/* 546 */       resourceMessage(stackOverflowError);
-/* 547 */       return Result.SYSERR;
-/* 548 */     } catch (FatalError fatalError) {
-/* 549 */       feMessage((Throwable)fatalError);
-/* 550 */       return Result.SYSERR;
-/* 551 */     } catch (AnnotationProcessingError annotationProcessingError) {
-/* 552 */       if (this.apiMode)
-/* 553 */         throw new RuntimeException(annotationProcessingError.getCause()); 
-/* 554 */       apMessage(annotationProcessingError);
-/* 555 */       return Result.SYSERR;
-/* 556 */     } catch (ClientCodeException clientCodeException) {
-/*     */ 
-/*     */       
-/* 559 */       throw new RuntimeException(clientCodeException.getCause());
-/* 560 */     } catch (PropagatedException propagatedException) {
-/* 561 */       throw propagatedException.getCause();
-/* 562 */     } catch (Throwable throwable) {
-/*     */ 
-/*     */ 
-/*     */       
-/* 566 */       if (javaCompiler == null || javaCompiler.errorCount() == 0 || this.options == null || this.options
-/* 567 */         .isSet("dev"))
-/* 568 */         bugMessage(throwable); 
-/* 569 */       return Result.ABNORMAL;
-/*     */     } finally {
-/* 571 */       if (javaCompiler != null) {
-/*     */         try {
-/* 573 */           javaCompiler.close();
-/* 574 */         } catch (ClientCodeException clientCodeException) {
-/* 575 */           throw new RuntimeException(clientCodeException.getCause());
-/*     */         } 
-/*     */       }
-/* 578 */       this.filenames = null;
-/* 579 */       this.options = null;
-/*     */     } 
-/* 581 */     return Result.OK;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   void bugMessage(Throwable paramThrowable) {
-/* 587 */     this.log.printLines(Log.PrefixKind.JAVAC, "msg.bug", new Object[] { JavaCompiler.version() });
-/* 588 */     paramThrowable.printStackTrace(this.log.getWriter(Log.WriterKind.NOTICE));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   void feMessage(Throwable paramThrowable) {
-/* 594 */     this.log.printRawLines(paramThrowable.getMessage());
-/* 595 */     if (paramThrowable.getCause() != null && this.options.isSet("dev")) {
-/* 596 */       paramThrowable.getCause().printStackTrace(this.log.getWriter(Log.WriterKind.NOTICE));
-/*     */     }
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   void ioMessage(Throwable paramThrowable) {
-/* 603 */     this.log.printLines(Log.PrefixKind.JAVAC, "msg.io", new Object[0]);
-/* 604 */     paramThrowable.printStackTrace(this.log.getWriter(Log.WriterKind.NOTICE));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   void resourceMessage(Throwable paramThrowable) {
-/* 610 */     this.log.printLines(Log.PrefixKind.JAVAC, "msg.resource", new Object[0]);
-/* 611 */     paramThrowable.printStackTrace(this.log.getWriter(Log.WriterKind.NOTICE));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   void apMessage(AnnotationProcessingError paramAnnotationProcessingError) {
-/* 618 */     this.log.printLines(Log.PrefixKind.JAVAC, "msg.proc.annotation.uncaught.exception", new Object[0]);
-/* 619 */     paramAnnotationProcessingError.getCause().printStackTrace(this.log.getWriter(Log.WriterKind.NOTICE));
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   void pluginMessage(Throwable paramThrowable) {
-/* 626 */     this.log.printLines(Log.PrefixKind.JAVAC, "msg.plugin.uncaught.exception", new Object[0]);
-/* 627 */     paramThrowable.printStackTrace(this.log.getWriter(Log.WriterKind.NOTICE));
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   void showClass(String paramString) {
-/* 632 */     PrintWriter printWriter = this.log.getWriter(Log.WriterKind.NOTICE);
-/* 633 */     printWriter.println("javac: show class: " + paramString);
-/* 634 */     URL uRL = getClass().getResource('/' + paramString.replace('.', '/') + ".class");
-/* 635 */     if (uRL == null) {
-/* 636 */       printWriter.println("  class not found");
-/*     */     } else {
-/* 638 */       printWriter.println("  " + uRL);
-/*     */ 
-/*     */       
-/*     */       try {
-/* 642 */         MessageDigest messageDigest = MessageDigest.getInstance("MD5");
-/* 643 */         DigestInputStream digestInputStream = new DigestInputStream(uRL.openStream(), messageDigest);
-/*     */         
-/* 645 */         try { byte[] arrayOfByte = new byte[8192];
-/*     */           while (true)
-/* 647 */           { int i = digestInputStream.read(arrayOfByte); if (i <= 0)
-/* 648 */             { byte[] arrayOfByte1 = messageDigest.digest();
-/*     */               
-/* 650 */               digestInputStream.close();
-/*     */               
-/* 652 */               StringBuilder stringBuilder = new StringBuilder();
-/* 653 */               for (byte b : arrayOfByte1)
-/* 654 */               { stringBuilder.append(String.format("%02x", new Object[] { Byte.valueOf(b) })); }  return; }  }  } finally { digestInputStream.close(); }
-/*     */       
-/* 656 */       } catch (Exception exception) {
-/* 657 */         printWriter.println("  cannot compute digest: " + exception);
-/*     */       } 
-/*     */     } 
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\main\Main.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.main;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.net.URL;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+import javax.annotation.processing.Processor;
+import javax.tools.JavaFileManager;
+import javax.tools.JavaFileObject;
+
+import com.sun.source.util.JavacTask;
+import com.sun.source.util.Plugin;
+import com.sun.tools.doclint.DocLint;
+import com.sun.tools.javac.api.BasicJavacTask;
+import com.sun.tools.javac.code.Source;
+import com.sun.tools.javac.file.CacheFSInfo;
+import com.sun.tools.javac.file.JavacFileManager;
+import com.sun.tools.javac.jvm.Profile;
+import com.sun.tools.javac.jvm.Target;
+import com.sun.tools.javac.processing.AnnotationProcessingError;
+import com.sun.tools.javac.processing.JavacProcessingEnvironment;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.Log.PrefixKind;
+import com.sun.tools.javac.util.Log.WriterKind;
+import com.sun.tools.javac.util.ServiceLoader;
+import static com.sun.tools.javac.main.Option.*;
+
+/** This class provides a command line interface to the javac compiler.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Main {
+
+    /** The name of the compiler, for use in diagnostics.
+     */
+    String ownName;
+
+    /** The writer to use for diagnostic output.
+     */
+    PrintWriter out;
+
+    /** The log to use for diagnostic output.
+     */
+    public Log log;
+
+    /**
+     * If true, certain errors will cause an exception, such as command line
+     * arg errors, or exceptions in user provided code.
+     */
+    boolean apiMode;
+
+
+    /** Result codes.
+     */
+    public enum Result {
+        OK(0),        // Compilation completed with no errors.
+        ERROR(1),     // Completed but reported errors.
+        CMDERR(2),    // Bad command-line arguments
+        SYSERR(3),    // System error or resource exhaustion.
+        ABNORMAL(4);  // Compiler terminated abnormally
+
+        Result(int exitCode) {
+            this.exitCode = exitCode;
+        }
+
+        public boolean isOK() {
+            return (exitCode == 0);
+        }
+
+        public final int exitCode;
+    }
+
+    private Option[] recognizedOptions =
+            Option.getJavaCompilerOptions().toArray(new Option[0]);
+
+    private OptionHelper optionHelper = new OptionHelper() {
+        @Override
+        public String get(Option option) {
+            return options.get(option);
+        }
+
+        @Override
+        public void put(String name, String value) {
+            options.put(name, value);
+        }
+
+        @Override
+        public void remove(String name) {
+            options.remove(name);
+        }
+
+        @Override
+        public Log getLog() {
+            return log;
+        }
+
+        @Override
+        public String getOwnName() {
+            return ownName;
+        }
+
+        @Override
+        public void error(String key, Object... args) {
+            Main.this.error(key, args);
+        }
+
+        @Override
+        public void addFile(File f) {
+            filenames.add(f);
+        }
+
+        @Override
+        public void addClassName(String s) {
+            classnames.append(s);
+        }
+
+    };
+
+    /**
+     * Construct a compiler instance.
+     */
+    public Main(String name) {
+        this(name, new PrintWriter(System.err, true));
+    }
+
+    /**
+     * Construct a compiler instance.
+     */
+    public Main(String name, PrintWriter out) {
+        this.ownName = name;
+        this.out = out;
+    }
+
+    /** A table of all options that's passed to the JavaCompiler constructor.  */
+    private Options options = null;
+
+    /** The list of source files to process
+     */
+    public Set<File> filenames = null; // XXX sb protected
+
+    /** List of class files names passed on the command line
+     */
+    public ListBuffer<String> classnames = null; // XXX sb protected
+
+    /** Report a usage error.
+     */
+    void error(String key, Object... args) {
+        if (apiMode) {
+            String msg = log.localize(PrefixKind.JAVAC, key, args);
+            throw new PropagatedException(new IllegalStateException(msg));
+        }
+        warning(key, args);
+        log.printLines(PrefixKind.JAVAC, "msg.usage", ownName);
+    }
+
+    /** Report a warning.
+     */
+    void warning(String key, Object... args) {
+        log.printRawLines(ownName + ": " + log.localize(PrefixKind.JAVAC, key, args));
+    }
+
+    public Option getOption(String flag) {
+        for (Option option : recognizedOptions) {
+            if (option.matches(flag))
+                return option;
+        }
+        return null;
+    }
+
+    public void setOptions(Options options) {
+        if (options == null)
+            throw new NullPointerException();
+        this.options = options;
+    }
+
+    public void setAPIMode(boolean apiMode) {
+        this.apiMode = apiMode;
+    }
+
+    /** Process command line arguments: store all command line options
+     *  in `options' table and return all source filenames.
+     *  @param flags    The array of command line arguments.
+     */
+    public Collection<File> processArgs(String[] flags) { // XXX sb protected
+        return processArgs(flags, null);
+    }
+
+    public Collection<File> processArgs(String[] flags, String[] classNames) { // XXX sb protected
+        int ac = 0;
+        while (ac < flags.length) {
+            String flag = flags[ac];
+            ac++;
+
+            Option option = null;
+
+            if (flag.length() > 0) {
+                // quick hack to speed up file processing:
+                // if the option does not begin with '-', there is no need to check
+                // most of the compiler options.
+                int firstOptionToCheck = flag.charAt(0) == '-' ? 0 : recognizedOptions.length-1;
+                for (int j=firstOptionToCheck; j<recognizedOptions.length; j++) {
+                    if (recognizedOptions[j].matches(flag)) {
+                        option = recognizedOptions[j];
+                        break;
+                    }
+                }
+            }
+
+            if (option == null) {
+                error("err.invalid.flag", flag);
+                return null;
+            }
+
+            if (option.hasArg()) {
+                if (ac == flags.length) {
+                    error("err.req.arg", flag);
+                    return null;
+                }
+                String operand = flags[ac];
+                ac++;
+                if (option.process(optionHelper, flag, operand))
+                    return null;
+            } else {
+                if (option.process(optionHelper, flag))
+                    return null;
+            }
+        }
+
+        if (options.get(PROFILE) != null && options.get(BOOTCLASSPATH) != null) {
+            error("err.profile.bootclasspath.conflict");
+            return null;
+        }
+
+        if (this.classnames != null && classNames != null) {
+            this.classnames.addAll(Arrays.asList(classNames));
+        }
+
+        if (!checkDirectory(D))
+            return null;
+        if (!checkDirectory(S))
+            return null;
+
+        String sourceString = options.get(SOURCE);
+        Source source = (sourceString != null)
+            ? Source.lookup(sourceString)
+            : Source.DEFAULT;
+        String targetString = options.get(TARGET);
+        Target target = (targetString != null)
+            ? Target.lookup(targetString)
+            : Target.DEFAULT;
+        // We don't check source/target consistency for CLDC, as J2ME
+        // profiles are not aligned with J2SE targets; moreover, a
+        // single CLDC target may have many profiles.  In addition,
+        // this is needed for the continued functioning of the JSR14
+        // prototype.
+        if (Character.isDigit(target.name.charAt(0))) {
+            if (target.compareTo(source.requiredTarget()) < 0) {
+                if (targetString != null) {
+                    if (sourceString == null) {
+                        warning("warn.target.default.source.conflict",
+                                targetString,
+                                source.requiredTarget().name);
+                    } else {
+                        warning("warn.source.target.conflict",
+                                sourceString,
+                                source.requiredTarget().name);
+                    }
+                    return null;
+                } else {
+                    target = source.requiredTarget();
+                    options.put("-target", target.name);
+                }
+            } else {
+                if (targetString == null && !source.allowGenerics()) {
+                    target = Target.JDK1_4;
+                    options.put("-target", target.name);
+                }
+            }
+        }
+
+        String profileString = options.get(PROFILE);
+        if (profileString != null) {
+            Profile profile = Profile.lookup(profileString);
+            if (!profile.isValid(target)) {
+                warning("warn.profile.target.conflict", profileString, target.name);
+                return null;
+            }
+        }
+
+        // handle this here so it works even if no other options given
+        String showClass = options.get("showClass");
+        if (showClass != null) {
+            if (showClass.equals("showClass")) // no value given for option
+                showClass = "com.sun.tools.javac.Main";
+            showClass(showClass);
+        }
+
+        options.notifyListeners();
+
+        return filenames;
+    }
+    // where
+        private boolean checkDirectory(Option option) {
+            String value = options.get(option);
+            if (value == null)
+                return true;
+            File file = new File(value);
+            if (!file.exists()) {
+                error("err.dir.not.found", value);
+                return false;
+            }
+            if (!file.isDirectory()) {
+                error("err.file.not.directory", value);
+                return false;
+            }
+            return true;
+        }
+
+    /** Programmatic interface for main function.
+     * @param args    The command line parameters.
+     */
+    public Result compile(String[] args) {
+        Context context = new Context();
+        JavacFileManager.preRegister(context); // can't create it until Log has been set up
+        Result result = compile(args, context);
+        if (fileManager instanceof JavacFileManager) {
+            // A fresh context was created above, so jfm must be a JavacFileManager
+            ((JavacFileManager)fileManager).close();
+        }
+        return result;
+    }
+
+    public Result compile(String[] args, Context context) {
+        return compile(args, context, List.<JavaFileObject>nil(), null);
+    }
+
+    /** Programmatic interface for main function.
+     * @param args    The command line parameters.
+     */
+    public Result compile(String[] args,
+                       Context context,
+                       List<JavaFileObject> fileObjects,
+                       Iterable<? extends Processor> processors)
+    {
+        return compile(args,  null, context, fileObjects, processors);
+    }
+
+    public Result compile(String[] args,
+                          String[] classNames,
+                          Context context,
+                          List<JavaFileObject> fileObjects,
+                          Iterable<? extends Processor> processors)
+    {
+        context.put(Log.outKey, out);
+        log = Log.instance(context);
+
+        if (options == null)
+            options = Options.instance(context); // creates a new one
+
+        filenames = new LinkedHashSet<File>();
+        classnames = new ListBuffer<String>();
+        JavaCompiler comp = null;
+        /*
+         * TODO: Logic below about what is an acceptable command line
+         * should be updated to take annotation processing semantics
+         * into account.
+         */
+        try {
+            if (args.length == 0
+                    && (classNames == null || classNames.length == 0)
+                    && fileObjects.isEmpty()) {
+                Option.HELP.process(optionHelper, "-help");
+                return Result.CMDERR;
+            }
+
+            Collection<File> files;
+            try {
+                files = processArgs(CommandLine.parse(args), classNames);
+                if (files == null) {
+                    // null signals an error in options, abort
+                    return Result.CMDERR;
+                } else if (files.isEmpty() && fileObjects.isEmpty() && classnames.isEmpty()) {
+                    // it is allowed to compile nothing if just asking for help or version info
+                    if (options.isSet(HELP)
+                        || options.isSet(X)
+                        || options.isSet(VERSION)
+                        || options.isSet(FULLVERSION))
+                        return Result.OK;
+                    if (JavaCompiler.explicitAnnotationProcessingRequested(options)) {
+                        error("err.no.source.files.classes");
+                    } else {
+                        error("err.no.source.files");
+                    }
+                    return Result.CMDERR;
+                }
+            } catch (java.io.FileNotFoundException e) {
+                warning("err.file.not.found", e.getMessage());
+                return Result.SYSERR;
+            }
+
+            boolean forceStdOut = options.isSet("stdout");
+            if (forceStdOut) {
+                log.flush();
+                log.setWriters(new PrintWriter(System.out, true));
+            }
+
+            // allow System property in following line as a Mustang legacy
+            boolean batchMode = (options.isUnset("nonBatchMode")
+                        && System.getProperty("nonBatchMode") == null);
+            if (batchMode)
+                CacheFSInfo.preRegister(context);
+
+            // FIXME: this code will not be invoked if using JavacTask.parse/analyze/generate
+            // invoke any available plugins
+            String plugins = options.get(PLUGIN);
+            if (plugins != null) {
+                JavacProcessingEnvironment pEnv = JavacProcessingEnvironment.instance(context);
+                ClassLoader cl = pEnv.getProcessorClassLoader();
+                ServiceLoader<Plugin> sl = ServiceLoader.load(Plugin.class, cl);
+                Set<List<String>> pluginsToCall = new LinkedHashSet<List<String>>();
+                for (String plugin: plugins.split("\\x00")) {
+                    pluginsToCall.add(List.from(plugin.split("\\s+")));
+                }
+                JavacTask task = null;
+                Iterator<Plugin> iter = sl.iterator();
+                while (iter.hasNext()) {
+                    Plugin plugin = iter.next();
+                    for (List<String> p: pluginsToCall) {
+                        if (plugin.getName().equals(p.head)) {
+                            pluginsToCall.remove(p);
+                            try {
+                                if (task == null)
+                                    task = JavacTask.instance(pEnv);
+                                plugin.init(task, p.tail.toArray(new String[p.tail.size()]));
+                            } catch (Throwable ex) {
+                                if (apiMode)
+                                    throw new RuntimeException(ex);
+                                pluginMessage(ex);
+                                return Result.SYSERR;
+                            }
+                        }
+                    }
+                }
+                for (List<String> p: pluginsToCall) {
+                    log.printLines(PrefixKind.JAVAC, "msg.plugin.not.found", p.head);
+                }
+            }
+
+            comp = JavaCompiler.instance(context);
+
+            // FIXME: this code will not be invoked if using JavacTask.parse/analyze/generate
+            String xdoclint = options.get(XDOCLINT);
+            String xdoclintCustom = options.get(XDOCLINT_CUSTOM);
+            if (xdoclint != null || xdoclintCustom != null) {
+                Set<String> doclintOpts = new LinkedHashSet<String>();
+                if (xdoclint != null)
+                    doclintOpts.add(DocLint.XMSGS_OPTION);
+                if (xdoclintCustom != null) {
+                    for (String s: xdoclintCustom.split("\\s+")) {
+                        if (s.isEmpty())
+                            continue;
+                        doclintOpts.add(s.replace(XDOCLINT_CUSTOM.text, DocLint.XMSGS_CUSTOM_PREFIX));
+                    }
+                }
+                if (!(doclintOpts.size() == 1
+                        && doclintOpts.iterator().next().equals(DocLint.XMSGS_CUSTOM_PREFIX + "none"))) {
+                    JavacTask t = BasicJavacTask.instance(context);
+                    // standard doclet normally generates H1, H2
+                    doclintOpts.add(DocLint.XIMPLICIT_HEADERS + "2");
+                    new DocLint().init(t, doclintOpts.toArray(new String[doclintOpts.size()]));
+                    comp.keepComments = true;
+                }
+            }
+
+            fileManager = context.get(JavaFileManager.class);
+
+            if (!files.isEmpty()) {
+                // add filenames to fileObjects
+                comp = JavaCompiler.instance(context);
+                List<JavaFileObject> otherFiles = List.nil();
+                JavacFileManager dfm = (JavacFileManager)fileManager;
+                for (JavaFileObject fo : dfm.getJavaFileObjectsFromFiles(files))
+                    otherFiles = otherFiles.prepend(fo);
+                for (JavaFileObject fo : otherFiles)
+                    fileObjects = fileObjects.prepend(fo);
+            }
+            comp.compile(fileObjects,
+                         classnames.toList(),
+                         processors);
+
+            if (log.expectDiagKeys != null) {
+                if (log.expectDiagKeys.isEmpty()) {
+                    log.printRawLines("all expected diagnostics found");
+                    return Result.OK;
+                } else {
+                    log.printRawLines("expected diagnostic keys not found: " + log.expectDiagKeys);
+                    return Result.ERROR;
+                }
+            }
+
+            if (comp.errorCount() != 0)
+                return Result.ERROR;
+        } catch (IOException ex) {
+            ioMessage(ex);
+            return Result.SYSERR;
+        } catch (OutOfMemoryError ex) {
+            resourceMessage(ex);
+            return Result.SYSERR;
+        } catch (StackOverflowError ex) {
+            resourceMessage(ex);
+            return Result.SYSERR;
+        } catch (FatalError ex) {
+            feMessage(ex);
+            return Result.SYSERR;
+        } catch (AnnotationProcessingError ex) {
+            if (apiMode)
+                throw new RuntimeException(ex.getCause());
+            apMessage(ex);
+            return Result.SYSERR;
+        } catch (ClientCodeException ex) {
+            // as specified by javax.tools.JavaCompiler#getTask
+            // and javax.tools.JavaCompiler.CompilationTask#call
+            throw new RuntimeException(ex.getCause());
+        } catch (PropagatedException ex) {
+            throw ex.getCause();
+        } catch (Throwable ex) {
+            // Nasty.  If we've already reported an error, compensate
+            // for buggy compiler error recovery by swallowing thrown
+            // exceptions.
+            if (comp == null || comp.errorCount() == 0 ||
+                options == null || options.isSet("dev"))
+                bugMessage(ex);
+            return Result.ABNORMAL;
+        } finally {
+            if (comp != null) {
+                try {
+                    comp.close();
+                } catch (ClientCodeException ex) {
+                    throw new RuntimeException(ex.getCause());
+                }
+            }
+            filenames = null;
+            options = null;
+        }
+        return Result.OK;
+    }
+
+    /** Print a message reporting an internal error.
+     */
+    void bugMessage(Throwable ex) {
+        log.printLines(PrefixKind.JAVAC, "msg.bug", JavaCompiler.version());
+        ex.printStackTrace(log.getWriter(WriterKind.NOTICE));
+    }
+
+    /** Print a message reporting a fatal error.
+     */
+    void feMessage(Throwable ex) {
+        log.printRawLines(ex.getMessage());
+        if (ex.getCause() != null && options.isSet("dev")) {
+            ex.getCause().printStackTrace(log.getWriter(WriterKind.NOTICE));
+        }
+    }
+
+    /** Print a message reporting an input/output error.
+     */
+    void ioMessage(Throwable ex) {
+        log.printLines(PrefixKind.JAVAC, "msg.io");
+        ex.printStackTrace(log.getWriter(WriterKind.NOTICE));
+    }
+
+    /** Print a message reporting an out-of-resources error.
+     */
+    void resourceMessage(Throwable ex) {
+        log.printLines(PrefixKind.JAVAC, "msg.resource");
+        ex.printStackTrace(log.getWriter(WriterKind.NOTICE));
+    }
+
+    /** Print a message reporting an uncaught exception from an
+     * annotation processor.
+     */
+    void apMessage(AnnotationProcessingError ex) {
+        log.printLines(PrefixKind.JAVAC, "msg.proc.annotation.uncaught.exception");
+        ex.getCause().printStackTrace(log.getWriter(WriterKind.NOTICE));
+    }
+
+    /** Print a message reporting an uncaught exception from an
+     * annotation processor.
+     */
+    void pluginMessage(Throwable ex) {
+        log.printLines(PrefixKind.JAVAC, "msg.plugin.uncaught.exception");
+        ex.printStackTrace(log.getWriter(WriterKind.NOTICE));
+    }
+
+    /** Display the location and checksum of a class. */
+    void showClass(String className) {
+        PrintWriter pw = log.getWriter(WriterKind.NOTICE);
+        pw.println("javac: show class: " + className);
+        URL url = getClass().getResource('/' + className.replace('.', '/') + ".class");
+        if (url == null)
+            pw.println("  class not found");
+        else {
+            pw.println("  " + url);
+            try {
+                final String algorithm = "MD5";
+                byte[] digest;
+                MessageDigest md = MessageDigest.getInstance(algorithm);
+                DigestInputStream in = new DigestInputStream(url.openStream(), md);
+                try {
+                    byte[] buf = new byte[8192];
+                    int n;
+                    do { n = in.read(buf); } while (n > 0);
+                    digest = md.digest();
+                } finally {
+                    in.close();
+                }
+                StringBuilder sb = new StringBuilder();
+                for (byte b: digest)
+                    sb.append(String.format("%02x", b));
+                pw.println("  " + algorithm + " checksum: " + sb);
+            } catch (Exception e) {
+                pw.println("  cannot compute digest: " + e);
+            }
+        }
+    }
+
+    private JavaFileManager fileManager;
+
+    /* ************************************************************************
+     * Internationalization
+     *************************************************************************/
+
+//    /** Find a localized string in the resource bundle.
+//     *  @param key     The key for the localized string.
+//     */
+//    public static String getLocalizedString(String key, Object... args) { // FIXME sb private
+//        try {
+//            if (messages == null)
+//                messages = new JavacMessages(javacBundleName);
+//            return messages.getLocalizedString("javac." + key, args);
+//        }
+//        catch (MissingResourceException e) {
+//            throw new Error("Fatal Error: Resource for javac is missing", e);
+//        }
+//    }
+//
+//    public static void useRawMessages(boolean enable) {
+//        if (enable) {
+//            messages = new JavacMessages(javacBundleName) {
+//                    @Override
+//                    public String getLocalizedString(String key, Object... args) {
+//                        return key;
+//                    }
+//                };
+//        } else {
+//            messages = new JavacMessages(javacBundleName);
+//        }
+//    }
+
+    public static final String javacBundleName =
+        "com.sun.tools.javac.resources.javac";
+//
+//    private static JavacMessages messages;
+}

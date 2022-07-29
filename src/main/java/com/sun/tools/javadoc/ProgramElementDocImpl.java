@@ -1,236 +1,231 @@
-/*     */ package com.sun.tools.javadoc;
-/*     */ 
-/*     */ import com.sun.javadoc.AnnotationDesc;
-/*     */ import com.sun.javadoc.ClassDoc;
-/*     */ import com.sun.javadoc.PackageDoc;
-/*     */ import com.sun.javadoc.ProgramElementDoc;
-/*     */ import com.sun.source.util.TreePath;
-/*     */ import com.sun.tools.javac.code.Attribute;
-/*     */ import com.sun.tools.javac.code.Symbol;
-/*     */ import com.sun.tools.javac.tree.JCTree;
-/*     */ import com.sun.tools.javac.util.Position;
-/*     */ import java.lang.reflect.Modifier;
-/*     */ import java.text.CollationKey;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public abstract class ProgramElementDocImpl
-/*     */   extends DocImpl
-/*     */   implements ProgramElementDoc
-/*     */ {
-/*     */   private final Symbol sym;
-/*  64 */   JCTree tree = null;
-/*  65 */   Position.LineMap lineMap = null;
-/*     */ 
-/*     */ 
-/*     */   
-/*  69 */   private int modifiers = -1;
-/*     */   
-/*     */   protected ProgramElementDocImpl(DocEnv paramDocEnv, Symbol paramSymbol, TreePath paramTreePath) {
-/*  72 */     super(paramDocEnv, paramTreePath);
-/*  73 */     this.sym = paramSymbol;
-/*  74 */     if (paramTreePath != null) {
-/*  75 */       this.tree = (JCTree)paramTreePath.getLeaf();
-/*  76 */       this.lineMap = ((JCTree.JCCompilationUnit)paramTreePath.getCompilationUnit()).lineMap;
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   void setTreePath(TreePath paramTreePath) {
-/*  82 */     super.setTreePath(paramTreePath);
-/*  83 */     this.tree = (JCTree)paramTreePath.getLeaf();
-/*  84 */     this.lineMap = ((JCTree.JCCompilationUnit)paramTreePath.getCompilationUnit()).lineMap;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected abstract Symbol.ClassSymbol getContainingClass();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected abstract long getFlags();
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   protected int getModifiers() {
-/* 101 */     if (this.modifiers == -1) {
-/* 102 */       this.modifiers = DocEnv.translateModifiers(getFlags());
-/*     */     }
-/* 104 */     return this.modifiers;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ClassDoc containingClass() {
-/* 114 */     if (getContainingClass() == null) {
-/* 115 */       return null;
-/*     */     }
-/* 117 */     return this.env.getClassDoc(getContainingClass());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public PackageDoc containingPackage() {
-/* 125 */     return this.env.getPackageDoc(getContainingClass().packge());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public int modifierSpecifier() {
-/* 134 */     int i = getModifiers();
-/* 135 */     if (isMethod() && containingClass().isInterface())
-/*     */     {
-/* 137 */       return i & 0xFFFFFBFF; } 
-/* 138 */     return i;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String modifiers() {
-/* 152 */     int i = getModifiers();
-/* 153 */     if (isAnnotationTypeElement() || (
-/* 154 */       isMethod() && containingClass().isInterface()))
-/*     */     {
-/* 156 */       return Modifier.toString(i & 0xFFFFFBFF);
-/*     */     }
-/* 158 */     return Modifier.toString(i);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public AnnotationDesc[] annotations() {
-/* 167 */     AnnotationDesc[] arrayOfAnnotationDesc = new AnnotationDesc[this.sym.getRawAttributes().length()];
-/* 168 */     byte b = 0;
-/* 169 */     for (Attribute.Compound compound : this.sym.getRawAttributes()) {
-/* 170 */       arrayOfAnnotationDesc[b++] = new AnnotationDescImpl(this.env, compound);
-/*     */     }
-/* 172 */     return arrayOfAnnotationDesc;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isPublic() {
-/* 179 */     int i = getModifiers();
-/* 180 */     return Modifier.isPublic(i);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isProtected() {
-/* 187 */     int i = getModifiers();
-/* 188 */     return Modifier.isProtected(i);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isPrivate() {
-/* 195 */     int i = getModifiers();
-/* 196 */     return Modifier.isPrivate(i);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isPackagePrivate() {
-/* 203 */     return (!isPublic() && !isPrivate() && !isProtected());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isStatic() {
-/* 210 */     int i = getModifiers();
-/* 211 */     return Modifier.isStatic(i);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isFinal() {
-/* 218 */     int i = getModifiers();
-/* 219 */     return Modifier.isFinal(i);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   CollationKey generateKey() {
-/* 226 */     String str = name();
-/*     */     
-/* 228 */     return this.env.doclocale.collator.getCollationKey(str);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javadoc\ProgramElementDocImpl.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1997, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javadoc;
+
+import java.lang.reflect.Modifier;
+import java.text.CollationKey;
+
+import com.sun.javadoc.*;
+import com.sun.source.util.TreePath;
+import com.sun.tools.javac.code.Attribute;
+import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.code.Symbol.ClassSymbol;
+import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.JCCompilationUnit;
+import com.sun.tools.javac.util.Position;
+
+/**
+ * Represents a java program element: class, interface, field,
+ * constructor, or method.
+ * This is an abstract class dealing with information common to
+ * these elements.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @see MemberDocImpl
+ * @see ClassDocImpl
+ *
+ * @author Robert Field
+ * @author Neal Gafter (rewrite)
+ * @author Scott Seligman (generics, enums, annotations)
+ */
+public abstract class ProgramElementDocImpl
+        extends DocImpl implements ProgramElementDoc {
+
+    private final Symbol sym;
+
+    // For source position information.
+    JCTree tree = null;
+    Position.LineMap lineMap = null;
+
+
+    // Cache for getModifiers().
+    private int modifiers = -1;
+
+    protected ProgramElementDocImpl(DocEnv env, Symbol sym, TreePath treePath) {
+        super(env, treePath);
+        this.sym = sym;
+        if (treePath != null) {
+            tree = (JCTree) treePath.getLeaf();
+            lineMap = ((JCCompilationUnit) treePath.getCompilationUnit()).lineMap;
+        }
+    }
+
+    @Override
+    void setTreePath(TreePath treePath) {
+        super.setTreePath(treePath);
+        this.tree = (JCTree) treePath.getLeaf();
+        this.lineMap = ((JCCompilationUnit) treePath.getCompilationUnit()).lineMap;
+    }
+
+    /**
+     * Subclasses override to identify the containing class
+     */
+    protected abstract ClassSymbol getContainingClass();
+
+    /**
+     * Returns the flags in terms of javac's flags
+     */
+    abstract protected long getFlags();
+
+    /**
+     * Returns the modifier flags in terms of java.lang.reflect.Modifier.
+     */
+    protected int getModifiers() {
+        if (modifiers == -1) {
+            modifiers = DocEnv.translateModifiers(getFlags());
+        }
+        return modifiers;
+    }
+
+    /**
+     * Get the containing class of this program element.
+     *
+     * @return a ClassDocImpl for this element's containing class.
+     * If this is a class with no outer class, return null.
+     */
+    public ClassDoc containingClass() {
+        if (getContainingClass() == null) {
+            return null;
+        }
+        return env.getClassDoc(getContainingClass());
+    }
+
+    /**
+     * Return the package that this member is contained in.
+     * Return "" if in unnamed package.
+     */
+    public PackageDoc containingPackage() {
+        return env.getPackageDoc(getContainingClass().packge());
+    }
+
+    /**
+     * Get the modifier specifier integer.
+     *
+     * @see Modifier
+     */
+    public int modifierSpecifier() {
+        int modifiers = getModifiers();
+        if (isMethod() && containingClass().isInterface())
+            // Remove the implicit abstract modifier.
+            return modifiers & ~Modifier.ABSTRACT;
+        return modifiers;
+    }
+
+    /**
+     * Get modifiers string.
+     * <pre>
+     * Example, for:
+     *   public abstract int foo() { ... }
+     * modifiers() would return:
+     *   'public abstract'
+     * </pre>
+     * Annotations are not included.
+     */
+    public String modifiers() {
+        int modifiers = getModifiers();
+        if (isAnnotationTypeElement() ||
+                (isMethod() && containingClass().isInterface())) {
+            // Remove the implicit abstract modifier.
+            return Modifier.toString(modifiers & ~Modifier.ABSTRACT);
+        } else {
+            return Modifier.toString(modifiers);
+        }
+    }
+
+    /**
+     * Get the annotations of this program element.
+     * Return an empty array if there are none.
+     */
+    public AnnotationDesc[] annotations() {
+        AnnotationDesc res[] = new AnnotationDesc[sym.getRawAttributes().length()];
+        int i = 0;
+        for (Attribute.Compound a : sym.getRawAttributes()) {
+            res[i++] = new AnnotationDescImpl(env, a);
+        }
+        return res;
+    }
+
+    /**
+     * Return true if this program element is public
+     */
+    public boolean isPublic() {
+        int modifiers = getModifiers();
+        return Modifier.isPublic(modifiers);
+    }
+
+    /**
+     * Return true if this program element is protected
+     */
+    public boolean isProtected() {
+        int modifiers = getModifiers();
+        return Modifier.isProtected(modifiers);
+    }
+
+    /**
+     * Return true if this program element is private
+     */
+    public boolean isPrivate() {
+        int modifiers = getModifiers();
+        return Modifier.isPrivate(modifiers);
+    }
+
+    /**
+     * Return true if this program element is package private
+     */
+    public boolean isPackagePrivate() {
+        return !(isPublic() || isPrivate() || isProtected());
+    }
+
+    /**
+     * Return true if this program element is static
+     */
+    public boolean isStatic() {
+        int modifiers = getModifiers();
+        return Modifier.isStatic(modifiers);
+    }
+
+    /**
+     * Return true if this program element is final
+     */
+    public boolean isFinal() {
+        int modifiers = getModifiers();
+        return Modifier.isFinal(modifiers);
+    }
+
+    /**
+     * Generate a key for sorting.
+     */
+    CollationKey generateKey() {
+        String k = name();
+        // System.out.println("COLLATION KEY FOR " + this + " is \"" + k + "\"");
+        return env.doclocale.collator.getCollationKey(k);
+    }
+
+}

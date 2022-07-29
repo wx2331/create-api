@@ -1,167 +1,161 @@
-/*     */ package com.sun.tools.javac.util;
-/*     */ 
-/*     */ import java.io.ByteArrayOutputStream;
-/*     */ import java.io.DataOutputStream;
-/*     */ import java.io.IOException;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class ByteBuffer
-/*     */ {
-/*     */   public byte[] elems;
-/*     */   public int length;
-/*     */   
-/*     */   public ByteBuffer() {
-/*  52 */     this(64);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public ByteBuffer(int paramInt) {
-/*  59 */     this.elems = new byte[paramInt];
-/*  60 */     this.length = 0;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void appendByte(int paramInt) {
-/*  66 */     this.elems = ArrayUtils.ensureCapacity(this.elems, this.length);
-/*  67 */     this.elems[this.length++] = (byte)paramInt;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void appendBytes(byte[] paramArrayOfbyte, int paramInt1, int paramInt2) {
-/*  74 */     this.elems = ArrayUtils.ensureCapacity(this.elems, this.length + paramInt2);
-/*  75 */     System.arraycopy(paramArrayOfbyte, paramInt1, this.elems, this.length, paramInt2);
-/*  76 */     this.length += paramInt2;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void appendBytes(byte[] paramArrayOfbyte) {
-/*  82 */     appendBytes(paramArrayOfbyte, 0, paramArrayOfbyte.length);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void appendChar(int paramInt) {
-/*  88 */     this.elems = ArrayUtils.ensureCapacity(this.elems, this.length + 1);
-/*  89 */     this.elems[this.length] = (byte)(paramInt >> 8 & 0xFF);
-/*  90 */     this.elems[this.length + 1] = (byte)(paramInt & 0xFF);
-/*  91 */     this.length += 2;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void appendInt(int paramInt) {
-/*  97 */     this.elems = ArrayUtils.ensureCapacity(this.elems, this.length + 3);
-/*  98 */     this.elems[this.length] = (byte)(paramInt >> 24 & 0xFF);
-/*  99 */     this.elems[this.length + 1] = (byte)(paramInt >> 16 & 0xFF);
-/* 100 */     this.elems[this.length + 2] = (byte)(paramInt >> 8 & 0xFF);
-/* 101 */     this.elems[this.length + 3] = (byte)(paramInt & 0xFF);
-/* 102 */     this.length += 4;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void appendLong(long paramLong) {
-/* 108 */     ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(8);
-/* 109 */     DataOutputStream dataOutputStream = new DataOutputStream(byteArrayOutputStream);
-/*     */     try {
-/* 111 */       dataOutputStream.writeLong(paramLong);
-/* 112 */       appendBytes(byteArrayOutputStream.toByteArray(), 0, 8);
-/* 113 */     } catch (IOException iOException) {
-/* 114 */       throw new AssertionError("write");
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void appendFloat(float paramFloat) {
-/* 121 */     ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(4);
-/* 122 */     DataOutputStream dataOutputStream = new DataOutputStream(byteArrayOutputStream);
-/*     */     try {
-/* 124 */       dataOutputStream.writeFloat(paramFloat);
-/* 125 */       appendBytes(byteArrayOutputStream.toByteArray(), 0, 4);
-/* 126 */     } catch (IOException iOException) {
-/* 127 */       throw new AssertionError("write");
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void appendDouble(double paramDouble) {
-/* 134 */     ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(8);
-/* 135 */     DataOutputStream dataOutputStream = new DataOutputStream(byteArrayOutputStream);
-/*     */     try {
-/* 137 */       dataOutputStream.writeDouble(paramDouble);
-/* 138 */       appendBytes(byteArrayOutputStream.toByteArray(), 0, 8);
-/* 139 */     } catch (IOException iOException) {
-/* 140 */       throw new AssertionError("write");
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void appendName(Name paramName) {
-/* 147 */     appendBytes(paramName.getByteArray(), paramName.getByteOffset(), paramName.getByteLength());
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void reset() {
-/* 153 */     this.length = 0;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public Name toName(Names paramNames) {
-/* 159 */     return paramNames.fromUtf(this.elems, 0, this.length);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\java\\util\ByteBuffer.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.util;
+
+import java.io.*;
+
+/** A byte buffer is a flexible array which grows when elements are
+ *  appended. There are also methods to append names to byte buffers
+ *  and to convert byte buffers to names.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class ByteBuffer {
+
+    /** An array holding the bytes in this buffer; can be grown.
+     */
+    public byte[] elems;
+
+    /** The current number of defined bytes in this buffer.
+     */
+    public int length;
+
+    /** Create a new byte buffer.
+     */
+    public ByteBuffer() {
+        this(64);
+    }
+
+    /** Create a new byte buffer with an initial elements array
+     *  of given size.
+     */
+    public ByteBuffer(int initialSize) {
+        elems = new byte[initialSize];
+        length = 0;
+    }
+
+    /** Append byte to this buffer.
+     */
+    public void appendByte(int b) {
+        elems = ArrayUtils.ensureCapacity(elems, length);
+        elems[length++] = (byte)b;
+    }
+
+    /** Append `len' bytes from byte array,
+     *  starting at given `start' offset.
+     */
+    public void appendBytes(byte[] bs, int start, int len) {
+        elems = ArrayUtils.ensureCapacity(elems, length + len);
+        System.arraycopy(bs, start, elems, length, len);
+        length += len;
+    }
+
+    /** Append all bytes from given byte array.
+     */
+    public void appendBytes(byte[] bs) {
+        appendBytes(bs, 0, bs.length);
+    }
+
+    /** Append a character as a two byte number.
+     */
+    public void appendChar(int x) {
+        elems = ArrayUtils.ensureCapacity(elems, length + 1);
+        elems[length  ] = (byte)((x >>  8) & 0xFF);
+        elems[length+1] = (byte)((x      ) & 0xFF);
+        length = length + 2;
+    }
+
+    /** Append an integer as a four byte number.
+     */
+    public void appendInt(int x) {
+        elems = ArrayUtils.ensureCapacity(elems, length + 3);
+        elems[length  ] = (byte)((x >> 24) & 0xFF);
+        elems[length+1] = (byte)((x >> 16) & 0xFF);
+        elems[length+2] = (byte)((x >>  8) & 0xFF);
+        elems[length+3] = (byte)((x      ) & 0xFF);
+        length = length + 4;
+    }
+
+    /** Append a long as an eight byte number.
+     */
+    public void appendLong(long x) {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream(8);
+        DataOutputStream bufout = new DataOutputStream(buffer);
+        try {
+            bufout.writeLong(x);
+            appendBytes(buffer.toByteArray(), 0, 8);
+        } catch (IOException e) {
+            throw new AssertionError("write");
+        }
+    }
+
+    /** Append a float as a four byte number.
+     */
+    public void appendFloat(float x) {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream(4);
+        DataOutputStream bufout = new DataOutputStream(buffer);
+        try {
+            bufout.writeFloat(x);
+            appendBytes(buffer.toByteArray(), 0, 4);
+        } catch (IOException e) {
+            throw new AssertionError("write");
+        }
+    }
+
+    /** Append a double as a eight byte number.
+     */
+    public void appendDouble(double x) {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream(8);
+        DataOutputStream bufout = new DataOutputStream(buffer);
+        try {
+            bufout.writeDouble(x);
+            appendBytes(buffer.toByteArray(), 0, 8);
+        } catch (IOException e) {
+            throw new AssertionError("write");
+        }
+    }
+
+    /** Append a name.
+     */
+    public void appendName(Name name) {
+        appendBytes(name.getByteArray(), name.getByteOffset(), name.getByteLength());
+    }
+
+    /** Reset to zero length.
+     */
+    public void reset() {
+        length = 0;
+    }
+
+    /** Convert contents to name.
+     */
+    public Name toName(Names names) {
+        return names.fromUtf(elems, 0, length);
+    }
+}

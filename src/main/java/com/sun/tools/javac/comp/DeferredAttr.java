@@ -1,2689 +1,1421 @@
-/*      */ package com.sun.tools.javac.comp;
-/*      */
-/*      */ import com.sun.source.tree.LambdaExpressionTree;
-/*      */ import com.sun.tools.javac.code.Symbol;
-/*      */ import com.sun.tools.javac.code.Symtab;
-/*      */ import com.sun.tools.javac.code.Type;
-/*      */ import com.sun.tools.javac.code.TypeTag;
-/*      */ import com.sun.tools.javac.code.Types;
-/*      */ import com.sun.tools.javac.tree.JCTree;
-/*      */ import com.sun.tools.javac.tree.TreeCopier;
-/*      */ import com.sun.tools.javac.tree.TreeInfo;
-/*      */ import com.sun.tools.javac.tree.TreeMaker;
-/*      */ import com.sun.tools.javac.tree.TreeScanner;
-/*      */ import com.sun.tools.javac.util.Assert;
-/*      */ import com.sun.tools.javac.util.Context;
-/*      */ import com.sun.tools.javac.util.Filter;
-/*      */ import com.sun.tools.javac.util.JCDiagnostic;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.Name;
-/*      */ import com.sun.tools.javac.util.Names;
-/*      */ import com.sun.tools.javac.util.Warner;
-/*      */ import java.util.ArrayList;
-/*      */ import java.util.Collection;
-/*      */ import java.util.Collections;
-/*      */ import java.util.EnumSet;
-/*      */ import java.util.LinkedHashMap;
-/*      */ import java.util.LinkedHashSet;
-/*      */ import java.util.Map;
-/*      */ import java.util.Set;
-/*      */ import java.util.WeakHashMap;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class DeferredAttr
-/*      */   extends JCTree.Visitor
-/*      */ {
-/*   65 */   protected static final Context.Key<DeferredAttr> deferredAttrKey = new Context.Key();
-/*      */
-/*      */   final Attr attr;
-/*      */
-/*      */   final Check chk;
-/*      */
-/*      */   final JCDiagnostic.Factory diags;
-/*      */
-/*      */   final Enter enter;
-/*      */
-/*      */   final Infer infer;
-/*      */   final Resolve rs;
-/*      */   final Log log;
-/*      */   final Symtab syms;
-/*      */   final TreeMaker make;
-/*      */   final Types types;
-/*      */
-/*      */   public static DeferredAttr instance(Context paramContext) {
-/*   83 */     DeferredAttr deferredAttr = (DeferredAttr)paramContext.get(deferredAttrKey);
-/*   84 */     if (deferredAttr == null)
-/*   85 */       deferredAttr = new DeferredAttr(paramContext);
-/*   86 */     return deferredAttr;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   final Flow flow;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   final Names names;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   final TypeEnvs typeEnvs;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   final JCTree stuckTree;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   DeferredTypeCompleter basicCompleter;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   DeferredTypeCompleter dummyCompleter;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   DeferredStuckPolicy dummyStuckPolicy;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected UnenterScanner unenterScanner;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   final DeferredAttrContext emptyDeferredAttrContext;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private EnumSet<JCTree.Tag> deferredCheckerTags;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected DeferredAttr(Context paramContext) {
-/*  273 */     this.basicCompleter = new DeferredTypeCompleter()
-/*      */       {
-/*      */         public Type complete(DeferredType param1DeferredType, Attr.ResultInfo param1ResultInfo, DeferredAttrContext param1DeferredAttrContext)
-/*      */         {
-/*      */           // Byte code:
-/*      */           //   0: getstatic com/sun/tools/javac/comp/DeferredAttr$6.$SwitchMap$com$sun$tools$javac$comp$DeferredAttr$AttrMode : [I
-/*      */           //   3: aload_3
-/*      */           //   4: getfield mode : Lcom/sun/tools/javac/comp/DeferredAttr$AttrMode;
-/*      */           //   7: invokevirtual ordinal : ()I
-/*      */           //   10: iaload
-/*      */           //   11: lookupswitch default -> 130, 1 -> 36, 2 -> 95
-/*      */           //   36: aload_1
-/*      */           //   37: getfield mode : Lcom/sun/tools/javac/comp/DeferredAttr$AttrMode;
-/*      */           //   40: ifnull -> 53
-/*      */           //   43: aload_1
-/*      */           //   44: getfield mode : Lcom/sun/tools/javac/comp/DeferredAttr$AttrMode;
-/*      */           //   47: getstatic com/sun/tools/javac/comp/DeferredAttr$AttrMode.SPECULATIVE : Lcom/sun/tools/javac/comp/DeferredAttr$AttrMode;
-/*      */           //   50: if_acmpne -> 57
-/*      */           //   53: iconst_1
-/*      */           //   54: goto -> 58
-/*      */           //   57: iconst_0
-/*      */           //   58: invokestatic check : (Z)V
-/*      */           //   61: aload_0
-/*      */           //   62: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */           //   65: aload_1
-/*      */           //   66: getfield tree : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */           //   69: aload_1
-/*      */           //   70: getfield env : Lcom/sun/tools/javac/comp/Env;
-/*      */           //   73: aload_2
-/*      */           //   74: invokevirtual attribSpeculative : (Lcom/sun/tools/javac/tree/JCTree;Lcom/sun/tools/javac/comp/Env;Lcom/sun/tools/javac/comp/Attr$ResultInfo;)Lcom/sun/tools/javac/tree/JCTree;
-/*      */           //   77: astore #4
-/*      */           //   79: aload_1
-/*      */           //   80: getfield speculativeCache : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredType$SpeculativeCache;
-/*      */           //   83: aload #4
-/*      */           //   85: aload_2
-/*      */           //   86: invokevirtual put : (Lcom/sun/tools/javac/tree/JCTree;Lcom/sun/tools/javac/comp/Attr$ResultInfo;)V
-/*      */           //   89: aload #4
-/*      */           //   91: getfield type : Lcom/sun/tools/javac/code/Type;
-/*      */           //   94: areturn
-/*      */           //   95: aload_1
-/*      */           //   96: getfield mode : Lcom/sun/tools/javac/comp/DeferredAttr$AttrMode;
-/*      */           //   99: ifnull -> 106
-/*      */           //   102: iconst_1
-/*      */           //   103: goto -> 107
-/*      */           //   106: iconst_0
-/*      */           //   107: invokestatic check : (Z)V
-/*      */           //   110: aload_0
-/*      */           //   111: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */           //   114: getfield attr : Lcom/sun/tools/javac/comp/Attr;
-/*      */           //   117: aload_1
-/*      */           //   118: getfield tree : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */           //   121: aload_1
-/*      */           //   122: getfield env : Lcom/sun/tools/javac/comp/Env;
-/*      */           //   125: aload_2
-/*      */           //   126: invokevirtual attribTree : (Lcom/sun/tools/javac/tree/JCTree;Lcom/sun/tools/javac/comp/Env;Lcom/sun/tools/javac/comp/Attr$ResultInfo;)Lcom/sun/tools/javac/code/Type;
-/*      */           //   129: areturn
-/*      */           //   130: invokestatic error : ()V
-/*      */           //   133: aconst_null
-/*      */           //   134: areturn
-/*      */           // Line number table:
-/*      */           //   Java source line number -> byte code offset
-/*      */           //   #275	-> 0
-/*      */           //   #279	-> 36
-/*      */           //   #280	-> 61
-/*      */           //   #281	-> 79
-/*      */           //   #282	-> 89
-/*      */           //   #284	-> 95
-/*      */           //   #285	-> 110
-/*      */           //   #287	-> 130
-/*      */           //   #288	-> 133
-/*      */         }
-/*      */       };
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  292 */     this.dummyCompleter = new DeferredTypeCompleter() {
-/*      */         public Type complete(DeferredType param1DeferredType, Attr.ResultInfo param1ResultInfo, DeferredAttrContext param1DeferredAttrContext) {
-/*  294 */           Assert.check((param1DeferredAttrContext.mode == AttrMode.CHECK));
-/*  295 */           return param1DeferredType.tree.type = (Type)Type.stuckType;
-/*      */         }
-/*      */       };
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  323 */     this.dummyStuckPolicy = new DeferredStuckPolicy()
-/*      */       {
-/*      */         public boolean isStuck() {
-/*  326 */           return false;
-/*      */         }
-/*      */
-/*      */         public Set<Type> stuckVars() {
-/*  330 */           return Collections.emptySet();
-/*      */         }
-/*      */
-/*      */         public Set<Type> depVars() {
-/*  334 */           return Collections.emptySet();
-/*      */         }
-/*      */       };
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  396 */     this.unenterScanner = new UnenterScanner();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1418 */     this
-/* 1419 */       .deferredCheckerTags = EnumSet.of(JCTree.Tag.LAMBDA, new JCTree.Tag[] { JCTree.Tag.REFERENCE, JCTree.Tag.PARENS, JCTree.Tag.TYPECAST, JCTree.Tag.CONDEXPR, JCTree.Tag.NEWCLASS, JCTree.Tag.APPLY, JCTree.Tag.LITERAL });
-/*      */     paramContext.put(deferredAttrKey, this);
-/*      */     this.attr = Attr.instance(paramContext);
-/*      */     this.chk = Check.instance(paramContext);
-/*      */     this.diags = JCDiagnostic.Factory.instance(paramContext);
-/*      */     this.enter = Enter.instance(paramContext);
-/*      */     this.infer = Infer.instance(paramContext);
-/*      */     this.rs = Resolve.instance(paramContext);
-/*      */     this.log = Log.instance(paramContext);
-/*      */     this.syms = Symtab.instance(paramContext);
-/*      */     this.make = TreeMaker.instance(paramContext);
-/*      */     this.types = Types.instance(paramContext);
-/*      */     this.flow = Flow.instance(paramContext);
-/*      */     this.names = Names.instance(paramContext);
-/*      */     this.stuckTree = (JCTree)this.make.Ident(this.names.empty).setType((Type)Type.stuckType);
-/*      */     this.typeEnvs = TypeEnvs.instance(paramContext);
-/*      */     this.emptyDeferredAttrContext = new DeferredAttrContext(AttrMode.CHECK, null, Resolve.MethodResolutionPhase.BOX, this.infer.emptyContext, null, null) {
-/*      */         void addDeferredAttrNode(DeferredType param1DeferredType, Attr.ResultInfo param1ResultInfo, DeferredStuckPolicy param1DeferredStuckPolicy) {
-/*      */           Assert.error("Empty deferred context!");
-/*      */         }
-/*      */
-/*      */         void complete() {
-/*      */           Assert.error("Empty deferred context!");
-/*      */         }
-/*      */
-/*      */         public String toString() {
-/*      */           return "Empty deferred context!";
-/*      */         }
-/*      */       };
-/*      */   }
-/*      */
-/*      */   public class DeferredType extends Type {
-/*      */     public JCTree.JCExpression tree;
-/*      */     Env<AttrContext> env;
-/*      */     AttrMode mode;
-/*      */     SpeculativeCache speculativeCache;
-/*      */
-/*      */     DeferredType(JCTree.JCExpression param1JCExpression, Env<AttrContext> param1Env) {
-/*      */       super(null);
-/*      */       this.tree = param1JCExpression;
-/*      */       this.env = DeferredAttr.this.attr.copyEnv(param1Env);
-/*      */       this.speculativeCache = new SpeculativeCache();
-/*      */     }
-/*      */
-/*      */     public TypeTag getTag() {
-/*      */       return TypeTag.DEFERRED;
-/*      */     }
-/*      */
-/*      */     public String toString() {
-/*      */       return "DeferredType";
-/*      */     }
-/*      */
-/*      */     class SpeculativeCache {
-/*      */       private Map<Symbol, List<Entry>> cache = new WeakHashMap<>();
-/*      */
-/*      */       class Entry {
-/*      */         JCTree speculativeTree;
-/*      */         Attr.ResultInfo resultInfo;
-/*      */
-/*      */         public Entry(JCTree param3JCTree, Attr.ResultInfo param3ResultInfo) {
-/*      */           this.speculativeTree = param3JCTree;
-/*      */           this.resultInfo = param3ResultInfo;
-/*      */         }
-/*      */
-/*      */         boolean matches(Resolve.MethodResolutionPhase param3MethodResolutionPhase) {
-/*      */           return ((this.resultInfo.checkContext.deferredAttrContext()).phase == param3MethodResolutionPhase);
-/*      */         }
-/*      */       }
-/*      */
-/*      */       Entry get(Symbol param2Symbol, Resolve.MethodResolutionPhase param2MethodResolutionPhase) {
-/*      */         List list = this.cache.get(param2Symbol);
-/*      */         if (list == null)
-/*      */           return null;
-/*      */         for (Entry entry : list) {
-/*      */           if (entry.matches(param2MethodResolutionPhase))
-/*      */             return entry;
-/*      */         }
-/*      */         return null;
-/*      */       }
-/*      */
-/*      */       void put(JCTree param2JCTree, Attr.ResultInfo param2ResultInfo) {
-/*      */         Symbol symbol = (param2ResultInfo.checkContext.deferredAttrContext()).msym;
-/*      */         List list = this.cache.get(symbol);
-/*      */         if (list == null)
-/*      */           list = List.nil();
-/*      */         this.cache.put(symbol, list.prepend(new Entry(param2JCTree, param2ResultInfo)));
-/*      */       }
-/*      */     }
-/*      */
-/*      */     class Entry {
-/*      */       JCTree speculativeTree;
-/*      */       Attr.ResultInfo resultInfo;
-/*      */
-/*      */       public Entry(JCTree param2JCTree, Attr.ResultInfo param2ResultInfo) {
-/*      */         this.speculativeTree = param2JCTree;
-/*      */         this.resultInfo = param2ResultInfo;
-/*      */       }
-/*      */
-/*      */       boolean matches(Resolve.MethodResolutionPhase param2MethodResolutionPhase) {
-/*      */         return ((this.resultInfo.checkContext.deferredAttrContext()).phase == param2MethodResolutionPhase);
-/*      */       }
-/*      */     }
-/*      */
-/*      */     Type speculativeType(Symbol param1Symbol, Resolve.MethodResolutionPhase param1MethodResolutionPhase) {
-/*      */       SpeculativeCache.Entry entry = this.speculativeCache.get(param1Symbol, param1MethodResolutionPhase);
-/*      */       return (entry != null) ? entry.speculativeTree.type : (Type)Type.noType;
-/*      */     }
-/*      */
-/*      */     Type check(Attr.ResultInfo param1ResultInfo) {
-/*      */       DeferredStuckPolicy deferredStuckPolicy;
-/*      */       if (param1ResultInfo.pt.hasTag(TypeTag.NONE) || param1ResultInfo.pt.isErroneous()) {
-/*      */         deferredStuckPolicy = DeferredAttr.this.dummyStuckPolicy;
-/*      */       } else if ((param1ResultInfo.checkContext.deferredAttrContext()).mode == AttrMode.SPECULATIVE || param1ResultInfo.checkContext.deferredAttrContext().insideOverloadPhase()) {
-/*      */         deferredStuckPolicy = new OverloadStuckPolicy(param1ResultInfo, this);
-/*      */       } else {
-/*      */         deferredStuckPolicy = new CheckStuckPolicy(param1ResultInfo, this);
-/*      */       }
-/*      */       return check(param1ResultInfo, deferredStuckPolicy, DeferredAttr.this.basicCompleter);
-/*      */     }
-/*      */
-/*      */     private Type check(Attr.ResultInfo param1ResultInfo, DeferredStuckPolicy param1DeferredStuckPolicy, DeferredTypeCompleter param1DeferredTypeCompleter) {
-/*      */       DeferredAttrContext deferredAttrContext = param1ResultInfo.checkContext.deferredAttrContext();
-/*      */       Assert.check((deferredAttrContext != DeferredAttr.this.emptyDeferredAttrContext));
-/*      */       if (param1DeferredStuckPolicy.isStuck()) {
-/*      */         deferredAttrContext.addDeferredAttrNode(this, param1ResultInfo, param1DeferredStuckPolicy);
-/*      */         return (Type)Type.noType;
-/*      */       }
-/*      */       try {
-/*      */         return param1DeferredTypeCompleter.complete(this, param1ResultInfo, deferredAttrContext);
-/*      */       } finally {
-/*      */         this.mode = deferredAttrContext.mode;
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public enum AttrMode {
-/*      */     SPECULATIVE, CHECK;
-/*      */   }
-/*      */
-/*      */   JCTree attribSpeculative(JCTree paramJCTree, Env<AttrContext> paramEnv, Attr.ResultInfo paramResultInfo) {
-/*      */     final JCTree newTree = (new TreeCopier(this.make)).copy(paramJCTree);
-/*      */     Env<AttrContext> env = paramEnv.dup(jCTree, ((AttrContext)paramEnv.info).dup(((AttrContext)paramEnv.info).scope.dupUnshared()));
-/*      */     ((AttrContext)env.info).scope.owner = ((AttrContext)paramEnv.info).scope.owner;
-/*      */     Log.DeferredDiagnosticHandler deferredDiagnosticHandler = new Log.DeferredDiagnosticHandler(this.log, new Filter<JCDiagnostic>() {
-/*      */           public boolean accepts(final JCDiagnostic d) {
-/*      */             class PosScanner extends TreeScanner {
-/*      */               boolean found = false;
-/*      */
-/*      */               public void scan(JCTree param2JCTree) {
-/*      */                 if (param2JCTree != null && param2JCTree.pos() == d.getDiagnosticPosition())
-/*      */                   this.found = true;
-/*      */                 super.scan(param2JCTree);
-/*      */               }
-/*      */             };
-/*      */             PosScanner posScanner = new PosScanner();
-/*      */             posScanner.scan(newTree);
-/*      */             return posScanner.found;
-/*      */           }
-/*      */         });
-/*      */     try {
-/*      */       this.attr.attribTree(jCTree, env, paramResultInfo);
-/*      */       this.unenterScanner.scan(jCTree);
-/*      */       return jCTree;
-/*      */     } finally {
-/*      */       this.unenterScanner.scan(jCTree);
-/*      */       this.log.popDiagnosticHandler((Log.DiagnosticHandler)deferredDiagnosticHandler);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   class UnenterScanner extends TreeScanner {
-/*      */     public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) {
-/*      */       Symbol.ClassSymbol classSymbol = param1JCClassDecl.sym;
-/*      */       if (classSymbol == null)
-/*      */         return;
-/*      */       DeferredAttr.this.typeEnvs.remove((Symbol.TypeSymbol)classSymbol);
-/*      */       DeferredAttr.this.chk.compiled.remove(classSymbol.flatname);
-/*      */       DeferredAttr.this.syms.classes.remove(classSymbol.flatname);
-/*      */       super.visitClassDef(param1JCClassDecl);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   class DeferredAttrContext {
-/*      */     final AttrMode mode;
-/*      */     final Symbol msym;
-/*      */     final Resolve.MethodResolutionPhase phase;
-/*      */     final Infer.InferenceContext inferenceContext;
-/*      */     final DeferredAttrContext parent;
-/*      */     final Warner warn;
-/*      */     ArrayList<DeferredAttrNode> deferredAttrNodes = new ArrayList<>();
-/*      */
-/*      */     DeferredAttrContext(AttrMode param1AttrMode, Symbol param1Symbol, Resolve.MethodResolutionPhase param1MethodResolutionPhase, Infer.InferenceContext param1InferenceContext, DeferredAttrContext param1DeferredAttrContext, Warner param1Warner) {
-/*      */       this.mode = param1AttrMode;
-/*      */       this.msym = param1Symbol;
-/*      */       this.phase = param1MethodResolutionPhase;
-/*      */       this.parent = param1DeferredAttrContext;
-/*      */       this.warn = param1Warner;
-/*      */       this.inferenceContext = param1InferenceContext;
-/*      */     }
-/*      */
-/*      */     void addDeferredAttrNode(DeferredType param1DeferredType, Attr.ResultInfo param1ResultInfo, DeferredStuckPolicy param1DeferredStuckPolicy) {
-/*      */       this.deferredAttrNodes.add(new DeferredAttrNode(param1DeferredType, param1ResultInfo, param1DeferredStuckPolicy));
-/*      */     }
-/*      */
-/*      */     void complete() {
-/*      */       while (!this.deferredAttrNodes.isEmpty()) {
-/*      */         LinkedHashMap<Object, Object> linkedHashMap = new LinkedHashMap<>();
-/*      */         List<Type> list = List.nil();
-/*      */         boolean bool = false;
-/*      */         for (DeferredAttrNode deferredAttrNode : List.from(this.deferredAttrNodes)) {
-/*      */           if (!deferredAttrNode.process(this)) {
-/*      */             List list1 = List.from(deferredAttrNode.deferredStuckPolicy.stuckVars()).intersect(this.inferenceContext.restvars());
-/*      */             list = list.prependList(list1);
-/*      */             for (Type type : List.from(deferredAttrNode.deferredStuckPolicy.depVars()).intersect(this.inferenceContext.restvars())) {
-/*      */               Set set = (Set)linkedHashMap.get(type);
-/*      */               if (set == null) {
-/*      */                 set = new LinkedHashSet();
-/*      */                 linkedHashMap.put(type, set);
-/*      */               }
-/*      */               set.addAll((Collection)list1);
-/*      */             }
-/*      */             continue;
-/*      */           }
-/*      */           this.deferredAttrNodes.remove(deferredAttrNode);
-/*      */           bool = true;
-/*      */         }
-/*      */         if (!bool) {
-/*      */           if (insideOverloadPhase()) {
-/*      */             for (DeferredAttrNode deferredAttrNode : this.deferredAttrNodes)
-/*      */               deferredAttrNode.dt.tree.type = (Type)Type.noType;
-/*      */             return;
-/*      */           }
-/*      */           try {
-/*      */             this.inferenceContext.solveAny(list, (Map)linkedHashMap, this.warn);
-/*      */             this.inferenceContext.notifyChange();
-/*      */           } catch (NodeNotFoundException nodeNotFoundException) {
-/*      */             break;
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */     private boolean insideOverloadPhase() {
-/*      */       DeferredAttrContext deferredAttrContext = this;
-/*      */       if (deferredAttrContext == DeferredAttr.this.emptyDeferredAttrContext)
-/*      */         return false;
-/*      */       if (deferredAttrContext.mode == AttrMode.SPECULATIVE)
-/*      */         return true;
-/*      */       return deferredAttrContext.parent.insideOverloadPhase();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   class DeferredAttrNode {
-/*      */     DeferredType dt;
-/*      */     Attr.ResultInfo resultInfo;
-/*      */     DeferredStuckPolicy deferredStuckPolicy;
-/*      */
-/*      */     DeferredAttrNode(DeferredType param1DeferredType, Attr.ResultInfo param1ResultInfo, DeferredStuckPolicy param1DeferredStuckPolicy) {
-/*      */       this.dt = param1DeferredType;
-/*      */       this.resultInfo = param1ResultInfo;
-/*      */       this.deferredStuckPolicy = param1DeferredStuckPolicy;
-/*      */     }
-/*      */
-/*      */     boolean process(DeferredAttrContext param1DeferredAttrContext) {
-/*      */       // Byte code:
-/*      */       //   0: getstatic com/sun/tools/javac/comp/DeferredAttr$6.$SwitchMap$com$sun$tools$javac$comp$DeferredAttr$AttrMode : [I
-/*      */       //   3: aload_1
-/*      */       //   4: getfield mode : Lcom/sun/tools/javac/comp/DeferredAttr$AttrMode;
-/*      */       //   7: invokevirtual ordinal : ()I
-/*      */       //   10: iaload
-/*      */       //   11: lookupswitch default -> 255, 1 -> 36, 2 -> 82
-/*      */       //   36: aload_0
-/*      */       //   37: getfield deferredStuckPolicy : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredStuckPolicy;
-/*      */       //   40: invokeinterface isStuck : ()Z
-/*      */       //   45: ifeq -> 77
-/*      */       //   48: aload_0
-/*      */       //   49: getfield dt : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredType;
-/*      */       //   52: aload_0
-/*      */       //   53: getfield resultInfo : Lcom/sun/tools/javac/comp/Attr$ResultInfo;
-/*      */       //   56: aload_0
-/*      */       //   57: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   60: getfield dummyStuckPolicy : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredStuckPolicy;
-/*      */       //   63: new com/sun/tools/javac/comp/DeferredAttr$DeferredAttrNode$StructuralStuckChecker
-/*      */       //   66: dup
-/*      */       //   67: aload_0
-/*      */       //   68: invokespecial <init> : (Lcom/sun/tools/javac/comp/DeferredAttr$DeferredAttrNode;)V
-/*      */       //   71: invokestatic access$100 : (Lcom/sun/tools/javac/comp/DeferredAttr$DeferredType;Lcom/sun/tools/javac/comp/Attr$ResultInfo;Lcom/sun/tools/javac/comp/DeferredAttr$DeferredStuckPolicy;Lcom/sun/tools/javac/comp/DeferredAttr$DeferredTypeCompleter;)Lcom/sun/tools/javac/code/Type;
-/*      */       //   74: pop
-/*      */       //   75: iconst_1
-/*      */       //   76: ireturn
-/*      */       //   77: ldc 'Cannot get here'
-/*      */       //   79: invokestatic error : (Ljava/lang/String;)V
-/*      */       //   82: aload_0
-/*      */       //   83: getfield deferredStuckPolicy : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredStuckPolicy;
-/*      */       //   86: invokeinterface isStuck : ()Z
-/*      */       //   91: ifeq -> 191
-/*      */       //   94: aload_1
-/*      */       //   95: getfield parent : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredAttrContext;
-/*      */       //   98: aload_0
-/*      */       //   99: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   102: getfield emptyDeferredAttrContext : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredAttrContext;
-/*      */       //   105: if_acmpeq -> 189
-/*      */       //   108: aload_1
-/*      */       //   109: getfield parent : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredAttrContext;
-/*      */       //   112: getfield inferenceContext : Lcom/sun/tools/javac/comp/Infer$InferenceContext;
-/*      */       //   115: getfield inferencevars : Lcom/sun/tools/javac/util/List;
-/*      */       //   118: aload_0
-/*      */       //   119: getfield deferredStuckPolicy : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredStuckPolicy;
-/*      */       //   122: invokeinterface stuckVars : ()Ljava/util/Set;
-/*      */       //   127: invokestatic from : (Ljava/lang/Iterable;)Lcom/sun/tools/javac/util/List;
-/*      */       //   130: invokestatic containsAny : (Lcom/sun/tools/javac/util/List;Lcom/sun/tools/javac/util/List;)Z
-/*      */       //   133: ifeq -> 189
-/*      */       //   136: aload_1
-/*      */       //   137: getfield parent : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredAttrContext;
-/*      */       //   140: aload_0
-/*      */       //   141: getfield dt : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredType;
-/*      */       //   144: aload_0
-/*      */       //   145: getfield resultInfo : Lcom/sun/tools/javac/comp/Attr$ResultInfo;
-/*      */       //   148: new com/sun/tools/javac/comp/DeferredAttr$DeferredAttrNode$1
-/*      */       //   151: dup
-/*      */       //   152: aload_0
-/*      */       //   153: aload_0
-/*      */       //   154: getfield resultInfo : Lcom/sun/tools/javac/comp/Attr$ResultInfo;
-/*      */       //   157: getfield checkContext : Lcom/sun/tools/javac/comp/Check$CheckContext;
-/*      */       //   160: aload_1
-/*      */       //   161: invokespecial <init> : (Lcom/sun/tools/javac/comp/DeferredAttr$DeferredAttrNode;Lcom/sun/tools/javac/comp/Check$CheckContext;Lcom/sun/tools/javac/comp/DeferredAttr$DeferredAttrContext;)V
-/*      */       //   164: invokevirtual dup : (Lcom/sun/tools/javac/comp/Check$CheckContext;)Lcom/sun/tools/javac/comp/Attr$ResultInfo;
-/*      */       //   167: aload_0
-/*      */       //   168: getfield deferredStuckPolicy : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredStuckPolicy;
-/*      */       //   171: invokevirtual addDeferredAttrNode : (Lcom/sun/tools/javac/comp/DeferredAttr$DeferredType;Lcom/sun/tools/javac/comp/Attr$ResultInfo;Lcom/sun/tools/javac/comp/DeferredAttr$DeferredStuckPolicy;)V
-/*      */       //   174: aload_0
-/*      */       //   175: getfield dt : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredType;
-/*      */       //   178: getfield tree : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   181: getstatic com/sun/tools/javac/code/Type.stuckType : Lcom/sun/tools/javac/code/Type$JCNoType;
-/*      */       //   184: putfield type : Lcom/sun/tools/javac/code/Type;
-/*      */       //   187: iconst_1
-/*      */       //   188: ireturn
-/*      */       //   189: iconst_0
-/*      */       //   190: ireturn
-/*      */       //   191: aload_1
-/*      */       //   192: invokestatic access$000 : (Lcom/sun/tools/javac/comp/DeferredAttr$DeferredAttrContext;)Z
-/*      */       //   195: ifne -> 202
-/*      */       //   198: iconst_1
-/*      */       //   199: goto -> 203
-/*      */       //   202: iconst_0
-/*      */       //   203: ldc 'attribution shouldn't be happening here'
-/*      */       //   205: invokestatic check : (ZLjava/lang/String;)V
-/*      */       //   208: aload_0
-/*      */       //   209: getfield resultInfo : Lcom/sun/tools/javac/comp/Attr$ResultInfo;
-/*      */       //   212: aload_1
-/*      */       //   213: getfield inferenceContext : Lcom/sun/tools/javac/comp/Infer$InferenceContext;
-/*      */       //   216: aload_0
-/*      */       //   217: getfield resultInfo : Lcom/sun/tools/javac/comp/Attr$ResultInfo;
-/*      */       //   220: getfield pt : Lcom/sun/tools/javac/code/Type;
-/*      */       //   223: invokevirtual asInstType : (Lcom/sun/tools/javac/code/Type;)Lcom/sun/tools/javac/code/Type;
-/*      */       //   226: invokevirtual dup : (Lcom/sun/tools/javac/code/Type;)Lcom/sun/tools/javac/comp/Attr$ResultInfo;
-/*      */       //   229: astore_2
-/*      */       //   230: aload_0
-/*      */       //   231: getfield dt : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredType;
-/*      */       //   234: aload_2
-/*      */       //   235: aload_0
-/*      */       //   236: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   239: getfield dummyStuckPolicy : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredStuckPolicy;
-/*      */       //   242: aload_0
-/*      */       //   243: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   246: getfield basicCompleter : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredTypeCompleter;
-/*      */       //   249: invokestatic access$100 : (Lcom/sun/tools/javac/comp/DeferredAttr$DeferredType;Lcom/sun/tools/javac/comp/Attr$ResultInfo;Lcom/sun/tools/javac/comp/DeferredAttr$DeferredStuckPolicy;Lcom/sun/tools/javac/comp/DeferredAttr$DeferredTypeCompleter;)Lcom/sun/tools/javac/code/Type;
-/*      */       //   252: pop
-/*      */       //   253: iconst_1
-/*      */       //   254: ireturn
-/*      */       //   255: new java/lang/AssertionError
-/*      */       //   258: dup
-/*      */       //   259: ldc 'Bad mode'
-/*      */       //   261: invokespecial <init> : (Ljava/lang/Object;)V
-/*      */       //   264: athrow
-/*      */       // Line number table:
-/*      */       //   Java source line number -> byte code offset
-/*      */       //   #561	-> 0
-/*      */       //   #563	-> 36
-/*      */       //   #564	-> 48
-/*      */       //   #565	-> 75
-/*      */       //   #567	-> 77
-/*      */       //   #570	-> 82
-/*      */       //   #572	-> 94
-/*      */       //   #574	-> 122
-/*      */       //   #573	-> 130
-/*      */       //   #575	-> 136
-/*      */       //   #576	-> 164
-/*      */       //   #575	-> 171
-/*      */       //   #586	-> 174
-/*      */       //   #587	-> 187
-/*      */       //   #589	-> 189
-/*      */       //   #592	-> 191
-/*      */       //   #594	-> 208
-/*      */       //   #595	-> 223
-/*      */       //   #596	-> 230
-/*      */       //   #597	-> 253
-/*      */       //   #600	-> 255
-/*      */     }
-/*      */
-/*      */     class StructuralStuckChecker extends TreeScanner implements DeferredTypeCompleter {
-/*      */       Attr.ResultInfo resultInfo;
-/*      */       Infer.InferenceContext inferenceContext;
-/*      */       Env<AttrContext> env;
-/*      */
-/*      */       public Type complete(DeferredType param2DeferredType, Attr.ResultInfo param2ResultInfo, DeferredAttrContext param2DeferredAttrContext) {
-/*      */         this.resultInfo = param2ResultInfo;
-/*      */         this.inferenceContext = param2DeferredAttrContext.inferenceContext;
-/*      */         this.env = param2DeferredType.env;
-/*      */         param2DeferredType.tree.accept((JCTree.Visitor)this);
-/*      */         param2DeferredType.speculativeCache.put(DeferredAttr.this.stuckTree, param2ResultInfo);
-/*      */         return (Type)Type.noType;
-/*      */       }
-/*      */
-/*      */       public void visitLambda(JCTree.JCLambda param2JCLambda) {
-/*      */         Check.CheckContext checkContext = this.resultInfo.checkContext;
-/*      */         Type type = this.resultInfo.pt;
-/*      */         if (!this.inferenceContext.inferencevars.contains(type)) {
-/*      */           Type type1 = null;
-/*      */           try {
-/*      */             type1 = DeferredAttr.this.types.findDescriptorType(type);
-/*      */           } catch (Types.FunctionDescriptorLookupError functionDescriptorLookupError) {
-/*      */             checkContext.report(null, functionDescriptorLookupError.getDiagnostic());
-/*      */           }
-/*      */           if (type1.getParameterTypes().length() != param2JCLambda.params.length())
-/*      */             checkContext.report((JCDiagnostic.DiagnosticPosition)param2JCLambda, DeferredAttr.this.diags.fragment("incompatible.arg.types.in.lambda", new Object[0]));
-/*      */           Type type2 = type1.getReturnType();
-/*      */           boolean bool = type2.hasTag(TypeTag.VOID);
-/*      */           if (param2JCLambda.getBodyKind() == LambdaExpressionTree.BodyKind.EXPRESSION) {
-/*      */             boolean bool1 = (!bool || TreeInfo.isExpressionStatement((JCTree.JCExpression)param2JCLambda.getBody())) ? true : false;
-/*      */             if (!bool1)
-/*      */               this.resultInfo.checkContext.report(param2JCLambda.pos(), DeferredAttr.this.diags.fragment("incompatible.ret.type.in.lambda", new Object[] { this.this$1.this$0.diags.fragment("missing.ret.val", new Object[] { type2 }) }));
-/*      */           } else {
-/*      */             LambdaBodyStructChecker lambdaBodyStructChecker = new LambdaBodyStructChecker();
-/*      */             param2JCLambda.body.accept((JCTree.Visitor)lambdaBodyStructChecker);
-/*      */             boolean bool1 = lambdaBodyStructChecker.isVoidCompatible;
-/*      */             if (bool) {
-/*      */               if (!bool1)
-/*      */                 this.resultInfo.checkContext.report(param2JCLambda.pos(), DeferredAttr.this.diags.fragment("unexpected.ret.val", new Object[0]));
-/*      */             } else {
-/*      */               boolean bool2 = (lambdaBodyStructChecker.isPotentiallyValueCompatible && !canLambdaBodyCompleteNormally(param2JCLambda)) ? true : false;
-/*      */               if (!bool2 && !bool1)
-/*      */                 DeferredAttr.this.log.error(param2JCLambda.body.pos(), "lambda.body.neither.value.nor.void.compatible", new Object[0]);
-/*      */               if (!bool2)
-/*      */                 this.resultInfo.checkContext.report(param2JCLambda.pos(), DeferredAttr.this.diags.fragment("incompatible.ret.type.in.lambda", new Object[] { this.this$1.this$0.diags.fragment("missing.ret.val", new Object[] { type2 }) }));
-/*      */             }
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */
-/*      */       boolean canLambdaBodyCompleteNormally(JCTree.JCLambda param2JCLambda) {
-/*      */         JCTree.JCLambda jCLambda = (JCTree.JCLambda)(new TreeCopier(DeferredAttr.this.make)).copy((JCTree)param2JCLambda);
-/*      */         Env<AttrContext> env = DeferredAttr.this.attr.lambdaEnv(jCLambda, this.env);
-/*      */         try {
-/*      */           List list = jCLambda.params;
-/*      */           while (list.nonEmpty()) {
-/*      */             ((JCTree.JCVariableDecl)list.head).vartype = DeferredAttr.this.make.at((JCDiagnostic.DiagnosticPosition)list.head).Type(DeferredAttr.this.syms.errType);
-/*      */             list = list.tail;
-/*      */           }
-/*      */           DeferredAttr.this.attr.attribStats(jCLambda.params, env);
-/*      */           DeferredAttr.this.attr.getClass();
-/*      */           Attr.ResultInfo resultInfo = new Attr.ResultInfo(DeferredAttr.this.attr, 12, (Type)Type.noType);
-/*      */           ((AttrContext)env.info).returnResult = resultInfo;
-/*      */           Log.DiscardDiagnosticHandler discardDiagnosticHandler = new Log.DiscardDiagnosticHandler(DeferredAttr.this.log);
-/*      */           try {
-/*      */             JCTree.JCBlock jCBlock1 = (JCTree.JCBlock)jCLambda.body;
-/*      */             DeferredAttr.this.attr.attribStats(jCBlock1.stats, env);
-/*      */             DeferredAttr.this.attr.preFlow(jCLambda);
-/*      */             DeferredAttr.this.flow.analyzeLambda(env, jCLambda, DeferredAttr.this.make, true);
-/*      */           } finally {
-/*      */             DeferredAttr.this.log.popDiagnosticHandler((Log.DiagnosticHandler)discardDiagnosticHandler);
-/*      */           }
-/*      */           return jCLambda.canCompleteNormally;
-/*      */         } finally {
-/*      */           JCTree.JCBlock jCBlock = (JCTree.JCBlock)jCLambda.body;
-/*      */           DeferredAttr.this.unenterScanner.scan(jCBlock.stats);
-/*      */           ((AttrContext)env.info).scope.leave();
-/*      */         }
-/*      */       }
-/*      */
-/*      */       public void visitNewClass(JCTree.JCNewClass param2JCNewClass) {}
-/*      */
-/*      */       public void visitApply(JCTree.JCMethodInvocation param2JCMethodInvocation) {}
-/*      */
-/*      */       public void visitReference(JCTree.JCMemberReference param2JCMemberReference) {
-/*      */         Check.CheckContext checkContext = this.resultInfo.checkContext;
-/*      */         Type type = this.resultInfo.pt;
-/*      */         if (!this.inferenceContext.inferencevars.contains(type)) {
-/*      */           try {
-/*      */             DeferredAttr.this.types.findDescriptorType(type);
-/*      */           } catch (Types.FunctionDescriptorLookupError functionDescriptorLookupError) {
-/*      */             checkContext.report(null, functionDescriptorLookupError.getDiagnostic());
-/*      */           }
-/*      */           Env<AttrContext> env = this.env.dup((JCTree)param2JCMemberReference);
-/*      */           JCTree.JCExpression jCExpression = (JCTree.JCExpression)DeferredAttr.this.attribSpeculative((JCTree)param2JCMemberReference.getQualifierExpression(), env, DeferredAttr.this.attr.memberReferenceQualifierResult(param2JCMemberReference));
-/*      */           ListBuffer listBuffer = new ListBuffer();
-/*      */           for (Type type1 : DeferredAttr.this.types.findDescriptorType(type).getParameterTypes())
-/*      */             listBuffer.append(Type.noType);
-/*      */           JCTree.JCMemberReference jCMemberReference = (JCTree.JCMemberReference)(new TreeCopier(DeferredAttr.this.make)).copy((JCTree)param2JCMemberReference);
-/*      */           jCMemberReference.expr = jCExpression;
-/*      */           Symbol symbol = DeferredAttr.this.rs.resolveMemberReferenceByArity(env, jCMemberReference, jCExpression.type, param2JCMemberReference.name, listBuffer.toList(), this.inferenceContext);
-/*      */           switch (symbol.kind) {
-/*      */             case 134:
-/*      */             case 135:
-/*      */             case 136:
-/*      */             case 138:
-/*      */               checkContext.report((JCDiagnostic.DiagnosticPosition)param2JCMemberReference, DeferredAttr.this.diags.fragment("incompatible.arg.types.in.mref", new Object[0]));
-/*      */               break;
-/*      */           }
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */
-/*      */     class LambdaBodyStructChecker extends TreeScanner {
-/*      */       boolean isVoidCompatible;
-/*      */       boolean isPotentiallyValueCompatible;
-/*      */
-/*      */       LambdaBodyStructChecker() {
-/*      */         this.isVoidCompatible = true;
-/*      */         this.isPotentiallyValueCompatible = true;
-/*      */       }
-/*      */
-/*      */       public void visitClassDef(JCTree.JCClassDecl param2JCClassDecl) {}
-/*      */
-/*      */       public void visitLambda(JCTree.JCLambda param2JCLambda) {}
-/*      */
-/*      */       public void visitNewClass(JCTree.JCNewClass param2JCNewClass) {}
-/*      */
-/*      */       public void visitReturn(JCTree.JCReturn param2JCReturn) {
-/*      */         if (param2JCReturn.expr != null) {
-/*      */           this.isVoidCompatible = false;
-/*      */         } else {
-/*      */           this.isPotentiallyValueCompatible = false;
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */   class DeferredTypeMap extends Type.Mapping {
-/*      */     DeferredAttrContext deferredAttrContext;
-/*      */
-/*      */     protected DeferredTypeMap(AttrMode param1AttrMode, Symbol param1Symbol, Resolve.MethodResolutionPhase param1MethodResolutionPhase) {
-/*      */       super(String.format("deferredTypeMap[%s]", new Object[] { param1AttrMode }));
-/*      */       this.deferredAttrContext = new DeferredAttrContext(param1AttrMode, param1Symbol, param1MethodResolutionPhase, DeferredAttr.this.infer.emptyContext, DeferredAttr.this.emptyDeferredAttrContext, DeferredAttr.this.types.noWarnings);
-/*      */     }
-/*      */
-/*      */     public Type apply(Type param1Type) {
-/*      */       if (!param1Type.hasTag(TypeTag.DEFERRED))
-/*      */         return param1Type.map(this);
-/*      */       DeferredType deferredType = (DeferredType)param1Type;
-/*      */       return typeOf(deferredType);
-/*      */     }
-/*      */
-/*      */     protected Type typeOf(DeferredType param1DeferredType) {
-/*      */       // Byte code:
-/*      */       //   0: getstatic com/sun/tools/javac/comp/DeferredAttr$6.$SwitchMap$com$sun$tools$javac$comp$DeferredAttr$AttrMode : [I
-/*      */       //   3: aload_0
-/*      */       //   4: getfield deferredAttrContext : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredAttrContext;
-/*      */       //   7: getfield mode : Lcom/sun/tools/javac/comp/DeferredAttr$AttrMode;
-/*      */       //   10: invokevirtual ordinal : ()I
-/*      */       //   13: iaload
-/*      */       //   14: lookupswitch default -> 83, 1 -> 64, 2 -> 40
-/*      */       //   40: aload_1
-/*      */       //   41: getfield tree : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   44: getfield type : Lcom/sun/tools/javac/code/Type;
-/*      */       //   47: ifnonnull -> 56
-/*      */       //   50: getstatic com/sun/tools/javac/code/Type.noType : Lcom/sun/tools/javac/code/Type$JCNoType;
-/*      */       //   53: goto -> 63
-/*      */       //   56: aload_1
-/*      */       //   57: getfield tree : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   60: getfield type : Lcom/sun/tools/javac/code/Type;
-/*      */       //   63: areturn
-/*      */       //   64: aload_1
-/*      */       //   65: aload_0
-/*      */       //   66: getfield deferredAttrContext : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredAttrContext;
-/*      */       //   69: getfield msym : Lcom/sun/tools/javac/code/Symbol;
-/*      */       //   72: aload_0
-/*      */       //   73: getfield deferredAttrContext : Lcom/sun/tools/javac/comp/DeferredAttr$DeferredAttrContext;
-/*      */       //   76: getfield phase : Lcom/sun/tools/javac/comp/Resolve$MethodResolutionPhase;
-/*      */       //   79: invokevirtual speculativeType : (Lcom/sun/tools/javac/code/Symbol;Lcom/sun/tools/javac/comp/Resolve$MethodResolutionPhase;)Lcom/sun/tools/javac/code/Type;
-/*      */       //   82: areturn
-/*      */       //   83: invokestatic error : ()V
-/*      */       //   86: aconst_null
-/*      */       //   87: areturn
-/*      */       // Line number table:
-/*      */       //   Java source line number -> byte code offset
-/*      */       //   #844	-> 0
-/*      */       //   #846	-> 40
-/*      */       //   #848	-> 64
-/*      */       //   #850	-> 83
-/*      */       //   #851	-> 86
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public class RecoveryDeferredTypeMap extends DeferredTypeMap {
-/*      */     public RecoveryDeferredTypeMap(AttrMode param1AttrMode, Symbol param1Symbol, Resolve.MethodResolutionPhase param1MethodResolutionPhase) {
-/*      */       super(param1AttrMode, param1Symbol, (param1MethodResolutionPhase != null) ? param1MethodResolutionPhase : Resolve.MethodResolutionPhase.BOX);
-/*      */     }
-/*      */
-/*      */     protected Type typeOf(DeferredType param1DeferredType) {
-/*      */       Type type = super.typeOf(param1DeferredType);
-/*      */       return (type == Type.noType) ? recover(param1DeferredType) : type;
-/*      */     }
-/*      */
-/*      */     private Type recover(DeferredType param1DeferredType) {
-/*      */       DeferredAttr.this.attr.getClass();
-/*      */       param1DeferredType.check(new Attr.RecoveryInfo(DeferredAttr.this.attr, this.deferredAttrContext) {
-/*      */             protected Type check(JCDiagnostic.DiagnosticPosition param2DiagnosticPosition, Type param2Type) {
-/*      */               return DeferredAttr.this.chk.checkNonVoid(param2DiagnosticPosition, super.check(param2DiagnosticPosition, param2Type));
-/*      */             }
-/*      */           });
-/*      */       return super.apply(param1DeferredType);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   static abstract class FilterScanner extends TreeScanner {
-/*      */     final Filter<JCTree> treeFilter = new Filter<JCTree>() {
-/*      */         public boolean accepts(JCTree param2JCTree) {
-/*      */           return validTags.contains(param2JCTree.getTag());
-/*      */         }
-/*      */       };
-/*      */
-/*      */     FilterScanner(final Set<JCTree.Tag> validTags) {}
-/*      */
-/*      */     public void scan(JCTree param1JCTree) {
-/*      */       if (param1JCTree != null)
-/*      */         if (this.treeFilter.accepts(param1JCTree)) {
-/*      */           super.scan(param1JCTree);
-/*      */         } else {
-/*      */           skip(param1JCTree);
-/*      */         }
-/*      */     }
-/*      */
-/*      */     void skip(JCTree param1JCTree) {}
-/*      */   }
-/*      */
-/*      */   static class PolyScanner extends FilterScanner {
-/*      */     PolyScanner() {
-/*      */       super(EnumSet.of(JCTree.Tag.CONDEXPR, JCTree.Tag.PARENS, JCTree.Tag.LAMBDA, JCTree.Tag.REFERENCE));
-/*      */     }
-/*      */   }
-/*      */
-/*      */   static class LambdaReturnScanner extends FilterScanner {
-/*      */     LambdaReturnScanner() {
-/*      */       super(EnumSet.of(JCTree.Tag.BLOCK, new JCTree.Tag[] {
-/*      */               JCTree.Tag.CASE, JCTree.Tag.CATCH, JCTree.Tag.DOLOOP, JCTree.Tag.FOREACHLOOP, JCTree.Tag.FORLOOP, JCTree.Tag.IF, JCTree.Tag.RETURN, JCTree.Tag.SYNCHRONIZED, JCTree.Tag.SWITCH, JCTree.Tag.TRY,
-/*      */               JCTree.Tag.WHILELOOP }));
-/*      */     }
-/*      */   }
-/*      */
-/*      */   class CheckStuckPolicy extends PolyScanner implements DeferredStuckPolicy, Infer.FreeTypeListener {
-/*      */     Type pt;
-/*      */     Infer.InferenceContext inferenceContext;
-/*      */     Set<Type> stuckVars = new LinkedHashSet<>();
-/*      */     Set<Type> depVars = new LinkedHashSet<>();
-/*      */
-/*      */     public boolean isStuck() {
-/*      */       return !this.stuckVars.isEmpty();
-/*      */     }
-/*      */
-/*      */     public Set<Type> stuckVars() {
-/*      */       return this.stuckVars;
-/*      */     }
-/*      */
-/*      */     public Set<Type> depVars() {
-/*      */       return this.depVars;
-/*      */     }
-/*      */
-/*      */     public CheckStuckPolicy(Attr.ResultInfo param1ResultInfo, DeferredType param1DeferredType) {
-/*      */       this.pt = param1ResultInfo.pt;
-/*      */       this.inferenceContext = param1ResultInfo.checkContext.inferenceContext();
-/*      */       scan((JCTree)param1DeferredType.tree);
-/*      */       if (!this.stuckVars.isEmpty())
-/*      */         param1ResultInfo.checkContext.inferenceContext().addFreeTypeListener(List.from(this.stuckVars), this);
-/*      */     }
-/*      */
-/*      */     public void typesInferred(Infer.InferenceContext param1InferenceContext) {
-/*      */       this.stuckVars.clear();
-/*      */     }
-/*      */
-/*      */     public void visitLambda(JCTree.JCLambda param1JCLambda) {
-/*      */       if (this.inferenceContext.inferenceVars().contains(this.pt))
-/*      */         this.stuckVars.add(this.pt);
-/*      */       if (!DeferredAttr.this.types.isFunctionalInterface(this.pt))
-/*      */         return;
-/*      */       Type type = DeferredAttr.this.types.findDescriptorType(this.pt);
-/*      */       List<Type> list = this.inferenceContext.freeVarsIn(type.getParameterTypes());
-/*      */       if (param1JCLambda.paramKind == JCTree.JCLambda.ParameterKind.IMPLICIT && list.nonEmpty()) {
-/*      */         this.stuckVars.addAll((Collection<? extends Type>)list);
-/*      */         this.depVars.addAll((Collection<? extends Type>)this.inferenceContext.freeVarsIn(type.getReturnType()));
-/*      */       }
-/*      */       scanLambdaBody(param1JCLambda, type.getReturnType());
-/*      */     }
-/*      */
-/*      */     public void visitReference(JCTree.JCMemberReference param1JCMemberReference) {
-/*      */       scan((JCTree)param1JCMemberReference.expr);
-/*      */       if (this.inferenceContext.inferenceVars().contains(this.pt)) {
-/*      */         this.stuckVars.add(this.pt);
-/*      */         return;
-/*      */       }
-/*      */       if (!DeferredAttr.this.types.isFunctionalInterface(this.pt))
-/*      */         return;
-/*      */       Type type = DeferredAttr.this.types.findDescriptorType(this.pt);
-/*      */       List<Type> list = this.inferenceContext.freeVarsIn(type.getParameterTypes());
-/*      */       if (list.nonEmpty() && param1JCMemberReference.overloadKind == JCTree.JCMemberReference.OverloadKind.OVERLOADED) {
-/*      */         this.stuckVars.addAll((Collection<? extends Type>)list);
-/*      */         this.depVars.addAll((Collection<? extends Type>)this.inferenceContext.freeVarsIn(type.getReturnType()));
-/*      */       }
-/*      */     }
-/*      */
-/*      */     void scanLambdaBody(JCTree.JCLambda param1JCLambda, final Type pt) {
-/*      */       if (param1JCLambda.getBodyKind() == LambdaExpressionTree.BodyKind.EXPRESSION) {
-/*      */         Type type = this.pt;
-/*      */         try {
-/*      */           this.pt = pt;
-/*      */           scan(param1JCLambda.body);
-/*      */         } finally {
-/*      */           this.pt = type;
-/*      */         }
-/*      */       } else {
-/*      */         LambdaReturnScanner lambdaReturnScanner = new LambdaReturnScanner() {
-/*      */             public void visitReturn(JCTree.JCReturn param2JCReturn) {
-/*      */               if (param2JCReturn.expr != null) {
-/*      */                 Type type = CheckStuckPolicy.this.pt;
-/*      */                 try {
-/*      */                   CheckStuckPolicy.this.pt = pt;
-/*      */                   CheckStuckPolicy.this.scan((JCTree)param2JCReturn.expr);
-/*      */                 } finally {
-/*      */                   CheckStuckPolicy.this.pt = type;
-/*      */                 }
-/*      */               }
-/*      */             }
-/*      */           };
-/*      */         lambdaReturnScanner.scan(param1JCLambda.body);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */   class OverloadStuckPolicy extends CheckStuckPolicy implements DeferredStuckPolicy {
-/*      */     boolean stuck;
-/*      */
-/*      */     public boolean isStuck() {
-/*      */       return (super.isStuck() || this.stuck);
-/*      */     }
-/*      */
-/*      */     public OverloadStuckPolicy(Attr.ResultInfo param1ResultInfo, DeferredType param1DeferredType) {
-/*      */       super(param1ResultInfo, param1DeferredType);
-/*      */     }
-/*      */
-/*      */     public void visitLambda(JCTree.JCLambda param1JCLambda) {
-/*      */       super.visitLambda(param1JCLambda);
-/*      */       if (param1JCLambda.paramKind == JCTree.JCLambda.ParameterKind.IMPLICIT)
-/*      */         this.stuck = true;
-/*      */     }
-/*      */
-/*      */     public void visitReference(JCTree.JCMemberReference param1JCMemberReference) {
-/*      */       super.visitReference(param1JCMemberReference);
-/*      */       if (param1JCMemberReference.overloadKind == JCTree.JCMemberReference.OverloadKind.OVERLOADED)
-/*      */         this.stuck = true;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   boolean isDeferred(Env<AttrContext> paramEnv, JCTree.JCExpression paramJCExpression) {
-/*      */     DeferredChecker deferredChecker = new DeferredChecker(paramEnv);
-/*      */     deferredChecker.scan((JCTree)paramJCExpression);
-/*      */     return deferredChecker.result.isPoly();
-/*      */   }
-/*      */
-/*      */   enum ArgumentExpressionKind {
-/*      */     POLY, NO_POLY, PRIMITIVE;
-/*      */
-/*      */     public final boolean isPoly() {
-/*      */       return (this == POLY);
-/*      */     }
-/*      */
-/*      */     public final boolean isPrimitive() {
-/*      */       return (this == PRIMITIVE);
-/*      */     }
-/*      */
-/*      */     static ArgumentExpressionKind standaloneKind(Type param1Type, Types param1Types) {
-/*      */       return param1Types.unboxedTypeOrType(param1Type).isPrimitive() ? PRIMITIVE : NO_POLY;
-/*      */     }
-/*      */
-/*      */     static ArgumentExpressionKind methodKind(Symbol param1Symbol, Types param1Types) {
-/*      */       Type type = param1Symbol.type.getReturnType();
-/*      */       if (param1Symbol.type.hasTag(TypeTag.FORALL) && type.containsAny(((Type.ForAll)param1Symbol.type).tvars))
-/*      */         return POLY;
-/*      */       return standaloneKind(type, param1Types);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   final class DeferredChecker extends FilterScanner {
-/*      */     Env<AttrContext> env;
-/*      */     ArgumentExpressionKind result;
-/*      */     MethodAnalyzer<ArgumentExpressionKind> argumentKindAnalyzer;
-/*      */     MethodAnalyzer<Symbol> returnSymbolAnalyzer;
-/*      */
-/*      */     public DeferredChecker(Env<AttrContext> param1Env) {
-/*      */       super(DeferredAttr.this.deferredCheckerTags);
-/*      */       this.argumentKindAnalyzer = new MethodAnalyzer<ArgumentExpressionKind>() {
-/*      */           public ArgumentExpressionKind process(Symbol.MethodSymbol param2MethodSymbol) {
-/*      */             return ArgumentExpressionKind.methodKind((Symbol)param2MethodSymbol, DeferredAttr.this.types);
-/*      */           }
-/*      */
-/*      */           public ArgumentExpressionKind reduce(ArgumentExpressionKind param2ArgumentExpressionKind1, ArgumentExpressionKind param2ArgumentExpressionKind2) {
-/*      */             // Byte code:
-/*      */             //   0: getstatic com/sun/tools/javac/comp/DeferredAttr$6.$SwitchMap$com$sun$tools$javac$comp$DeferredAttr$ArgumentExpressionKind : [I
-/*      */             //   3: aload_1
-/*      */             //   4: invokevirtual ordinal : ()I
-/*      */             //   7: iaload
-/*      */             //   8: tableswitch default -> 53, 1 -> 36, 2 -> 38, 3 -> 51
-/*      */             //   36: aload_2
-/*      */             //   37: areturn
-/*      */             //   38: aload_2
-/*      */             //   39: invokevirtual isPoly : ()Z
-/*      */             //   42: ifeq -> 49
-/*      */             //   45: aload_2
-/*      */             //   46: goto -> 50
-/*      */             //   49: aload_1
-/*      */             //   50: areturn
-/*      */             //   51: aload_1
-/*      */             //   52: areturn
-/*      */             //   53: invokestatic error : ()V
-/*      */             //   56: aconst_null
-/*      */             //   57: areturn
-/*      */             // Line number table:
-/*      */             //   Java source line number -> byte code offset
-/*      */             //   #1278	-> 0
-/*      */             //   #1279	-> 36
-/*      */             //   #1280	-> 38
-/*      */             //   #1281	-> 51
-/*      */             //   #1283	-> 53
-/*      */             //   #1284	-> 56
-/*      */           }
-/*      */
-/*      */           public boolean shouldStop(ArgumentExpressionKind param2ArgumentExpressionKind) {
-/*      */             return param2ArgumentExpressionKind.isPoly();
-/*      */           }
-/*      */         };
-/*      */       this.returnSymbolAnalyzer = new MethodAnalyzer<Symbol>() {
-/*      */           public Symbol process(Symbol.MethodSymbol param2MethodSymbol) {
-/*      */             ArgumentExpressionKind argumentExpressionKind = ArgumentExpressionKind.methodKind((Symbol)param2MethodSymbol, DeferredAttr.this.types);
-/*      */             if (argumentExpressionKind == ArgumentExpressionKind.POLY || param2MethodSymbol.getReturnType().hasTag(TypeTag.TYPEVAR))
-/*      */               return null;
-/*      */             return (Symbol)(param2MethodSymbol.getReturnType()).tsym;
-/*      */           }
-/*      */
-/*      */           public Symbol reduce(Symbol param2Symbol1, Symbol param2Symbol2) {
-/*      */             return (param2Symbol1 == DeferredAttr.this.syms.errSymbol) ? param2Symbol2 : ((param2Symbol1 == param2Symbol2) ? param2Symbol1 : null);
-/*      */           }
-/*      */
-/*      */           public boolean shouldStop(Symbol param2Symbol) {
-/*      */             return (param2Symbol == null);
-/*      */           }
-/*      */         };
-/*      */       this.env = param1Env;
-/*      */     }
-/*      */
-/*      */     public void visitLambda(JCTree.JCLambda param1JCLambda) {
-/*      */       this.result = ArgumentExpressionKind.POLY;
-/*      */     }
-/*      */
-/*      */     public void visitReference(JCTree.JCMemberReference param1JCMemberReference) {
-/*      */       Env<AttrContext> env = this.env.dup((JCTree)param1JCMemberReference);
-/*      */       JCTree.JCExpression jCExpression = (JCTree.JCExpression)DeferredAttr.this.attribSpeculative((JCTree)param1JCMemberReference.getQualifierExpression(), env, DeferredAttr.this.attr.memberReferenceQualifierResult(param1JCMemberReference));
-/*      */       JCTree.JCMemberReference jCMemberReference = (JCTree.JCMemberReference)(new TreeCopier(DeferredAttr.this.make)).copy((JCTree)param1JCMemberReference);
-/*      */       jCMemberReference.expr = jCExpression;
-/*      */       Symbol symbol = DeferredAttr.this.rs.getMemberReference((JCDiagnostic.DiagnosticPosition)param1JCMemberReference, env, jCMemberReference, jCExpression.type, param1JCMemberReference.name);
-/*      */       param1JCMemberReference.sym = symbol;
-/*      */       if (symbol.kind >= 128 || symbol.type.hasTag(TypeTag.FORALL) || (symbol.flags() & 0x400000000L) != 0L || (TreeInfo.isStaticSelector((JCTree)jCExpression, param1JCMemberReference.name.table.names) && jCExpression.type.isRaw())) {
-/*      */         param1JCMemberReference.overloadKind = JCTree.JCMemberReference.OverloadKind.OVERLOADED;
-/*      */       } else {
-/*      */         param1JCMemberReference.overloadKind = JCTree.JCMemberReference.OverloadKind.UNOVERLOADED;
-/*      */       }
-/*      */       this.result = ArgumentExpressionKind.POLY;
-/*      */     }
-/*      */
-/*      */     public void visitTypeCast(JCTree.JCTypeCast param1JCTypeCast) {
-/*      */       this.result = ArgumentExpressionKind.NO_POLY;
-/*      */     }
-/*      */
-/*      */     public void visitConditional(JCTree.JCConditional param1JCConditional) {
-/*      */       scan((JCTree)param1JCConditional.truepart);
-/*      */       if (!this.result.isPrimitive()) {
-/*      */         this.result = ArgumentExpressionKind.POLY;
-/*      */         return;
-/*      */       }
-/*      */       scan((JCTree)param1JCConditional.falsepart);
-/*      */       this.result = reduce(ArgumentExpressionKind.PRIMITIVE);
-/*      */     }
-/*      */
-/*      */     public void visitNewClass(JCTree.JCNewClass param1JCNewClass) {
-/*      */       this.result = (TreeInfo.isDiamond((JCTree)param1JCNewClass) || DeferredAttr.this.attr.findDiamonds) ? ArgumentExpressionKind.POLY : ArgumentExpressionKind.NO_POLY;
-/*      */     }
-/*      */
-/*      */     public void visitApply(JCTree.JCMethodInvocation param1JCMethodInvocation) {
-/*      */       Name name = TreeInfo.name((JCTree)param1JCMethodInvocation.meth);
-/*      */       if (param1JCMethodInvocation.typeargs.nonEmpty() || name == name.table.names._this || name == name.table.names._super) {
-/*      */         this.result = ArgumentExpressionKind.NO_POLY;
-/*      */         return;
-/*      */       }
-/*      */       Symbol symbol = quicklyResolveMethod(this.env, param1JCMethodInvocation);
-/*      */       if (symbol == null) {
-/*      */         this.result = ArgumentExpressionKind.POLY;
-/*      */         return;
-/*      */       }
-/*      */       this.result = analyzeCandidateMethods(symbol, ArgumentExpressionKind.PRIMITIVE, this.argumentKindAnalyzer);
-/*      */     }
-/*      */
-/*      */     private boolean isSimpleReceiver(JCTree param1JCTree) {
-/*      */       // Byte code:
-/*      */       //   0: getstatic com/sun/tools/javac/comp/DeferredAttr$6.$SwitchMap$com$sun$tools$javac$tree$JCTree$Tag : [I
-/*      */       //   3: aload_1
-/*      */       //   4: invokevirtual getTag : ()Lcom/sun/tools/javac/tree/JCTree$Tag;
-/*      */       //   7: invokevirtual ordinal : ()I
-/*      */       //   10: iaload
-/*      */       //   11: tableswitch default -> 114, 1 -> 52, 2 -> 54, 3 -> 66, 4 -> 66, 5 -> 68, 6 -> 80, 7 -> 82
-/*      */       //   52: iconst_1
-/*      */       //   53: ireturn
-/*      */       //   54: aload_0
-/*      */       //   55: aload_1
-/*      */       //   56: checkcast com/sun/tools/javac/tree/JCTree$JCFieldAccess
-/*      */       //   59: getfield selected : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   62: invokespecial isSimpleReceiver : (Lcom/sun/tools/javac/tree/JCTree;)Z
-/*      */       //   65: ireturn
-/*      */       //   66: iconst_1
-/*      */       //   67: ireturn
-/*      */       //   68: aload_0
-/*      */       //   69: aload_1
-/*      */       //   70: checkcast com/sun/tools/javac/tree/JCTree$JCAnnotatedType
-/*      */       //   73: getfield underlyingType : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   76: invokespecial isSimpleReceiver : (Lcom/sun/tools/javac/tree/JCTree;)Z
-/*      */       //   79: ireturn
-/*      */       //   80: iconst_1
-/*      */       //   81: ireturn
-/*      */       //   82: aload_1
-/*      */       //   83: checkcast com/sun/tools/javac/tree/JCTree$JCNewClass
-/*      */       //   86: astore_2
-/*      */       //   87: aload_2
-/*      */       //   88: getfield encl : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   91: ifnonnull -> 112
-/*      */       //   94: aload_2
-/*      */       //   95: getfield def : Lcom/sun/tools/javac/tree/JCTree$JCClassDecl;
-/*      */       //   98: ifnonnull -> 112
-/*      */       //   101: aload_2
-/*      */       //   102: invokestatic isDiamond : (Lcom/sun/tools/javac/tree/JCTree;)Z
-/*      */       //   105: ifne -> 112
-/*      */       //   108: iconst_1
-/*      */       //   109: goto -> 113
-/*      */       //   112: iconst_0
-/*      */       //   113: ireturn
-/*      */       //   114: iconst_0
-/*      */       //   115: ireturn
-/*      */       // Line number table:
-/*      */       //   Java source line number -> byte code offset
-/*      */       //   #1247	-> 0
-/*      */       //   #1249	-> 52
-/*      */       //   #1251	-> 54
-/*      */       //   #1254	-> 66
-/*      */       //   #1256	-> 68
-/*      */       //   #1258	-> 80
-/*      */       //   #1260	-> 82
-/*      */       //   #1261	-> 87
-/*      */       //   #1263	-> 114
-/*      */     }
-/*      */
-/*      */     private ArgumentExpressionKind reduce(ArgumentExpressionKind param1ArgumentExpressionKind) {
-/*      */       return this.argumentKindAnalyzer.reduce(this.result, param1ArgumentExpressionKind);
-/*      */     }
-/*      */
-/*      */     public void visitLiteral(JCTree.JCLiteral param1JCLiteral) {
-/*      */       Type type = DeferredAttr.this.attr.litType(param1JCLiteral.typetag);
-/*      */       this.result = ArgumentExpressionKind.standaloneKind(type, DeferredAttr.this.types);
-/*      */     }
-/*      */
-/*      */     void skip(JCTree param1JCTree) {
-/*      */       this.result = ArgumentExpressionKind.NO_POLY;
-/*      */     }
-/*      */
-/*      */     private Symbol quicklyResolveMethod(Env<AttrContext> param1Env, JCTree.JCMethodInvocation param1JCMethodInvocation) {
-/*      */       // Byte code:
-/*      */       //   0: aload_2
-/*      */       //   1: getfield meth : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   4: getstatic com/sun/tools/javac/tree/JCTree$Tag.SELECT : Lcom/sun/tools/javac/tree/JCTree$Tag;
-/*      */       //   7: invokevirtual hasTag : (Lcom/sun/tools/javac/tree/JCTree$Tag;)Z
-/*      */       //   10: ifeq -> 26
-/*      */       //   13: aload_2
-/*      */       //   14: getfield meth : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   17: checkcast com/sun/tools/javac/tree/JCTree$JCFieldAccess
-/*      */       //   20: getfield selected : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   23: goto -> 27
-/*      */       //   26: aconst_null
-/*      */       //   27: astore_3
-/*      */       //   28: aload_3
-/*      */       //   29: ifnull -> 42
-/*      */       //   32: aload_0
-/*      */       //   33: aload_3
-/*      */       //   34: invokespecial isSimpleReceiver : (Lcom/sun/tools/javac/tree/JCTree;)Z
-/*      */       //   37: ifne -> 42
-/*      */       //   40: aconst_null
-/*      */       //   41: areturn
-/*      */       //   42: aload_3
-/*      */       //   43: ifnull -> 208
-/*      */       //   46: getstatic com/sun/tools/javac/comp/DeferredAttr$6.$SwitchMap$com$sun$tools$javac$tree$JCTree$Tag : [I
-/*      */       //   49: aload_3
-/*      */       //   50: invokevirtual getTag : ()Lcom/sun/tools/javac/tree/JCTree$Tag;
-/*      */       //   53: invokevirtual ordinal : ()I
-/*      */       //   56: iaload
-/*      */       //   57: lookupswitch default -> 181, 6 -> 84, 7 -> 144
-/*      */       //   84: aload_0
-/*      */       //   85: aload_1
-/*      */       //   86: aload_3
-/*      */       //   87: checkcast com/sun/tools/javac/tree/JCTree$JCMethodInvocation
-/*      */       //   90: invokespecial quicklyResolveMethod : (Lcom/sun/tools/javac/comp/Env;Lcom/sun/tools/javac/tree/JCTree$JCMethodInvocation;)Lcom/sun/tools/javac/code/Symbol;
-/*      */       //   93: astore #5
-/*      */       //   95: aload #5
-/*      */       //   97: ifnonnull -> 102
-/*      */       //   100: aconst_null
-/*      */       //   101: areturn
-/*      */       //   102: aload_0
-/*      */       //   103: aload #5
-/*      */       //   105: aload_0
-/*      */       //   106: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   109: getfield syms : Lcom/sun/tools/javac/code/Symtab;
-/*      */       //   112: getfield errSymbol : Lcom/sun/tools/javac/code/Symbol$ClassSymbol;
-/*      */       //   115: aload_0
-/*      */       //   116: getfield returnSymbolAnalyzer : Lcom/sun/tools/javac/comp/DeferredAttr$MethodAnalyzer;
-/*      */       //   119: invokevirtual analyzeCandidateMethods : (Lcom/sun/tools/javac/code/Symbol;Ljava/lang/Object;Lcom/sun/tools/javac/comp/DeferredAttr$MethodAnalyzer;)Ljava/lang/Object;
-/*      */       //   122: checkcast com/sun/tools/javac/code/Symbol
-/*      */       //   125: astore #6
-/*      */       //   127: aload #6
-/*      */       //   129: ifnonnull -> 134
-/*      */       //   132: aconst_null
-/*      */       //   133: areturn
-/*      */       //   134: aload #6
-/*      */       //   136: getfield type : Lcom/sun/tools/javac/code/Type;
-/*      */       //   139: astore #4
-/*      */       //   141: goto -> 220
-/*      */       //   144: aload_3
-/*      */       //   145: checkcast com/sun/tools/javac/tree/JCTree$JCNewClass
-/*      */       //   148: astore #7
-/*      */       //   150: aload_0
-/*      */       //   151: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   154: aload #7
-/*      */       //   156: getfield clazz : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   159: aload_1
-/*      */       //   160: aload_0
-/*      */       //   161: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   164: getfield attr : Lcom/sun/tools/javac/comp/Attr;
-/*      */       //   167: getfield unknownTypeExprInfo : Lcom/sun/tools/javac/comp/Attr$ResultInfo;
-/*      */       //   170: invokevirtual attribSpeculative : (Lcom/sun/tools/javac/tree/JCTree;Lcom/sun/tools/javac/comp/Env;Lcom/sun/tools/javac/comp/Attr$ResultInfo;)Lcom/sun/tools/javac/tree/JCTree;
-/*      */       //   173: getfield type : Lcom/sun/tools/javac/code/Type;
-/*      */       //   176: astore #4
-/*      */       //   178: goto -> 220
-/*      */       //   181: aload_0
-/*      */       //   182: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   185: aload_3
-/*      */       //   186: aload_1
-/*      */       //   187: aload_0
-/*      */       //   188: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   191: getfield attr : Lcom/sun/tools/javac/comp/Attr;
-/*      */       //   194: getfield unknownTypeExprInfo : Lcom/sun/tools/javac/comp/Attr$ResultInfo;
-/*      */       //   197: invokevirtual attribSpeculative : (Lcom/sun/tools/javac/tree/JCTree;Lcom/sun/tools/javac/comp/Env;Lcom/sun/tools/javac/comp/Attr$ResultInfo;)Lcom/sun/tools/javac/tree/JCTree;
-/*      */       //   200: getfield type : Lcom/sun/tools/javac/code/Type;
-/*      */       //   203: astore #4
-/*      */       //   205: goto -> 220
-/*      */       //   208: aload_1
-/*      */       //   209: getfield enclClass : Lcom/sun/tools/javac/tree/JCTree$JCClassDecl;
-/*      */       //   212: getfield sym : Lcom/sun/tools/javac/code/Symbol$ClassSymbol;
-/*      */       //   215: getfield type : Lcom/sun/tools/javac/code/Type;
-/*      */       //   218: astore #4
-/*      */       //   220: aload #4
-/*      */       //   222: getstatic com/sun/tools/javac/code/TypeTag.TYPEVAR : Lcom/sun/tools/javac/code/TypeTag;
-/*      */       //   225: invokevirtual hasTag : (Lcom/sun/tools/javac/code/TypeTag;)Z
-/*      */       //   228: ifeq -> 241
-/*      */       //   231: aload #4
-/*      */       //   233: invokevirtual getUpperBound : ()Lcom/sun/tools/javac/code/Type;
-/*      */       //   236: astore #4
-/*      */       //   238: goto -> 220
-/*      */       //   241: aload_0
-/*      */       //   242: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   245: getfield types : Lcom/sun/tools/javac/code/Types;
-/*      */       //   248: aload #4
-/*      */       //   250: invokevirtual capture : (Lcom/sun/tools/javac/code/Type;)Lcom/sun/tools/javac/code/Type;
-/*      */       //   253: astore #4
-/*      */       //   255: aload_0
-/*      */       //   256: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   259: getfield rs : Lcom/sun/tools/javac/comp/Resolve;
-/*      */       //   262: aload_2
-/*      */       //   263: getfield args : Lcom/sun/tools/javac/util/List;
-/*      */       //   266: invokevirtual length : ()I
-/*      */       //   269: invokevirtual dummyArgs : (I)Lcom/sun/tools/javac/util/List;
-/*      */       //   272: astore #5
-/*      */       //   274: aload_2
-/*      */       //   275: getfield meth : Lcom/sun/tools/javac/tree/JCTree$JCExpression;
-/*      */       //   278: invokestatic name : (Lcom/sun/tools/javac/tree/JCTree;)Lcom/sun/tools/javac/util/Name;
-/*      */       //   281: astore #6
-/*      */       //   283: new com/sun/tools/javac/comp/DeferredAttr$DeferredChecker$2
-/*      */       //   286: dup
-/*      */       //   287: aload_0
-/*      */       //   288: aload_0
-/*      */       //   289: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   292: getfield rs : Lcom/sun/tools/javac/comp/Resolve;
-/*      */       //   295: dup
-/*      */       //   296: invokevirtual getClass : ()Ljava/lang/Class;
-/*      */       //   299: pop
-/*      */       //   300: aload #6
-/*      */       //   302: aload #4
-/*      */       //   304: aload #5
-/*      */       //   306: invokestatic nil : ()Lcom/sun/tools/javac/util/List;
-/*      */       //   309: getstatic com/sun/tools/javac/comp/Resolve$MethodResolutionPhase.VARARITY : Lcom/sun/tools/javac/comp/Resolve$MethodResolutionPhase;
-/*      */       //   312: aload_3
-/*      */       //   313: invokespecial <init> : (Lcom/sun/tools/javac/comp/DeferredAttr$DeferredChecker;Lcom/sun/tools/javac/comp/Resolve;Lcom/sun/tools/javac/util/Name;Lcom/sun/tools/javac/code/Type;Lcom/sun/tools/javac/util/List;Lcom/sun/tools/javac/util/List;Lcom/sun/tools/javac/comp/Resolve$MethodResolutionPhase;Lcom/sun/tools/javac/tree/JCTree$JCExpression;)V
-/*      */       //   316: astore #7
-/*      */       //   318: aload_0
-/*      */       //   319: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   322: getfield rs : Lcom/sun/tools/javac/comp/Resolve;
-/*      */       //   325: aload_1
-/*      */       //   326: aload_2
-/*      */       //   327: aload #4
-/*      */       //   329: getfield tsym : Lcom/sun/tools/javac/code/Symbol$TypeSymbol;
-/*      */       //   332: aload_0
-/*      */       //   333: getfield this$0 : Lcom/sun/tools/javac/comp/DeferredAttr;
-/*      */       //   336: getfield rs : Lcom/sun/tools/javac/comp/Resolve;
-/*      */       //   339: getfield arityMethodCheck : Lcom/sun/tools/javac/comp/Resolve$MethodCheck;
-/*      */       //   342: aload #7
-/*      */       //   344: invokevirtual lookupMethod : (Lcom/sun/tools/javac/comp/Env;Lcom/sun/tools/javac/util/JCDiagnostic$DiagnosticPosition;Lcom/sun/tools/javac/code/Symbol;Lcom/sun/tools/javac/comp/Resolve$MethodCheck;Lcom/sun/tools/javac/comp/Resolve$LookupHelper;)Lcom/sun/tools/javac/code/Symbol;
-/*      */       //   347: areturn
-/*      */       // Line number table:
-/*      */       //   Java source line number -> byte code offset
-/*      */       //   #1305	-> 0
-/*      */       //   #1309	-> 28
-/*      */       //   #1310	-> 40
-/*      */       //   #1315	-> 42
-/*      */       //   #1316	-> 46
-/*      */       //   #1318	-> 84
-/*      */       //   #1319	-> 95
-/*      */       //   #1320	-> 100
-/*      */       //   #1321	-> 102
-/*      */       //   #1322	-> 119
-/*      */       //   #1323	-> 127
-/*      */       //   #1324	-> 132
-/*      */       //   #1325	-> 134
-/*      */       //   #1326	-> 141
-/*      */       //   #1328	-> 144
-/*      */       //   #1329	-> 150
-/*      */       //   #1330	-> 178
-/*      */       //   #1332	-> 181
-/*      */       //   #1333	-> 205
-/*      */       //   #1336	-> 208
-/*      */       //   #1339	-> 220
-/*      */       //   #1340	-> 231
-/*      */       //   #1343	-> 241
-/*      */       //   #1345	-> 255
-/*      */       //   #1346	-> 274
-/*      */       //   #1348	-> 283
-/*      */       //   #1361	-> 318
-/*      */     }
-/*      */
-/*      */     <E> E analyzeCandidateMethods(Symbol param1Symbol, E param1E, MethodAnalyzer<E> param1MethodAnalyzer) {
-/*      */       Resolve.AmbiguityError ambiguityError;
-/*      */       E e;
-/*      */       switch (param1Symbol.kind) {
-/*      */         case 16:
-/*      */           return param1MethodAnalyzer.process((Symbol.MethodSymbol)param1Symbol);
-/*      */         case 129:
-/*      */           ambiguityError = (Resolve.AmbiguityError)param1Symbol.baseSymbol();
-/*      */           e = param1E;
-/*      */           for (Symbol symbol : ambiguityError.ambiguousSyms) {
-/*      */             if (symbol.kind == 16) {
-/*      */               e = param1MethodAnalyzer.reduce(e, param1MethodAnalyzer.process((Symbol.MethodSymbol)symbol));
-/*      */               if (param1MethodAnalyzer.shouldStop(e))
-/*      */                 return e;
-/*      */             }
-/*      */           }
-/*      */           return e;
-/*      */       }
-/*      */       return param1E;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   static interface DeferredStuckPolicy {
-/*      */     boolean isStuck();
-/*      */
-/*      */     Set<Type> stuckVars();
-/*      */
-/*      */     Set<Type> depVars();
-/*      */   }
-/*      */
-/*      */   static interface DeferredTypeCompleter {
-/*      */     Type complete(DeferredType param1DeferredType, Attr.ResultInfo param1ResultInfo, DeferredAttrContext param1DeferredAttrContext);
-/*      */   }
-/*      */
-/*      */   static interface MethodAnalyzer<E> {
-/*      */     E process(Symbol.MethodSymbol param1MethodSymbol);
-/*      */
-/*      */     E reduce(E param1E1, E param1E2);
-/*      */
-/*      */     boolean shouldStop(E param1E);
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\comp\DeferredAttr.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2012, 2015, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.comp;
+
+import com.sun.source.tree.LambdaExpressionTree.BodyKind;
+import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.tree.*;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.code.Type.*;
+import com.sun.tools.javac.comp.Attr.ResultInfo;
+import com.sun.tools.javac.comp.Infer.InferenceContext;
+import com.sun.tools.javac.comp.Resolve.MethodResolutionPhase;
+import com.sun.tools.javac.tree.JCTree.*;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
+
+import static com.sun.tools.javac.code.Kinds.VAL;
+import static com.sun.tools.javac.code.TypeTag.*;
+import static com.sun.tools.javac.tree.JCTree.Tag.*;
+
+/**
+ * This is an helper class that is used to perform deferred type-analysis.
+ * Each time a poly expression occurs in argument position, javac attributes it
+ * with a temporary 'deferred type' that is checked (possibly multiple times)
+ * against an expected formal type.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class DeferredAttr extends JCTree.Visitor {
+    protected static final Context.Key<DeferredAttr> deferredAttrKey =
+        new Context.Key<DeferredAttr>();
+
+    final Attr attr;
+    final Check chk;
+    final JCDiagnostic.Factory diags;
+    final Enter enter;
+    final Infer infer;
+    final Resolve rs;
+    final Log log;
+    final Symtab syms;
+    final TreeMaker make;
+    final Types types;
+    final Flow flow;
+    final Names names;
+    final TypeEnvs typeEnvs;
+
+    public static DeferredAttr instance(Context context) {
+        DeferredAttr instance = context.get(deferredAttrKey);
+        if (instance == null)
+            instance = new DeferredAttr(context);
+        return instance;
+    }
+
+    protected DeferredAttr(Context context) {
+        context.put(deferredAttrKey, this);
+        attr = Attr.instance(context);
+        chk = Check.instance(context);
+        diags = JCDiagnostic.Factory.instance(context);
+        enter = Enter.instance(context);
+        infer = Infer.instance(context);
+        rs = Resolve.instance(context);
+        log = Log.instance(context);
+        syms = Symtab.instance(context);
+        make = TreeMaker.instance(context);
+        types = Types.instance(context);
+        flow = Flow.instance(context);
+        names = Names.instance(context);
+        stuckTree = make.Ident(names.empty).setType(Type.stuckType);
+        typeEnvs = TypeEnvs.instance(context);
+        emptyDeferredAttrContext =
+            new DeferredAttrContext(AttrMode.CHECK, null, MethodResolutionPhase.BOX, infer.emptyContext, null, null) {
+                @Override
+                void addDeferredAttrNode(DeferredType dt, ResultInfo ri, DeferredStuckPolicy deferredStuckPolicy) {
+                    Assert.error("Empty deferred context!");
+                }
+                @Override
+                void complete() {
+                    Assert.error("Empty deferred context!");
+                }
+
+                @Override
+                public String toString() {
+                    return "Empty deferred context!";
+                }
+            };
+    }
+
+    /** shared tree for stuck expressions */
+    final JCTree stuckTree;
+
+    /**
+     * This type represents a deferred type. A deferred type starts off with
+     * no information on the underlying expression type. Such info needs to be
+     * discovered through type-checking the deferred type against a target-type.
+     * Every deferred type keeps a pointer to the AST node from which it originated.
+     */
+    public class DeferredType extends Type {
+
+        public JCExpression tree;
+        Env<AttrContext> env;
+        AttrMode mode;
+        SpeculativeCache speculativeCache;
+
+        DeferredType(JCExpression tree, Env<AttrContext> env) {
+            super(null);
+            this.tree = tree;
+            this.env = attr.copyEnv(env);
+            this.speculativeCache = new SpeculativeCache();
+        }
+
+        @Override
+        public TypeTag getTag() {
+            return DEFERRED;
+        }
+
+        @Override
+        public String toString() {
+            return "DeferredType";
+        }
+
+        /**
+         * A speculative cache is used to keep track of all overload resolution rounds
+         * that triggered speculative attribution on a given deferred type. Each entry
+         * stores a pointer to the speculative tree and the resolution phase in which the entry
+         * has been added.
+         */
+        class SpeculativeCache {
+
+            private Map<Symbol, List<Entry>> cache =
+                    new WeakHashMap<Symbol, List<Entry>>();
+
+            class Entry {
+                JCTree speculativeTree;
+                ResultInfo resultInfo;
+
+                public Entry(JCTree speculativeTree, ResultInfo resultInfo) {
+                    this.speculativeTree = speculativeTree;
+                    this.resultInfo = resultInfo;
+                }
+
+                boolean matches(MethodResolutionPhase phase) {
+                    return resultInfo.checkContext.deferredAttrContext().phase == phase;
+                }
+            }
+
+            /**
+             * Retrieve a speculative cache entry corresponding to given symbol
+             * and resolution phase
+             */
+            Entry get(Symbol msym, MethodResolutionPhase phase) {
+                List<Entry> entries = cache.get(msym);
+                if (entries == null) return null;
+                for (Entry e : entries) {
+                    if (e.matches(phase)) return e;
+                }
+                return null;
+            }
+
+            /**
+             * Stores a speculative cache entry corresponding to given symbol
+             * and resolution phase
+             */
+            void put(JCTree speculativeTree, ResultInfo resultInfo) {
+                Symbol msym = resultInfo.checkContext.deferredAttrContext().msym;
+                List<Entry> entries = cache.get(msym);
+                if (entries == null) {
+                    entries = List.nil();
+                }
+                cache.put(msym, entries.prepend(new Entry(speculativeTree, resultInfo)));
+            }
+        }
+
+        /**
+         * Get the type that has been computed during a speculative attribution round
+         */
+        Type speculativeType(Symbol msym, MethodResolutionPhase phase) {
+            SpeculativeCache.Entry e = speculativeCache.get(msym, phase);
+            return e != null ? e.speculativeTree.type : Type.noType;
+        }
+
+        /**
+         * Check a deferred type against a potential target-type. Depending on
+         * the current attribution mode, a normal vs. speculative attribution
+         * round is performed on the underlying AST node. There can be only one
+         * speculative round for a given target method symbol; moreover, a normal
+         * attribution round must follow one or more speculative rounds.
+         */
+        Type check(ResultInfo resultInfo) {
+            DeferredStuckPolicy deferredStuckPolicy;
+            if (resultInfo.pt.hasTag(NONE) || resultInfo.pt.isErroneous()) {
+                deferredStuckPolicy = dummyStuckPolicy;
+            } else if (resultInfo.checkContext.deferredAttrContext().mode == AttrMode.SPECULATIVE ||
+                    resultInfo.checkContext.deferredAttrContext().insideOverloadPhase()) {
+                deferredStuckPolicy = new OverloadStuckPolicy(resultInfo, this);
+            } else {
+                deferredStuckPolicy = new CheckStuckPolicy(resultInfo, this);
+            }
+            return check(resultInfo, deferredStuckPolicy, basicCompleter);
+        }
+
+        private Type check(ResultInfo resultInfo, DeferredStuckPolicy deferredStuckPolicy,
+                DeferredTypeCompleter deferredTypeCompleter) {
+            DeferredAttrContext deferredAttrContext =
+                    resultInfo.checkContext.deferredAttrContext();
+            Assert.check(deferredAttrContext != emptyDeferredAttrContext);
+            if (deferredStuckPolicy.isStuck()) {
+                deferredAttrContext.addDeferredAttrNode(this, resultInfo, deferredStuckPolicy);
+                return Type.noType;
+            } else {
+                try {
+                    return deferredTypeCompleter.complete(this, resultInfo, deferredAttrContext);
+                } finally {
+                    mode = deferredAttrContext.mode;
+                }
+            }
+        }
+    }
+
+    /**
+     * A completer for deferred types. Defines an entry point for type-checking
+     * a deferred type.
+     */
+    interface DeferredTypeCompleter {
+        /**
+         * Entry point for type-checking a deferred type. Depending on the
+         * circumstances, type-checking could amount to full attribution
+         * or partial structural check (aka potential applicability).
+         */
+        Type complete(DeferredType dt, ResultInfo resultInfo, DeferredAttrContext deferredAttrContext);
+    }
+
+
+    /**
+     * A basic completer for deferred types. This completer type-checks a deferred type
+     * using attribution; depending on the attribution mode, this could be either standard
+     * or speculative attribution.
+     */
+    DeferredTypeCompleter basicCompleter = new DeferredTypeCompleter() {
+        public Type complete(DeferredType dt, ResultInfo resultInfo, DeferredAttrContext deferredAttrContext) {
+            switch (deferredAttrContext.mode) {
+                case SPECULATIVE:
+                    //Note: if a symbol is imported twice we might do two identical
+                    //speculative rounds...
+                    Assert.check(dt.mode == null || dt.mode == AttrMode.SPECULATIVE);
+                    JCTree speculativeTree = attribSpeculative(dt.tree, dt.env, resultInfo);
+                    dt.speculativeCache.put(speculativeTree, resultInfo);
+                    return speculativeTree.type;
+                case CHECK:
+                    Assert.check(dt.mode != null);
+                    return attr.attribTree(dt.tree, dt.env, resultInfo);
+            }
+            Assert.error();
+            return null;
+        }
+    };
+
+    DeferredTypeCompleter dummyCompleter = new DeferredTypeCompleter() {
+        public Type complete(DeferredType dt, ResultInfo resultInfo, DeferredAttrContext deferredAttrContext) {
+            Assert.check(deferredAttrContext.mode == AttrMode.CHECK);
+            return dt.tree.type = Type.stuckType;
+        }
+    };
+
+    /**
+     * Policy for detecting stuck expressions. Different criteria might cause
+     * an expression to be judged as stuck, depending on whether the check
+     * is performed during overload resolution or after most specific.
+     */
+    interface DeferredStuckPolicy {
+        /**
+         * Has the policy detected that a given expression should be considered stuck?
+         */
+        boolean isStuck();
+        /**
+         * Get the set of inference variables a given expression depends upon.
+         */
+        Set<Type> stuckVars();
+        /**
+         * Get the set of inference variables which might get new constraints
+         * if a given expression is being type-checked.
+         */
+        Set<Type> depVars();
+    }
+
+    /**
+     * Basic stuck policy; an expression is never considered to be stuck.
+     */
+    DeferredStuckPolicy dummyStuckPolicy = new DeferredStuckPolicy() {
+        @Override
+        public boolean isStuck() {
+            return false;
+        }
+        @Override
+        public Set<Type> stuckVars() {
+            return Collections.emptySet();
+        }
+        @Override
+        public Set<Type> depVars() {
+            return Collections.emptySet();
+        }
+    };
+
+    /**
+     * The 'mode' in which the deferred type is to be type-checked
+     */
+    public enum AttrMode {
+        /**
+         * A speculative type-checking round is used during overload resolution
+         * mainly to generate constraints on inference variables. Side-effects
+         * arising from type-checking the expression associated with the deferred
+         * type are reversed after the speculative round finishes. This means the
+         * expression tree will be left in a blank state.
+         */
+        SPECULATIVE,
+        /**
+         * This is the plain type-checking mode. Produces side-effects on the underlying AST node
+         */
+        CHECK;
+    }
+
+    /**
+     * Routine that performs speculative type-checking; the input AST node is
+     * cloned (to avoid side-effects cause by Attr) and compiler state is
+     * restored after type-checking. All diagnostics (but critical ones) are
+     * disabled during speculative type-checking.
+     */
+    JCTree attribSpeculative(JCTree tree, Env<AttrContext> env, ResultInfo resultInfo) {
+        final JCTree newTree = new TreeCopier<Object>(make).copy(tree);
+        Env<AttrContext> speculativeEnv = env.dup(newTree, env.info.dup(env.info.scope.dupUnshared()));
+        speculativeEnv.info.scope.owner = env.info.scope.owner;
+        Log.DeferredDiagnosticHandler deferredDiagnosticHandler =
+                new Log.DeferredDiagnosticHandler(log, new Filter<JCDiagnostic>() {
+            public boolean accepts(final JCDiagnostic d) {
+                class PosScanner extends TreeScanner {
+                    boolean found = false;
+
+                    @Override
+                    public void scan(JCTree tree) {
+                        if (tree != null &&
+                                tree.pos() == d.getDiagnosticPosition()) {
+                            found = true;
+                        }
+                        super.scan(tree);
+                    }
+                };
+                PosScanner posScanner = new PosScanner();
+                posScanner.scan(newTree);
+                return posScanner.found;
+            }
+        });
+        try {
+            attr.attribTree(newTree, speculativeEnv, resultInfo);
+            unenterScanner.scan(newTree);
+            return newTree;
+        } finally {
+            unenterScanner.scan(newTree);
+            log.popDiagnosticHandler(deferredDiagnosticHandler);
+        }
+    }
+    //where
+        protected UnenterScanner unenterScanner = new UnenterScanner();
+
+        class UnenterScanner extends TreeScanner {
+            @Override
+            public void visitClassDef(JCClassDecl tree) {
+                ClassSymbol csym = tree.sym;
+                //if something went wrong during method applicability check
+                //it is possible that nested expressions inside argument expression
+                //are left unchecked - in such cases there's nothing to clean up.
+                if (csym == null) return;
+                typeEnvs.remove(csym);
+                chk.compiled.remove(csym.flatname);
+                syms.classes.remove(csym.flatname);
+                super.visitClassDef(tree);
+            }
+        }
+
+    /**
+     * A deferred context is created on each method check. A deferred context is
+     * used to keep track of information associated with the method check, such as
+     * the symbol of the method being checked, the overload resolution phase,
+     * the kind of attribution mode to be applied to deferred types and so forth.
+     * As deferred types are processed (by the method check routine) stuck AST nodes
+     * are added (as new deferred attribution nodes) to this context. The complete()
+     * routine makes sure that all pending nodes are properly processed, by
+     * progressively instantiating all inference variables on which one or more
+     * deferred attribution node is stuck.
+     */
+    class DeferredAttrContext {
+
+        /** attribution mode */
+        final AttrMode mode;
+
+        /** symbol of the method being checked */
+        final Symbol msym;
+
+        /** method resolution step */
+        final MethodResolutionPhase phase;
+
+        /** inference context */
+        final InferenceContext inferenceContext;
+
+        /** parent deferred context */
+        final DeferredAttrContext parent;
+
+        /** Warner object to report warnings */
+        final Warner warn;
+
+        /** list of deferred attribution nodes to be processed */
+        ArrayList<DeferredAttrNode> deferredAttrNodes = new ArrayList<DeferredAttrNode>();
+
+        DeferredAttrContext(AttrMode mode, Symbol msym, MethodResolutionPhase phase,
+                InferenceContext inferenceContext, DeferredAttrContext parent, Warner warn) {
+            this.mode = mode;
+            this.msym = msym;
+            this.phase = phase;
+            this.parent = parent;
+            this.warn = warn;
+            this.inferenceContext = inferenceContext;
+        }
+
+        /**
+         * Adds a node to the list of deferred attribution nodes - used by Resolve.rawCheckArgumentsApplicable
+         * Nodes added this way act as 'roots' for the out-of-order method checking process.
+         */
+        void addDeferredAttrNode(final DeferredType dt, ResultInfo resultInfo,
+                DeferredStuckPolicy deferredStuckPolicy) {
+            deferredAttrNodes.add(new DeferredAttrNode(dt, resultInfo, deferredStuckPolicy));
+        }
+
+        /**
+         * Incrementally process all nodes, by skipping 'stuck' nodes and attributing
+         * 'unstuck' ones. If at any point no progress can be made (no 'unstuck' nodes)
+         * some inference variable might get eagerly instantiated so that all nodes
+         * can be type-checked.
+         */
+        void complete() {
+            while (!deferredAttrNodes.isEmpty()) {
+                Map<Type, Set<Type>> depVarsMap = new LinkedHashMap<Type, Set<Type>>();
+                List<Type> stuckVars = List.nil();
+                boolean progress = false;
+                //scan a defensive copy of the node list - this is because a deferred
+                //attribution round can add new nodes to the list
+                for (DeferredAttrNode deferredAttrNode : List.from(deferredAttrNodes)) {
+                    if (!deferredAttrNode.process(this)) {
+                        List<Type> restStuckVars =
+                                List.from(deferredAttrNode.deferredStuckPolicy.stuckVars())
+                                .intersect(inferenceContext.restvars());
+                        stuckVars = stuckVars.prependList(restStuckVars);
+                        //update dependency map
+                        for (Type t : List.from(deferredAttrNode.deferredStuckPolicy.depVars())
+                                .intersect(inferenceContext.restvars())) {
+                            Set<Type> prevDeps = depVarsMap.get(t);
+                            if (prevDeps == null) {
+                                prevDeps = new LinkedHashSet<Type>();
+                                depVarsMap.put(t, prevDeps);
+                            }
+                            prevDeps.addAll(restStuckVars);
+                        }
+                    } else {
+                        deferredAttrNodes.remove(deferredAttrNode);
+                        progress = true;
+                    }
+                }
+                if (!progress) {
+                    if (insideOverloadPhase()) {
+                        for (DeferredAttrNode deferredNode: deferredAttrNodes) {
+                            deferredNode.dt.tree.type = Type.noType;
+                        }
+                        return;
+                    }
+                    //remove all variables that have already been instantiated
+                    //from the list of stuck variables
+                    try {
+                        inferenceContext.solveAny(stuckVars, depVarsMap, warn);
+                        inferenceContext.notifyChange();
+                    } catch (Infer.GraphStrategy.NodeNotFoundException ex) {
+                        //this means that we are in speculative mode and the
+                        //set of contraints are too tight for progess to be made.
+                        //Just leave the remaining expressions as stuck.
+                        break;
+                    }
+                }
+            }
+        }
+
+        private boolean insideOverloadPhase() {
+            DeferredAttrContext dac = this;
+            if (dac == emptyDeferredAttrContext) {
+                return false;
+            }
+            if (dac.mode == AttrMode.SPECULATIVE) {
+                return true;
+            }
+            return dac.parent.insideOverloadPhase();
+        }
+    }
+
+    /**
+     * Class representing a deferred attribution node. It keeps track of
+     * a deferred type, along with the expected target type information.
+     */
+    class DeferredAttrNode {
+
+        /** underlying deferred type */
+        DeferredType dt;
+
+        /** underlying target type information */
+        ResultInfo resultInfo;
+
+        /** stuck policy associated with this node */
+        DeferredStuckPolicy deferredStuckPolicy;
+
+        DeferredAttrNode(DeferredType dt, ResultInfo resultInfo, DeferredStuckPolicy deferredStuckPolicy) {
+            this.dt = dt;
+            this.resultInfo = resultInfo;
+            this.deferredStuckPolicy = deferredStuckPolicy;
+        }
+
+        /**
+         * Process a deferred attribution node.
+         * Invariant: a stuck node cannot be processed.
+         */
+        @SuppressWarnings("fallthrough")
+        boolean process(final DeferredAttrContext deferredAttrContext) {
+            switch (deferredAttrContext.mode) {
+                case SPECULATIVE:
+                    if (deferredStuckPolicy.isStuck()) {
+                        dt.check(resultInfo, dummyStuckPolicy, new StructuralStuckChecker());
+                        return true;
+                    } else {
+                        Assert.error("Cannot get here");
+                    }
+                case CHECK:
+                    if (deferredStuckPolicy.isStuck()) {
+                        //stuck expression - see if we can propagate
+                        if (deferredAttrContext.parent != emptyDeferredAttrContext &&
+                                Type.containsAny(deferredAttrContext.parent.inferenceContext.inferencevars,
+                                        List.from(deferredStuckPolicy.stuckVars()))) {
+                            deferredAttrContext.parent.addDeferredAttrNode(dt,
+                                    resultInfo.dup(new Check.NestedCheckContext(resultInfo.checkContext) {
+                                @Override
+                                public InferenceContext inferenceContext() {
+                                    return deferredAttrContext.parent.inferenceContext;
+                                }
+                                @Override
+                                public DeferredAttrContext deferredAttrContext() {
+                                    return deferredAttrContext.parent;
+                                }
+                            }), deferredStuckPolicy);
+                            dt.tree.type = Type.stuckType;
+                            return true;
+                        } else {
+                            return false;
+                        }
+                    } else {
+                        Assert.check(!deferredAttrContext.insideOverloadPhase(),
+                                "attribution shouldn't be happening here");
+                        ResultInfo instResultInfo =
+                                resultInfo.dup(deferredAttrContext.inferenceContext.asInstType(resultInfo.pt));
+                        dt.check(instResultInfo, dummyStuckPolicy, basicCompleter);
+                        return true;
+                    }
+                default:
+                    throw new AssertionError("Bad mode");
+            }
+        }
+
+        /**
+         * Structural checker for stuck expressions
+         */
+        class StructuralStuckChecker extends TreeScanner implements DeferredTypeCompleter {
+
+            ResultInfo resultInfo;
+            InferenceContext inferenceContext;
+            Env<AttrContext> env;
+
+            public Type complete(DeferredType dt, ResultInfo resultInfo, DeferredAttrContext deferredAttrContext) {
+                this.resultInfo = resultInfo;
+                this.inferenceContext = deferredAttrContext.inferenceContext;
+                this.env = dt.env;
+                dt.tree.accept(this);
+                dt.speculativeCache.put(stuckTree, resultInfo);
+                return Type.noType;
+            }
+
+            @Override
+            public void visitLambda(JCLambda tree) {
+                Check.CheckContext checkContext = resultInfo.checkContext;
+                Type pt = resultInfo.pt;
+                if (!inferenceContext.inferencevars.contains(pt)) {
+                    //must be a functional descriptor
+                    Type descriptorType = null;
+                    try {
+                        descriptorType = types.findDescriptorType(pt);
+                    } catch (Types.FunctionDescriptorLookupError ex) {
+                        checkContext.report(null, ex.getDiagnostic());
+                    }
+
+                    if (descriptorType.getParameterTypes().length() != tree.params.length()) {
+                        checkContext.report(tree,
+                                diags.fragment("incompatible.arg.types.in.lambda"));
+                    }
+
+                    Type currentReturnType = descriptorType.getReturnType();
+                    boolean returnTypeIsVoid = currentReturnType.hasTag(VOID);
+                    if (tree.getBodyKind() == BodyKind.EXPRESSION) {
+                        boolean isExpressionCompatible = !returnTypeIsVoid ||
+                            TreeInfo.isExpressionStatement((JCExpression)tree.getBody());
+                        if (!isExpressionCompatible) {
+                            resultInfo.checkContext.report(tree.pos(),
+                                diags.fragment("incompatible.ret.type.in.lambda",
+                                    diags.fragment("missing.ret.val", currentReturnType)));
+                        }
+                    } else {
+                        LambdaBodyStructChecker lambdaBodyChecker =
+                                new LambdaBodyStructChecker();
+
+                        tree.body.accept(lambdaBodyChecker);
+                        boolean isVoidCompatible = lambdaBodyChecker.isVoidCompatible;
+
+                        if (returnTypeIsVoid) {
+                            if (!isVoidCompatible) {
+                                resultInfo.checkContext.report(tree.pos(),
+                                    diags.fragment("unexpected.ret.val"));
+                            }
+                        } else {
+                            boolean isValueCompatible = lambdaBodyChecker.isPotentiallyValueCompatible
+                                && !canLambdaBodyCompleteNormally(tree);
+                            if (!isValueCompatible && !isVoidCompatible) {
+                                log.error(tree.body.pos(),
+                                    "lambda.body.neither.value.nor.void.compatible");
+                            }
+
+                            if (!isValueCompatible) {
+                                resultInfo.checkContext.report(tree.pos(),
+                                    diags.fragment("incompatible.ret.type.in.lambda",
+                                        diags.fragment("missing.ret.val", currentReturnType)));
+                            }
+                        }
+                    }
+                }
+            }
+
+            boolean canLambdaBodyCompleteNormally(JCLambda tree) {
+                JCLambda newTree = new TreeCopier<>(make).copy(tree);
+                /* attr.lambdaEnv will create a meaningful env for the
+                 * lambda expression. This is specially useful when the
+                 * lambda is used as the init of a field. But we need to
+                 * remove any added symbol.
+                 */
+                Env<AttrContext> localEnv = attr.lambdaEnv(newTree, env);
+                try {
+                    List<JCVariableDecl> tmpParams = newTree.params;
+                    while (tmpParams.nonEmpty()) {
+                        tmpParams.head.vartype = make.at(tmpParams.head).Type(syms.errType);
+                        tmpParams = tmpParams.tail;
+                    }
+
+                    attr.attribStats(newTree.params, localEnv);
+
+                    /* set pt to Type.noType to avoid generating any bound
+                     * which may happen if lambda's return type is an
+                     * inference variable
+                     */
+                    ResultInfo bodyResultInfo = attr.new ResultInfo(VAL, Type.noType);
+                    localEnv.info.returnResult = bodyResultInfo;
+
+                    // discard any log output
+                    Log.DiagnosticHandler diagHandler = new Log.DiscardDiagnosticHandler(log);
+                    try {
+                        JCBlock body = (JCBlock)newTree.body;
+                        /* we need to attribute the lambda body before
+                         * doing the aliveness analysis. This is because
+                         * constant folding occurs during attribution
+                         * and the reachability of some statements depends
+                         * on constant values, for example:
+                         *
+                         *     while (true) {...}
+                         */
+                        attr.attribStats(body.stats, localEnv);
+
+                        attr.preFlow(newTree);
+                        /* make an aliveness / reachability analysis of the lambda
+                         * to determine if it can complete normally
+                         */
+                        flow.analyzeLambda(localEnv, newTree, make, true);
+                    } finally {
+                        log.popDiagnosticHandler(diagHandler);
+                    }
+                    return newTree.canCompleteNormally;
+                } finally {
+                    JCBlock body = (JCBlock)newTree.body;
+                    unenterScanner.scan(body.stats);
+                    localEnv.info.scope.leave();
+                }
+            }
+
+            @Override
+            public void visitNewClass(JCNewClass tree) {
+                //do nothing
+            }
+
+            @Override
+            public void visitApply(JCMethodInvocation tree) {
+                //do nothing
+            }
+
+            @Override
+            public void visitReference(JCMemberReference tree) {
+                Check.CheckContext checkContext = resultInfo.checkContext;
+                Type pt = resultInfo.pt;
+                if (!inferenceContext.inferencevars.contains(pt)) {
+                    try {
+                        types.findDescriptorType(pt);
+                    } catch (Types.FunctionDescriptorLookupError ex) {
+                        checkContext.report(null, ex.getDiagnostic());
+                    }
+                    Env<AttrContext> localEnv = env.dup(tree);
+                    JCExpression exprTree = (JCExpression)attribSpeculative(tree.getQualifierExpression(), localEnv,
+                            attr.memberReferenceQualifierResult(tree));
+                    ListBuffer<Type> argtypes = new ListBuffer<>();
+                    for (Type t : types.findDescriptorType(pt).getParameterTypes()) {
+                        argtypes.append(Type.noType);
+                    }
+                    JCMemberReference mref2 = new TreeCopier<Void>(make).copy(tree);
+                    mref2.expr = exprTree;
+                    Symbol lookupSym =
+                            rs.resolveMemberReferenceByArity(localEnv, mref2, exprTree.type,
+                                tree.name, argtypes.toList(), inferenceContext);
+                    switch (lookupSym.kind) {
+                        //note: as argtypes are erroneous types, type-errors must
+                        //have been caused by arity mismatch
+                        case Kinds.ABSENT_MTH:
+                        case Kinds.WRONG_MTH:
+                        case Kinds.WRONG_MTHS:
+                        case Kinds.WRONG_STATICNESS:
+                           checkContext.report(tree, diags.fragment("incompatible.arg.types.in.mref"));
+                    }
+                }
+            }
+        }
+
+        /* This visitor looks for return statements, its analysis will determine if
+         * a lambda body is void or value compatible. We must analyze return
+         * statements contained in the lambda body only, thus any return statement
+         * contained in an inner class or inner lambda body, should be ignored.
+         */
+        class LambdaBodyStructChecker extends TreeScanner {
+            boolean isVoidCompatible = true;
+            boolean isPotentiallyValueCompatible = true;
+
+            @Override
+            public void visitClassDef(JCClassDecl tree) {
+                // do nothing
+            }
+
+            @Override
+            public void visitLambda(JCLambda tree) {
+                // do nothing
+            }
+
+            @Override
+            public void visitNewClass(JCNewClass tree) {
+                // do nothing
+            }
+
+            @Override
+            public void visitReturn(JCReturn tree) {
+                if (tree.expr != null) {
+                    isVoidCompatible = false;
+                } else {
+                    isPotentiallyValueCompatible = false;
+                }
+            }
+        }
+    }
+
+    /** an empty deferred attribution context - all methods throw exceptions */
+    final DeferredAttrContext emptyDeferredAttrContext;
+
+    /**
+     * Map a list of types possibly containing one or more deferred types
+     * into a list of ordinary types. Each deferred type D is mapped into a type T,
+     * where T is computed by retrieving the type that has already been
+     * computed for D during a previous deferred attribution round of the given kind.
+     */
+    class DeferredTypeMap extends Mapping {
+
+        DeferredAttrContext deferredAttrContext;
+
+        protected DeferredTypeMap(AttrMode mode, Symbol msym, MethodResolutionPhase phase) {
+            super(String.format("deferredTypeMap[%s]", mode));
+            this.deferredAttrContext = new DeferredAttrContext(mode, msym, phase,
+                    infer.emptyContext, emptyDeferredAttrContext, types.noWarnings);
+        }
+
+        @Override
+        public Type apply(Type t) {
+            if (!t.hasTag(DEFERRED)) {
+                return t.map(this);
+            } else {
+                DeferredType dt = (DeferredType)t;
+                return typeOf(dt);
+            }
+        }
+
+        protected Type typeOf(DeferredType dt) {
+            switch (deferredAttrContext.mode) {
+                case CHECK:
+                    return dt.tree.type == null ? Type.noType : dt.tree.type;
+                case SPECULATIVE:
+                    return dt.speculativeType(deferredAttrContext.msym, deferredAttrContext.phase);
+            }
+            Assert.error();
+            return null;
+        }
+    }
+
+    /**
+     * Specialized recovery deferred mapping.
+     * Each deferred type D is mapped into a type T, where T is computed either by
+     * (i) retrieving the type that has already been computed for D during a previous
+     * attribution round (as before), or (ii) by synthesizing a new type R for D
+     * (the latter step is useful in a recovery scenario).
+     */
+    public class RecoveryDeferredTypeMap extends DeferredTypeMap {
+
+        public RecoveryDeferredTypeMap(AttrMode mode, Symbol msym, MethodResolutionPhase phase) {
+            super(mode, msym, phase != null ? phase : MethodResolutionPhase.BOX);
+        }
+
+        @Override
+        protected Type typeOf(DeferredType dt) {
+            Type owntype = super.typeOf(dt);
+            return owntype == Type.noType ?
+                        recover(dt) : owntype;
+        }
+
+        /**
+         * Synthesize a type for a deferred type that hasn't been previously
+         * reduced to an ordinary type. Functional deferred types and conditionals
+         * are mapped to themselves, in order to have a richer diagnostic
+         * representation. Remaining deferred types are attributed using
+         * a default expected type (j.l.Object).
+         */
+        private Type recover(DeferredType dt) {
+            dt.check(attr.new RecoveryInfo(deferredAttrContext) {
+                @Override
+                protected Type check(DiagnosticPosition pos, Type found) {
+                    return chk.checkNonVoid(pos, super.check(pos, found));
+                }
+            });
+            return super.apply(dt);
+        }
+    }
+
+    /**
+     * A special tree scanner that would only visit portions of a given tree.
+     * The set of nodes visited by the scanner can be customized at construction-time.
+     */
+    abstract static class FilterScanner extends TreeScanner {
+
+        final Filter<JCTree> treeFilter;
+
+        FilterScanner(final Set<Tag> validTags) {
+            this.treeFilter = new Filter<JCTree>() {
+                public boolean accepts(JCTree t) {
+                    return validTags.contains(t.getTag());
+                }
+            };
+        }
+
+        @Override
+        public void scan(JCTree tree) {
+            if (tree != null) {
+                if (treeFilter.accepts(tree)) {
+                    super.scan(tree);
+                } else {
+                    skip(tree);
+                }
+            }
+        }
+
+        /**
+         * handler that is executed when a node has been discarded
+         */
+        void skip(JCTree tree) {}
+    }
+
+    /**
+     * A tree scanner suitable for visiting the target-type dependent nodes of
+     * a given argument expression.
+     */
+    static class PolyScanner extends FilterScanner {
+
+        PolyScanner() {
+            super(EnumSet.of(CONDEXPR, PARENS, LAMBDA, REFERENCE));
+        }
+    }
+
+    /**
+     * A tree scanner suitable for visiting the target-type dependent nodes nested
+     * within a lambda expression body.
+     */
+    static class LambdaReturnScanner extends FilterScanner {
+
+        LambdaReturnScanner() {
+            super(EnumSet.of(BLOCK, CASE, CATCH, DOLOOP, FOREACHLOOP,
+                    FORLOOP, IF, RETURN, SYNCHRONIZED, SWITCH, TRY, WHILELOOP));
+        }
+    }
+
+    /**
+     * This visitor is used to check that structural expressions conform
+     * to their target - this step is required as inference could end up
+     * inferring types that make some of the nested expressions incompatible
+     * with their corresponding instantiated target
+     */
+    class CheckStuckPolicy extends PolyScanner implements DeferredStuckPolicy, Infer.FreeTypeListener {
+
+        Type pt;
+        InferenceContext inferenceContext;
+        Set<Type> stuckVars = new LinkedHashSet<Type>();
+        Set<Type> depVars = new LinkedHashSet<Type>();
+
+        @Override
+        public boolean isStuck() {
+            return !stuckVars.isEmpty();
+        }
+
+        @Override
+        public Set<Type> stuckVars() {
+            return stuckVars;
+        }
+
+        @Override
+        public Set<Type> depVars() {
+            return depVars;
+        }
+
+        public CheckStuckPolicy(ResultInfo resultInfo, DeferredType dt) {
+            this.pt = resultInfo.pt;
+            this.inferenceContext = resultInfo.checkContext.inferenceContext();
+            scan(dt.tree);
+            if (!stuckVars.isEmpty()) {
+                resultInfo.checkContext.inferenceContext()
+                        .addFreeTypeListener(List.from(stuckVars), this);
+            }
+        }
+
+        @Override
+        public void typesInferred(InferenceContext inferenceContext) {
+            stuckVars.clear();
+        }
+
+        @Override
+        public void visitLambda(JCLambda tree) {
+            if (inferenceContext.inferenceVars().contains(pt)) {
+                stuckVars.add(pt);
+            }
+            if (!types.isFunctionalInterface(pt)) {
+                return;
+            }
+            Type descType = types.findDescriptorType(pt);
+            List<Type> freeArgVars = inferenceContext.freeVarsIn(descType.getParameterTypes());
+            if (tree.paramKind == JCLambda.ParameterKind.IMPLICIT &&
+                    freeArgVars.nonEmpty()) {
+                stuckVars.addAll(freeArgVars);
+                depVars.addAll(inferenceContext.freeVarsIn(descType.getReturnType()));
+            }
+            scanLambdaBody(tree, descType.getReturnType());
+        }
+
+        @Override
+        public void visitReference(JCMemberReference tree) {
+            scan(tree.expr);
+            if (inferenceContext.inferenceVars().contains(pt)) {
+                stuckVars.add(pt);
+                return;
+            }
+            if (!types.isFunctionalInterface(pt)) {
+                return;
+            }
+
+            Type descType = types.findDescriptorType(pt);
+            List<Type> freeArgVars = inferenceContext.freeVarsIn(descType.getParameterTypes());
+            if (freeArgVars.nonEmpty() &&
+                    tree.overloadKind == JCMemberReference.OverloadKind.OVERLOADED) {
+                stuckVars.addAll(freeArgVars);
+                depVars.addAll(inferenceContext.freeVarsIn(descType.getReturnType()));
+            }
+        }
+
+        void scanLambdaBody(JCLambda lambda, final Type pt) {
+            if (lambda.getBodyKind() == BodyKind.EXPRESSION) {
+                Type prevPt = this.pt;
+                try {
+                    this.pt = pt;
+                    scan(lambda.body);
+                } finally {
+                    this.pt = prevPt;
+                }
+            } else {
+                LambdaReturnScanner lambdaScanner = new LambdaReturnScanner() {
+                    @Override
+                    public void visitReturn(JCReturn tree) {
+                        if (tree.expr != null) {
+                            Type prevPt = CheckStuckPolicy.this.pt;
+                            try {
+                                CheckStuckPolicy.this.pt = pt;
+                                CheckStuckPolicy.this.scan(tree.expr);
+                            } finally {
+                                CheckStuckPolicy.this.pt = prevPt;
+                            }
+                        }
+                    }
+                };
+                lambdaScanner.scan(lambda.body);
+            }
+        }
+    }
+
+    /**
+     * This visitor is used to check that structural expressions conform
+     * to their target - this step is required as inference could end up
+     * inferring types that make some of the nested expressions incompatible
+     * with their corresponding instantiated target
+     */
+    class OverloadStuckPolicy extends CheckStuckPolicy implements DeferredStuckPolicy {
+
+        boolean stuck;
+
+        @Override
+        public boolean isStuck() {
+            return super.isStuck() || stuck;
+        }
+
+        public OverloadStuckPolicy(ResultInfo resultInfo, DeferredType dt) {
+            super(resultInfo, dt);
+        }
+
+        @Override
+        public void visitLambda(JCLambda tree) {
+            super.visitLambda(tree);
+            if (tree.paramKind == JCLambda.ParameterKind.IMPLICIT) {
+                stuck = true;
+            }
+        }
+
+        @Override
+        public void visitReference(JCMemberReference tree) {
+            super.visitReference(tree);
+            if (tree.overloadKind == JCMemberReference.OverloadKind.OVERLOADED) {
+                stuck = true;
+            }
+        }
+    }
+
+    /**
+     * Does the argument expression {@code expr} need speculative type-checking?
+     */
+    boolean isDeferred(Env<AttrContext> env, JCExpression expr) {
+        DeferredChecker dc = new DeferredChecker(env);
+        dc.scan(expr);
+        return dc.result.isPoly();
+    }
+
+    /**
+     * The kind of an argument expression. This is used by the analysis that
+     * determines as to whether speculative attribution is necessary.
+     */
+    enum ArgumentExpressionKind {
+
+        /** kind that denotes poly argument expression */
+        POLY,
+        /** kind that denotes a standalone expression */
+        NO_POLY,
+        /** kind that denotes a primitive/boxed standalone expression */
+        PRIMITIVE;
+
+        /**
+         * Does this kind denote a poly argument expression
+         */
+        public final boolean isPoly() {
+            return this == POLY;
+        }
+
+        /**
+         * Does this kind denote a primitive standalone expression
+         */
+        public final boolean isPrimitive() {
+            return this == PRIMITIVE;
+        }
+
+        /**
+         * Compute the kind of a standalone expression of a given type
+         */
+        static ArgumentExpressionKind standaloneKind(Type type, Types types) {
+            return types.unboxedTypeOrType(type).isPrimitive() ?
+                    ArgumentExpressionKind.PRIMITIVE :
+                    ArgumentExpressionKind.NO_POLY;
+        }
+
+        /**
+         * Compute the kind of a method argument expression given its symbol
+         */
+        static ArgumentExpressionKind methodKind(Symbol sym, Types types) {
+            Type restype = sym.type.getReturnType();
+            if (sym.type.hasTag(FORALL) &&
+                    restype.containsAny(((ForAll)sym.type).tvars)) {
+                return ArgumentExpressionKind.POLY;
+            } else {
+                return ArgumentExpressionKind.standaloneKind(restype, types);
+            }
+        }
+    }
+
+    /**
+     * Tree scanner used for checking as to whether an argument expression
+     * requires speculative attribution
+     */
+    final class DeferredChecker extends FilterScanner {
+
+        Env<AttrContext> env;
+        ArgumentExpressionKind result;
+
+        public DeferredChecker(Env<AttrContext> env) {
+            super(deferredCheckerTags);
+            this.env = env;
+        }
+
+        @Override
+        public void visitLambda(JCLambda tree) {
+            //a lambda is always a poly expression
+            result = ArgumentExpressionKind.POLY;
+        }
+
+        @Override
+        public void visitReference(JCMemberReference tree) {
+            //perform arity-based check
+            Env<AttrContext> localEnv = env.dup(tree);
+            JCExpression exprTree = (JCExpression)attribSpeculative(tree.getQualifierExpression(), localEnv,
+                    attr.memberReferenceQualifierResult(tree));
+            JCMemberReference mref2 = new TreeCopier<Void>(make).copy(tree);
+            mref2.expr = exprTree;
+            Symbol res =
+                    rs.getMemberReference(tree, localEnv, mref2,
+                        exprTree.type, tree.name);
+            tree.sym = res;
+            if (res.kind >= Kinds.ERRONEOUS ||
+                    res.type.hasTag(FORALL) ||
+                    (res.flags() & Flags.VARARGS) != 0 ||
+                    (TreeInfo.isStaticSelector(exprTree, tree.name.table.names) &&
+                    exprTree.type.isRaw())) {
+                tree.overloadKind = JCMemberReference.OverloadKind.OVERLOADED;
+            } else {
+                tree.overloadKind = JCMemberReference.OverloadKind.UNOVERLOADED;
+            }
+            //a method reference is always a poly expression
+            result = ArgumentExpressionKind.POLY;
+        }
+
+        @Override
+        public void visitTypeCast(JCTypeCast tree) {
+            //a cast is always a standalone expression
+            result = ArgumentExpressionKind.NO_POLY;
+        }
+
+        @Override
+        public void visitConditional(JCConditional tree) {
+            scan(tree.truepart);
+            if (!result.isPrimitive()) {
+                result = ArgumentExpressionKind.POLY;
+                return;
+            }
+            scan(tree.falsepart);
+            result = reduce(ArgumentExpressionKind.PRIMITIVE);
+        }
+
+        @Override
+        public void visitNewClass(JCNewClass tree) {
+            result = (TreeInfo.isDiamond(tree) || attr.findDiamonds) ?
+                    ArgumentExpressionKind.POLY : ArgumentExpressionKind.NO_POLY;
+        }
+
+        @Override
+        public void visitApply(JCMethodInvocation tree) {
+            Name name = TreeInfo.name(tree.meth);
+
+            //fast path
+            if (tree.typeargs.nonEmpty() ||
+                    name == name.table.names._this ||
+                    name == name.table.names._super) {
+                result = ArgumentExpressionKind.NO_POLY;
+                return;
+            }
+
+            //slow path
+            Symbol sym = quicklyResolveMethod(env, tree);
+
+            if (sym == null) {
+                result = ArgumentExpressionKind.POLY;
+                return;
+            }
+
+            result = analyzeCandidateMethods(sym, ArgumentExpressionKind.PRIMITIVE,
+                    argumentKindAnalyzer);
+        }
+        //where
+            private boolean isSimpleReceiver(JCTree rec) {
+                switch (rec.getTag()) {
+                    case IDENT:
+                        return true;
+                    case SELECT:
+                        return isSimpleReceiver(((JCFieldAccess)rec).selected);
+                    case TYPEAPPLY:
+                    case TYPEARRAY:
+                        return true;
+                    case ANNOTATED_TYPE:
+                        return isSimpleReceiver(((JCAnnotatedType)rec).underlyingType);
+                    case APPLY:
+                        return true;
+                    case NEWCLASS:
+                        JCNewClass nc = (JCNewClass) rec;
+                        return nc.encl == null && nc.def == null && !TreeInfo.isDiamond(nc);
+                    default:
+                        return false;
+                }
+            }
+            private ArgumentExpressionKind reduce(ArgumentExpressionKind kind) {
+                return argumentKindAnalyzer.reduce(result, kind);
+            }
+            MethodAnalyzer<ArgumentExpressionKind> argumentKindAnalyzer =
+                    new MethodAnalyzer<ArgumentExpressionKind>() {
+                @Override
+                public ArgumentExpressionKind process(MethodSymbol ms) {
+                    return ArgumentExpressionKind.methodKind(ms, types);
+                }
+                @Override
+                public ArgumentExpressionKind reduce(ArgumentExpressionKind kind1,
+                                                     ArgumentExpressionKind kind2) {
+                    switch (kind1) {
+                        case PRIMITIVE: return kind2;
+                        case NO_POLY: return kind2.isPoly() ? kind2 : kind1;
+                        case POLY: return kind1;
+                        default:
+                            Assert.error();
+                            return null;
+                    }
+                }
+                @Override
+                public boolean shouldStop(ArgumentExpressionKind result) {
+                    return result.isPoly();
+                }
+            };
+
+        @Override
+        public void visitLiteral(JCLiteral tree) {
+            Type litType = attr.litType(tree.typetag);
+            result = ArgumentExpressionKind.standaloneKind(litType, types);
+        }
+
+        @Override
+        void skip(JCTree tree) {
+            result = ArgumentExpressionKind.NO_POLY;
+        }
+
+        private Symbol quicklyResolveMethod(Env<AttrContext> env, final JCMethodInvocation tree) {
+            final JCExpression rec = tree.meth.hasTag(SELECT) ?
+                    ((JCFieldAccess)tree.meth).selected :
+                    null;
+
+            if (rec != null && !isSimpleReceiver(rec)) {
+                return null;
+            }
+
+            Type site;
+
+            if (rec != null) {
+                switch (rec.getTag()) {
+                    case APPLY:
+                        Symbol recSym = quicklyResolveMethod(env, (JCMethodInvocation) rec);
+                        if (recSym == null)
+                            return null;
+                        Symbol resolvedReturnType =
+                                analyzeCandidateMethods(recSym, syms.errSymbol, returnSymbolAnalyzer);
+                        if (resolvedReturnType == null)
+                            return null;
+                        site = resolvedReturnType.type;
+                        break;
+                    case NEWCLASS:
+                        JCNewClass nc = (JCNewClass) rec;
+                        site = attribSpeculative(nc.clazz, env, attr.unknownTypeExprInfo).type;
+                        break;
+                    default:
+                        site = attribSpeculative(rec, env, attr.unknownTypeExprInfo).type;
+                        break;
+                }
+            } else {
+                site = env.enclClass.sym.type;
+            }
+
+            while (site.hasTag(TYPEVAR)) {
+                site = site.getUpperBound();
+            }
+
+            site = types.capture(site);
+
+            List<Type> args = rs.dummyArgs(tree.args.length());
+            Name name = TreeInfo.name(tree.meth);
+
+            Resolve.LookupHelper lh = rs.new LookupHelper(name, site, args, List.<Type>nil(), MethodResolutionPhase.VARARITY) {
+                @Override
+                Symbol lookup(Env<AttrContext> env, MethodResolutionPhase phase) {
+                    return rec == null ?
+                        rs.findFun(env, name, argtypes, typeargtypes, phase.isBoxingRequired(), phase.isVarargsRequired()) :
+                        rs.findMethod(env, site, name, argtypes, typeargtypes, phase.isBoxingRequired(), phase.isVarargsRequired(), false);
+                }
+                @Override
+                Symbol access(Env<AttrContext> env, DiagnosticPosition pos, Symbol location, Symbol sym) {
+                    return sym;
+                }
+            };
+
+            return rs.lookupMethod(env, tree, site.tsym, rs.arityMethodCheck, lh);
+        }
+        //where:
+            MethodAnalyzer<Symbol> returnSymbolAnalyzer = new MethodAnalyzer<Symbol>() {
+                @Override
+                public Symbol process(MethodSymbol ms) {
+                    ArgumentExpressionKind kind = ArgumentExpressionKind.methodKind(ms, types);
+                    if (kind == ArgumentExpressionKind.POLY || ms.getReturnType().hasTag(TYPEVAR))
+                        return null;
+                    return ms.getReturnType().tsym;
+                }
+                @Override
+                public Symbol reduce(Symbol s1, Symbol s2) {
+                    return s1 == syms.errSymbol ? s2 : s1 == s2 ? s1 : null;
+                }
+                @Override
+                public boolean shouldStop(Symbol result) {
+                    return result == null;
+                }
+            };
+
+        /**
+         * Process the result of Resolve.lookupMethod. If sym is a method symbol, the result of
+         * MethodAnalyzer.process is returned. If sym is an ambiguous symbol, all the candidate
+         * methods are inspected one by one, using MethodAnalyzer.process. The outcomes are
+         * reduced using MethodAnalyzer.reduce (using defaultValue as the first value over which
+         * the reduction runs). MethodAnalyzer.shouldStop can be used to stop the inspection early.
+         */
+        <E> E analyzeCandidateMethods(Symbol sym, E defaultValue, MethodAnalyzer<E> analyzer) {
+            switch (sym.kind) {
+                case Kinds.MTH:
+                    return analyzer.process((MethodSymbol) sym);
+                case Kinds.AMBIGUOUS:
+                    Resolve.AmbiguityError err = (Resolve.AmbiguityError)sym.baseSymbol();
+                    E res = defaultValue;
+                    for (Symbol s : err.ambiguousSyms) {
+                        if (s.kind == Kinds.MTH) {
+                            res = analyzer.reduce(res, analyzer.process((MethodSymbol) s));
+                            if (analyzer.shouldStop(res))
+                                return res;
+                        }
+                    }
+                    return res;
+                default:
+                    return defaultValue;
+            }
+        }
+    }
+
+    /** Analyzer for methods - used by analyzeCandidateMethods. */
+    interface MethodAnalyzer<E> {
+        E process(MethodSymbol ms);
+        E reduce(E e1, E e2);
+        boolean shouldStop(E result);
+    }
+
+    //where
+    private EnumSet<Tag> deferredCheckerTags =
+            EnumSet.of(LAMBDA, REFERENCE, PARENS, TYPECAST,
+                    CONDEXPR, NEWCLASS, APPLY, LITERAL);
+}

@@ -1,3975 +1,3965 @@
-/*      */ package com.sun.tools.javac.comp;
-/*      */
-/*      */ import com.sun.tools.javac.code.Attribute;
-/*      */ import com.sun.tools.javac.code.Scope;
-/*      */ import com.sun.tools.javac.code.Source;
-/*      */ import com.sun.tools.javac.code.Symbol;
-/*      */ import com.sun.tools.javac.code.Symtab;
-/*      */ import com.sun.tools.javac.code.Type;
-/*      */ import com.sun.tools.javac.code.TypeTag;
-/*      */ import com.sun.tools.javac.code.Types;
-/*      */ import com.sun.tools.javac.jvm.ClassReader;
-/*      */ import com.sun.tools.javac.jvm.ClassWriter;
-/*      */ import com.sun.tools.javac.jvm.Target;
-/*      */ import com.sun.tools.javac.main.Option;
-/*      */ import com.sun.tools.javac.tree.EndPosTable;
-/*      */ import com.sun.tools.javac.tree.JCTree;
-/*      */ import com.sun.tools.javac.tree.TreeInfo;
-/*      */ import com.sun.tools.javac.tree.TreeMaker;
-/*      */ import com.sun.tools.javac.tree.TreeScanner;
-/*      */ import com.sun.tools.javac.tree.TreeTranslator;
-/*      */ import com.sun.tools.javac.util.Assert;
-/*      */ import com.sun.tools.javac.util.Context;
-/*      */ import com.sun.tools.javac.util.Convert;
-/*      */ import com.sun.tools.javac.util.JCDiagnostic;
-/*      */ import com.sun.tools.javac.util.List;
-/*      */ import com.sun.tools.javac.util.ListBuffer;
-/*      */ import com.sun.tools.javac.util.Log;
-/*      */ import com.sun.tools.javac.util.Name;
-/*      */ import com.sun.tools.javac.util.Names;
-/*      */ import com.sun.tools.javac.util.Options;
-/*      */ import java.util.HashMap;
-/*      */ import java.util.LinkedHashMap;
-/*      */ import java.util.LinkedHashSet;
-/*      */ import java.util.Map;
-/*      */ import java.util.Set;
-/*      */ import java.util.WeakHashMap;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */ public class Lower
-/*      */   extends TreeTranslator
-/*      */ {
-/*   62 */   protected static final Context.Key<Lower> lowerKey = new Context.Key(); private Names names; private Log log; private Symtab syms; private Resolve rs; private Check chk; private Attr attr; private TreeMaker make; private JCDiagnostic.DiagnosticPosition make_pos; private ClassWriter writer; private ClassReader reader; private ConstFold cfolder; private Target target; private Source source; private final TypeEnvs typeEnvs; private boolean allowEnums; private final Name dollarAssertionsDisabled; private final Name classDollar; private Types types; private boolean debugLower; private Option.PkgInfo pkginfoOpt; Symbol.ClassSymbol currentClass; ListBuffer<JCTree> translated; Env<AttrContext> attrEnv; EndPosTable endPosTable; Map<Symbol.ClassSymbol, JCTree.JCClassDecl> classdefs; public Map<Symbol.ClassSymbol, List<JCTree>> prunedTree; Map<Symbol, Symbol> actualSymbols; JCTree.JCMethodDecl currentMethodDef; Symbol.MethodSymbol currentMethodSym; JCTree.JCClassDecl outermostClassDef; JCTree outermostMemberDef; Map<Symbol, Symbol> lambdaTranslationMap; ClassMap classMap; Map<Symbol.ClassSymbol, List<Symbol.VarSymbol>> freevarCache; Map<Symbol.TypeSymbol, EnumMapping> enumSwitchMap; JCTree.Visitor conflictsChecker; private static final int DEREFcode = 0; private static final int ASSIGNcode = 2; private static final int PREINCcode = 4; private static final int PREDECcode = 6; private static final int POSTINCcode = 8; private static final int POSTDECcode = 10;
-/*      */   private static final int FIRSTASGOPcode = 12;
-/*      */
-/*      */   public static Lower instance(Context paramContext) {
-/*   66 */     Lower lower = (Lower)paramContext.get(lowerKey);
-/*   67 */     if (lower == null)
-/*   68 */       lower = new Lower(paramContext);
-/*   69 */     return lower;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   protected Lower(Context paramContext) {
-/*  146 */     this.prunedTree = new WeakHashMap<>();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  173 */     this.lambdaTranslationMap = null;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  188 */     this.classMap = new ClassMap();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  401 */     this.enumSwitchMap = new LinkedHashMap<>();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  715 */     this.conflictsChecker = (JCTree.Visitor)new TreeScanner()
-/*      */       {
-/*      */         Symbol.TypeSymbol currentClass;
-/*      */
-/*      */
-/*      */         public void visitMethodDef(JCTree.JCMethodDecl param1JCMethodDecl) {
-/*  721 */           Lower.this.chk.checkConflicts(param1JCMethodDecl.pos(), (Symbol)param1JCMethodDecl.sym, this.currentClass);
-/*  722 */           super.visitMethodDef(param1JCMethodDecl);
-/*      */         }
-/*      */
-/*      */
-/*      */         public void visitVarDef(JCTree.JCVariableDecl param1JCVariableDecl) {
-/*  727 */           if (param1JCVariableDecl.sym.owner.kind == 2) {
-/*  728 */             Lower.this.chk.checkConflicts(param1JCVariableDecl.pos(), (Symbol)param1JCVariableDecl.sym, this.currentClass);
-/*      */           }
-/*  730 */           super.visitVarDef(param1JCVariableDecl);
-/*      */         }
-/*      */
-/*      */         public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl)
-/*      */         {
-/*  735 */           Symbol.TypeSymbol typeSymbol = this.currentClass;
-/*  736 */           this.currentClass = (Symbol.TypeSymbol)param1JCClassDecl.sym;
-/*      */
-/*  738 */           try { super.visitClassDef(param1JCClassDecl); }
-/*      */           finally
-/*      */
-/*  741 */           { this.currentClass = typeSymbol; }  }
-/*      */       }; paramContext.put(lowerKey, this); this.names = Names.instance(paramContext); this.log = Log.instance(paramContext); this.syms = Symtab.instance(paramContext); this.rs = Resolve.instance(paramContext); this.chk = Check.instance(paramContext); this.attr = Attr.instance(paramContext); this.make = TreeMaker.instance(paramContext); this.writer = ClassWriter.instance(paramContext); this.reader = ClassReader.instance(paramContext); this.cfolder = ConstFold.instance(paramContext); this.target = Target.instance(paramContext); this.source = Source.instance(paramContext); this.typeEnvs = TypeEnvs.instance(paramContext); this.allowEnums = this.source.allowEnums(); this.dollarAssertionsDisabled = this.names.fromString(this.target.syntheticNameChar() + "assertionsDisabled"); this.classDollar = this.names.fromString("class" + this.target.syntheticNameChar()); this.types = Types.instance(paramContext); Options options = Options.instance(paramContext); this.debugLower = options.isSet("debuglower"); this.pkginfoOpt = Option.PkgInfo.get(options);
-/*      */   }
-/*      */   class ClassMap extends TreeScanner {
-/*      */     public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) { Lower.this.classdefs.put(param1JCClassDecl.sym, param1JCClassDecl); super.visitClassDef(param1JCClassDecl); } }
-/*      */   JCTree.JCClassDecl classDef(Symbol.ClassSymbol paramClassSymbol) { JCTree.JCClassDecl jCClassDecl = this.classdefs.get(paramClassSymbol); if (jCClassDecl == null && this.outermostMemberDef != null) { this.classMap.scan(this.outermostMemberDef); jCClassDecl = this.classdefs.get(paramClassSymbol); }  if (jCClassDecl == null) { this.classMap.scan((JCTree)this.outermostClassDef); jCClassDecl = this.classdefs.get(paramClassSymbol); }  return jCClassDecl; }
-/*      */   abstract class BasicFreeVarCollector extends TreeScanner {
-/*      */     abstract void addFreeVars(Symbol.ClassSymbol param1ClassSymbol);
-/*      */     public void visitIdent(JCTree.JCIdent param1JCIdent) { visitSymbol(param1JCIdent.sym); }
-/*      */     abstract void visitSymbol(Symbol param1Symbol); public void visitNewClass(JCTree.JCNewClass param1JCNewClass) { Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)param1JCNewClass.constructor.owner; addFreeVars(classSymbol); super.visitNewClass(param1JCNewClass); } public void visitApply(JCTree.JCMethodInvocation param1JCMethodInvocation) { if (TreeInfo.name((JCTree)param1JCMethodInvocation.meth) == Lower.this.names._super) addFreeVars((Symbol.ClassSymbol)(TreeInfo.symbol((JCTree)param1JCMethodInvocation.meth)).owner);  super.visitApply(param1JCMethodInvocation); } } class FreeVarCollector extends BasicFreeVarCollector {
-/*  751 */     Symbol owner; Symbol.ClassSymbol clazz; List<Symbol.VarSymbol> fvs; FreeVarCollector(Symbol.ClassSymbol param1ClassSymbol) { this.clazz = param1ClassSymbol; this.owner = param1ClassSymbol.owner; this.fvs = List.nil(); } private void addFreeVar(Symbol.VarSymbol param1VarSymbol) { for (List<Symbol.VarSymbol> list = this.fvs; list.nonEmpty(); list = list.tail) { if (list.head == param1VarSymbol) return;  }  this.fvs = this.fvs.prepend(param1VarSymbol); } void addFreeVars(Symbol.ClassSymbol param1ClassSymbol) { List list = Lower.this.freevarCache.get(param1ClassSymbol); if (list != null) for (List list1 = list; list1.nonEmpty(); list1 = list1.tail) addFreeVar((Symbol.VarSymbol)list1.head);   } void visitSymbol(Symbol param1Symbol) { Symbol symbol = param1Symbol; if (symbol.kind == 4 || symbol.kind == 16) { while (symbol != null && symbol.owner != this.owner) symbol = (Lower.this.proxies.lookup(Lower.this.proxyName(symbol.name))).sym;  if (symbol != null && symbol.owner == this.owner) { Symbol.VarSymbol varSymbol = (Symbol.VarSymbol)symbol; if (varSymbol.getConstValue() == null) addFreeVar(varSymbol);  } else if (Lower.this.outerThisStack.head != null && Lower.this.outerThisStack.head != param1Symbol) { visitSymbol((Symbol)Lower.this.outerThisStack.head); }  }  } public void visitNewClass(JCTree.JCNewClass param1JCNewClass) { Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)param1JCNewClass.constructor.owner; if (param1JCNewClass.encl == null && classSymbol.hasOuterInstance() && Lower.this.outerThisStack.head != null) visitSymbol((Symbol)Lower.this.outerThisStack.head);  super.visitNewClass(param1JCNewClass); } public void visitSelect(JCTree.JCFieldAccess param1JCFieldAccess) { if ((param1JCFieldAccess.name == Lower.this.names._this || param1JCFieldAccess.name == Lower.this.names._super) && param1JCFieldAccess.selected.type.tsym != this.clazz && Lower.this.outerThisStack.head != null) visitSymbol((Symbol)Lower.this.outerThisStack.head);  super.visitSelect(param1JCFieldAccess); } public void visitApply(JCTree.JCMethodInvocation param1JCMethodInvocation) { if (TreeInfo.name((JCTree)param1JCMethodInvocation.meth) == Lower.this.names._super) { Symbol symbol = TreeInfo.symbol((JCTree)param1JCMethodInvocation.meth); Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)symbol.owner; if (classSymbol.hasOuterInstance() && !param1JCMethodInvocation.meth.hasTag(JCTree.Tag.SELECT) && Lower.this.outerThisStack.head != null) visitSymbol((Symbol)Lower.this.outerThisStack.head);  }  super.visitApply(param1JCMethodInvocation); } } Symbol.ClassSymbol ownerToCopyFreeVarsFrom(Symbol.ClassSymbol paramClassSymbol) { if (!paramClassSymbol.isLocal()) return null;  Symbol symbol = paramClassSymbol.owner; while ((symbol.owner.kind & 0x2) != 0 && symbol.isLocal()) symbol = symbol.owner;  if ((symbol.owner.kind & 0x14) != 0 && paramClassSymbol.isSubClass(symbol, this.types)) return (Symbol.ClassSymbol)symbol;  return null; } private Symbol lookupSynthetic(Name paramName, Scope paramScope) { Symbol symbol = (paramScope.lookup(paramName)).sym;
-/*  752 */     return (symbol == null || (symbol.flags() & 0x1000L) == 0L) ? null : symbol; }
-/*      */   List<Symbol.VarSymbol> freevars(Symbol.ClassSymbol paramClassSymbol) { List<Symbol.VarSymbol> list = this.freevarCache.get(paramClassSymbol); if (list != null) return list;  if ((paramClassSymbol.owner.kind & 0x14) != 0) { FreeVarCollector freeVarCollector = new FreeVarCollector(paramClassSymbol); freeVarCollector.scan((JCTree)classDef(paramClassSymbol)); list = freeVarCollector.fvs; this.freevarCache.put(paramClassSymbol, list); return list; }  Symbol.ClassSymbol classSymbol = ownerToCopyFreeVarsFrom(paramClassSymbol); if (classSymbol != null) { list = this.freevarCache.get(classSymbol); this.freevarCache.put(paramClassSymbol, list); return list; }  return List.nil(); }
-/*      */   EnumMapping mapForEnum(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.TypeSymbol paramTypeSymbol) { EnumMapping enumMapping = this.enumSwitchMap.get(paramTypeSymbol); if (enumMapping == null) this.enumSwitchMap.put(paramTypeSymbol, enumMapping = new EnumMapping(paramDiagnosticPosition, paramTypeSymbol));  return enumMapping; }
-/*      */   class EnumMapping {
-/*      */     JCDiagnostic.DiagnosticPosition pos;
-/*      */     int next;
-/*  758 */     final Symbol.TypeSymbol forEnum; final Symbol.VarSymbol mapVar; final Map<Symbol.VarSymbol, Integer> values; EnumMapping(JCDiagnostic.DiagnosticPosition param1DiagnosticPosition, Symbol.TypeSymbol param1TypeSymbol) { this.pos = null; this.next = 1; this.forEnum = param1TypeSymbol; this.values = new LinkedHashMap<>(); this.pos = param1DiagnosticPosition; Name name = Lower.this.names.fromString(Lower.this.target.syntheticNameChar() + "SwitchMap" + Lower.this.target.syntheticNameChar() + Lower.this.writer.xClassName(param1TypeSymbol.type).toString().replace('/', '.').replace('.', Lower.this.target.syntheticNameChar())); Symbol.ClassSymbol classSymbol = Lower.this.outerCacheClass(); this.mapVar = new Symbol.VarSymbol(4120L, name, (Type)new Type.ArrayType((Type)Lower.this.syms.intType, (Symbol.TypeSymbol)Lower.this.syms.arrayClass), (Symbol)classSymbol); Lower.this.enterSynthetic(param1DiagnosticPosition, (Symbol)this.mapVar, classSymbol.members()); } JCTree.JCLiteral forConstant(Symbol.VarSymbol param1VarSymbol) { Integer integer = this.values.get(param1VarSymbol); if (integer == null) this.values.put(param1VarSymbol, integer = Integer.valueOf(this.next++));  return Lower.this.make.Literal(integer); } void translate() { Lower.this.make.at(this.pos.getStartPosition()); JCTree.JCClassDecl jCClassDecl = Lower.this.classDef((Symbol.ClassSymbol)this.mapVar.owner); Symbol.MethodSymbol methodSymbol1 = Lower.this.lookupMethod(this.pos, Lower.this.names.values, this.forEnum.type, List.nil()); JCTree.JCExpression jCExpression1 = Lower.this.make.Select((JCTree.JCExpression)Lower.this.make.App(Lower.this.make.QualIdent((Symbol)methodSymbol1)), (Symbol)Lower.this.syms.lengthVar); JCTree.JCExpression jCExpression2 = Lower.this.make.NewArray(Lower.this.make.Type((Type)Lower.this.syms.intType), List.of(jCExpression1), null).setType((Type)new Type.ArrayType((Type)Lower.this.syms.intType, (Symbol.TypeSymbol)Lower.this.syms.arrayClass)); ListBuffer listBuffer = new ListBuffer(); Symbol.MethodSymbol methodSymbol2 = Lower.this.lookupMethod(this.pos, Lower.this.names.ordinal, this.forEnum.type, List.nil()); List list = List.nil().prepend(Lower.this.make.Catch(Lower.this.make.VarDef(new Symbol.VarSymbol(8589934592L, Lower.this.names.ex, Lower.this.syms.noSuchFieldErrorType, (Symbol)Lower.this.syms.noSymbol), null), Lower.this.make.Block(0L, List.nil()))); for (Map.Entry<Symbol.VarSymbol, Integer> entry : this.values.entrySet()) { Symbol.VarSymbol varSymbol = (Symbol.VarSymbol)entry.getKey(); Integer integer = (Integer)entry.getValue(); JCTree.JCExpression jCExpression = Lower.this.make.Assign((JCTree.JCExpression)Lower.this.make.Indexed((Symbol)this.mapVar, (JCTree.JCExpression)Lower.this.make.App(Lower.this.make.Select(Lower.this.make.QualIdent((Symbol)varSymbol), (Symbol)methodSymbol2))), (JCTree.JCExpression)Lower.this.make.Literal(integer)).setType((Type)Lower.this.syms.intType); JCTree.JCExpressionStatement jCExpressionStatement = Lower.this.make.Exec(jCExpression); JCTree.JCTry jCTry = Lower.this.make.Try(Lower.this.make.Block(0L, List.of(jCExpressionStatement)), list, null); listBuffer.append(jCTry); }  jCClassDecl.defs = jCClassDecl.defs.prepend(Lower.this.make.Block(8L, listBuffer.toList())).prepend(Lower.this.make.VarDef(this.mapVar, jCExpression2)); } } TreeMaker make_at(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) { this.make_pos = paramDiagnosticPosition; return this.make.at(paramDiagnosticPosition); } JCTree.JCExpression makeLit(Type paramType, Object paramObject) { return (JCTree.JCExpression)this.make.Literal(paramType.getTag(), paramObject).setType(paramType.constType(paramObject)); } JCTree.JCExpression makeNull() { return makeLit(this.syms.botType, (Object)null); } JCTree.JCNewClass makeNewClass(Type paramType, List<JCTree.JCExpression> paramList) { JCTree.JCNewClass jCNewClass = this.make.NewClass(null, null, this.make.QualIdent((Symbol)paramType.tsym), paramList, null); jCNewClass.constructor = this.rs.resolveConstructor(this.make_pos, this.attrEnv, paramType, TreeInfo.types(paramList), List.nil()); jCNewClass.type = paramType; return jCNewClass; } JCTree.JCUnary makeUnary(JCTree.Tag paramTag, JCTree.JCExpression paramJCExpression) { JCTree.JCUnary jCUnary = this.make.Unary(paramTag, paramJCExpression); jCUnary.operator = this.rs.resolveUnaryOperator(this.make_pos, paramTag, this.attrEnv, paramJCExpression.type); jCUnary.type = jCUnary.operator.type.getReturnType(); return jCUnary; } JCTree.JCBinary makeBinary(JCTree.Tag paramTag, JCTree.JCExpression paramJCExpression1, JCTree.JCExpression paramJCExpression2) { JCTree.JCBinary jCBinary = this.make.Binary(paramTag, paramJCExpression1, paramJCExpression2); jCBinary.operator = this.rs.resolveBinaryOperator(this.make_pos, paramTag, this.attrEnv, paramJCExpression1.type, paramJCExpression2.type); jCBinary.type = jCBinary.operator.type.getReturnType(); return jCBinary; } JCTree.JCAssignOp makeAssignop(JCTree.Tag paramTag, JCTree paramJCTree1, JCTree paramJCTree2) { JCTree.JCAssignOp jCAssignOp = this.make.Assignop(paramTag, paramJCTree1, paramJCTree2); jCAssignOp.operator = this.rs.resolveBinaryOperator(this.make_pos, jCAssignOp.getTag().noAssignOp(), this.attrEnv, paramJCTree1.type, paramJCTree2.type); jCAssignOp.type = paramJCTree1.type; return jCAssignOp; } JCTree.JCExpression makeString(JCTree.JCExpression paramJCExpression) { if (!paramJCExpression.type.isPrimitiveOrVoid()) return paramJCExpression;  Symbol.MethodSymbol methodSymbol = lookupMethod(paramJCExpression.pos(), this.names.valueOf, this.syms.stringType, List.of(paramJCExpression.type)); return (JCTree.JCExpression)this.make.App(this.make.QualIdent((Symbol)methodSymbol), List.of(paramJCExpression)); } JCTree.JCClassDecl makeEmptyClass(long paramLong, Symbol.ClassSymbol paramClassSymbol) { return makeEmptyClass(paramLong, paramClassSymbol, (Name)null, true); } JCTree.JCClassDecl makeEmptyClass(long paramLong, Symbol.ClassSymbol paramClassSymbol, Name paramName, boolean paramBoolean) { Symbol.ClassSymbol classSymbol = this.reader.defineClass(this.names.empty, (Symbol)paramClassSymbol); if (paramName != null) { classSymbol.flatname = paramName; } else { classSymbol.flatname = this.chk.localClassName(classSymbol); }  classSymbol.sourcefile = paramClassSymbol.sourcefile; classSymbol.completer = null; classSymbol.members_field = new Scope((Symbol)classSymbol); classSymbol.flags_field = paramLong; Type.ClassType classType = (Type.ClassType)classSymbol.type; classType.supertype_field = this.syms.objectType; classType.interfaces_field = List.nil(); JCTree.JCClassDecl jCClassDecl1 = classDef(paramClassSymbol); enterSynthetic(jCClassDecl1.pos(), (Symbol)classSymbol, paramClassSymbol.members()); this.chk.compiled.put(classSymbol.flatname, classSymbol); JCTree.JCClassDecl jCClassDecl2 = this.make.ClassDef(this.make.Modifiers(paramLong), this.names.empty, List.nil(), null, List.nil(), List.nil()); jCClassDecl2.sym = classSymbol; jCClassDecl2.type = classSymbol.type; if (paramBoolean) jCClassDecl1.defs = jCClassDecl1.defs.prepend(jCClassDecl2);  return jCClassDecl2; } private void enterSynthetic(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol, Scope paramScope) { paramScope.enter(paramSymbol); } private Name makeSyntheticName(Name paramName, Scope paramScope) { while (true) { paramName = paramName.append(this.target.syntheticNameChar(), this.names.empty); if (lookupSynthetic(paramName, paramScope) == null) return paramName;  }  } void checkConflicts(List<JCTree> paramList) { for (JCTree jCTree : paramList) jCTree.accept(this.conflictsChecker);  } private Symbol.MethodSymbol lookupMethod(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Name paramName, Type paramType, List<Type> paramList) { return this.rs.resolveInternalMethod(paramDiagnosticPosition, this.attrEnv, paramType, paramName, paramList, List.nil()); }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private Symbol.MethodSymbol lookupConstructor(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType, List<Type> paramList) {
-/*  764 */     return this.rs.resolveInternalConstructor(paramDiagnosticPosition, this.attrEnv, paramType, paramList, null);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private Symbol.VarSymbol lookupField(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Type paramType, Name paramName) {
-/*  770 */     return this.rs.resolveInternalField(paramDiagnosticPosition, this.attrEnv, paramType, paramName);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void checkAccessConstructorTags() {
-/*  781 */     for (List<Symbol.ClassSymbol> list = this.accessConstrTags; list.nonEmpty(); list = list.tail) {
-/*  782 */       Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)list.head;
-/*  783 */       if (!isTranslatedClassAvailable(classSymbol)) {
-/*      */
-/*      */
-/*  786 */         JCTree.JCClassDecl jCClassDecl = makeEmptyClass(4104L, classSymbol
-/*  787 */             .outermostClass(), classSymbol.flatname, false);
-/*  788 */         swapAccessConstructorTag(classSymbol, jCClassDecl.sym);
-/*  789 */         this.translated.append(jCClassDecl);
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */   private boolean isTranslatedClassAvailable(Symbol.ClassSymbol paramClassSymbol) {
-/*  794 */     for (JCTree jCTree : this.translated) {
-/*  795 */       if (jCTree.hasTag(JCTree.Tag.CLASSDEF) && ((JCTree.JCClassDecl)jCTree).sym == paramClassSymbol)
-/*      */       {
-/*  797 */         return true;
-/*      */       }
-/*      */     }
-/*  800 */     return false;
-/*      */   }
-/*      */
-/*      */   void swapAccessConstructorTag(Symbol.ClassSymbol paramClassSymbol1, Symbol.ClassSymbol paramClassSymbol2) {
-/*  804 */     for (Symbol.MethodSymbol methodSymbol : this.accessConstrs.values()) {
-/*  805 */       Assert.check(methodSymbol.type.hasTag(TypeTag.METHOD));
-/*  806 */       Type.MethodType methodType = (Type.MethodType)methodSymbol.type;
-/*      */
-/*  808 */       if (((Type)methodType.argtypes.head).tsym == paramClassSymbol1) {
-/*  809 */         methodSymbol
-/*  810 */           .type = this.types.createMethodTypeWithParameters((Type)methodType,
-/*  811 */             (methodType.getParameterTypes()).tail
-/*  812 */             .prepend(paramClassSymbol2.erasure(this.types)));
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*  845 */   private static final int NCODES = accessCode(275) + 2;
-/*      */
-/*      */
-/*      */   private Map<Symbol, Integer> accessNums;
-/*      */
-/*      */   private Map<Symbol, Symbol.MethodSymbol[]> accessSyms;
-/*      */
-/*      */   private Map<Symbol, Symbol.MethodSymbol> accessConstrs;
-/*      */
-/*      */   private List<Symbol.ClassSymbol> accessConstrTags;
-/*      */
-/*      */   private ListBuffer<Symbol> accessed;
-/*      */
-/*      */   Scope proxies;
-/*      */
-/*      */   Scope twrVars;
-/*      */
-/*      */   List<Symbol.VarSymbol> outerThisStack;
-/*      */
-/*      */   private Symbol.ClassSymbol assertionsDisabledClassCache;
-/*      */
-/*      */   private JCTree.JCExpression enclOp;
-/*      */
-/*      */   private Symbol.MethodSymbol systemArraycopyMethod;
-/*      */
-/*      */
-/*      */   private static int accessCode(int paramInt) {
-/*  872 */     if (96 <= paramInt && paramInt <= 131)
-/*  873 */       return (paramInt - 96) * 2 + 12;
-/*  874 */     if (paramInt == 256)
-/*  875 */       return 84;
-/*  876 */     if (270 <= paramInt && paramInt <= 275) {
-/*  877 */       return (paramInt - 270 + 131 + 2 - 96) * 2 + 12;
-/*      */     }
-/*  879 */     return -1;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private static int accessCode(JCTree paramJCTree1, JCTree paramJCTree2) {
-/*  888 */     if (paramJCTree2 == null)
-/*  889 */       return 0;
-/*  890 */     if (paramJCTree2.hasTag(JCTree.Tag.ASSIGN) && paramJCTree1 ==
-/*  891 */       TreeInfo.skipParens(((JCTree.JCAssign)paramJCTree2).lhs))
-/*  892 */       return 2;
-/*  893 */     if (paramJCTree2.getTag().isIncOrDecUnaryOp() && paramJCTree1 ==
-/*  894 */       TreeInfo.skipParens(((JCTree.JCUnary)paramJCTree2).arg))
-/*  895 */       return mapTagToUnaryOpCode(paramJCTree2.getTag());
-/*  896 */     if (paramJCTree2.getTag().isAssignop() && paramJCTree1 ==
-/*  897 */       TreeInfo.skipParens(((JCTree.JCAssignOp)paramJCTree2).lhs)) {
-/*  898 */       return accessCode(((Symbol.OperatorSymbol)((JCTree.JCAssignOp)paramJCTree2).operator).opcode);
-/*      */     }
-/*  900 */     return 0;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private Symbol.OperatorSymbol binaryAccessOperator(int paramInt) {
-/*  906 */     Scope.Entry entry = (this.syms.predefClass.members()).elems;
-/*  907 */     for (; entry != null;
-/*  908 */       entry = entry.sibling) {
-/*  909 */       if (entry.sym instanceof Symbol.OperatorSymbol) {
-/*  910 */         Symbol.OperatorSymbol operatorSymbol = (Symbol.OperatorSymbol)entry.sym;
-/*  911 */         if (accessCode(operatorSymbol.opcode) == paramInt) return operatorSymbol;
-/*      */       }
-/*      */     }
-/*  914 */     return null;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private static JCTree.Tag treeTag(Symbol.OperatorSymbol paramOperatorSymbol) {
-/*  921 */     switch (paramOperatorSymbol.opcode) { case 128:
-/*      */       case 129:
-/*  923 */         return JCTree.Tag.BITOR_ASG;
-/*      */       case 130: case 131:
-/*  925 */         return JCTree.Tag.BITXOR_ASG;
-/*      */       case 126: case 127:
-/*  927 */         return JCTree.Tag.BITAND_ASG;
-/*      */       case 120: case 121: case 270:
-/*      */       case 271:
-/*  930 */         return JCTree.Tag.SL_ASG;
-/*      */       case 122: case 123: case 272:
-/*      */       case 273:
-/*  933 */         return JCTree.Tag.SR_ASG;
-/*      */       case 124: case 125: case 274:
-/*      */       case 275:
-/*  936 */         return JCTree.Tag.USR_ASG;
-/*      */       case 96: case 97: case 98:
-/*      */       case 99:
-/*      */       case 256:
-/*  940 */         return JCTree.Tag.PLUS_ASG;
-/*      */       case 100: case 101: case 102:
-/*      */       case 103:
-/*  943 */         return JCTree.Tag.MINUS_ASG;
-/*      */       case 104: case 105: case 106:
-/*      */       case 107:
-/*  946 */         return JCTree.Tag.MUL_ASG;
-/*      */       case 108: case 109: case 110:
-/*      */       case 111:
-/*  949 */         return JCTree.Tag.DIV_ASG;
-/*      */       case 112: case 113: case 114:
-/*      */       case 115:
-/*  952 */         return JCTree.Tag.MOD_ASG; }
-/*      */
-/*  954 */     throw new AssertionError();
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Name accessName(int paramInt1, int paramInt2) {
-/*  961 */     return this.names.fromString("access" + this.target
-/*  962 */         .syntheticNameChar() + paramInt1 + (paramInt2 / 10) + (paramInt2 % 10));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Symbol.MethodSymbol accessSymbol(Symbol paramSymbol, JCTree paramJCTree1, JCTree paramJCTree2, boolean paramBoolean1, boolean paramBoolean2) {
-/*      */     int i;
-/*      */     List list1;
-/*      */     Type type;
-/*      */     List list2;
-/*  983 */     Symbol.ClassSymbol classSymbol = (paramBoolean2 && paramBoolean1) ? (Symbol.ClassSymbol)((JCTree.JCFieldAccess)paramJCTree1).selected.type.tsym : accessClass(paramSymbol, paramBoolean1, paramJCTree1);
-/*      */
-/*  985 */     Symbol symbol = paramSymbol;
-/*  986 */     if (paramSymbol.owner != classSymbol) {
-/*  987 */       symbol = paramSymbol.clone((Symbol)classSymbol);
-/*  988 */       this.actualSymbols.put(symbol, paramSymbol);
-/*      */     }
-/*      */
-/*      */
-/*  992 */     Integer integer = this.accessNums.get(symbol);
-/*  993 */     if (integer == null) {
-/*  994 */       integer = Integer.valueOf(this.accessed.length());
-/*  995 */       this.accessNums.put(symbol, integer);
-/*  996 */       this.accessSyms.put(symbol, new Symbol.MethodSymbol[NCODES]);
-/*  997 */       this.accessed.append(symbol);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1005 */     switch (symbol.kind) {
-/*      */       case 4:
-/* 1007 */         i = accessCode(paramJCTree1, paramJCTree2);
-/* 1008 */         if (i >= 12) {
-/* 1009 */           Symbol.OperatorSymbol operatorSymbol = binaryAccessOperator(i);
-/* 1010 */           if (operatorSymbol.opcode == 256)
-/* 1011 */           { List list = List.of(this.syms.objectType); }
-/*      */           else
-/* 1013 */           { List list = (operatorSymbol.type.getParameterTypes()).tail; }
-/* 1014 */         } else if (i == 2) {
-/* 1015 */           List list = List.of(symbol.erasure(this.types));
-/*      */         } else {
-/* 1017 */           List list = List.nil();
-/* 1018 */         }  type = symbol.erasure(this.types);
-/* 1019 */         list2 = List.nil();
-/*      */         break;
-/*      */       case 16:
-/* 1022 */         i = 0;
-/* 1023 */         list1 = symbol.erasure(this.types).getParameterTypes();
-/* 1024 */         type = symbol.erasure(this.types).getReturnType();
-/* 1025 */         list2 = symbol.type.getThrownTypes();
-/*      */         break;
-/*      */       default:
-/* 1028 */         throw new AssertionError();
-/*      */     }
-/*      */
-/*      */
-/*      */
-/* 1033 */     if (paramBoolean1 && paramBoolean2) i++;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1039 */     if ((symbol.flags() & 0x8L) == 0L) {
-/* 1040 */       list1 = list1.prepend(symbol.owner.erasure(this.types));
-/*      */     }
-/* 1042 */     Symbol.MethodSymbol[] arrayOfMethodSymbol = this.accessSyms.get(symbol);
-/* 1043 */     Symbol.MethodSymbol methodSymbol = arrayOfMethodSymbol[i];
-/* 1044 */     if (methodSymbol == null) {
-/*      */
-/*      */
-/* 1047 */       methodSymbol = new Symbol.MethodSymbol(4104L, accessName(integer.intValue(), i), (Type)new Type.MethodType(list1, type, list2, (Symbol.TypeSymbol)this.syms.methodClass), (Symbol)classSymbol);
-/*      */
-/*      */
-/* 1050 */       enterSynthetic(paramJCTree1.pos(), (Symbol)methodSymbol, classSymbol.members());
-/* 1051 */       arrayOfMethodSymbol[i] = methodSymbol;
-/*      */     }
-/* 1053 */     return methodSymbol;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCExpression accessBase(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol) {
-/* 1062 */     return ((paramSymbol.flags() & 0x8L) != 0L) ?
-/* 1063 */       access(this.make.at(paramDiagnosticPosition.getStartPosition()).QualIdent(paramSymbol.owner)) :
-/* 1064 */       makeOwnerThis(paramDiagnosticPosition, paramSymbol, true);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   boolean needsPrivateAccess(Symbol paramSymbol) {
-/* 1070 */     if ((paramSymbol.flags() & 0x2L) == 0L || paramSymbol.owner == this.currentClass)
-/* 1071 */       return false;
-/* 1072 */     if (paramSymbol.name == this.names.init && paramSymbol.owner.isLocal()) {
-/*      */
-/* 1074 */       paramSymbol.flags_field &= 0xFFFFFFFFFFFFFFFDL;
-/* 1075 */       return false;
-/*      */     }
-/* 1077 */     return true;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   boolean needsProtectedAccess(Symbol paramSymbol, JCTree paramJCTree) {
-/* 1084 */     if ((paramSymbol.flags() & 0x4L) == 0L || paramSymbol.owner.owner == this.currentClass.owner || paramSymbol
-/*      */
-/* 1086 */       .packge() == this.currentClass.packge())
-/* 1087 */       return false;
-/* 1088 */     if (!this.currentClass.isSubClass(paramSymbol.owner, this.types))
-/* 1089 */       return true;
-/* 1090 */     if ((paramSymbol.flags() & 0x8L) != 0L ||
-/* 1091 */       !paramJCTree.hasTag(JCTree.Tag.SELECT) ||
-/* 1092 */       TreeInfo.name((JCTree)((JCTree.JCFieldAccess)paramJCTree).selected) == this.names._super)
-/* 1093 */       return false;
-/* 1094 */     return !((JCTree.JCFieldAccess)paramJCTree).selected.type.tsym.isSubClass((Symbol)this.currentClass, this.types);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Symbol.ClassSymbol accessClass(Symbol paramSymbol, boolean paramBoolean, JCTree paramJCTree) {
-/* 1103 */     if (paramBoolean) {
-/* 1104 */       Symbol.TypeSymbol typeSymbol = null;
-/* 1105 */       Symbol.ClassSymbol classSymbol = this.currentClass;
-/* 1106 */       if (paramJCTree.hasTag(JCTree.Tag.SELECT) && (paramSymbol.flags() & 0x8L) == 0L) {
-/* 1107 */         typeSymbol = ((JCTree.JCFieldAccess)paramJCTree).selected.type.tsym;
-/* 1108 */         while (!typeSymbol.isSubClass((Symbol)classSymbol, this.types)) {
-/* 1109 */           classSymbol = classSymbol.owner.enclClass();
-/*      */         }
-/* 1111 */         return classSymbol;
-/*      */       }
-/* 1113 */       while (!classSymbol.isSubClass(paramSymbol.owner, this.types)) {
-/* 1114 */         classSymbol = classSymbol.owner.enclClass();
-/*      */       }
-/*      */
-/* 1117 */       return classSymbol;
-/*      */     }
-/*      */
-/* 1120 */     return paramSymbol.owner.enclClass();
-/*      */   }
-/*      */
-/*      */
-/*      */   private void addPrunedInfo(JCTree paramJCTree) {
-/* 1125 */     List<JCTree> list = this.prunedTree.get(this.currentClass);
-/* 1126 */     list = (list == null) ? List.of(paramJCTree) : list.prepend(paramJCTree);
-/* 1127 */     this.prunedTree.put(this.currentClass, list);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCExpression access(Symbol paramSymbol, JCTree.JCExpression paramJCExpression1, JCTree.JCExpression paramJCExpression2, boolean paramBoolean) {
-/*      */     JCTree.JCIdent jCIdent;
-/* 1139 */     while (paramSymbol.kind == 4 && paramSymbol.owner.kind == 16 && paramSymbol.owner
-/* 1140 */       .enclClass() != this.currentClass) {
-/*      */
-/* 1142 */       Object object = ((Symbol.VarSymbol)paramSymbol).getConstValue();
-/* 1143 */       if (object != null) {
-/* 1144 */         this.make.at(paramJCExpression1.pos);
-/* 1145 */         return makeLit(paramSymbol.type, object);
-/*      */       }
-/*      */
-/* 1148 */       paramSymbol = (this.proxies.lookup(proxyName(paramSymbol.name))).sym;
-/* 1149 */       Assert.check((paramSymbol != null && (paramSymbol.flags_field & 0x10L) != 0L));
-/* 1150 */       jCIdent = this.make.at(paramJCExpression1.pos).Ident(paramSymbol);
-/*      */     }
-/* 1152 */     JCTree.JCExpression jCExpression = jCIdent.hasTag(JCTree.Tag.SELECT) ? ((JCTree.JCFieldAccess)jCIdent).selected : null;
-/* 1153 */     switch (paramSymbol.kind) {
-/*      */       case 2:
-/* 1155 */         if (paramSymbol.owner.kind != 1) {
-/*      */
-/*      */
-/* 1158 */           Name name = Convert.shortName(paramSymbol.flatName());
-/* 1159 */           while (jCExpression != null &&
-/* 1160 */             TreeInfo.symbol((JCTree)jCExpression) != null &&
-/* 1161 */             (TreeInfo.symbol((JCTree)jCExpression)).kind != 1) {
-/* 1162 */             jCExpression = jCExpression.hasTag(JCTree.Tag.SELECT) ? ((JCTree.JCFieldAccess)jCExpression).selected : null;
-/*      */           }
-/*      */
-/*      */
-/* 1166 */           if (jCIdent.hasTag(JCTree.Tag.IDENT)) {
-/* 1167 */             jCIdent.name = name; break;
-/* 1168 */           }  if (jCExpression == null) {
-/* 1169 */             jCIdent = this.make.at(((JCTree.JCExpression)jCIdent).pos).Ident(paramSymbol);
-/* 1170 */             jCIdent.name = name; break;
-/*      */           }
-/* 1172 */           ((JCTree.JCFieldAccess)jCIdent).selected = jCExpression;
-/* 1173 */           ((JCTree.JCFieldAccess)jCIdent).name = name;
-/*      */         }
-/*      */         break;
-/*      */       case 4:
-/*      */       case 16:
-/* 1178 */         if (paramSymbol.owner.kind == 2) {
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1186 */           boolean bool1 = ((paramBoolean && !needsPrivateAccess(paramSymbol)) || needsProtectedAccess(paramSymbol, (JCTree)jCIdent)) ? true : false;
-/* 1187 */           boolean bool2 = (bool1 || needsPrivateAccess(paramSymbol)) ? true : false;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1194 */           boolean bool3 = (jCExpression == null && paramSymbol.owner != this.syms.predefClass && !paramSymbol.isMemberOf((Symbol.TypeSymbol)this.currentClass, this.types)) ? true : false;
-/*      */
-/* 1196 */           if (bool2 || bool3) {
-/* 1197 */             this.make.at(((JCTree.JCExpression)jCIdent).pos);
-/*      */
-/*      */
-/* 1200 */             if (paramSymbol.kind == 4) {
-/* 1201 */               Object object = ((Symbol.VarSymbol)paramSymbol).getConstValue();
-/* 1202 */               if (object != null) {
-/* 1203 */                 addPrunedInfo((JCTree)jCIdent);
-/* 1204 */                 return makeLit(paramSymbol.type, object);
-/*      */               }
-/*      */             }
-/*      */
-/*      */
-/*      */
-/* 1210 */             if (bool2) {
-/* 1211 */               List list = List.nil();
-/* 1212 */               if ((paramSymbol.flags() & 0x8L) == 0L) {
-/*      */
-/*      */
-/* 1215 */                 if (jCExpression == null)
-/* 1216 */                   jCExpression = makeOwnerThis(jCIdent.pos(), paramSymbol, true);
-/* 1217 */                 list = list.prepend(jCExpression);
-/* 1218 */                 jCExpression = null;
-/*      */               }
-/* 1220 */               Symbol.MethodSymbol methodSymbol = accessSymbol(paramSymbol, (JCTree)jCIdent, (JCTree)paramJCExpression2, bool1, paramBoolean);
-/*      */
-/*      */
-/* 1223 */               JCTree.JCExpression jCExpression1 = this.make.Select((jCExpression != null) ? jCExpression : this.make
-/* 1224 */                   .QualIdent(((Symbol)methodSymbol).owner), (Symbol)methodSymbol);
-/*      */
-/* 1226 */               return (JCTree.JCExpression)this.make.App(jCExpression1, list);
-/*      */             }
-/*      */
-/*      */
-/* 1230 */             if (bool3)
-/* 1231 */               return this.make.at(((JCTree.JCExpression)jCIdent).pos).Select(
-/* 1232 */                   accessBase(jCIdent.pos(), paramSymbol), paramSymbol).setType(((JCTree.JCExpression)jCIdent).type);
-/*      */           }  break;
-/*      */         }
-/* 1235 */         if (paramSymbol.owner.kind == 16 && this.lambdaTranslationMap != null) {
-/*      */
-/*      */
-/*      */
-/* 1239 */           Symbol symbol = this.lambdaTranslationMap.get(paramSymbol);
-/* 1240 */           if (symbol != null)
-/* 1241 */             jCIdent = this.make.at(((JCTree.JCExpression)jCIdent).pos).Ident(symbol);
-/*      */         }
-/*      */         break;
-/*      */     }
-/* 1245 */     return (JCTree.JCExpression)jCIdent;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCExpression access(JCTree.JCExpression paramJCExpression) {
-/* 1252 */     Symbol symbol = TreeInfo.symbol((JCTree)paramJCExpression);
-/* 1253 */     return (symbol == null) ? paramJCExpression : access(symbol, paramJCExpression, (JCTree.JCExpression)null, false);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Symbol accessConstructor(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol) {
-/* 1262 */     if (needsPrivateAccess(paramSymbol)) {
-/* 1263 */       Symbol.ClassSymbol classSymbol = paramSymbol.owner.enclClass();
-/* 1264 */       Symbol.MethodSymbol methodSymbol = this.accessConstrs.get(paramSymbol);
-/* 1265 */       if (methodSymbol == null) {
-/* 1266 */         List list = paramSymbol.type.getParameterTypes();
-/* 1267 */         if ((classSymbol.flags_field & 0x4000L) != 0L)
-/*      */         {
-/*      */
-/* 1270 */           list = list.prepend(this.syms.intType).prepend(this.syms.stringType);
-/*      */         }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1278 */         methodSymbol = new Symbol.MethodSymbol(4096L, this.names.init, (Type)new Type.MethodType(list.append(accessConstructorTag().erasure(this.types)), paramSymbol.type.getReturnType(), paramSymbol.type.getThrownTypes(), (Symbol.TypeSymbol)this.syms.methodClass), (Symbol)classSymbol);
-/*      */
-/*      */
-/* 1281 */         enterSynthetic(paramDiagnosticPosition, (Symbol)methodSymbol, classSymbol.members());
-/* 1282 */         this.accessConstrs.put(paramSymbol, methodSymbol);
-/* 1283 */         this.accessed.append(paramSymbol);
-/*      */       }
-/* 1285 */       return (Symbol)methodSymbol;
-/*      */     }
-/* 1287 */     return paramSymbol;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Symbol.ClassSymbol accessConstructorTag() {
-/* 1294 */     Symbol.ClassSymbol classSymbol1 = this.currentClass.outermostClass();
-/* 1295 */     Name name = this.names.fromString("" + classSymbol1.getQualifiedName() + this.target
-/* 1296 */         .syntheticNameChar() + "1");
-/*      */
-/* 1298 */     Symbol.ClassSymbol classSymbol2 = this.chk.compiled.get(name);
-/* 1299 */     if (classSymbol2 == null) {
-/* 1300 */       classSymbol2 = (makeEmptyClass(4104L, classSymbol1)).sym;
-/*      */     }
-/* 1302 */     this.accessConstrTags = this.accessConstrTags.prepend(classSymbol2);
-/* 1303 */     return classSymbol2;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   void makeAccessible(Symbol paramSymbol) {
-/* 1310 */     JCTree.JCClassDecl jCClassDecl = classDef(paramSymbol.owner.enclClass());
-/* 1311 */     if (jCClassDecl == null) Assert.error("class def not found: " + paramSymbol + " in " + paramSymbol.owner);
-/* 1312 */     if (paramSymbol.name == this.names.init) {
-/* 1313 */       jCClassDecl.defs = jCClassDecl.defs.prepend(
-/* 1314 */           accessConstructorDef(jCClassDecl.pos, paramSymbol, this.accessConstrs.get(paramSymbol)));
-/*      */     } else {
-/* 1316 */       Symbol.MethodSymbol[] arrayOfMethodSymbol = this.accessSyms.get(paramSymbol);
-/* 1317 */       for (byte b = 0; b < NCODES; b++) {
-/* 1318 */         if (arrayOfMethodSymbol[b] != null) {
-/* 1319 */           jCClassDecl.defs = jCClassDecl.defs.prepend(
-/* 1320 */               accessDef(jCClassDecl.pos, paramSymbol, arrayOfMethodSymbol[b], b));
-/*      */         }
-/*      */       }
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private static JCTree.Tag mapUnaryOpCodeToTag(int paramInt) {
-/* 1329 */     switch (paramInt) {
-/*      */       case 4:
-/* 1331 */         return JCTree.Tag.PREINC;
-/*      */       case 6:
-/* 1333 */         return JCTree.Tag.PREDEC;
-/*      */       case 8:
-/* 1335 */         return JCTree.Tag.POSTINC;
-/*      */       case 10:
-/* 1337 */         return JCTree.Tag.POSTDEC;
-/*      */     }
-/* 1339 */     return JCTree.Tag.NO_TAG;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private static int mapTagToUnaryOpCode(JCTree.Tag paramTag) {
-/* 1347 */     switch (paramTag) {
-/*      */       case ALWAYS:
-/* 1349 */         return 4;
-/*      */       case LEGACY:
-/* 1351 */         return 6;
-/*      */       case NONEMPTY:
-/* 1353 */         return 8;
-/*      */       case null:
-/* 1355 */         return 10;
-/*      */     }
-/* 1357 */     return -1;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree accessDef(int paramInt1, Symbol paramSymbol, Symbol.MethodSymbol paramMethodSymbol, int paramInt2) {
-/*      */     JCTree.JCExpression jCExpression;
-/*      */     List list1;
-/*      */     JCTree.JCStatement jCStatement;
-/* 1369 */     this.currentClass = paramSymbol.owner.enclClass();
-/* 1370 */     this.make.at(paramInt1);
-/* 1371 */     JCTree.JCMethodDecl jCMethodDecl = this.make.MethodDef(paramMethodSymbol, null);
-/*      */
-/*      */
-/* 1374 */     Symbol symbol = this.actualSymbols.get(paramSymbol);
-/* 1375 */     if (symbol == null) symbol = paramSymbol;
-/*      */
-/*      */
-/*      */
-/* 1379 */     if ((symbol.flags() & 0x8L) != 0L) {
-/* 1380 */       JCTree.JCIdent jCIdent = this.make.Ident(symbol);
-/* 1381 */       list1 = this.make.Idents(jCMethodDecl.params);
-/*      */     } else {
-/* 1383 */       JCTree.JCExpression jCExpression1 = this.make.Ident((JCTree.JCVariableDecl)jCMethodDecl.params.head);
-/* 1384 */       if (paramInt2 % 2 != 0)
-/*      */       {
-/*      */
-/*      */
-/* 1388 */         jCExpression1.setType(this.types.erasure(this.types.supertype((paramSymbol.owner.enclClass()).type)));
-/*      */       }
-/* 1390 */       jCExpression = this.make.Select(jCExpression1, symbol);
-/* 1391 */       list1 = this.make.Idents(jCMethodDecl.params.tail);
-/*      */     }
-/*      */
-/* 1394 */     if (symbol.kind == 4) {
-/*      */       JCTree.JCExpression jCExpression1; JCTree.JCAssign jCAssign; JCTree.JCUnary jCUnary; JCTree.JCAssignOp jCAssignOp;
-/* 1396 */       int i = paramInt2 - (paramInt2 & 0x1);
-/*      */
-/*      */
-/* 1399 */       switch (i) {
-/*      */         case 0:
-/* 1401 */           jCExpression1 = jCExpression;
-/*      */           break;
-/*      */         case 2:
-/* 1404 */           jCAssign = this.make.Assign(jCExpression, (JCTree.JCExpression)list1.head); break;
-/*      */         case 4: case 6: case 8:
-/*      */         case 10:
-/* 1407 */           jCUnary = makeUnary(mapUnaryOpCodeToTag(i), jCExpression);
-/*      */           break;
-/*      */         default:
-/* 1410 */           jCAssignOp = this.make.Assignop(
-/* 1411 */               treeTag(binaryAccessOperator(i)), (JCTree)jCExpression, (JCTree)list1.head);
-/* 1412 */           jCAssignOp.operator = (Symbol)binaryAccessOperator(i); break;
-/*      */       }
-/* 1414 */       JCTree.JCReturn jCReturn = this.make.Return(jCAssignOp.setType(symbol.type));
-/*      */     } else {
-/* 1416 */       jCStatement = this.make.Call((JCTree.JCExpression)this.make.App(jCExpression, list1));
-/*      */     }
-/* 1418 */     jCMethodDecl.body = this.make.Block(0L, List.of(jCStatement));
-/*      */
-/*      */     List list2;
-/*      */
-/* 1422 */     for (list2 = jCMethodDecl.params; list2.nonEmpty(); list2 = list2.tail)
-/* 1423 */       ((JCTree.JCVariableDecl)list2.head).vartype = access(((JCTree.JCVariableDecl)list2.head).vartype);
-/* 1424 */     jCMethodDecl.restype = access(jCMethodDecl.restype);
-/* 1425 */     for (list2 = jCMethodDecl.thrown; list2.nonEmpty(); list2 = list2.tail) {
-/* 1426 */       list2.head = access((JCTree.JCExpression)list2.head);
-/*      */     }
-/* 1428 */     return (JCTree)jCMethodDecl;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree accessConstructorDef(int paramInt, Symbol paramSymbol, Symbol.MethodSymbol paramMethodSymbol) {
-/* 1437 */     this.make.at(paramInt);
-/* 1438 */     JCTree.JCMethodDecl jCMethodDecl = this.make.MethodDef(paramMethodSymbol, paramMethodSymbol
-/* 1439 */         .externalType(this.types), null);
-/*      */
-/* 1441 */     JCTree.JCIdent jCIdent = this.make.Ident(this.names._this);
-/* 1442 */     jCIdent.sym = paramSymbol;
-/* 1443 */     jCIdent.type = paramSymbol.type;
-/* 1444 */     jCMethodDecl
-/* 1445 */       .body = this.make.Block(0L, List.of(this.make
-/* 1446 */           .Call((JCTree.JCExpression)this.make
-/* 1447 */             .App((JCTree.JCExpression)jCIdent, this.make
-/*      */
-/* 1449 */               .Idents((jCMethodDecl.params.reverse()).tail.reverse())))));
-/* 1450 */     return (JCTree)jCMethodDecl;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Name proxyName(Name paramName) {
-/* 1482 */     return this.names.fromString("val" + this.target.syntheticNameChar() + paramName);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   List<JCTree.JCVariableDecl> freevarDefs(int paramInt, List<Symbol.VarSymbol> paramList, Symbol paramSymbol) {
-/* 1491 */     return freevarDefs(paramInt, paramList, paramSymbol, 0L);
-/*      */   }
-/*      */
-/*      */
-/*      */   List<JCTree.JCVariableDecl> freevarDefs(int paramInt, List<Symbol.VarSymbol> paramList, Symbol paramSymbol, long paramLong) {
-/* 1496 */     long l = 0x1010L | paramLong;
-/* 1497 */     if (paramSymbol.kind == 2 && this.target
-/* 1498 */       .usePrivateSyntheticFields())
-/* 1499 */       l |= 0x2L;
-/* 1500 */     List<JCTree.JCVariableDecl> list = List.nil();
-/* 1501 */     for (List<Symbol.VarSymbol> list1 = paramList; list1.nonEmpty(); list1 = list1.tail) {
-/* 1502 */       Symbol.VarSymbol varSymbol1 = (Symbol.VarSymbol)list1.head;
-/*      */
-/* 1504 */       Symbol.VarSymbol varSymbol2 = new Symbol.VarSymbol(l, proxyName(varSymbol1.name), varSymbol1.erasure(this.types), paramSymbol);
-/* 1505 */       this.proxies.enter((Symbol)varSymbol2);
-/* 1506 */       JCTree.JCVariableDecl jCVariableDecl = this.make.at(paramInt).VarDef(varSymbol2, null);
-/* 1507 */       jCVariableDecl.vartype = access(jCVariableDecl.vartype);
-/* 1508 */       list = list.prepend(jCVariableDecl);
-/*      */     }
-/* 1510 */     return list;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   Name outerThisName(Type paramType, Symbol paramSymbol) {
-/* 1517 */     Type type = paramType.getEnclosingType();
-/* 1518 */     byte b = 0;
-/* 1519 */     while (type.hasTag(TypeTag.CLASS)) {
-/* 1520 */       type = type.getEnclosingType();
-/* 1521 */       b++;
-/*      */     }
-/* 1523 */     Name name = this.names.fromString("this" + this.target.syntheticNameChar() + b);
-/* 1524 */     while (paramSymbol.kind == 2 && (((Symbol.ClassSymbol)paramSymbol).members().lookup(name)).scope != null)
-/* 1525 */       name = this.names.fromString(name.toString() + this.target.syntheticNameChar());
-/* 1526 */     return name;
-/*      */   }
-/*      */
-/*      */   private Symbol.VarSymbol makeOuterThisVarSymbol(Symbol paramSymbol, long paramLong) {
-/* 1530 */     if (paramSymbol.kind == 2 && this.target
-/* 1531 */       .usePrivateSyntheticFields())
-/* 1532 */       paramLong |= 0x2L;
-/* 1533 */     Type type = this.types.erasure((paramSymbol.enclClass()).type.getEnclosingType());
-/*      */
-/* 1535 */     Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(paramLong, outerThisName(type, paramSymbol), type, paramSymbol);
-/* 1536 */     this.outerThisStack = this.outerThisStack.prepend(varSymbol);
-/* 1537 */     return varSymbol;
-/*      */   }
-/*      */
-/*      */   private JCTree.JCVariableDecl makeOuterThisVarDecl(int paramInt, Symbol.VarSymbol paramVarSymbol) {
-/* 1541 */     JCTree.JCVariableDecl jCVariableDecl = this.make.at(paramInt).VarDef(paramVarSymbol, null);
-/* 1542 */     jCVariableDecl.vartype = access(jCVariableDecl.vartype);
-/* 1543 */     return jCVariableDecl;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCVariableDecl outerThisDef(int paramInt, Symbol.MethodSymbol paramMethodSymbol) {
-/* 1551 */     Symbol.ClassSymbol classSymbol = paramMethodSymbol.enclClass();
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1557 */     boolean bool = ((paramMethodSymbol.isConstructor() && paramMethodSymbol.isAnonymous()) || (paramMethodSymbol.isConstructor() && classSymbol.isInner() && !classSymbol.isPrivate() && !classSymbol.isStatic())) ? true : false;
-/* 1558 */     long l = (0x10 | (bool ? 32768 : 4096)) | 0x200000000L;
-/*      */
-/* 1560 */     Symbol.VarSymbol varSymbol = makeOuterThisVarSymbol((Symbol)paramMethodSymbol, l);
-/* 1561 */     paramMethodSymbol.extraParams = paramMethodSymbol.extraParams.prepend(varSymbol);
-/* 1562 */     return makeOuterThisVarDecl(paramInt, varSymbol);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCVariableDecl outerThisDef(int paramInt, Symbol.ClassSymbol paramClassSymbol) {
-/* 1570 */     Symbol.VarSymbol varSymbol = makeOuterThisVarSymbol((Symbol)paramClassSymbol, 4112L);
-/* 1571 */     return makeOuterThisVarDecl(paramInt, varSymbol);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   List<JCTree.JCExpression> loadFreevars(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, List<Symbol.VarSymbol> paramList) {
-/* 1580 */     List<JCTree.JCExpression> list = List.nil();
-/* 1581 */     for (List<Symbol.VarSymbol> list1 = paramList; list1.nonEmpty(); list1 = list1.tail)
-/* 1582 */       list = list.prepend(loadFreevar(paramDiagnosticPosition, (Symbol.VarSymbol)list1.head));
-/* 1583 */     return list;
-/*      */   }
-/*      */
-/*      */   JCTree.JCExpression loadFreevar(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.VarSymbol paramVarSymbol) {
-/* 1587 */     return access((Symbol)paramVarSymbol, (JCTree.JCExpression)this.make.at(paramDiagnosticPosition).Ident((Symbol)paramVarSymbol), (JCTree.JCExpression)null, false);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCExpression makeThis(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.TypeSymbol paramTypeSymbol) {
-/* 1595 */     if (this.currentClass == paramTypeSymbol)
-/*      */     {
-/* 1597 */       return this.make.at(paramDiagnosticPosition).This(paramTypeSymbol.erasure(this.types));
-/*      */     }
-/*      */
-/* 1600 */     return makeOuterThis(paramDiagnosticPosition, paramTypeSymbol);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree makeTwrTry(JCTree.JCTry paramJCTry) {
-/* 1641 */     make_at(paramJCTry.pos());
-/* 1642 */     this.twrVars = this.twrVars.dup();
-/* 1643 */     JCTree.JCBlock jCBlock = makeTwrBlock(paramJCTry.resources, paramJCTry.body, paramJCTry.finallyCanCompleteNormally, 0);
-/*      */
-/* 1645 */     if (paramJCTry.catchers.isEmpty() && paramJCTry.finalizer == null) {
-/* 1646 */       this.result = translate(jCBlock);
-/*      */     } else {
-/* 1648 */       this.result = translate(this.make.Try(jCBlock, paramJCTry.catchers, paramJCTry.finalizer));
-/* 1649 */     }  this.twrVars = this.twrVars.leave();
-/* 1650 */     return this.result;
-/*      */   }
-/*      */
-/*      */   private JCTree.JCBlock makeTwrBlock(List<JCTree> paramList, JCTree.JCBlock paramJCBlock, boolean paramBoolean, int paramInt) {
-/*      */     JCTree.JCIdent jCIdent;
-/* 1655 */     if (paramList.isEmpty()) {
-/* 1656 */       return paramJCBlock;
-/*      */     }
-/*      */
-/* 1659 */     ListBuffer listBuffer = new ListBuffer();
-/* 1660 */     JCTree jCTree = (JCTree)paramList.head;
-/* 1661 */     JCTree.JCExpression jCExpression = null;
-/* 1662 */     if (jCTree instanceof JCTree.JCVariableDecl) {
-/* 1663 */       JCTree.JCVariableDecl jCVariableDecl = (JCTree.JCVariableDecl)jCTree;
-/* 1664 */       jCExpression = this.make.Ident((Symbol)jCVariableDecl.sym).setType(jCTree.type);
-/* 1665 */       listBuffer.add(jCVariableDecl);
-/*      */     } else {
-/* 1667 */       Assert.check(jCTree instanceof JCTree.JCExpression);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1672 */       Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(4112L, makeSyntheticName(this.names.fromString("twrVar" + paramInt), this.twrVars), jCTree.type.hasTag(TypeTag.BOT) ? this.syms.autoCloseableType : jCTree.type, (Symbol)this.currentMethodSym);
-/*      */
-/*      */
-/* 1675 */       this.twrVars.enter((Symbol)varSymbol);
-/*      */
-/* 1677 */       JCTree.JCVariableDecl jCVariableDecl = this.make.VarDef(varSymbol, (JCTree.JCExpression)jCTree);
-/* 1678 */       jCIdent = this.make.Ident((Symbol)varSymbol);
-/* 1679 */       listBuffer.add(jCVariableDecl);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1685 */     Symbol.VarSymbol varSymbol1 = new Symbol.VarSymbol(4096L, makeSyntheticName(this.names.fromString("primaryException" + paramInt), this.twrVars), this.syms.throwableType, (Symbol)this.currentMethodSym);
-/*      */
-/*      */
-/*      */
-/* 1689 */     this.twrVars.enter((Symbol)varSymbol1);
-/* 1690 */     JCTree.JCVariableDecl jCVariableDecl1 = this.make.VarDef(varSymbol1, makeNull());
-/* 1691 */     listBuffer.add(jCVariableDecl1);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1696 */     Symbol.VarSymbol varSymbol2 = new Symbol.VarSymbol(4112L, this.names.fromString("t" + this.target
-/* 1697 */           .syntheticNameChar()), this.syms.throwableType, (Symbol)this.currentMethodSym);
-/*      */
-/*      */
-/* 1700 */     JCTree.JCVariableDecl jCVariableDecl2 = this.make.VarDef(varSymbol2, null);
-/* 1701 */     JCTree.JCStatement jCStatement = this.make.Assignment((Symbol)varSymbol1, (JCTree.JCExpression)this.make.Ident((Symbol)varSymbol2));
-/* 1702 */     JCTree.JCThrow jCThrow = this.make.Throw((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol2));
-/* 1703 */     JCTree.JCBlock jCBlock1 = this.make.Block(0L, List.of(jCStatement, jCThrow));
-/* 1704 */     JCTree.JCCatch jCCatch = this.make.Catch(jCVariableDecl2, jCBlock1);
-/*      */
-/* 1706 */     int i = this.make.pos;
-/* 1707 */     this.make.at(TreeInfo.endPos((JCTree)paramJCBlock));
-/* 1708 */     JCTree.JCBlock jCBlock2 = makeTwrFinallyClause((Symbol)varSymbol1, (JCTree.JCExpression)jCIdent);
-/* 1709 */     this.make.at(i);
-/* 1710 */     JCTree.JCTry jCTry = this.make.Try(makeTwrBlock(paramList.tail, paramJCBlock, paramBoolean, paramInt + 1),
-/*      */
-/* 1712 */         List.of(jCCatch), jCBlock2);
-/*      */
-/* 1714 */     jCTry.finallyCanCompleteNormally = paramBoolean;
-/* 1715 */     listBuffer.add(jCTry);
-/* 1716 */     return this.make.Block(0L, listBuffer.toList());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private JCTree.JCBlock makeTwrFinallyClause(Symbol paramSymbol, JCTree.JCExpression paramJCExpression) {
-/* 1723 */     Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(4096L, this.make.paramName(2), this.syms.throwableType, (Symbol)this.currentMethodSym);
-/*      */
-/*      */
-/*      */
-/* 1727 */     JCTree.JCExpressionStatement jCExpressionStatement = this.make.Exec((JCTree.JCExpression)makeCall((JCTree.JCExpression)this.make.Ident(paramSymbol), this.names.addSuppressed,
-/*      */
-/* 1729 */           List.of(this.make.Ident((Symbol)varSymbol))));
-/*      */
-/*      */
-/*      */
-/* 1733 */     JCTree.JCBlock jCBlock1 = this.make.Block(0L, List.of(makeResourceCloseInvocation(paramJCExpression)));
-/* 1734 */     JCTree.JCVariableDecl jCVariableDecl = this.make.VarDef(varSymbol, null);
-/* 1735 */     JCTree.JCBlock jCBlock2 = this.make.Block(0L, List.of(jCExpressionStatement));
-/* 1736 */     List list = List.of(this.make.Catch(jCVariableDecl, jCBlock2));
-/* 1737 */     JCTree.JCTry jCTry = this.make.Try(jCBlock1, list, null);
-/* 1738 */     jCTry.finallyCanCompleteNormally = true;
-/*      */
-/*      */
-/* 1741 */     JCTree.JCIf jCIf = this.make.If(makeNonNullCheck((JCTree.JCExpression)this.make.Ident(paramSymbol)), (JCTree.JCStatement)jCTry,
-/*      */
-/* 1743 */         makeResourceCloseInvocation(paramJCExpression));
-/*      */
-/*      */
-/* 1746 */     return this.make.Block(0L,
-/* 1747 */         List.of(this.make.If(makeNonNullCheck(paramJCExpression), (JCTree.JCStatement)jCIf, null)));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private JCTree.JCStatement makeResourceCloseInvocation(JCTree.JCExpression paramJCExpression) {
-/* 1754 */     if (this.types.asSuper(paramJCExpression.type, (Symbol)this.syms.autoCloseableType.tsym) == null) {
-/* 1755 */       paramJCExpression = (JCTree.JCExpression)convert((JCTree)paramJCExpression, this.syms.autoCloseableType);
-/*      */     }
-/*      */
-/*      */
-/* 1759 */     JCTree.JCMethodInvocation jCMethodInvocation = makeCall(paramJCExpression, this.names.close,
-/*      */
-/* 1761 */         List.nil());
-/* 1762 */     return (JCTree.JCStatement)this.make.Exec((JCTree.JCExpression)jCMethodInvocation);
-/*      */   }
-/*      */
-/*      */   private JCTree.JCExpression makeNonNullCheck(JCTree.JCExpression paramJCExpression) {
-/* 1766 */     return (JCTree.JCExpression)makeBinary(JCTree.Tag.NE, paramJCExpression, makeNull());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCExpression makeOuterThis(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol.TypeSymbol paramTypeSymbol) {
-/* 1775 */     List<Symbol.VarSymbol> list = this.outerThisStack;
-/* 1776 */     if (list.isEmpty()) {
-/* 1777 */       this.log.error(paramDiagnosticPosition, "no.encl.instance.of.type.in.scope", new Object[] { paramTypeSymbol });
-/* 1778 */       Assert.error();
-/* 1779 */       return makeNull();
-/*      */     }
-/* 1781 */     Symbol.VarSymbol varSymbol = (Symbol.VarSymbol)list.head;
-/* 1782 */     JCTree.JCExpression jCExpression = access((JCTree.JCExpression)this.make.at(paramDiagnosticPosition).Ident((Symbol)varSymbol));
-/* 1783 */     Symbol.TypeSymbol typeSymbol = varSymbol.type.tsym;
-/* 1784 */     while (typeSymbol != paramTypeSymbol) {
-/*      */       while (true) {
-/* 1786 */         list = list.tail;
-/* 1787 */         if (list.isEmpty()) {
-/* 1788 */           this.log.error(paramDiagnosticPosition, "no.encl.instance.of.type.in.scope", new Object[] { paramTypeSymbol });
-/*      */
-/*      */
-/* 1791 */           Assert.error();
-/* 1792 */           return jCExpression;
-/*      */         }
-/* 1794 */         varSymbol = (Symbol.VarSymbol)list.head;
-/* 1795 */         if (varSymbol.owner == typeSymbol) {
-/* 1796 */           if (typeSymbol.owner.kind != 1 && !typeSymbol.hasOuterInstance())
-/* 1797 */           { this.chk.earlyRefError(paramDiagnosticPosition, (Symbol)paramTypeSymbol);
-/* 1798 */             Assert.error();
-/* 1799 */             return makeNull(); }  break;
-/*      */         }
-/* 1801 */       }  jCExpression = access(this.make.at(paramDiagnosticPosition).Select(jCExpression, (Symbol)varSymbol));
-/* 1802 */       typeSymbol = varSymbol.type.tsym;
-/*      */     }
-/* 1804 */     return jCExpression;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCExpression makeOwnerThis(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol, boolean paramBoolean) {
-/* 1817 */     Symbol symbol = paramSymbol.owner;
-/* 1818 */     if (paramBoolean ? paramSymbol.isMemberOf((Symbol.TypeSymbol)this.currentClass, this.types) : this.currentClass
-/* 1819 */       .isSubClass(paramSymbol.owner, this.types))
-/*      */     {
-/* 1821 */       return this.make.at(paramDiagnosticPosition).This(symbol.erasure(this.types));
-/*      */     }
-/*      */
-/* 1824 */     return makeOwnerThisN(paramDiagnosticPosition, paramSymbol, paramBoolean);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCExpression makeOwnerThisN(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, Symbol paramSymbol, boolean paramBoolean) {
-/* 1832 */     Symbol symbol = paramSymbol.owner;
-/* 1833 */     List<Symbol.VarSymbol> list = this.outerThisStack;
-/* 1834 */     if (list.isEmpty()) {
-/* 1835 */       this.log.error(paramDiagnosticPosition, "no.encl.instance.of.type.in.scope", new Object[] { symbol });
-/* 1836 */       Assert.error();
-/* 1837 */       return makeNull();
-/*      */     }
-/* 1839 */     Symbol.VarSymbol varSymbol = (Symbol.VarSymbol)list.head;
-/* 1840 */     JCTree.JCExpression jCExpression = access((JCTree.JCExpression)this.make.at(paramDiagnosticPosition).Ident((Symbol)varSymbol));
-/* 1841 */     Symbol.TypeSymbol typeSymbol = varSymbol.type.tsym;
-/* 1842 */     while (paramBoolean ? paramSymbol.isMemberOf(typeSymbol, this.types) : typeSymbol.isSubClass(paramSymbol.owner, this.types)) {
-/*      */       while (true) {
-/* 1844 */         list = list.tail;
-/* 1845 */         if (list.isEmpty()) {
-/* 1846 */           this.log.error(paramDiagnosticPosition, "no.encl.instance.of.type.in.scope", new Object[] { symbol });
-/*      */
-/*      */
-/* 1849 */           Assert.error();
-/* 1850 */           return jCExpression;
-/*      */         }
-/* 1852 */         varSymbol = (Symbol.VarSymbol)list.head;
-/* 1853 */         if (varSymbol.owner == typeSymbol)
-/* 1854 */         { jCExpression = access(this.make.at(paramDiagnosticPosition).Select(jCExpression, (Symbol)varSymbol));
-/* 1855 */           typeSymbol = varSymbol.type.tsym; }
-/*      */       }
-/* 1857 */     }  return jCExpression;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCStatement initField(int paramInt, Name paramName) {
-/* 1864 */     Scope.Entry entry = this.proxies.lookup(paramName);
-/* 1865 */     Symbol symbol1 = entry.sym;
-/* 1866 */     Assert.check((symbol1.owner.kind == 16));
-/* 1867 */     Symbol symbol2 = (entry.next()).sym;
-/* 1868 */     Assert.check((symbol1.owner.owner == symbol2.owner));
-/* 1869 */     this.make.at(paramInt);
-/* 1870 */     return (JCTree.JCStatement)this.make
-/* 1871 */       .Exec(this.make
-/* 1872 */         .Assign(this.make
-/* 1873 */           .Select(this.make.This(symbol2.owner.erasure(this.types)), symbol2), (JCTree.JCExpression)this.make
-/* 1874 */           .Ident(symbol1)).setType(symbol2.erasure(this.types)));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   JCTree.JCStatement initOuterThis(int paramInt) {
-/* 1880 */     Symbol.VarSymbol varSymbol1 = (Symbol.VarSymbol)this.outerThisStack.head;
-/* 1881 */     Assert.check((varSymbol1.owner.kind == 16));
-/* 1882 */     Symbol.VarSymbol varSymbol2 = (Symbol.VarSymbol)this.outerThisStack.tail.head;
-/* 1883 */     Assert.check((varSymbol1.owner.owner == varSymbol2.owner));
-/* 1884 */     this.make.at(paramInt);
-/* 1885 */     return (JCTree.JCStatement)this.make
-/* 1886 */       .Exec(this.make
-/* 1887 */         .Assign(this.make
-/* 1888 */           .Select(this.make.This(varSymbol2.owner.erasure(this.types)), (Symbol)varSymbol2), (JCTree.JCExpression)this.make
-/* 1889 */           .Ident((Symbol)varSymbol1)).setType(varSymbol2.erasure(this.types)));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private Symbol.ClassSymbol outerCacheClass() {
-/* 1904 */     Symbol.ClassSymbol classSymbol = this.outermostClassDef.sym;
-/* 1905 */     if ((classSymbol.flags() & 0x200L) == 0L &&
-/* 1906 */       !this.target.useInnerCacheClass()) return classSymbol;
-/* 1907 */     Scope scope = classSymbol.members();
-/* 1908 */     for (Scope.Entry entry = scope.elems; entry != null; entry = entry.sibling) {
-/* 1909 */       if (entry.sym.kind == 2 && entry.sym.name == this.names.empty && (entry.sym
-/*      */
-/* 1911 */         .flags() & 0x200L) == 0L) return (Symbol.ClassSymbol)entry.sym;
-/* 1912 */     }  return (makeEmptyClass(4104L, classSymbol)).sym;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private Symbol.MethodSymbol classDollarSym(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) {
-/* 1927 */     Symbol.ClassSymbol classSymbol = outerCacheClass();
-/*      */
-/* 1929 */     Symbol.MethodSymbol methodSymbol = (Symbol.MethodSymbol)lookupSynthetic(this.classDollar, classSymbol
-/* 1930 */         .members());
-/* 1931 */     if (methodSymbol == null) {
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1938 */       methodSymbol = new Symbol.MethodSymbol(4104L, this.classDollar, (Type)new Type.MethodType(List.of(this.syms.stringType), this.types.erasure(this.syms.classType), List.nil(), (Symbol.TypeSymbol)this.syms.methodClass), (Symbol)classSymbol);
-/*      */
-/*      */
-/* 1941 */       enterSynthetic(paramDiagnosticPosition, (Symbol)methodSymbol, classSymbol.members());
-/*      */
-/* 1943 */       JCTree.JCMethodDecl jCMethodDecl = this.make.MethodDef(methodSymbol, null);
-/*      */       try {
-/* 1945 */         jCMethodDecl.body = classDollarSymBody(paramDiagnosticPosition, jCMethodDecl);
-/* 1946 */       } catch (Symbol.CompletionFailure completionFailure) {
-/* 1947 */         jCMethodDecl.body = this.make.Block(0L, List.nil());
-/* 1948 */         this.chk.completionError(paramDiagnosticPosition, completionFailure);
-/*      */       }
-/* 1950 */       JCTree.JCClassDecl jCClassDecl = classDef(classSymbol);
-/* 1951 */       jCClassDecl.defs = jCClassDecl.defs.prepend(jCMethodDecl);
-/*      */     }
-/* 1953 */     return methodSymbol;
-/*      */   }
-/*      */   JCTree.JCBlock classDollarSymBody(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, JCTree.JCMethodDecl paramJCMethodDecl) {
-/*      */     JCTree.JCBlock jCBlock1;
-/*      */     JCTree.JCThrow jCThrow;
-/* 1958 */     Symbol.MethodSymbol methodSymbol = paramJCMethodDecl.sym;
-/* 1959 */     Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)methodSymbol.owner;
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1966 */     if (this.target.classLiteralsNoInit()) {
-/*      */
-/*      */
-/* 1969 */       Symbol.VarSymbol varSymbol1 = new Symbol.VarSymbol(4104L, this.names.fromString("cl" + this.target.syntheticNameChar()), this.syms.classLoaderType, (Symbol)classSymbol);
-/*      */
-/*      */
-/* 1972 */       enterSynthetic(paramDiagnosticPosition, (Symbol)varSymbol1, classSymbol.members());
-/*      */
-/*      */
-/* 1975 */       JCTree.JCVariableDecl jCVariableDecl = this.make.VarDef(varSymbol1, null);
-/* 1976 */       JCTree.JCClassDecl jCClassDecl = classDef(classSymbol);
-/* 1977 */       jCClassDecl.defs = jCClassDecl.defs.prepend(jCVariableDecl);
-/*      */
-/*      */
-/*      */
-/* 1981 */       JCTree.JCNewArray jCNewArray = this.make.NewArray(this.make.Type(classSymbol.type),
-/* 1982 */           List.of(this.make.Literal(TypeTag.INT, Integer.valueOf(0)).setType((Type)this.syms.intType)), null);
-/*      */
-/* 1984 */       jCNewArray.type = (Type)new Type.ArrayType(this.types.erasure(classSymbol.type), (Symbol.TypeSymbol)this.syms.arrayClass);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 1989 */       Symbol.MethodSymbol methodSymbol1 = lookupMethod(this.make_pos, this.names.forName, this.types
-/* 1990 */           .erasure(this.syms.classType),
-/* 1991 */           List.of(this.syms.stringType, this.syms.booleanType, this.syms.classLoaderType));
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2009 */       JCTree.JCExpression jCExpression = this.make.Conditional((JCTree.JCExpression)makeBinary(JCTree.Tag.EQ, (JCTree.JCExpression)this.make.Ident((Symbol)varSymbol1), makeNull()), this.make.Assign((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol1), (JCTree.JCExpression)makeCall((JCTree.JCExpression)makeCall((JCTree.JCExpression)makeCall((JCTree.JCExpression)jCNewArray, this.names.getClass, List.nil()), this.names.getComponentType, List.nil()), this.names.getClassLoader, List.nil())).setType(this.syms.classLoaderType), (JCTree.JCExpression)this.make.Ident((Symbol)varSymbol1)).setType(this.syms.classLoaderType);
-/*      */
-/*      */
-/* 2012 */       List list = List.of(this.make.Ident((Symbol)((JCTree.JCVariableDecl)paramJCMethodDecl.params.head).sym),
-/* 2013 */           makeLit((Type)this.syms.booleanType, Integer.valueOf(0)), jCExpression);
-/*      */
-/*      */
-/* 2016 */       jCBlock1 = this.make.Block(0L, List.of(this.make
-/* 2017 */             .Call((JCTree.JCExpression)this.make
-/* 2018 */               .App((JCTree.JCExpression)this.make
-/* 2019 */                 .Ident((Symbol)methodSymbol1), list))));
-/*      */     } else {
-/*      */
-/* 2022 */       Symbol.MethodSymbol methodSymbol1 = lookupMethod(this.make_pos, this.names.forName, this.types
-/*      */
-/* 2024 */           .erasure(this.syms.classType),
-/* 2025 */           List.of(this.syms.stringType));
-/*      */
-/*      */
-/* 2028 */       jCBlock1 = this.make.Block(0L, List.of(this.make
-/* 2029 */             .Call((JCTree.JCExpression)this.make
-/* 2030 */               .App(this.make
-/* 2031 */                 .QualIdent((Symbol)methodSymbol1),
-/* 2032 */                 List.of(this.make
-/* 2033 */                   .Ident((Symbol)((JCTree.JCVariableDecl)paramJCMethodDecl.params.head).sym))))));
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2039 */     Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(4096L, this.make.paramName(1), this.syms.classNotFoundExceptionType, (Symbol)methodSymbol);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2044 */     if (this.target.hasInitCause()) {
-/*      */
-/*      */
-/* 2047 */       JCTree.JCMethodInvocation jCMethodInvocation = makeCall((JCTree.JCExpression)makeNewClass(this.syms.noClassDefFoundErrorType,
-/* 2048 */             List.nil()), this.names.initCause,
-/*      */
-/* 2050 */           List.of(this.make.Ident((Symbol)varSymbol)));
-/* 2051 */       jCThrow = this.make.Throw((JCTree.JCExpression)jCMethodInvocation);
-/*      */     } else {
-/*      */
-/* 2054 */       Symbol.MethodSymbol methodSymbol1 = lookupMethod(this.make_pos, this.names.getMessage, this.syms.classNotFoundExceptionType,
-/*      */
-/*      */
-/* 2057 */           List.nil());
-/*      */
-/*      */
-/* 2060 */       jCThrow = this.make.Throw((JCTree.JCExpression)makeNewClass(this.syms.noClassDefFoundErrorType,
-/* 2061 */             List.of(this.make.App(this.make.Select((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol), (Symbol)methodSymbol1),
-/*      */
-/* 2063 */                 List.nil()))));
-/*      */     }
-/*      */
-/*      */
-/* 2067 */     JCTree.JCBlock jCBlock2 = this.make.Block(0L, List.of(jCThrow));
-/*      */
-/*      */
-/* 2070 */     JCTree.JCCatch jCCatch = this.make.Catch(this.make.VarDef(varSymbol, null), jCBlock2);
-/*      */
-/*      */
-/*      */
-/* 2074 */     JCTree.JCTry jCTry = this.make.Try(jCBlock1,
-/* 2075 */         List.of(jCCatch), null);
-/*      */
-/* 2077 */     return this.make.Block(0L, List.of(jCTry));
-/*      */   }
-/*      */
-/*      */
-/*      */   private JCTree.JCMethodInvocation makeCall(JCTree.JCExpression paramJCExpression, Name paramName, List<JCTree.JCExpression> paramList) {
-/* 2082 */     Assert.checkNonNull(paramJCExpression.type);
-/* 2083 */     Symbol.MethodSymbol methodSymbol = lookupMethod(this.make_pos, paramName, paramJCExpression.type,
-/* 2084 */         TreeInfo.types(paramList));
-/* 2085 */     return this.make.App(this.make.Select(paramJCExpression, (Symbol)methodSymbol), paramList);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private Name cacheName(String paramString) {
-/* 2092 */     StringBuilder stringBuilder = new StringBuilder();
-/* 2093 */     if (paramString.startsWith("[")) {
-/* 2094 */       stringBuilder = stringBuilder.append("array");
-/* 2095 */       while (paramString.startsWith("[")) {
-/* 2096 */         stringBuilder = stringBuilder.append(this.target.syntheticNameChar());
-/* 2097 */         paramString = paramString.substring(1);
-/*      */       }
-/* 2099 */       if (paramString.startsWith("L")) {
-/* 2100 */         paramString = paramString.substring(0, paramString.length() - 1);
-/*      */       }
-/*      */     } else {
-/* 2103 */       stringBuilder = stringBuilder.append("class" + this.target.syntheticNameChar());
-/*      */     }
-/* 2105 */     stringBuilder = stringBuilder.append(paramString.replace('.', this.target.syntheticNameChar()));
-/* 2106 */     return this.names.fromString(stringBuilder.toString());
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private Symbol.VarSymbol cacheSym(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition, String paramString) {
-/* 2115 */     Symbol.ClassSymbol classSymbol = outerCacheClass();
-/* 2116 */     Name name = cacheName(paramString);
-/*      */
-/* 2118 */     Symbol.VarSymbol varSymbol = (Symbol.VarSymbol)lookupSynthetic(name, classSymbol.members());
-/* 2119 */     if (varSymbol == null) {
-/*      */
-/* 2121 */       varSymbol = new Symbol.VarSymbol(4104L, name, this.types.erasure(this.syms.classType), (Symbol)classSymbol);
-/* 2122 */       enterSynthetic(paramDiagnosticPosition, (Symbol)varSymbol, classSymbol.members());
-/*      */
-/* 2124 */       JCTree.JCVariableDecl jCVariableDecl = this.make.VarDef(varSymbol, null);
-/* 2125 */       JCTree.JCClassDecl jCClassDecl = classDef(classSymbol);
-/* 2126 */       jCClassDecl.defs = jCClassDecl.defs.prepend(jCVariableDecl);
-/*      */     }
-/* 2128 */     return varSymbol;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   private JCTree.JCExpression classOf(JCTree paramJCTree)
-/*      */   {
-/* 2135 */     return classOfType(paramJCTree.type, paramJCTree.pos()); } private JCTree.JCExpression classOfType(Type paramType, JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) { Symbol.ClassSymbol classSymbol;
-/*      */     Symbol symbol;
-/*      */     String str;
-/*      */     Symbol.VarSymbol varSymbol;
-/* 2139 */     switch (paramType.getTag()) { case ALWAYS: case LEGACY: case NONEMPTY: case null: case null: case null:
-/*      */       case null:
-/*      */       case null:
-/*      */       case null:
-/* 2143 */         classSymbol = this.types.boxedClass(paramType);
-/*      */
-/* 2145 */         symbol = this.rs.accessBase(this.rs
-/* 2146 */             .findIdentInType(this.attrEnv, classSymbol.type, this.names.TYPE, 4), paramDiagnosticPosition, classSymbol.type, this.names.TYPE, true);
-/*      */
-/* 2148 */         if (symbol.kind == 4)
-/* 2149 */           ((Symbol.VarSymbol)symbol).getConstValue();
-/* 2150 */         return this.make.QualIdent(symbol);
-/*      */       case null: case null:
-/* 2152 */         if (this.target.hasClassLiterals()) {
-/* 2153 */           Symbol.VarSymbol varSymbol1 = new Symbol.VarSymbol(25L, this.names._class, this.syms.classType, (Symbol)paramType.tsym);
-/*      */
-/*      */
-/* 2156 */           return make_at(paramDiagnosticPosition).Select(this.make.Type(paramType), (Symbol)varSymbol1);
-/*      */         }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2163 */         str = this.writer.xClassName(paramType).toString().replace('/', '.');
-/* 2164 */         varSymbol = cacheSym(paramDiagnosticPosition, str);
-/* 2165 */         return make_at(paramDiagnosticPosition).Conditional((JCTree.JCExpression)
-/* 2166 */             makeBinary(JCTree.Tag.EQ, (JCTree.JCExpression)this.make.Ident((Symbol)varSymbol), makeNull()), this.make
-/* 2167 */             .Assign((JCTree.JCExpression)this.make
-/* 2168 */               .Ident((Symbol)varSymbol), (JCTree.JCExpression)this.make
-/* 2169 */               .App((JCTree.JCExpression)this.make
-/* 2170 */                 .Ident((Symbol)classDollarSym(paramDiagnosticPosition)),
-/* 2171 */                 List.of(this.make.Literal(TypeTag.CLASS, str)
-/* 2172 */                   .setType(this.syms.stringType))))
-/* 2173 */             .setType(this.types.erasure(this.syms.classType)), (JCTree.JCExpression)this.make
-/* 2174 */             .Ident((Symbol)varSymbol)).setType(this.types.erasure(this.syms.classType)); }
-/*      */
-/* 2176 */     throw new AssertionError(); }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private Symbol.ClassSymbol assertionsDisabledClass() {
-/* 2189 */     if (this.assertionsDisabledClassCache != null) return this.assertionsDisabledClassCache;
-/*      */
-/* 2191 */     this.assertionsDisabledClassCache = (makeEmptyClass(4104L, this.outermostClassDef.sym)).sym;
-/*      */
-/* 2193 */     return this.assertionsDisabledClassCache;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private JCTree.JCExpression assertFlagTest(JCDiagnostic.DiagnosticPosition paramDiagnosticPosition) {
-/* 2204 */     Symbol.ClassSymbol classSymbol1 = this.outermostClassDef.sym;
-/*      */
-/*      */
-/*      */
-/* 2208 */     Symbol.ClassSymbol classSymbol2 = !this.currentClass.isInterface() ? this.currentClass : assertionsDisabledClass();
-/*      */
-/*      */
-/* 2211 */     Symbol.VarSymbol varSymbol = (Symbol.VarSymbol)lookupSynthetic(this.dollarAssertionsDisabled, classSymbol2
-/* 2212 */         .members());
-/* 2213 */     if (varSymbol == null) {
-/* 2214 */       varSymbol = new Symbol.VarSymbol(4120L, this.dollarAssertionsDisabled, (Type)this.syms.booleanType, (Symbol)classSymbol2);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2219 */       enterSynthetic(paramDiagnosticPosition, (Symbol)varSymbol, classSymbol2.members());
-/* 2220 */       Symbol.MethodSymbol methodSymbol = lookupMethod(paramDiagnosticPosition, this.names.desiredAssertionStatus, this.types
-/*      */
-/* 2222 */           .erasure(this.syms.classType),
-/* 2223 */           List.nil());
-/* 2224 */       JCTree.JCClassDecl jCClassDecl = classDef(classSymbol2);
-/* 2225 */       make_at(jCClassDecl.pos());
-/* 2226 */       JCTree.JCUnary jCUnary = makeUnary(JCTree.Tag.NOT, (JCTree.JCExpression)this.make.App(this.make.Select(
-/* 2227 */               classOfType(this.types.erasure(classSymbol1.type), jCClassDecl
-/* 2228 */                 .pos()), (Symbol)methodSymbol)));
-/*      */
-/* 2230 */       JCTree.JCVariableDecl jCVariableDecl = this.make.VarDef(varSymbol, (JCTree.JCExpression)jCUnary);
-/*      */
-/* 2232 */       jCClassDecl.defs = jCClassDecl.defs.prepend(jCVariableDecl);
-/*      */
-/* 2234 */       if (this.currentClass.isInterface()) {
-/*      */
-/*      */
-/* 2237 */         JCTree.JCClassDecl jCClassDecl1 = classDef(this.currentClass);
-/* 2238 */         make_at(jCClassDecl1.pos());
-/* 2239 */         JCTree.JCIf jCIf = this.make.If(this.make.QualIdent((Symbol)varSymbol), (JCTree.JCStatement)this.make.Skip(), null);
-/* 2240 */         JCTree.JCBlock jCBlock = this.make.Block(8L, List.of(jCIf));
-/* 2241 */         jCClassDecl1.defs = jCClassDecl1.defs.prepend(jCBlock);
-/*      */       }
-/*      */     }
-/* 2244 */     make_at(paramDiagnosticPosition);
-/* 2245 */     return (JCTree.JCExpression)makeUnary(JCTree.Tag.NOT, (JCTree.JCExpression)this.make.Ident((Symbol)varSymbol));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree abstractRval(JCTree paramJCTree, Type paramType, TreeBuilder paramTreeBuilder) {
-/*      */     JCTree.JCIdent jCIdent;
-/* 2273 */     paramJCTree = TreeInfo.skipParens(paramJCTree);
-/* 2274 */     switch (paramJCTree.getTag()) {
-/*      */       case null:
-/* 2276 */         return paramTreeBuilder.build(paramJCTree);
-/*      */       case null:
-/* 2278 */         jCIdent = (JCTree.JCIdent)paramJCTree;
-/* 2279 */         if ((jCIdent.sym.flags() & 0x10L) != 0L && jCIdent.sym.owner.kind == 16) {
-/* 2280 */           return paramTreeBuilder.build(paramJCTree);
-/*      */         }
-/*      */         break;
-/*      */     }
-/* 2284 */     Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(4112L, this.names.fromString(this.target
-/* 2285 */           .syntheticNameChar() + "" + paramJCTree
-/* 2286 */           .hashCode()), paramType, (Symbol)this.currentMethodSym);
-/*      */
-/*      */
-/* 2289 */     paramJCTree = convert(paramJCTree, paramType);
-/* 2290 */     JCTree.JCVariableDecl jCVariableDecl = this.make.VarDef(varSymbol, (JCTree.JCExpression)paramJCTree);
-/* 2291 */     JCTree jCTree = paramTreeBuilder.build((JCTree)this.make.Ident((Symbol)varSymbol));
-/* 2292 */     JCTree.LetExpr letExpr = this.make.LetExpr(jCVariableDecl, jCTree);
-/* 2293 */     ((JCTree)letExpr).type = jCTree.type;
-/* 2294 */     return (JCTree)letExpr;
-/*      */   }
-/*      */
-/*      */
-/*      */   JCTree abstractRval(JCTree paramJCTree, TreeBuilder paramTreeBuilder) {
-/* 2299 */     return abstractRval(paramJCTree, paramJCTree.type, paramTreeBuilder);
-/*      */   }
-/*      */
-/*      */
-/*      */   JCTree abstractLval(JCTree paramJCTree, final TreeBuilder builder) {
-/*      */     final JCTree.JCFieldAccess s;
-/*      */     final JCTree.JCArrayAccess i;
-/*      */     JCTree.JCExpression jCExpression;
-/*      */     Symbol symbol;
-/* 2308 */     paramJCTree = TreeInfo.skipParens(paramJCTree);
-/* 2309 */     switch (paramJCTree.getTag()) {
-/*      */       case null:
-/* 2311 */         return builder.build(paramJCTree);
-/*      */       case null:
-/* 2313 */         jCFieldAccess = (JCTree.JCFieldAccess)paramJCTree;
-/* 2314 */         jCExpression = TreeInfo.skipParens(jCFieldAccess.selected);
-/* 2315 */         symbol = TreeInfo.symbol((JCTree)jCFieldAccess.selected);
-/* 2316 */         if (symbol != null && symbol.kind == 2) return builder.build(paramJCTree);
-/* 2317 */         return abstractRval((JCTree)jCFieldAccess.selected, new TreeBuilder() {
-/*      */               public JCTree build(JCTree param1JCTree) {
-/* 2319 */                 return builder.build((JCTree)Lower.this.make.Select((JCTree.JCExpression)param1JCTree, s.sym));
-/*      */               }
-/*      */             });
-/*      */
-/*      */       case null:
-/* 2324 */         jCArrayAccess = (JCTree.JCArrayAccess)paramJCTree;
-/* 2325 */         return abstractRval((JCTree)jCArrayAccess.indexed, new TreeBuilder() {
-/*      */               public JCTree build(final JCTree indexed) {
-/* 2327 */                 return Lower.this.abstractRval((JCTree)i.index, (Type)Lower.this.syms.intType, new TreeBuilder() {
-/*      */                       public JCTree build(JCTree param2JCTree) {
-/* 2329 */                         JCTree.JCArrayAccess jCArrayAccess = Lower.this.make.Indexed((JCTree.JCExpression)indexed, (JCTree.JCExpression)param2JCTree);
-/*      */
-/* 2331 */                         jCArrayAccess.setType(i.type);
-/* 2332 */                         return builder.build((JCTree)jCArrayAccess);
-/*      */                       }
-/*      */                     });
-/*      */               }
-/*      */             });
-/*      */
-/*      */       case null:
-/* 2339 */         return abstractLval((JCTree)((JCTree.JCTypeCast)paramJCTree).expr, builder);
-/*      */     }
-/*      */
-/* 2342 */     throw new AssertionError(paramJCTree);
-/*      */   }
-/*      */
-/*      */
-/*      */   JCTree makeComma(JCTree paramJCTree1, final JCTree expr2) {
-/* 2347 */     return abstractRval(paramJCTree1, new TreeBuilder() {
-/*      */           public JCTree build(JCTree param1JCTree) {
-/* 2349 */             return expr2;
-/*      */           }
-/*      */         });
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public <T extends JCTree> T translate(T paramT) {
-/* 2367 */     if (paramT == null) {
-/* 2368 */       return null;
-/*      */     }
-/* 2370 */     make_at(paramT.pos());
-/* 2371 */     JCTree jCTree = super.translate((JCTree)paramT);
-/* 2372 */     if (this.endPosTable != null && jCTree != paramT) {
-/* 2373 */       this.endPosTable.replaceTree((JCTree)paramT, jCTree);
-/*      */     }
-/* 2375 */     return (T)jCTree;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public <T extends JCTree> T translate(T paramT, Type paramType) {
-/* 2382 */     return (paramT == null) ? null : boxIfNeeded(translate(paramT), paramType);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public <T extends JCTree> T translate(T paramT, JCTree.JCExpression paramJCExpression) {
-/* 2388 */     JCTree.JCExpression jCExpression = this.enclOp;
-/* 2389 */     this.enclOp = paramJCExpression;
-/* 2390 */     T t = (T)translate((Object)paramT);
-/* 2391 */     this.enclOp = jCExpression;
-/* 2392 */     return t;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public <T extends JCTree> List<T> translate(List<T> paramList, JCTree.JCExpression paramJCExpression) {
-/* 2398 */     JCTree.JCExpression jCExpression = this.enclOp;
-/* 2399 */     this.enclOp = paramJCExpression;
-/* 2400 */     List<T> list = translate(paramList);
-/* 2401 */     this.enclOp = jCExpression;
-/* 2402 */     return list;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public <T extends JCTree> List<T> translate(List<T> paramList, Type paramType) {
-/* 2408 */     if (paramList == null) return null;
-/* 2409 */     for (List<T> list = paramList; list.nonEmpty(); list = list.tail)
-/* 2410 */       list.head = translate((JCTree)list.head, paramType);
-/* 2411 */     return paramList;
-/*      */   }
-/*      */
-/*      */   public void visitTopLevel(JCTree.JCCompilationUnit paramJCCompilationUnit) {
-/* 2415 */     if (needPackageInfoClass(paramJCCompilationUnit)) {
-/* 2416 */       Name name = this.names.package_info;
-/* 2417 */       long l = 1536L;
-/* 2418 */       if (this.target.isPackageInfoSynthetic())
-/*      */       {
-/* 2420 */         l |= 0x1000L;
-/*      */       }
-/* 2422 */       JCTree.JCClassDecl jCClassDecl = this.make.ClassDef(this.make.Modifiers(l, paramJCCompilationUnit.packageAnnotations), name,
-/*      */
-/* 2424 */           List.nil(), null,
-/* 2425 */           List.nil(), List.nil());
-/* 2426 */       Symbol.ClassSymbol classSymbol = paramJCCompilationUnit.packge.package_info;
-/* 2427 */       classSymbol.flags_field |= l;
-/* 2428 */       classSymbol.setAttributes((Symbol)paramJCCompilationUnit.packge);
-/* 2429 */       Type.ClassType classType = (Type.ClassType)classSymbol.type;
-/* 2430 */       classType.supertype_field = this.syms.objectType;
-/* 2431 */       classType.interfaces_field = List.nil();
-/* 2432 */       jCClassDecl.sym = classSymbol;
-/*      */
-/* 2434 */       this.translated.append(jCClassDecl);
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private boolean needPackageInfoClass(JCTree.JCCompilationUnit paramJCCompilationUnit) {
-/* 2439 */     switch (this.pkginfoOpt) {
-/*      */       case ALWAYS:
-/* 2441 */         return true;
-/*      */       case LEGACY:
-/* 2443 */         return paramJCCompilationUnit.packageAnnotations.nonEmpty();
-/*      */
-/*      */       case NONEMPTY:
-/* 2446 */         for (Attribute.Compound compound : paramJCCompilationUnit.packge.getDeclarationAttributes()) {
-/* 2447 */           Attribute.RetentionPolicy retentionPolicy = this.types.getRetention(compound);
-/* 2448 */           if (retentionPolicy != Attribute.RetentionPolicy.SOURCE)
-/* 2449 */             return true;
-/*      */         }
-/* 2451 */         return false;
-/*      */     }
-/* 2453 */     throw new AssertionError();
-/*      */   }
-/*      */
-/*      */   public void visitClassDef(JCTree.JCClassDecl paramJCClassDecl) {
-/* 2457 */     Env<AttrContext> env = this.attrEnv;
-/* 2458 */     Symbol.ClassSymbol classSymbol = this.currentClass;
-/* 2459 */     Symbol.MethodSymbol methodSymbol = this.currentMethodSym;
-/*      */
-/* 2461 */     this.currentClass = paramJCClassDecl.sym;
-/* 2462 */     this.currentMethodSym = null;
-/* 2463 */     this.attrEnv = this.typeEnvs.remove((Symbol.TypeSymbol)this.currentClass);
-/* 2464 */     if (this.attrEnv == null) {
-/* 2465 */       this.attrEnv = env;
-/*      */     }
-/* 2467 */     this.classdefs.put(this.currentClass, paramJCClassDecl);
-/*      */
-/* 2469 */     this.proxies = this.proxies.dup((Symbol)this.currentClass);
-/* 2470 */     List<Symbol.VarSymbol> list = this.outerThisStack;
-/*      */
-/*      */
-/* 2473 */     if ((paramJCClassDecl.mods.flags & 0x4000L) != 0L && (
-/* 2474 */       (this.types.supertype(this.currentClass.type)).tsym.flags() & 0x4000L) == 0L) {
-/* 2475 */       visitEnumDef(paramJCClassDecl);
-/*      */     }
-/*      */
-/*      */
-/* 2479 */     JCTree.JCVariableDecl jCVariableDecl = null;
-/* 2480 */     if (this.currentClass.hasOuterInstance()) {
-/* 2481 */       jCVariableDecl = outerThisDef(paramJCClassDecl.pos, this.currentClass);
-/*      */     }
-/*      */
-/* 2484 */     List<JCTree.JCVariableDecl> list1 = freevarDefs(paramJCClassDecl.pos,
-/* 2485 */         freevars(this.currentClass), (Symbol)this.currentClass);
-/*      */
-/*      */
-/* 2488 */     paramJCClassDecl.extending = translate(paramJCClassDecl.extending);
-/* 2489 */     paramJCClassDecl.implementing = translate(paramJCClassDecl.implementing);
-/*      */
-/* 2491 */     if (this.currentClass.isLocal()) {
-/* 2492 */       Symbol.ClassSymbol classSymbol1 = this.currentClass.owner.enclClass();
-/* 2493 */       if (classSymbol1.trans_local == null) {
-/* 2494 */         classSymbol1.trans_local = List.nil();
-/*      */       }
-/* 2496 */       classSymbol1.trans_local = classSymbol1.trans_local.prepend(this.currentClass);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2502 */     List list2 = List.nil();
-/* 2503 */     while (paramJCClassDecl.defs != list2) {
-/* 2504 */       List list4 = paramJCClassDecl.defs;
-/* 2505 */       for (List list5 = list4; list5.nonEmpty() && list5 != list2; list5 = list5.tail) {
-/* 2506 */         JCTree jCTree = this.outermostMemberDef;
-/* 2507 */         if (jCTree == null) this.outermostMemberDef = (JCTree)list5.head;
-/* 2508 */         list5.head = translate((JCTree)list5.head);
-/* 2509 */         this.outermostMemberDef = jCTree;
-/*      */       }
-/* 2511 */       list2 = list4;
-/*      */     }
-/*      */
-/*      */
-/* 2515 */     if ((paramJCClassDecl.mods.flags & 0x4L) != 0L) paramJCClassDecl.mods.flags |= 0x1L;
-/* 2516 */     paramJCClassDecl.mods.flags &= 0x7E11L;
-/*      */
-/*      */
-/* 2519 */     paramJCClassDecl.name = Convert.shortName(this.currentClass.flatName());
-/*      */
-/*      */
-/*      */
-/* 2523 */     for (List<JCTree.JCVariableDecl> list3 = list1; list3.nonEmpty(); list3 = list3.tail) {
-/* 2524 */       paramJCClassDecl.defs = paramJCClassDecl.defs.prepend(list3.head);
-/* 2525 */       enterSynthetic(paramJCClassDecl.pos(), (Symbol)((JCTree.JCVariableDecl)list3.head).sym, this.currentClass.members());
-/*      */     }
-/* 2527 */     if (this.currentClass.hasOuterInstance()) {
-/* 2528 */       paramJCClassDecl.defs = paramJCClassDecl.defs.prepend(jCVariableDecl);
-/* 2529 */       enterSynthetic(paramJCClassDecl.pos(), (Symbol)jCVariableDecl.sym, this.currentClass.members());
-/*      */     }
-/*      */
-/* 2532 */     this.proxies = this.proxies.leave();
-/* 2533 */     this.outerThisStack = list;
-/*      */
-/*      */
-/* 2536 */     this.translated.append(paramJCClassDecl);
-/*      */
-/* 2538 */     this.attrEnv = env;
-/* 2539 */     this.currentClass = classSymbol;
-/* 2540 */     this.currentMethodSym = methodSymbol;
-/*      */
-/*      */
-/* 2543 */     this.result = (JCTree)make_at(paramJCClassDecl.pos()).Block(4096L, List.nil());
-/*      */   }
-/*      */
-/*      */   private void visitEnumDef(JCTree.JCClassDecl paramJCClassDecl) {
-/*      */     List list2;
-/* 2548 */     make_at(paramJCClassDecl.pos());
-/*      */
-/*      */
-/* 2551 */     if (paramJCClassDecl.extending == null) {
-/* 2552 */       paramJCClassDecl.extending = this.make.Type(this.types.supertype(paramJCClassDecl.type));
-/*      */     }
-/*      */
-/*      */
-/*      */
-/* 2557 */     JCTree.JCExpression jCExpression = classOfType(paramJCClassDecl.sym.type, paramJCClassDecl.pos()).setType(this.types.erasure(this.syms.classType));
-/*      */
-/*      */
-/* 2560 */     byte b = 0;
-/* 2561 */     ListBuffer listBuffer1 = new ListBuffer();
-/* 2562 */     ListBuffer listBuffer2 = new ListBuffer();
-/* 2563 */     ListBuffer listBuffer3 = new ListBuffer();
-/* 2564 */     List list1 = paramJCClassDecl.defs;
-/* 2565 */     for (; list1.nonEmpty();
-/* 2566 */       list1 = list1.tail) {
-/* 2567 */       if (((JCTree)list1.head).hasTag(JCTree.Tag.VARDEF) && (((JCTree.JCVariableDecl)list1.head).mods.flags & 0x4000L) != 0L) {
-/* 2568 */         JCTree.JCVariableDecl jCVariableDecl = (JCTree.JCVariableDecl)list1.head;
-/* 2569 */         visitEnumConstantDef(jCVariableDecl, b++);
-/* 2570 */         listBuffer1.append(this.make.QualIdent((Symbol)jCVariableDecl.sym));
-/* 2571 */         listBuffer2.append(jCVariableDecl);
-/*      */       } else {
-/* 2573 */         listBuffer3.append(list1.head);
-/*      */       }
-/*      */     }
-/*      */
-/*      */
-/* 2578 */     Name name = this.names.fromString(this.target.syntheticNameChar() + "VALUES");
-/* 2579 */     while ((paramJCClassDecl.sym.members().lookup(name)).scope != null)
-/* 2580 */       name = this.names.fromString(name + "" + this.target.syntheticNameChar());
-/* 2581 */     Type.ArrayType arrayType = new Type.ArrayType(this.types.erasure(paramJCClassDecl.type), (Symbol.TypeSymbol)this.syms.arrayClass);
-/* 2582 */     Symbol.VarSymbol varSymbol1 = new Symbol.VarSymbol(4122L, name, (Type)arrayType, (Symbol)paramJCClassDecl.type.tsym);
-/*      */
-/*      */
-/*      */
-/* 2586 */     JCTree.JCNewArray jCNewArray = this.make.NewArray(this.make.Type(this.types.erasure(paramJCClassDecl.type)),
-/* 2587 */         List.nil(), listBuffer1
-/* 2588 */         .toList());
-/* 2589 */     jCNewArray.type = (Type)arrayType;
-/* 2590 */     listBuffer2.append(this.make.VarDef(varSymbol1, (JCTree.JCExpression)jCNewArray));
-/* 2591 */     paramJCClassDecl.sym.members().enter((Symbol)varSymbol1);
-/*      */
-/* 2593 */     Symbol.MethodSymbol methodSymbol1 = lookupMethod(paramJCClassDecl.pos(), this.names.values, paramJCClassDecl.type,
-/* 2594 */         List.nil());
-/*      */
-/* 2596 */     if (useClone()) {
-/*      */
-/*      */
-/* 2599 */       JCTree.JCTypeCast jCTypeCast = this.make.TypeCast(((Symbol)methodSymbol1).type.getReturnType(), (JCTree.JCExpression)this.make
-/* 2600 */           .App(this.make.Select((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol1), (Symbol)this.syms.arrayCloneMethod)));
-/*      */
-/* 2602 */       list2 = List.of(this.make.Return((JCTree.JCExpression)jCTypeCast));
-/*      */     } else {
-/*      */
-/* 2605 */       Name name1 = this.names.fromString(this.target.syntheticNameChar() + "result");
-/* 2606 */       while ((paramJCClassDecl.sym.members().lookup(name1)).scope != null)
-/* 2607 */         name1 = this.names.fromString(name1 + "" + this.target.syntheticNameChar());
-/* 2608 */       Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(4112L, name1, (Type)arrayType, (Symbol)methodSymbol1);
-/*      */
-/*      */
-/*      */
-/* 2612 */       JCTree.JCNewArray jCNewArray1 = this.make.NewArray(this.make.Type(this.types.erasure(paramJCClassDecl.type)),
-/* 2613 */           List.of(this.make.Select((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol1), (Symbol)this.syms.lengthVar)), null);
-/*      */
-/* 2615 */       jCNewArray1.type = (Type)arrayType;
-/* 2616 */       JCTree.JCVariableDecl jCVariableDecl = this.make.VarDef(varSymbol, (JCTree.JCExpression)jCNewArray1);
-/*      */
-/*      */
-/* 2619 */       if (this.systemArraycopyMethod == null) {
-/* 2620 */         this
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2629 */           .systemArraycopyMethod = new Symbol.MethodSymbol(9L, this.names.fromString("arraycopy"), (Type)new Type.MethodType(List.of(this.syms.objectType, this.syms.intType, this.syms.objectType, (Object[])new Type[] { (Type)this.syms.intType, (Type)this.syms.intType }), (Type)this.syms.voidType, List.nil(), (Symbol.TypeSymbol)this.syms.methodClass), (Symbol)this.syms.systemType.tsym);
-/*      */       }
-/*      */
-/*      */
-/*      */
-/* 2634 */       JCTree.JCExpressionStatement jCExpressionStatement = this.make.Exec((JCTree.JCExpression)this.make.App(this.make.Select((JCTree.JCExpression)this.make.Ident((Symbol)this.syms.systemType.tsym), (Symbol)this.systemArraycopyMethod),
-/*      */
-/* 2636 */             List.of(this.make.Ident((Symbol)varSymbol1), this.make.Literal(Integer.valueOf(0)), this.make
-/* 2637 */               .Ident((Symbol)varSymbol), (Object[])new JCTree.JCExpression[] { (JCTree.JCExpression)this.make.Literal(Integer.valueOf(0)), this.make
-/* 2638 */                 .Select((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol1), (Symbol)this.syms.lengthVar) })));
-/*      */
-/*      */
-/* 2641 */       JCTree.JCReturn jCReturn1 = this.make.Return((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol));
-/* 2642 */       list2 = List.of(jCVariableDecl, jCExpressionStatement, jCReturn1);
-/*      */     }
-/*      */
-/*      */
-/* 2646 */     JCTree.JCMethodDecl jCMethodDecl1 = this.make.MethodDef(methodSymbol1, this.make.Block(0L, list2));
-/*      */
-/* 2648 */     listBuffer2.append(jCMethodDecl1);
-/*      */
-/* 2650 */     if (this.debugLower) {
-/* 2651 */       System.err.println(paramJCClassDecl.sym + ".valuesDef = " + jCMethodDecl1);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2661 */     Symbol.MethodSymbol methodSymbol2 = lookupMethod(paramJCClassDecl.pos(), this.names.valueOf, paramJCClassDecl.sym.type,
-/*      */
-/*      */
-/* 2664 */         List.of(this.syms.stringType));
-/* 2665 */     Assert.check(((methodSymbol2.flags() & 0x8L) != 0L));
-/* 2666 */     Symbol.VarSymbol varSymbol2 = (Symbol.VarSymbol)methodSymbol2.params.head;
-/* 2667 */     JCTree.JCIdent jCIdent = this.make.Ident((Symbol)varSymbol2);
-/*      */
-/* 2669 */     JCTree.JCReturn jCReturn = this.make.Return((JCTree.JCExpression)this.make.TypeCast(paramJCClassDecl.sym.type, (JCTree.JCExpression)
-/* 2670 */           makeCall((JCTree.JCExpression)this.make.Ident((Symbol)this.syms.enumSym), this.names.valueOf,
-/*      */
-/* 2672 */             List.of(jCExpression, jCIdent))));
-/* 2673 */     JCTree.JCMethodDecl jCMethodDecl2 = this.make.MethodDef(methodSymbol2, this.make
-/* 2674 */         .Block(0L, List.of(jCReturn)));
-/* 2675 */     jCIdent.sym = (Symbol)((JCTree.JCVariableDecl)jCMethodDecl2.params.head).sym;
-/* 2676 */     if (this.debugLower)
-/* 2677 */       System.err.println(paramJCClassDecl.sym + ".valueOf = " + jCMethodDecl2);
-/* 2678 */     listBuffer2.append(jCMethodDecl2);
-/*      */
-/* 2680 */     listBuffer2.appendList(listBuffer3.toList());
-/* 2681 */     paramJCClassDecl.defs = listBuffer2.toList();
-/*      */   }
-/*      */
-/*      */
-/*      */   private boolean useClone() {
-/*      */     try {
-/* 2687 */       Scope.Entry entry = this.syms.objectType.tsym.members().lookup(this.names.clone);
-/* 2688 */       return (entry.sym != null);
-/*      */     }
-/* 2690 */     catch (Symbol.CompletionFailure completionFailure) {
-/* 2691 */       return false;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */   private void visitEnumConstantDef(JCTree.JCVariableDecl paramJCVariableDecl, int paramInt) {
-/* 2697 */     JCTree.JCNewClass jCNewClass = (JCTree.JCNewClass)paramJCVariableDecl.init;
-/* 2698 */     jCNewClass
-/*      */
-/* 2700 */       .args = jCNewClass.args.prepend(makeLit((Type)this.syms.intType, Integer.valueOf(paramInt))).prepend(makeLit(this.syms.stringType, paramJCVariableDecl.name.toString()));
-/*      */   }
-/*      */
-/*      */   public void visitMethodDef(JCTree.JCMethodDecl paramJCMethodDecl) {
-/* 2704 */     if (paramJCMethodDecl.name == this.names.init && (this.currentClass.flags_field & 0x4000L) != 0L) {
-/*      */
-/*      */
-/*      */
-/* 2708 */       JCTree.JCVariableDecl jCVariableDecl1 = make_at(paramJCMethodDecl.pos()).Param(this.names.fromString(this.target.syntheticNameChar() + "enum" + this.target
-/* 2709 */             .syntheticNameChar() + "name"), this.syms.stringType, (Symbol)paramJCMethodDecl.sym);
-/*      */
-/* 2711 */       jCVariableDecl1.mods.flags |= 0x1000L; jCVariableDecl1.sym.flags_field |= 0x1000L;
-/*      */
-/* 2713 */       JCTree.JCVariableDecl jCVariableDecl2 = this.make.Param(this.names.fromString(this.target.syntheticNameChar() + "enum" + this.target
-/* 2714 */             .syntheticNameChar() + "ordinal"), (Type)this.syms.intType, (Symbol)paramJCMethodDecl.sym);
-/*      */
-/*      */
-/* 2717 */       jCVariableDecl2.mods.flags |= 0x1000L; jCVariableDecl2.sym.flags_field |= 0x1000L;
-/*      */
-/* 2719 */       paramJCMethodDecl.params = paramJCMethodDecl.params.prepend(jCVariableDecl2).prepend(jCVariableDecl1);
-/*      */
-/* 2721 */       Symbol.MethodSymbol methodSymbol1 = paramJCMethodDecl.sym;
-/* 2722 */       methodSymbol1.extraParams = methodSymbol1.extraParams.prepend(jCVariableDecl2.sym);
-/* 2723 */       methodSymbol1.extraParams = methodSymbol1.extraParams.prepend(jCVariableDecl1.sym);
-/* 2724 */       Type type = methodSymbol1.erasure(this.types);
-/* 2725 */       methodSymbol1
-/*      */
-/*      */
-/* 2728 */         .erasure_field = (Type)new Type.MethodType(type.getParameterTypes().prepend(this.syms.intType).prepend(this.syms.stringType), type.getReturnType(), type.getThrownTypes(), (Symbol.TypeSymbol)this.syms.methodClass);
-/*      */     }
-/*      */
-/*      */
-/* 2732 */     JCTree.JCMethodDecl jCMethodDecl = this.currentMethodDef;
-/* 2733 */     Symbol.MethodSymbol methodSymbol = this.currentMethodSym;
-/*      */     try {
-/* 2735 */       this.currentMethodDef = paramJCMethodDecl;
-/* 2736 */       this.currentMethodSym = paramJCMethodDecl.sym;
-/* 2737 */       visitMethodDefInternal(paramJCMethodDecl);
-/*      */     } finally {
-/* 2739 */       this.currentMethodDef = jCMethodDecl;
-/* 2740 */       this.currentMethodSym = methodSymbol;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private void visitMethodDefInternal(JCTree.JCMethodDecl paramJCMethodDecl) {
-/* 2745 */     if (paramJCMethodDecl.name == this.names.init && (this.currentClass
-/* 2746 */       .isInner() || this.currentClass.isLocal())) {
-/*      */
-/* 2748 */       Symbol.MethodSymbol methodSymbol = paramJCMethodDecl.sym;
-/*      */
-/*      */
-/*      */
-/* 2752 */       this.proxies = this.proxies.dup((Symbol)methodSymbol);
-/* 2753 */       List<Symbol.VarSymbol> list1 = this.outerThisStack;
-/* 2754 */       List<Symbol.VarSymbol> list2 = freevars(this.currentClass);
-/* 2755 */       JCTree.JCVariableDecl jCVariableDecl = null;
-/* 2756 */       if (this.currentClass.hasOuterInstance())
-/* 2757 */         jCVariableDecl = outerThisDef(paramJCMethodDecl.pos, methodSymbol);
-/* 2758 */       List<JCTree.JCVariableDecl> list = freevarDefs(paramJCMethodDecl.pos, list2, (Symbol)methodSymbol, 8589934592L);
-/*      */
-/*      */
-/* 2761 */       paramJCMethodDecl.restype = translate(paramJCMethodDecl.restype);
-/* 2762 */       paramJCMethodDecl.params = translateVarDefs(paramJCMethodDecl.params);
-/* 2763 */       paramJCMethodDecl.thrown = translate(paramJCMethodDecl.thrown);
-/*      */
-/*      */
-/* 2766 */       if (paramJCMethodDecl.body == null) {
-/* 2767 */         this.result = (JCTree)paramJCMethodDecl;
-/*      */
-/*      */
-/*      */         return;
-/*      */       }
-/*      */
-/* 2773 */       paramJCMethodDecl.params = paramJCMethodDecl.params.appendList(list);
-/* 2774 */       if (this.currentClass.hasOuterInstance()) {
-/* 2775 */         paramJCMethodDecl.params = paramJCMethodDecl.params.prepend(jCVariableDecl);
-/*      */       }
-/*      */
-/*      */
-/*      */
-/* 2780 */       JCTree.JCStatement jCStatement = (JCTree.JCStatement)translate(paramJCMethodDecl.body.stats.head);
-/*      */
-/* 2782 */       List list3 = List.nil();
-/* 2783 */       if (list2.nonEmpty()) {
-/* 2784 */         List list5 = List.nil();
-/* 2785 */         for (List<Symbol.VarSymbol> list6 = list2; list6.nonEmpty(); list6 = list6.tail) {
-/* 2786 */           if (TreeInfo.isInitialConstructor((JCTree)paramJCMethodDecl)) {
-/* 2787 */             Name name = proxyName(((Symbol.VarSymbol)list6.head).name);
-/* 2788 */             methodSymbol
-/* 2789 */               .capturedLocals = methodSymbol.capturedLocals.append(
-/* 2790 */                 (this.proxies.lookup(name)).sym);
-/* 2791 */             list3 = list3.prepend(
-/* 2792 */                 initField(paramJCMethodDecl.body.pos, name));
-/*      */           }
-/* 2794 */           list5 = list5.prepend(((Symbol.VarSymbol)list6.head).erasure(this.types));
-/*      */         }
-/* 2796 */         Type type = methodSymbol.erasure(this.types);
-/* 2797 */         methodSymbol
-/*      */
-/*      */
-/* 2800 */           .erasure_field = (Type)new Type.MethodType(type.getParameterTypes().appendList(list5), type.getReturnType(), type.getThrownTypes(), (Symbol.TypeSymbol)this.syms.methodClass);
-/*      */       }
-/*      */
-/* 2803 */       if (this.currentClass.hasOuterInstance() &&
-/* 2804 */         TreeInfo.isInitialConstructor((JCTree)paramJCMethodDecl))
-/*      */       {
-/* 2806 */         list3 = list3.prepend(initOuterThis(paramJCMethodDecl.body.pos));
-/*      */       }
-/*      */
-/*      */
-/* 2810 */       this.proxies = this.proxies.leave();
-/*      */
-/*      */
-/*      */
-/* 2814 */       List list4 = translate(paramJCMethodDecl.body.stats.tail);
-/* 2815 */       if (this.target.initializeFieldsBeforeSuper()) {
-/* 2816 */         paramJCMethodDecl.body.stats = list4.prepend(jCStatement).prependList(list3);
-/*      */       } else {
-/* 2818 */         paramJCMethodDecl.body.stats = list4.prependList(list3).prepend(jCStatement);
-/*      */       }
-/* 2820 */       this.outerThisStack = list1;
-/*      */     } else {
-/* 2822 */       Map<Symbol, Symbol> map = this.lambdaTranslationMap;
-/*      */
-/*      */       try {
-/* 2825 */         this
-/*      */
-/* 2827 */           .lambdaTranslationMap = ((paramJCMethodDecl.sym.flags() & 0x1000L) != 0L && paramJCMethodDecl.sym.name.startsWith(this.names.lambda)) ? makeTranslationMap(paramJCMethodDecl) : null;
-/* 2828 */         super.visitMethodDef(paramJCMethodDecl);
-/*      */       } finally {
-/* 2830 */         this.lambdaTranslationMap = map;
-/*      */       }
-/*      */     }
-/* 2833 */     this.result = (JCTree)paramJCMethodDecl;
-/*      */   }
-/*      */
-/*      */   private Map<Symbol, Symbol> makeTranslationMap(JCTree.JCMethodDecl paramJCMethodDecl) {
-/* 2837 */     HashMap<Object, Object> hashMap = new HashMap<>();
-/* 2838 */     for (JCTree.JCVariableDecl jCVariableDecl : paramJCMethodDecl.params) {
-/* 2839 */       Symbol.VarSymbol varSymbol = jCVariableDecl.sym;
-/* 2840 */       if (varSymbol != varSymbol.baseSymbol()) {
-/* 2841 */         hashMap.put(varSymbol.baseSymbol(), varSymbol);
-/*      */       }
-/*      */     }
-/* 2844 */     return (Map)hashMap;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void visitAnnotatedType(JCTree.JCAnnotatedType paramJCAnnotatedType) {
-/* 2850 */     paramJCAnnotatedType.annotations = List.nil();
-/* 2851 */     paramJCAnnotatedType.underlyingType = translate(paramJCAnnotatedType.underlyingType);
-/*      */
-/* 2853 */     if (paramJCAnnotatedType.type.isAnnotated()) {
-/* 2854 */       paramJCAnnotatedType.type = paramJCAnnotatedType.underlyingType.type.unannotatedType().annotatedType(paramJCAnnotatedType.type.getAnnotationMirrors());
-/* 2855 */     } else if (paramJCAnnotatedType.underlyingType.type.isAnnotated()) {
-/* 2856 */       paramJCAnnotatedType.type = paramJCAnnotatedType.underlyingType.type;
-/*      */     }
-/* 2858 */     this.result = (JCTree)paramJCAnnotatedType;
-/*      */   }
-/*      */
-/*      */   public void visitTypeCast(JCTree.JCTypeCast paramJCTypeCast) {
-/* 2862 */     paramJCTypeCast.clazz = translate(paramJCTypeCast.clazz);
-/* 2863 */     if (paramJCTypeCast.type.isPrimitive() != paramJCTypeCast.expr.type.isPrimitive()) {
-/* 2864 */       paramJCTypeCast.expr = translate(paramJCTypeCast.expr, paramJCTypeCast.type);
-/*      */     } else {
-/* 2866 */       paramJCTypeCast.expr = translate(paramJCTypeCast.expr);
-/* 2867 */     }  this.result = (JCTree)paramJCTypeCast;
-/*      */   }
-/*      */
-/*      */   public void visitNewClass(JCTree.JCNewClass paramJCNewClass) {
-/* 2871 */     Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)paramJCNewClass.constructor.owner;
-/*      */
-/*      */
-/* 2874 */     boolean bool = ((paramJCNewClass.constructor.owner.flags() & 0x4000L) != 0L) ? true : false;
-/* 2875 */     List<Type> list = paramJCNewClass.constructor.type.getParameterTypes();
-/* 2876 */     if (bool) list = list.prepend(this.syms.intType).prepend(this.syms.stringType);
-/* 2877 */     paramJCNewClass.args = boxArgs(list, paramJCNewClass.args, paramJCNewClass.varargsElement);
-/* 2878 */     paramJCNewClass.varargsElement = null;
-/*      */
-/*      */
-/*      */
-/* 2882 */     if (classSymbol.isLocal()) {
-/* 2883 */       paramJCNewClass.args = paramJCNewClass.args.appendList(loadFreevars(paramJCNewClass.pos(), freevars(classSymbol)));
-/*      */     }
-/*      */
-/*      */
-/* 2887 */     Symbol symbol = accessConstructor(paramJCNewClass.pos(), paramJCNewClass.constructor);
-/* 2888 */     if (symbol != paramJCNewClass.constructor) {
-/* 2889 */       paramJCNewClass.args = paramJCNewClass.args.append(makeNull());
-/* 2890 */       paramJCNewClass.constructor = symbol;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/* 2896 */     if (classSymbol.hasOuterInstance()) {
-/*      */       JCTree.JCExpression jCExpression;
-/* 2898 */       if (paramJCNewClass.encl != null) {
-/* 2899 */         jCExpression = this.attr.makeNullCheck(translate(paramJCNewClass.encl));
-/* 2900 */         jCExpression.type = paramJCNewClass.encl.type;
-/* 2901 */       } else if (classSymbol.isLocal()) {
-/*      */
-/* 2903 */         jCExpression = makeThis(paramJCNewClass.pos(), (classSymbol.type.getEnclosingType()).tsym);
-/*      */       } else {
-/*      */
-/* 2906 */         jCExpression = makeOwnerThis(paramJCNewClass.pos(), (Symbol)classSymbol, false);
-/*      */       }
-/* 2908 */       paramJCNewClass.args = paramJCNewClass.args.prepend(jCExpression);
-/*      */     }
-/* 2910 */     paramJCNewClass.encl = null;
-/*      */
-/*      */
-/*      */
-/* 2914 */     if (paramJCNewClass.def != null) {
-/* 2915 */       translate(paramJCNewClass.def);
-/* 2916 */       paramJCNewClass.clazz = access((JCTree.JCExpression)make_at(paramJCNewClass.clazz.pos()).Ident((Symbol)paramJCNewClass.def.sym));
-/* 2917 */       paramJCNewClass.def = null;
-/*      */     } else {
-/* 2919 */       paramJCNewClass.clazz = access((Symbol)classSymbol, paramJCNewClass.clazz, this.enclOp, false);
-/*      */     }
-/* 2921 */     this.result = (JCTree)paramJCNewClass;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void visitConditional(JCTree.JCConditional paramJCConditional) {
-/* 2937 */     JCTree.JCExpression jCExpression = paramJCConditional.cond = translate(paramJCConditional.cond, (Type)this.syms.booleanType);
-/* 2938 */     if (((JCTree)jCExpression).type.isTrue()) {
-/* 2939 */       this.result = convert((JCTree)translate(paramJCConditional.truepart, paramJCConditional.type), paramJCConditional.type);
-/* 2940 */       addPrunedInfo((JCTree)jCExpression);
-/* 2941 */     } else if (((JCTree)jCExpression).type.isFalse()) {
-/* 2942 */       this.result = convert((JCTree)translate(paramJCConditional.falsepart, paramJCConditional.type), paramJCConditional.type);
-/* 2943 */       addPrunedInfo((JCTree)jCExpression);
-/*      */     } else {
-/*      */
-/* 2946 */       paramJCConditional.truepart = translate(paramJCConditional.truepart, paramJCConditional.type);
-/* 2947 */       paramJCConditional.falsepart = translate(paramJCConditional.falsepart, paramJCConditional.type);
-/* 2948 */       this.result = (JCTree)paramJCConditional;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   private JCTree convert(JCTree paramJCTree, Type paramType) {
-/* 2953 */     if (paramJCTree.type == paramType || paramJCTree.type.hasTag(TypeTag.BOT))
-/* 2954 */       return paramJCTree;
-/* 2955 */     JCTree.JCTypeCast jCTypeCast = make_at(paramJCTree.pos()).TypeCast((JCTree)this.make.Type(paramType), (JCTree.JCExpression)paramJCTree);
-/* 2956 */     ((JCTree)jCTypeCast).type = (paramJCTree.type.constValue() != null) ? this.cfolder.coerce(paramJCTree.type, paramType) : paramType;
-/*      */
-/* 2958 */     return (JCTree)jCTypeCast;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void visitIf(JCTree.JCIf paramJCIf) {
-/* 2964 */     JCTree.JCExpression jCExpression = paramJCIf.cond = translate(paramJCIf.cond, (Type)this.syms.booleanType);
-/* 2965 */     if (((JCTree)jCExpression).type.isTrue()) {
-/* 2966 */       this.result = translate(paramJCIf.thenpart);
-/* 2967 */       addPrunedInfo((JCTree)jCExpression);
-/* 2968 */     } else if (((JCTree)jCExpression).type.isFalse()) {
-/* 2969 */       if (paramJCIf.elsepart != null) {
-/* 2970 */         this.result = translate(paramJCIf.elsepart);
-/*      */       } else {
-/* 2972 */         this.result = (JCTree)this.make.Skip();
-/*      */       }
-/* 2974 */       addPrunedInfo((JCTree)jCExpression);
-/*      */     } else {
-/*      */
-/* 2977 */       paramJCIf.thenpart = translate(paramJCIf.thenpart);
-/* 2978 */       paramJCIf.elsepart = translate(paramJCIf.elsepart);
-/* 2979 */       this.result = (JCTree)paramJCIf;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void visitAssert(JCTree.JCAssert paramJCAssert) {
-/* 2986 */     JCDiagnostic.DiagnosticPosition diagnosticPosition = (paramJCAssert.detail == null) ? paramJCAssert.pos() : paramJCAssert.detail.pos();
-/* 2987 */     paramJCAssert.cond = translate(paramJCAssert.cond, (Type)this.syms.booleanType);
-/* 2988 */     if (!paramJCAssert.cond.type.isTrue()) {
-/* 2989 */       JCTree.JCBinary jCBinary; JCTree.JCExpression jCExpression = assertFlagTest(paramJCAssert.pos());
-/*      */
-/* 2991 */       List<JCTree.JCExpression> list = (paramJCAssert.detail == null) ? List.nil() : List.of(translate(paramJCAssert.detail));
-/* 2992 */       if (!paramJCAssert.cond.type.isFalse())
-/*      */       {
-/* 2994 */         jCBinary = makeBinary(JCTree.Tag.AND, jCExpression, (JCTree.JCExpression)
-/*      */
-/* 2996 */             makeUnary(JCTree.Tag.NOT, paramJCAssert.cond));
-/*      */       }
-/* 2998 */       this
-/* 2999 */         .result = (JCTree)this.make.If((JCTree.JCExpression)jCBinary, (JCTree.JCStatement)
-/* 3000 */           make_at((JCDiagnostic.DiagnosticPosition)paramJCAssert)
-/* 3001 */           .Throw((JCTree.JCExpression)makeNewClass(this.syms.assertionErrorType, list)), null);
-/*      */     } else {
-/*      */
-/* 3004 */       this.result = (JCTree)this.make.Skip();
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public void visitApply(JCTree.JCMethodInvocation paramJCMethodInvocation) {
-/* 3009 */     Symbol symbol = TreeInfo.symbol((JCTree)paramJCMethodInvocation.meth);
-/* 3010 */     List<Type> list = symbol.type.getParameterTypes();
-/* 3011 */     if (this.allowEnums && symbol.name == this.names.init && symbol.owner == this.syms.enumSym)
-/*      */     {
-/*      */
-/* 3014 */       list = list.tail.tail; }
-/* 3015 */     paramJCMethodInvocation.args = boxArgs(list, paramJCMethodInvocation.args, paramJCMethodInvocation.varargsElement);
-/* 3016 */     paramJCMethodInvocation.varargsElement = null;
-/* 3017 */     Name name = TreeInfo.name((JCTree)paramJCMethodInvocation.meth);
-/* 3018 */     if (symbol.name == this.names.init) {
-/*      */
-/*      */
-/* 3021 */       Symbol symbol1 = accessConstructor(paramJCMethodInvocation.pos(), symbol);
-/* 3022 */       if (symbol1 != symbol) {
-/* 3023 */         paramJCMethodInvocation.args = paramJCMethodInvocation.args.append(makeNull());
-/* 3024 */         TreeInfo.setSymbol((JCTree)paramJCMethodInvocation.meth, symbol1);
-/*      */       }
-/*      */
-/*      */
-/*      */
-/* 3029 */       Symbol.ClassSymbol classSymbol = (Symbol.ClassSymbol)symbol1.owner;
-/* 3030 */       if (classSymbol.isLocal()) {
-/* 3031 */         paramJCMethodInvocation.args = paramJCMethodInvocation.args.appendList(loadFreevars(paramJCMethodInvocation.pos(), freevars(classSymbol)));
-/*      */       }
-/*      */
-/*      */
-/*      */
-/* 3036 */       if ((classSymbol.flags_field & 0x4000L) != 0L || classSymbol.getQualifiedName() == this.names.java_lang_Enum) {
-/* 3037 */         List list1 = this.currentMethodDef.params;
-/* 3038 */         if (this.currentMethodSym.owner.hasOuterInstance())
-/* 3039 */           list1 = list1.tail;
-/* 3040 */         paramJCMethodInvocation
-/*      */
-/* 3042 */           .args = paramJCMethodInvocation.args.prepend(make_at(paramJCMethodInvocation.pos()).Ident((Symbol)((JCTree.JCVariableDecl)list1.tail.head).sym)).prepend(this.make.Ident((Symbol)((JCTree.JCVariableDecl)list1.head).sym));
-/*      */       }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 3051 */       if (classSymbol.hasOuterInstance()) {
-/*      */         JCTree.JCExpression jCExpression;
-/* 3053 */         if (paramJCMethodInvocation.meth.hasTag(JCTree.Tag.SELECT)) {
-/*      */
-/* 3055 */           jCExpression = this.attr.makeNullCheck(translate(((JCTree.JCFieldAccess)paramJCMethodInvocation.meth).selected));
-/* 3056 */           paramJCMethodInvocation.meth = (JCTree.JCExpression)this.make.Ident(symbol1);
-/* 3057 */           ((JCTree.JCIdent)paramJCMethodInvocation.meth).name = name;
-/* 3058 */         } else if (classSymbol.isLocal() || name == this.names._this) {
-/*      */
-/* 3060 */           jCExpression = makeThis(paramJCMethodInvocation.meth.pos(), (classSymbol.type.getEnclosingType()).tsym);
-/*      */         } else {
-/*      */
-/* 3063 */           jCExpression = makeOwnerThisN(paramJCMethodInvocation.meth.pos(), (Symbol)classSymbol, false);
-/*      */         }
-/* 3065 */         paramJCMethodInvocation.args = paramJCMethodInvocation.args.prepend(jCExpression);
-/*      */       }
-/*      */     } else {
-/*      */
-/* 3069 */       paramJCMethodInvocation.meth = translate(paramJCMethodInvocation.meth);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 3074 */       if (paramJCMethodInvocation.meth.hasTag(JCTree.Tag.APPLY)) {
-/* 3075 */         JCTree.JCMethodInvocation jCMethodInvocation = (JCTree.JCMethodInvocation)paramJCMethodInvocation.meth;
-/* 3076 */         jCMethodInvocation.args = paramJCMethodInvocation.args.prependList(jCMethodInvocation.args);
-/* 3077 */         this.result = (JCTree)jCMethodInvocation;
-/*      */         return;
-/*      */       }
-/*      */     }
-/* 3081 */     this.result = (JCTree)paramJCMethodInvocation;
-/*      */   }
-/*      */
-/*      */   List<JCTree.JCExpression> boxArgs(List<Type> paramList, List<JCTree.JCExpression> paramList1, Type paramType) {
-/* 3085 */     List<JCTree.JCExpression> list = paramList1;
-/* 3086 */     if (paramList.isEmpty()) return list;
-/* 3087 */     int i = 0;
-/* 3088 */     ListBuffer listBuffer = new ListBuffer();
-/* 3089 */     while (paramList.tail.nonEmpty()) {
-/* 3090 */       JCTree.JCExpression jCExpression = (JCTree.JCExpression)translate(list.head, (Type)paramList.head);
-/* 3091 */       i |= (jCExpression != list.head) ? 1 : 0;
-/* 3092 */       listBuffer.append(jCExpression);
-/* 3093 */       list = list.tail;
-/* 3094 */       paramList = paramList.tail;
-/*      */     }
-/* 3096 */     Type type = (Type)paramList.head;
-/* 3097 */     if (paramType != null) {
-/* 3098 */       i = 1;
-/* 3099 */       ListBuffer listBuffer1 = new ListBuffer();
-/* 3100 */       while (list.nonEmpty()) {
-/* 3101 */         JCTree.JCExpression jCExpression = (JCTree.JCExpression)translate(list.head, paramType);
-/* 3102 */         listBuffer1.append(jCExpression);
-/* 3103 */         list = list.tail;
-/*      */       }
-/* 3105 */       JCTree.JCNewArray jCNewArray = this.make.NewArray(this.make.Type(paramType),
-/* 3106 */           List.nil(), listBuffer1
-/* 3107 */           .toList());
-/* 3108 */       jCNewArray.type = (Type)new Type.ArrayType(paramType, (Symbol.TypeSymbol)this.syms.arrayClass);
-/* 3109 */       listBuffer.append(jCNewArray);
-/*      */     } else {
-/* 3111 */       if (list.length() != 1) throw new AssertionError(list);
-/* 3112 */       JCTree.JCExpression jCExpression = (JCTree.JCExpression)translate(list.head, type);
-/* 3113 */       i |= (jCExpression != list.head) ? 1 : 0;
-/* 3114 */       listBuffer.append(jCExpression);
-/* 3115 */       if (i == 0) return paramList1;
-/*      */     }
-/* 3117 */     return listBuffer.toList();
-/*      */   }
-/*      */
-/*      */
-/*      */   <T extends JCTree> T boxIfNeeded(T paramT, Type paramType) {
-/*      */     JCTree.JCExpression jCExpression;
-/* 3123 */     boolean bool = ((JCTree)paramT).type.isPrimitive();
-/* 3124 */     if (bool == paramType.isPrimitive())
-/* 3125 */       return paramT;
-/* 3126 */     if (bool) {
-/* 3127 */       Type type = this.types.unboxedType(paramType);
-/* 3128 */       if (!type.hasTag(TypeTag.NONE)) {
-/* 3129 */         if (!this.types.isSubtype(((JCTree)paramT).type, type))
-/* 3130 */           ((JCTree)paramT).type = type.constType(((JCTree)paramT).type.constValue());
-/* 3131 */         return (T)boxPrimitive((JCTree.JCExpression)paramT, paramType);
-/*      */       }
-/* 3133 */       jCExpression = boxPrimitive((JCTree.JCExpression)paramT);
-/*      */     } else {
-/*      */
-/* 3136 */       jCExpression = unbox(jCExpression, paramType);
-/*      */     }
-/* 3138 */     return (T)jCExpression;
-/*      */   }
-/*      */
-/*      */
-/*      */   JCTree.JCExpression boxPrimitive(JCTree.JCExpression paramJCExpression) {
-/* 3143 */     return boxPrimitive(paramJCExpression, (this.types.boxedClass(paramJCExpression.type)).type);
-/*      */   }
-/*      */
-/*      */
-/*      */   JCTree.JCExpression boxPrimitive(JCTree.JCExpression paramJCExpression, Type paramType) {
-/* 3148 */     make_at(paramJCExpression.pos());
-/* 3149 */     if (this.target.boxWithConstructors()) {
-/* 3150 */       Symbol.MethodSymbol methodSymbol1 = lookupConstructor(paramJCExpression.pos(), paramType,
-/*      */
-/* 3152 */           List.nil()
-/* 3153 */           .prepend(paramJCExpression.type));
-/* 3154 */       return this.make.Create((Symbol)methodSymbol1, List.of(paramJCExpression));
-/*      */     }
-/* 3156 */     Symbol.MethodSymbol methodSymbol = lookupMethod(paramJCExpression.pos(), this.names.valueOf, paramType,
-/*      */
-/*      */
-/* 3159 */         List.nil()
-/* 3160 */         .prepend(paramJCExpression.type));
-/* 3161 */     return (JCTree.JCExpression)this.make.App(this.make.QualIdent((Symbol)methodSymbol), List.of(paramJCExpression));
-/*      */   }
-/*      */
-/*      */
-/*      */   JCTree.JCExpression unbox(JCTree.JCExpression paramJCExpression, Type paramType) {
-/*      */     JCTree.JCTypeCast jCTypeCast;
-/* 3167 */     Type type = this.types.unboxedType(paramJCExpression.type);
-/* 3168 */     if (type.hasTag(TypeTag.NONE)) {
-/* 3169 */       type = paramType;
-/* 3170 */       if (!type.isPrimitive())
-/* 3171 */         throw new AssertionError(type);
-/* 3172 */       make_at(paramJCExpression.pos());
-/* 3173 */       jCTypeCast = this.make.TypeCast((this.types.boxedClass(type)).type, paramJCExpression);
-/*      */
-/*      */     }
-/* 3176 */     else if (!this.types.isSubtype(type, paramType)) {
-/* 3177 */       throw new AssertionError(jCTypeCast);
-/*      */     }
-/* 3179 */     make_at(jCTypeCast.pos());
-/* 3180 */     Symbol.MethodSymbol methodSymbol = lookupMethod(jCTypeCast.pos(), type.tsym.name
-/* 3181 */         .append(this.names.Value), ((JCTree.JCExpression)jCTypeCast).type,
-/*      */
-/* 3183 */         List.nil());
-/* 3184 */     return (JCTree.JCExpression)this.make.App(this.make.Select((JCTree.JCExpression)jCTypeCast, (Symbol)methodSymbol));
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void visitParens(JCTree.JCParens paramJCParens) {
-/* 3191 */     JCTree.JCExpression jCExpression = (JCTree.JCExpression)translate(paramJCParens.expr);
-/* 3192 */     this.result = (jCExpression == paramJCParens.expr) ? (JCTree)paramJCParens : (JCTree)jCExpression;
-/*      */   }
-/*      */
-/*      */   public void visitIndexed(JCTree.JCArrayAccess paramJCArrayAccess) {
-/* 3196 */     paramJCArrayAccess.indexed = translate(paramJCArrayAccess.indexed);
-/* 3197 */     paramJCArrayAccess.index = translate(paramJCArrayAccess.index, (Type)this.syms.intType);
-/* 3198 */     this.result = (JCTree)paramJCArrayAccess;
-/*      */   }
-/*      */
-/*      */   public void visitAssign(JCTree.JCAssign paramJCAssign) {
-/* 3202 */     paramJCAssign.lhs = translate(paramJCAssign.lhs, (JCTree.JCExpression)paramJCAssign);
-/* 3203 */     paramJCAssign.rhs = translate(paramJCAssign.rhs, paramJCAssign.lhs.type);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 3208 */     if (paramJCAssign.lhs.hasTag(JCTree.Tag.APPLY)) {
-/* 3209 */       JCTree.JCMethodInvocation jCMethodInvocation = (JCTree.JCMethodInvocation)paramJCAssign.lhs;
-/* 3210 */       jCMethodInvocation.args = List.of(paramJCAssign.rhs).prependList(jCMethodInvocation.args);
-/* 3211 */       this.result = (JCTree)jCMethodInvocation;
-/*      */     } else {
-/* 3213 */       this.result = (JCTree)paramJCAssign;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public void visitAssignop(final JCTree.JCAssignOp tree) {
-/* 3218 */     JCTree.JCExpression jCExpression = access(TreeInfo.skipParens(tree.lhs));
-/*      */
-/* 3220 */     final boolean boxingReq = (!tree.lhs.type.isPrimitive() && tree.operator.type.getReturnType().isPrimitive()) ? true : false;
-/*      */
-/* 3222 */     if (bool || jCExpression.hasTag(JCTree.Tag.APPLY)) {
-/*      */
-/*      */
-/*      */
-/* 3226 */       JCTree jCTree = abstractLval((JCTree)tree.lhs, new TreeBuilder() { public JCTree build(JCTree param1JCTree) {
-/*      */               JCTree.JCTypeCast jCTypeCast;
-/* 3228 */               JCTree.Tag tag = tree.getTag().noAssignOp();
-/*      */
-/*      */
-/*      */
-/*      */
-/* 3233 */               Symbol symbol = Lower.this.rs.resolveBinaryOperator(tree.pos(), tag, Lower.this.attrEnv, tree.type, tree.rhs.type);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 3238 */               JCTree.JCExpression jCExpression1 = (JCTree.JCExpression)param1JCTree;
-/* 3239 */               if (jCExpression1.type != tree.type)
-/* 3240 */                 jCTypeCast = Lower.this.make.TypeCast(tree.type, jCExpression1);
-/* 3241 */               JCTree.JCBinary jCBinary = Lower.this.make.Binary(tag, (JCTree.JCExpression)jCTypeCast, tree.rhs);
-/* 3242 */               jCBinary.operator = symbol;
-/* 3243 */               jCBinary.type = symbol.type.getReturnType();
-/*      */
-/* 3245 */               JCTree.JCExpression jCExpression2 = (JCTree.JCExpression)(boxingReq ? Lower.this.make.TypeCast(Lower.this.types.unboxedType(tree.type), (JCTree.JCExpression)jCBinary) : jCBinary);
-/*      */
-/* 3247 */               return (JCTree)Lower.this.make.Assign((JCTree.JCExpression)param1JCTree, jCExpression2).setType(tree.type);
-/*      */             } }
-/*      */         );
-/* 3250 */       this.result = translate(jCTree);
-/*      */       return;
-/*      */     }
-/* 3253 */     tree.lhs = translate(tree.lhs, (JCTree.JCExpression)tree);
-/* 3254 */     tree.rhs = translate(tree.rhs, (Type)(tree.operator.type.getParameterTypes()).tail.head);
-/*      */
-/*      */
-/*      */
-/*      */
-/* 3259 */     if (tree.lhs.hasTag(JCTree.Tag.APPLY)) {
-/* 3260 */       JCTree.JCMethodInvocation jCMethodInvocation = (JCTree.JCMethodInvocation)tree.lhs;
-/*      */
-/*      */
-/*      */
-/* 3264 */       JCTree.JCExpression jCExpression1 = (((Symbol.OperatorSymbol)tree.operator).opcode == 256) ? makeString(tree.rhs) : tree.rhs;
-/*      */
-/* 3266 */       jCMethodInvocation.args = List.of(jCExpression1).prependList(jCMethodInvocation.args);
-/* 3267 */       this.result = (JCTree)jCMethodInvocation;
-/*      */     } else {
-/* 3269 */       this.result = (JCTree)tree;
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   JCTree lowerBoxedPostop(final JCTree.JCUnary tree) {
-/* 3279 */     final boolean cast = TreeInfo.skipParens(tree.arg).hasTag(JCTree.Tag.TYPECAST);
-/* 3280 */     return abstractLval((JCTree)tree.arg, new TreeBuilder() {
-/*      */           public JCTree build(final JCTree tmp1) {
-/* 3282 */             return Lower.this.abstractRval(tmp1, tree.arg.type, new TreeBuilder() {
-/*      */                   public JCTree build(JCTree param2JCTree) {
-/* 3284 */                     JCTree.Tag tag = tree.hasTag(JCTree.Tag.POSTINC) ? JCTree.Tag.PLUS_ASG : JCTree.Tag.MINUS_ASG;
-/*      */
-/*      */
-/* 3287 */                     JCTree jCTree = (JCTree)(cast ? Lower.this.make.TypeCast(tree.arg.type, (JCTree.JCExpression)tmp1) : tmp1);
-/*      */
-/* 3289 */                     JCTree.JCAssignOp jCAssignOp = Lower.this.makeAssignop(tag, jCTree,
-/*      */
-/* 3291 */                         (JCTree)Lower.this.make.Literal(Integer.valueOf(1)));
-/* 3292 */                     return Lower.this.makeComma((JCTree)jCAssignOp, param2JCTree);
-/*      */                   }
-/*      */                 });
-/*      */           }
-/*      */         });
-/*      */   }
-/*      */
-/*      */   public void visitUnary(JCTree.JCUnary paramJCUnary) {
-/* 3300 */     boolean bool = paramJCUnary.getTag().isIncOrDecUnaryOp();
-/* 3301 */     if (bool && !paramJCUnary.arg.type.isPrimitive()) {
-/* 3302 */       JCTree.Tag tag; JCTree.JCAssignOp jCAssignOp; switch (paramJCUnary.getTag()) {
-/*      */
-/*      */
-/*      */
-/*      */         case ALWAYS:
-/*      */         case LEGACY:
-/* 3308 */           tag = paramJCUnary.hasTag(JCTree.Tag.PREINC) ? JCTree.Tag.PLUS_ASG : JCTree.Tag.MINUS_ASG;
-/*      */
-/* 3310 */           jCAssignOp = makeAssignop(tag, (JCTree)paramJCUnary.arg, (JCTree)this.make
-/*      */
-/* 3312 */               .Literal(Integer.valueOf(1)));
-/* 3313 */           this.result = translate(jCAssignOp, paramJCUnary.type);
-/*      */           return;
-/*      */
-/*      */
-/*      */         case NONEMPTY:
-/*      */         case null:
-/* 3319 */           this.result = translate(lowerBoxedPostop(paramJCUnary), paramJCUnary.type);
-/*      */           return;
-/*      */       }
-/*      */
-/* 3323 */       throw new AssertionError(paramJCUnary);
-/*      */     }
-/*      */
-/* 3326 */     paramJCUnary.arg = boxIfNeeded(translate(paramJCUnary.arg, (JCTree.JCExpression)paramJCUnary), paramJCUnary.type);
-/*      */
-/* 3328 */     if (paramJCUnary.hasTag(JCTree.Tag.NOT) && paramJCUnary.arg.type.constValue() != null) {
-/* 3329 */       paramJCUnary.type = this.cfolder.fold1(257, paramJCUnary.arg.type);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/* 3335 */     if (bool && paramJCUnary.arg.hasTag(JCTree.Tag.APPLY)) {
-/* 3336 */       this.result = (JCTree)paramJCUnary.arg;
-/*      */     } else {
-/* 3338 */       this.result = (JCTree)paramJCUnary;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public void visitBinary(JCTree.JCBinary paramJCBinary) {
-/* 3343 */     List list = paramJCBinary.operator.type.getParameterTypes();
-/* 3344 */     JCTree.JCExpression jCExpression = paramJCBinary.lhs = translate(paramJCBinary.lhs, (Type)list.head);
-/* 3345 */     switch (paramJCBinary.getTag()) {
-/*      */       case null:
-/* 3347 */         if (((JCTree)jCExpression).type.isTrue()) {
-/* 3348 */           this.result = (JCTree)jCExpression;
-/*      */           return;
-/*      */         }
-/* 3351 */         if (((JCTree)jCExpression).type.isFalse()) {
-/* 3352 */           this.result = translate(paramJCBinary.rhs, (Type)list.tail.head);
-/*      */           return;
-/*      */         }
-/*      */         break;
-/*      */       case null:
-/* 3357 */         if (((JCTree)jCExpression).type.isFalse()) {
-/* 3358 */           this.result = (JCTree)jCExpression;
-/*      */           return;
-/*      */         }
-/* 3361 */         if (((JCTree)jCExpression).type.isTrue()) {
-/* 3362 */           this.result = translate(paramJCBinary.rhs, (Type)list.tail.head);
-/*      */           return;
-/*      */         }
-/*      */         break;
-/*      */     }
-/* 3367 */     paramJCBinary.rhs = translate(paramJCBinary.rhs, (Type)list.tail.head);
-/* 3368 */     this.result = (JCTree)paramJCBinary;
-/*      */   }
-/*      */
-/*      */   public void visitIdent(JCTree.JCIdent paramJCIdent) {
-/* 3372 */     this.result = (JCTree)access(paramJCIdent.sym, (JCTree.JCExpression)paramJCIdent, this.enclOp, false);
-/*      */   }
-/*      */
-/*      */
-/*      */   public void visitForeachLoop(JCTree.JCEnhancedForLoop paramJCEnhancedForLoop) {
-/* 3377 */     if (this.types.elemtype(paramJCEnhancedForLoop.expr.type) == null) {
-/* 3378 */       visitIterableForeachLoop(paramJCEnhancedForLoop);
-/*      */     } else {
-/* 3380 */       visitArrayForeachLoop(paramJCEnhancedForLoop);
-/*      */     }
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void visitArrayForeachLoop(JCTree.JCEnhancedForLoop paramJCEnhancedForLoop) {
-/* 3405 */     make_at(paramJCEnhancedForLoop.expr.pos());
-/*      */
-/* 3407 */     Symbol.VarSymbol varSymbol1 = new Symbol.VarSymbol(4096L, this.names.fromString("arr" + this.target.syntheticNameChar()), paramJCEnhancedForLoop.expr.type, (Symbol)this.currentMethodSym);
-/*      */
-/*      */
-/* 3410 */     JCTree.JCVariableDecl jCVariableDecl1 = this.make.VarDef(varSymbol1, paramJCEnhancedForLoop.expr);
-/*      */
-/* 3412 */     Symbol.VarSymbol varSymbol2 = new Symbol.VarSymbol(4096L, this.names.fromString("len" + this.target.syntheticNameChar()), (Type)this.syms.intType, (Symbol)this.currentMethodSym);
-/*      */
-/*      */
-/*      */
-/* 3416 */     JCTree.JCVariableDecl jCVariableDecl2 = this.make.VarDef(varSymbol2, this.make.Select((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol1), (Symbol)this.syms.lengthVar));
-/*      */
-/* 3418 */     Symbol.VarSymbol varSymbol3 = new Symbol.VarSymbol(4096L, this.names.fromString("i" + this.target.syntheticNameChar()), (Type)this.syms.intType, (Symbol)this.currentMethodSym);
-/*      */
-/*      */
-/*      */
-/* 3422 */     JCTree.JCVariableDecl jCVariableDecl3 = this.make.VarDef(varSymbol3, (JCTree.JCExpression)this.make.Literal(TypeTag.INT, Integer.valueOf(0)));
-/* 3423 */     jCVariableDecl3.init.type = jCVariableDecl3.type = this.syms.intType.constType(Integer.valueOf(0));
-/*      */
-/* 3425 */     List list = List.of(jCVariableDecl1, jCVariableDecl2, jCVariableDecl3);
-/* 3426 */     JCTree.JCBinary jCBinary = makeBinary(JCTree.Tag.LT, (JCTree.JCExpression)this.make.Ident((Symbol)varSymbol3), (JCTree.JCExpression)this.make.Ident((Symbol)varSymbol2));
-/*      */
-/* 3428 */     JCTree.JCExpressionStatement jCExpressionStatement = this.make.Exec((JCTree.JCExpression)makeUnary(JCTree.Tag.PREINC, (JCTree.JCExpression)this.make.Ident((Symbol)varSymbol3)));
-/*      */
-/* 3430 */     Type type = this.types.elemtype(paramJCEnhancedForLoop.expr.type);
-/*      */
-/* 3432 */     JCTree.JCExpression jCExpression = this.make.Indexed((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol1), (JCTree.JCExpression)this.make.Ident((Symbol)varSymbol3)).setType(type);
-/*      */
-/*      */
-/*      */
-/* 3436 */     JCTree.JCVariableDecl jCVariableDecl4 = (JCTree.JCVariableDecl)this.make.VarDef(paramJCEnhancedForLoop.var.mods, paramJCEnhancedForLoop.var.name, paramJCEnhancedForLoop.var.vartype, jCExpression).setType(paramJCEnhancedForLoop.var.type);
-/* 3437 */     jCVariableDecl4.sym = paramJCEnhancedForLoop.var.sym;
-/*      */
-/* 3439 */     JCTree.JCBlock jCBlock = this.make.Block(0L, List.of(jCVariableDecl4, paramJCEnhancedForLoop.body));
-/*      */
-/* 3441 */     this.result = translate(this.make
-/* 3442 */         .ForLoop(list, (JCTree.JCExpression)jCBinary,
-/*      */
-/* 3444 */           List.of(jCExpressionStatement), (JCTree.JCStatement)jCBlock));
-/*      */
-/* 3446 */     patchTargets((JCTree)jCBlock, (JCTree)paramJCEnhancedForLoop, this.result);
-/*      */   }
-/*      */
-/*      */   private void patchTargets(JCTree paramJCTree1, final JCTree src, final JCTree dest) {
-/*      */     class Patcher extends TreeScanner {
-/*      */       public void visitBreak(JCTree.JCBreak param1JCBreak) {
-/* 3452 */         if (param1JCBreak.target == src)
-/* 3453 */           param1JCBreak.target = dest;
-/*      */       }
-/*      */       public void visitContinue(JCTree.JCContinue param1JCContinue) {
-/* 3456 */         if (param1JCContinue.target == src)
-/* 3457 */           param1JCContinue.target = dest;
-/*      */       }
-/*      */
-/*      */       public void visitClassDef(JCTree.JCClassDecl param1JCClassDecl) {} };
-/* 3461 */     (new Patcher()).scan(paramJCTree1);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   private void visitIterableForeachLoop(JCTree.JCEnhancedForLoop paramJCEnhancedForLoop) {
-/*      */     JCTree.JCTypeCast jCTypeCast;
-/* 3482 */     make_at(paramJCEnhancedForLoop.expr.pos());
-/* 3483 */     Type type1 = this.syms.objectType;
-/* 3484 */     Type type2 = this.types.asSuper(this.types.cvarUpperBound(paramJCEnhancedForLoop.expr.type), (Symbol)this.syms.iterableType.tsym);
-/*      */
-/* 3486 */     if (type2.getTypeArguments().nonEmpty())
-/* 3487 */       type1 = this.types.erasure((Type)(type2.getTypeArguments()).head);
-/* 3488 */     Type type3 = paramJCEnhancedForLoop.expr.type;
-/* 3489 */     while (type3.hasTag(TypeTag.TYPEVAR)) {
-/* 3490 */       type3 = type3.getUpperBound();
-/*      */     }
-/* 3492 */     paramJCEnhancedForLoop.expr.type = this.types.erasure(type3);
-/* 3493 */     if (type3.isCompound())
-/* 3494 */       paramJCEnhancedForLoop.expr = (JCTree.JCExpression)this.make.TypeCast(this.types.erasure(type2), paramJCEnhancedForLoop.expr);
-/* 3495 */     Symbol.MethodSymbol methodSymbol1 = lookupMethod(paramJCEnhancedForLoop.expr.pos(), this.names.iterator, type3,
-/*      */
-/*      */
-/* 3498 */         List.nil());
-/*      */
-/* 3500 */     Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(4096L, this.names.fromString("i" + this.target.syntheticNameChar()), this.types.erasure(this.types.asSuper(((Symbol)methodSymbol1).type.getReturnType(), (Symbol)this.syms.iteratorType.tsym)), (Symbol)this.currentMethodSym);
-/*      */
-/*      */
-/*      */
-/* 3504 */     JCTree.JCVariableDecl jCVariableDecl1 = this.make.VarDef(varSymbol, (JCTree.JCExpression)this.make.App(this.make.Select(paramJCEnhancedForLoop.expr, (Symbol)methodSymbol1)
-/* 3505 */           .setType(this.types.erasure(((Symbol)methodSymbol1).type))));
-/*      */
-/* 3507 */     Symbol.MethodSymbol methodSymbol2 = lookupMethod(paramJCEnhancedForLoop.expr.pos(), this.names.hasNext, varSymbol.type,
-/*      */
-/*      */
-/* 3510 */         List.nil());
-/* 3511 */     JCTree.JCMethodInvocation jCMethodInvocation1 = this.make.App(this.make.Select((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol), (Symbol)methodSymbol2));
-/* 3512 */     Symbol.MethodSymbol methodSymbol3 = lookupMethod(paramJCEnhancedForLoop.expr.pos(), this.names.next, varSymbol.type,
-/*      */
-/*      */
-/* 3515 */         List.nil());
-/* 3516 */     JCTree.JCMethodInvocation jCMethodInvocation2 = this.make.App(this.make.Select((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol), (Symbol)methodSymbol3));
-/* 3517 */     if (paramJCEnhancedForLoop.var.type.isPrimitive()) {
-/* 3518 */       jCTypeCast = this.make.TypeCast(this.types.cvarUpperBound(type1), (JCTree.JCExpression)jCMethodInvocation2);
-/*      */     } else {
-/* 3520 */       jCTypeCast = this.make.TypeCast(paramJCEnhancedForLoop.var.type, (JCTree.JCExpression)jCTypeCast);
-/*      */     }
-/*      */
-/*      */
-/* 3524 */     JCTree.JCVariableDecl jCVariableDecl2 = (JCTree.JCVariableDecl)this.make.VarDef(paramJCEnhancedForLoop.var.mods, paramJCEnhancedForLoop.var.name, paramJCEnhancedForLoop.var.vartype, (JCTree.JCExpression)jCTypeCast).setType(paramJCEnhancedForLoop.var.type);
-/* 3525 */     jCVariableDecl2.sym = paramJCEnhancedForLoop.var.sym;
-/* 3526 */     JCTree.JCBlock jCBlock = this.make.Block(0L, List.of(jCVariableDecl2, paramJCEnhancedForLoop.body));
-/* 3527 */     jCBlock.endpos = TreeInfo.endPos((JCTree)paramJCEnhancedForLoop.body);
-/* 3528 */     this.result = translate(this.make
-/* 3529 */         .ForLoop(List.of(jCVariableDecl1), (JCTree.JCExpression)jCMethodInvocation1,
-/*      */
-/* 3531 */           List.nil(), (JCTree.JCStatement)jCBlock));
-/*      */
-/* 3533 */     patchTargets((JCTree)jCBlock, (JCTree)paramJCEnhancedForLoop, this.result);
-/*      */   }
-/*      */
-/*      */   public void visitVarDef(JCTree.JCVariableDecl paramJCVariableDecl) {
-/* 3537 */     Symbol.MethodSymbol methodSymbol = this.currentMethodSym;
-/* 3538 */     paramJCVariableDecl.mods = translate(paramJCVariableDecl.mods);
-/* 3539 */     paramJCVariableDecl.vartype = translate(paramJCVariableDecl.vartype);
-/* 3540 */     if (this.currentMethodSym == null)
-/*      */     {
-/* 3542 */       this.currentMethodSym = new Symbol.MethodSymbol(paramJCVariableDecl.mods.flags & 0x8L | 0x100000L, this.names.empty, null, (Symbol)this.currentClass);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/* 3547 */     if (paramJCVariableDecl.init != null) paramJCVariableDecl.init = translate(paramJCVariableDecl.init, paramJCVariableDecl.type);
-/* 3548 */     this.result = (JCTree)paramJCVariableDecl;
-/* 3549 */     this.currentMethodSym = methodSymbol;
-/*      */   }
-/*      */
-/*      */   public void visitBlock(JCTree.JCBlock paramJCBlock) {
-/* 3553 */     Symbol.MethodSymbol methodSymbol = this.currentMethodSym;
-/* 3554 */     if (this.currentMethodSym == null)
-/*      */     {
-/* 3556 */       this.currentMethodSym = new Symbol.MethodSymbol(paramJCBlock.flags | 0x100000L, this.names.empty, null, (Symbol)this.currentClass);
-/*      */     }
-/*      */
-/*      */
-/*      */
-/* 3561 */     super.visitBlock(paramJCBlock);
-/* 3562 */     this.currentMethodSym = methodSymbol;
-/*      */   }
-/*      */
-/*      */   public void visitDoLoop(JCTree.JCDoWhileLoop paramJCDoWhileLoop) {
-/* 3566 */     paramJCDoWhileLoop.body = translate(paramJCDoWhileLoop.body);
-/* 3567 */     paramJCDoWhileLoop.cond = translate(paramJCDoWhileLoop.cond, (Type)this.syms.booleanType);
-/* 3568 */     this.result = (JCTree)paramJCDoWhileLoop;
-/*      */   }
-/*      */
-/*      */   public void visitWhileLoop(JCTree.JCWhileLoop paramJCWhileLoop) {
-/* 3572 */     paramJCWhileLoop.cond = translate(paramJCWhileLoop.cond, (Type)this.syms.booleanType);
-/* 3573 */     paramJCWhileLoop.body = translate(paramJCWhileLoop.body);
-/* 3574 */     this.result = (JCTree)paramJCWhileLoop;
-/*      */   }
-/*      */
-/*      */   public void visitForLoop(JCTree.JCForLoop paramJCForLoop) {
-/* 3578 */     paramJCForLoop.init = translate(paramJCForLoop.init);
-/* 3579 */     if (paramJCForLoop.cond != null)
-/* 3580 */       paramJCForLoop.cond = translate(paramJCForLoop.cond, (Type)this.syms.booleanType);
-/* 3581 */     paramJCForLoop.step = translate(paramJCForLoop.step);
-/* 3582 */     paramJCForLoop.body = translate(paramJCForLoop.body);
-/* 3583 */     this.result = (JCTree)paramJCForLoop;
-/*      */   }
-/*      */
-/*      */   public void visitReturn(JCTree.JCReturn paramJCReturn) {
-/* 3587 */     if (paramJCReturn.expr != null) {
-/* 3588 */       paramJCReturn.expr = translate(paramJCReturn.expr, this.types
-/* 3589 */           .erasure(this.currentMethodDef.restype.type));
-/*      */     }
-/* 3591 */     this.result = (JCTree)paramJCReturn;
-/*      */   }
-/*      */
-/*      */   public void visitSwitch(JCTree.JCSwitch paramJCSwitch) {
-/* 3595 */     Type type1 = this.types.supertype(paramJCSwitch.selector.type);
-/*      */
-/* 3597 */     boolean bool1 = (type1 != null && (paramJCSwitch.selector.type.tsym.flags() & 0x4000L) != 0L) ? true : false;
-/*      */
-/* 3599 */     boolean bool2 = (type1 != null && this.types.isSameType(paramJCSwitch.selector.type, this.syms.stringType)) ? true : false;
-/* 3600 */     Type type2 = (Type)(bool1 ? paramJCSwitch.selector.type : (bool2 ? this.syms.stringType : this.syms.intType));
-/*      */
-/* 3602 */     paramJCSwitch.selector = translate(paramJCSwitch.selector, type2);
-/* 3603 */     paramJCSwitch.cases = translateCases(paramJCSwitch.cases);
-/* 3604 */     if (bool1) {
-/* 3605 */       this.result = visitEnumSwitch(paramJCSwitch);
-/* 3606 */     } else if (bool2) {
-/* 3607 */       this.result = visitStringSwitch(paramJCSwitch);
-/*      */     } else {
-/* 3609 */       this.result = (JCTree)paramJCSwitch;
-/*      */     }
-/*      */   }
-/*      */
-/*      */   public JCTree visitEnumSwitch(JCTree.JCSwitch paramJCSwitch) {
-/* 3614 */     Symbol.TypeSymbol typeSymbol = paramJCSwitch.selector.type.tsym;
-/* 3615 */     EnumMapping enumMapping = mapForEnum(paramJCSwitch.pos(), typeSymbol);
-/* 3616 */     make_at(paramJCSwitch.pos());
-/* 3617 */     Symbol.MethodSymbol methodSymbol = lookupMethod(paramJCSwitch.pos(), this.names.ordinal, paramJCSwitch.selector.type,
-/*      */
-/*      */
-/* 3620 */         List.nil());
-/* 3621 */     JCTree.JCArrayAccess jCArrayAccess = this.make.Indexed((Symbol)enumMapping.mapVar, (JCTree.JCExpression)this.make
-/* 3622 */         .App(this.make.Select(paramJCSwitch.selector, (Symbol)methodSymbol)));
-/*      */
-/* 3624 */     ListBuffer listBuffer = new ListBuffer();
-/* 3625 */     for (JCTree.JCCase jCCase : paramJCSwitch.cases) {
-/* 3626 */       if (jCCase.pat != null) {
-/* 3627 */         Symbol.VarSymbol varSymbol = (Symbol.VarSymbol)TreeInfo.symbol((JCTree)jCCase.pat);
-/* 3628 */         JCTree.JCLiteral jCLiteral = enumMapping.forConstant(varSymbol);
-/* 3629 */         listBuffer.append(this.make.Case((JCTree.JCExpression)jCLiteral, jCCase.stats)); continue;
-/*      */       }
-/* 3631 */       listBuffer.append(jCCase);
-/*      */     }
-/*      */
-/* 3634 */     JCTree.JCSwitch jCSwitch = this.make.Switch((JCTree.JCExpression)jCArrayAccess, listBuffer.toList());
-/* 3635 */     patchTargets((JCTree)jCSwitch, (JCTree)paramJCSwitch, (JCTree)jCSwitch);
-/* 3636 */     return (JCTree)jCSwitch;
-/*      */   }
-/*      */
-/*      */   public JCTree visitStringSwitch(JCTree.JCSwitch paramJCSwitch) {
-/* 3640 */     List list = paramJCSwitch.getCases();
-/* 3641 */     int i = list.size();
-/*      */
-/* 3643 */     if (i == 0) {
-/* 3644 */       return (JCTree)this.make.at(paramJCSwitch.pos()).Exec(this.attr.makeNullCheck(paramJCSwitch.getExpression()));
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 3687 */     ListBuffer listBuffer1 = new ListBuffer();
-/*      */
-/*      */
-/*      */
-/* 3691 */     LinkedHashMap<Object, Object> linkedHashMap1 = new LinkedHashMap<>(i + 1, 1.0F);
-/*      */
-/*      */
-/*      */
-/* 3695 */     LinkedHashMap<Object, Object> linkedHashMap2 = new LinkedHashMap<>(i + 1, 1.0F);
-/*      */
-/*      */
-/* 3698 */     byte b = 0;
-/* 3699 */     for (JCTree.JCCase jCCase : list) {
-/* 3700 */       JCTree.JCExpression jCExpression = jCCase.getExpression();
-/*      */
-/* 3702 */       if (jCExpression != null) {
-/* 3703 */         String str = (String)jCExpression.type.constValue();
-/* 3704 */         Integer integer = (Integer)linkedHashMap1.put(str, Integer.valueOf(b));
-/* 3705 */         Assert.checkNull(integer);
-/* 3706 */         int j = str.hashCode();
-/*      */
-/* 3708 */         Set<String> set = (Set)linkedHashMap2.get(Integer.valueOf(j));
-/* 3709 */         if (set == null) {
-/* 3710 */           set = new LinkedHashSet(1, 1.0F);
-/* 3711 */           set.add(str);
-/* 3712 */           linkedHashMap2.put(Integer.valueOf(j), set);
-/*      */         } else {
-/* 3714 */           boolean bool = set.add(str);
-/* 3715 */           Assert.check(bool);
-/*      */         }
-/*      */       }
-/* 3718 */       b++;
-/*      */     }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 3744 */     Symbol.VarSymbol varSymbol1 = new Symbol.VarSymbol(4112L, this.names.fromString("s" + paramJCSwitch.pos + this.target.syntheticNameChar()), this.syms.stringType, (Symbol)this.currentMethodSym);
-/*      */
-/*      */
-/* 3747 */     listBuffer1.append(this.make.at(paramJCSwitch.pos()).VarDef(varSymbol1, paramJCSwitch.getExpression()).setType(varSymbol1.type));
-/*      */
-/*      */
-/* 3750 */     Symbol.VarSymbol varSymbol2 = new Symbol.VarSymbol(4096L, this.names.fromString("tmp" + paramJCSwitch.pos + this.target.syntheticNameChar()), (Type)this.syms.intType, (Symbol)this.currentMethodSym);
-/*      */
-/*      */
-/*      */
-/* 3754 */     JCTree.JCVariableDecl jCVariableDecl = (JCTree.JCVariableDecl)this.make.VarDef(varSymbol2, (JCTree.JCExpression)this.make.Literal(TypeTag.INT, Integer.valueOf(-1))).setType(varSymbol2.type);
-/* 3755 */     jCVariableDecl.init.type = varSymbol2.type = (Type)this.syms.intType;
-/* 3756 */     listBuffer1.append(jCVariableDecl);
-/* 3757 */     ListBuffer listBuffer2 = new ListBuffer();
-/*      */
-/*      */
-/*      */
-/* 3761 */     JCTree.JCMethodInvocation jCMethodInvocation = makeCall((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol1), this.names.hashCode, List.nil()).setType((Type)this.syms.intType);
-/* 3762 */     JCTree.JCSwitch jCSwitch1 = this.make.Switch((JCTree.JCExpression)jCMethodInvocation, listBuffer2
-/* 3763 */         .toList());
-/* 3764 */     for (Map.Entry<Object, Object> entry : linkedHashMap2.entrySet()) {
-/* 3765 */       int j = ((Integer)entry.getKey()).intValue();
-/* 3766 */       Set set = (Set)entry.getValue();
-/* 3767 */       Assert.check((set.size() >= 1));
-/*      */
-/* 3769 */       JCTree.JCIf jCIf = null;
-/* 3770 */       for (String str : set) {
-/* 3771 */         JCTree.JCMethodInvocation jCMethodInvocation1 = makeCall((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol1), this.names.equals,
-/*      */
-/* 3773 */             List.of(this.make.Literal(str)));
-/* 3774 */         jCIf = this.make.If((JCTree.JCExpression)jCMethodInvocation1, (JCTree.JCStatement)this.make
-/* 3775 */             .Exec(this.make.Assign((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol2), (JCTree.JCExpression)this.make
-/* 3776 */                 .Literal(linkedHashMap1.get(str)))
-/* 3777 */               .setType(varSymbol2.type)), (JCTree.JCStatement)jCIf);
-/*      */       }
-/*      */
-/*      */
-/* 3781 */       ListBuffer listBuffer = new ListBuffer();
-/* 3782 */       JCTree.JCBreak jCBreak = this.make.Break(null);
-/* 3783 */       jCBreak.target = (JCTree)jCSwitch1;
-/* 3784 */       listBuffer.append(jCIf).append(jCBreak);
-/*      */
-/* 3786 */       listBuffer2.append(this.make.Case((JCTree.JCExpression)this.make.Literal(Integer.valueOf(j)), listBuffer.toList()));
-/*      */     }
-/*      */
-/* 3789 */     jCSwitch1.cases = listBuffer2.toList();
-/* 3790 */     listBuffer1.append(jCSwitch1);
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/* 3796 */     ListBuffer listBuffer3 = new ListBuffer();
-/* 3797 */     JCTree.JCSwitch jCSwitch2 = this.make.Switch((JCTree.JCExpression)this.make.Ident((Symbol)varSymbol2), listBuffer3.toList());
-/* 3798 */     for (JCTree.JCCase jCCase : list) {
-/*      */       JCTree.JCLiteral jCLiteral;
-/*      */
-/* 3801 */       patchTargets((JCTree)jCCase, (JCTree)paramJCSwitch, (JCTree)jCSwitch2);
-/*      */
-/* 3803 */       boolean bool = (jCCase.getExpression() == null) ? true : false;
-/*      */
-/* 3805 */       if (bool) {
-/* 3806 */         jCLiteral = null;
-/*      */       } else {
-/* 3808 */         jCLiteral = this.make.Literal(linkedHashMap1.get((TreeInfo.skipParens(jCCase
-/* 3809 */                 .getExpression())).type
-/* 3810 */               .constValue()));
-/*      */       }
-/*      */
-/* 3813 */       listBuffer3.append(this.make.Case((JCTree.JCExpression)jCLiteral, jCCase
-/* 3814 */             .getStatements()));
-/*      */     }
-/*      */
-/* 3817 */     jCSwitch2.cases = listBuffer3.toList();
-/* 3818 */     listBuffer1.append(jCSwitch2);
-/*      */
-/* 3820 */     return (JCTree)this.make.Block(0L, listBuffer1.toList());
-/*      */   }
-/*      */
-/*      */
-/*      */   public void visitNewArray(JCTree.JCNewArray paramJCNewArray) {
-/* 3825 */     paramJCNewArray.elemtype = translate(paramJCNewArray.elemtype);
-/* 3826 */     for (List list = paramJCNewArray.dims; list.tail != null; list = list.tail) {
-/* 3827 */       if (list.head != null) list.head = translate((JCTree)list.head, (Type)this.syms.intType);
-/* 3828 */     }  paramJCNewArray.elems = translate(paramJCNewArray.elems, this.types.elemtype(paramJCNewArray.type));
-/* 3829 */     this.result = (JCTree)paramJCNewArray;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public void visitSelect(JCTree.JCFieldAccess paramJCFieldAccess) {
-/* 3839 */     boolean bool = (paramJCFieldAccess.selected.hasTag(JCTree.Tag.SELECT) && TreeInfo.name((JCTree)paramJCFieldAccess.selected) == this.names._super && !this.types.isDirectSuperInterface(((JCTree.JCFieldAccess)paramJCFieldAccess.selected).selected.type.tsym, (Symbol.TypeSymbol)this.currentClass)) ? true : false;
-/* 3840 */     paramJCFieldAccess.selected = translate(paramJCFieldAccess.selected);
-/* 3841 */     if (paramJCFieldAccess.name == this.names._class) {
-/* 3842 */       this.result = (JCTree)classOf((JCTree)paramJCFieldAccess.selected);
-/*      */     }
-/* 3844 */     else if (paramJCFieldAccess.name == this.names._super && this.types
-/* 3845 */       .isDirectSuperInterface(paramJCFieldAccess.selected.type.tsym, (Symbol.TypeSymbol)this.currentClass)) {
-/*      */
-/* 3847 */       Symbol.TypeSymbol typeSymbol = paramJCFieldAccess.selected.type.tsym;
-/* 3848 */       Assert.checkNonNull(this.types.asSuper(this.currentClass.type, (Symbol)typeSymbol));
-/* 3849 */       this.result = (JCTree)paramJCFieldAccess;
-/*      */     }
-/* 3851 */     else if (paramJCFieldAccess.name == this.names._this || paramJCFieldAccess.name == this.names._super) {
-/* 3852 */       this.result = (JCTree)makeThis(paramJCFieldAccess.pos(), paramJCFieldAccess.selected.type.tsym);
-/*      */     } else {
-/*      */
-/* 3855 */       this.result = (JCTree)access(paramJCFieldAccess.sym, (JCTree.JCExpression)paramJCFieldAccess, this.enclOp, bool);
-/*      */     }
-/*      */   }
-/*      */   public void visitLetExpr(JCTree.LetExpr paramLetExpr) {
-/* 3859 */     paramLetExpr.defs = translateVarDefs(paramLetExpr.defs);
-/* 3860 */     paramLetExpr.expr = translate(paramLetExpr.expr, paramLetExpr.type);
-/* 3861 */     this.result = (JCTree)paramLetExpr;
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */   public void visitAnnotation(JCTree.JCAnnotation paramJCAnnotation) {
-/* 3867 */     this.result = (JCTree)paramJCAnnotation;
-/*      */   }
-/*      */
-/*      */
-/*      */   public void visitTry(JCTree.JCTry paramJCTry) {
-/* 3872 */     if (paramJCTry.resources.nonEmpty()) {
-/* 3873 */       this.result = makeTwrTry(paramJCTry);
-/*      */
-/*      */       return;
-/*      */     }
-/* 3877 */     boolean bool1 = paramJCTry.body.getStatements().nonEmpty();
-/* 3878 */     boolean bool2 = paramJCTry.catchers.nonEmpty();
-/*      */
-/* 3880 */     boolean bool = (paramJCTry.finalizer != null && paramJCTry.finalizer.getStatements().nonEmpty()) ? true : false;
-/*      */
-/* 3882 */     if (!bool2 && !bool) {
-/* 3883 */       this.result = translate(paramJCTry.body);
-/*      */
-/*      */       return;
-/*      */     }
-/* 3887 */     if (!bool1) {
-/* 3888 */       if (bool) {
-/* 3889 */         this.result = translate(paramJCTry.finalizer);
-/*      */       } else {
-/* 3891 */         this.result = translate(paramJCTry.body);
-/*      */       }
-/*      */
-/*      */       return;
-/*      */     }
-/*      */
-/* 3897 */     super.visitTry(paramJCTry);
-/*      */   }
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */
-/*      */   public List<JCTree> translateTopLevelClass(Env<AttrContext> paramEnv, JCTree paramJCTree, TreeMaker paramTreeMaker) {
-/* 3911 */     ListBuffer<JCTree> listBuffer = null;
-/*      */     try {
-/* 3913 */       this.attrEnv = paramEnv;
-/* 3914 */       this.make = paramTreeMaker;
-/* 3915 */       this.endPosTable = paramEnv.toplevel.endPositions;
-/* 3916 */       this.currentClass = null;
-/* 3917 */       this.currentMethodDef = null;
-/* 3918 */       this.outermostClassDef = paramJCTree.hasTag(JCTree.Tag.CLASSDEF) ? (JCTree.JCClassDecl)paramJCTree : null;
-/* 3919 */       this.outermostMemberDef = null;
-/* 3920 */       this.translated = new ListBuffer();
-/* 3921 */       this.classdefs = new HashMap<>();
-/* 3922 */       this.actualSymbols = new HashMap<>();
-/* 3923 */       this.freevarCache = new HashMap<>();
-/* 3924 */       this.proxies = new Scope((Symbol)this.syms.noSymbol);
-/* 3925 */       this.twrVars = new Scope((Symbol)this.syms.noSymbol);
-/* 3926 */       this.outerThisStack = List.nil();
-/* 3927 */       this.accessNums = new HashMap<>();
-/* 3928 */       this.accessSyms = (Map)new HashMap<>();
-/* 3929 */       this.accessConstrs = new HashMap<>();
-/* 3930 */       this.accessConstrTags = List.nil();
-/* 3931 */       this.accessed = new ListBuffer();
-/* 3932 */       translate(paramJCTree, (JCTree.JCExpression)null);
-/* 3933 */       for (List list = this.accessed.toList(); list.nonEmpty(); list = list.tail)
-/* 3934 */         makeAccessible((Symbol)list.head);
-/* 3935 */       for (EnumMapping enumMapping : this.enumSwitchMap.values())
-/* 3936 */         enumMapping.translate();
-/* 3937 */       checkConflicts(this.translated.toList());
-/* 3938 */       checkAccessConstructorTags();
-/* 3939 */       listBuffer = this.translated;
-/*      */     } finally {
-/*      */
-/* 3942 */       this.attrEnv = null;
-/* 3943 */       this.make = null;
-/* 3944 */       this.endPosTable = null;
-/* 3945 */       this.currentClass = null;
-/* 3946 */       this.currentMethodDef = null;
-/* 3947 */       this.outermostClassDef = null;
-/* 3948 */       this.outermostMemberDef = null;
-/* 3949 */       this.translated = null;
-/* 3950 */       this.classdefs = null;
-/* 3951 */       this.actualSymbols = null;
-/* 3952 */       this.freevarCache = null;
-/* 3953 */       this.proxies = null;
-/* 3954 */       this.outerThisStack = null;
-/* 3955 */       this.accessNums = null;
-/* 3956 */       this.accessSyms = null;
-/* 3957 */       this.accessConstrs = null;
-/* 3958 */       this.accessConstrTags = null;
-/* 3959 */       this.accessed = null;
-/* 3960 */       this.enumSwitchMap.clear();
-/* 3961 */       this.assertionsDisabledClassCache = null;
-/*      */     }
-/* 3963 */     return listBuffer.toList();
-/*      */   }
-/*      */
-/*      */   static interface TreeBuilder {
-/*      */     JCTree build(JCTree param1JCTree);
-/*      */   }
-/*      */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\javac\comp\Lower.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 1999, 2014, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.comp;
+
+import java.util.*;
+
+import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.code.Type.AnnotatedType;
+import com.sun.tools.javac.jvm.*;
+import com.sun.tools.javac.main.Option.PkgInfo;
+import com.sun.tools.javac.tree.*;
+import com.sun.tools.javac.util.*;
+import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
+import com.sun.tools.javac.util.List;
+
+import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.tree.JCTree.*;
+import com.sun.tools.javac.code.Type.*;
+
+import com.sun.tools.javac.jvm.Target;
+import com.sun.tools.javac.tree.EndPosTable;
+
+import static com.sun.tools.javac.code.Flags.*;
+import static com.sun.tools.javac.code.Flags.BLOCK;
+import static com.sun.tools.javac.code.Kinds.*;
+import static com.sun.tools.javac.code.TypeTag.*;
+import static com.sun.tools.javac.jvm.ByteCodes.*;
+import static com.sun.tools.javac.tree.JCTree.Tag.*;
+
+/** This pass translates away some syntactic sugar: inner classes,
+ *  class literals, assertions, foreach loops, etc.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class Lower extends TreeTranslator {
+    protected static final Context.Key<Lower> lowerKey =
+        new Context.Key<Lower>();
+
+    public static Lower instance(Context context) {
+        Lower instance = context.get(lowerKey);
+        if (instance == null)
+            instance = new Lower(context);
+        return instance;
+    }
+
+    private Names names;
+    private Log log;
+    private Symtab syms;
+    private Resolve rs;
+    private Check chk;
+    private Attr attr;
+    private TreeMaker make;
+    private DiagnosticPosition make_pos;
+    private ClassWriter writer;
+    private ClassReader reader;
+    private ConstFold cfolder;
+    private Target target;
+    private Source source;
+    private final TypeEnvs typeEnvs;
+    private boolean allowEnums;
+    private final Name dollarAssertionsDisabled;
+    private final Name classDollar;
+    private Types types;
+    private boolean debugLower;
+    private PkgInfo pkginfoOpt;
+
+    protected Lower(Context context) {
+        context.put(lowerKey, this);
+        names = Names.instance(context);
+        log = Log.instance(context);
+        syms = Symtab.instance(context);
+        rs = Resolve.instance(context);
+        chk = Check.instance(context);
+        attr = Attr.instance(context);
+        make = TreeMaker.instance(context);
+        writer = ClassWriter.instance(context);
+        reader = ClassReader.instance(context);
+        cfolder = ConstFold.instance(context);
+        target = Target.instance(context);
+        source = Source.instance(context);
+        typeEnvs = TypeEnvs.instance(context);
+        allowEnums = source.allowEnums();
+        dollarAssertionsDisabled = names.
+            fromString(target.syntheticNameChar() + "assertionsDisabled");
+        classDollar = names.
+            fromString("class" + target.syntheticNameChar());
+
+        types = Types.instance(context);
+        Options options = Options.instance(context);
+        debugLower = options.isSet("debuglower");
+        pkginfoOpt = PkgInfo.get(options);
+    }
+
+    /** The currently enclosing class.
+     */
+    ClassSymbol currentClass;
+
+    /** A queue of all translated classes.
+     */
+    ListBuffer<JCTree> translated;
+
+    /** Environment for symbol lookup, set by translateTopLevelClass.
+     */
+    Env<AttrContext> attrEnv;
+
+    /** A hash table mapping syntax trees to their ending source positions.
+     */
+    EndPosTable endPosTable;
+
+/**************************************************************************
+ * Global mappings
+ *************************************************************************/
+
+    /** A hash table mapping local classes to their definitions.
+     */
+    Map<ClassSymbol, JCClassDecl> classdefs;
+
+    /** A hash table mapping local classes to a list of pruned trees.
+     */
+    public Map<ClassSymbol, List<JCTree>> prunedTree = new WeakHashMap<ClassSymbol, List<JCTree>>();
+
+    /** A hash table mapping virtual accessed symbols in outer subclasses
+     *  to the actually referred symbol in superclasses.
+     */
+    Map<Symbol,Symbol> actualSymbols;
+
+    /** The current method definition.
+     */
+    JCMethodDecl currentMethodDef;
+
+    /** The current method symbol.
+     */
+    MethodSymbol currentMethodSym;
+
+    /** The currently enclosing outermost class definition.
+     */
+    JCClassDecl outermostClassDef;
+
+    /** The currently enclosing outermost member definition.
+     */
+    JCTree outermostMemberDef;
+
+    /** A map from local variable symbols to their translation (as per LambdaToMethod).
+     * This is required when a capturing local class is created from a lambda (in which
+     * case the captured symbols should be replaced with the translated lambda symbols).
+     */
+    Map<Symbol, Symbol> lambdaTranslationMap = null;
+
+    /** A navigator class for assembling a mapping from local class symbols
+     *  to class definition trees.
+     *  There is only one case; all other cases simply traverse down the tree.
+     */
+    class ClassMap extends TreeScanner {
+
+        /** All encountered class defs are entered into classdefs table.
+         */
+        public void visitClassDef(JCClassDecl tree) {
+            classdefs.put(tree.sym, tree);
+            super.visitClassDef(tree);
+        }
+    }
+    ClassMap classMap = new ClassMap();
+
+    /** Map a class symbol to its definition.
+     *  @param c    The class symbol of which we want to determine the definition.
+     */
+    JCClassDecl classDef(ClassSymbol c) {
+        // First lookup the class in the classdefs table.
+        JCClassDecl def = classdefs.get(c);
+        if (def == null && outermostMemberDef != null) {
+            // If this fails, traverse outermost member definition, entering all
+            // local classes into classdefs, and try again.
+            classMap.scan(outermostMemberDef);
+            def = classdefs.get(c);
+        }
+        if (def == null) {
+            // If this fails, traverse outermost class definition, entering all
+            // local classes into classdefs, and try again.
+            classMap.scan(outermostClassDef);
+            def = classdefs.get(c);
+        }
+        return def;
+    }
+
+    /** A hash table mapping class symbols to lists of free variables.
+     *  accessed by them. Only free variables of the method immediately containing
+     *  a class are associated with that class.
+     */
+    Map<ClassSymbol,List<VarSymbol>> freevarCache;
+
+    /** A navigator class for collecting the free variables accessed
+     *  from a local class. There is only one case; all other cases simply
+     *  traverse down the tree. This class doesn't deal with the specific
+     *  of Lower - it's an abstract visitor that is meant to be reused in
+     *  order to share the local variable capture logic.
+     */
+    abstract class BasicFreeVarCollector extends TreeScanner {
+
+        /** Add all free variables of class c to fvs list
+         *  unless they are already there.
+         */
+        abstract void addFreeVars(ClassSymbol c);
+
+        /** If tree refers to a variable in owner of local class, add it to
+         *  free variables list.
+         */
+        public void visitIdent(JCIdent tree) {
+            visitSymbol(tree.sym);
+        }
+        // where
+        abstract void visitSymbol(Symbol _sym);
+
+        /** If tree refers to a class instance creation expression
+         *  add all free variables of the freshly created class.
+         */
+        public void visitNewClass(JCNewClass tree) {
+            ClassSymbol c = (ClassSymbol)tree.constructor.owner;
+            addFreeVars(c);
+            super.visitNewClass(tree);
+        }
+
+        /** If tree refers to a superclass constructor call,
+         *  add all free variables of the superclass.
+         */
+        public void visitApply(JCMethodInvocation tree) {
+            if (TreeInfo.name(tree.meth) == names._super) {
+                addFreeVars((ClassSymbol) TreeInfo.symbol(tree.meth).owner);
+            }
+            super.visitApply(tree);
+        }
+    }
+
+    /**
+     * Lower-specific subclass of {@code BasicFreeVarCollector}.
+     */
+    class FreeVarCollector extends BasicFreeVarCollector {
+
+        /** The owner of the local class.
+         */
+        Symbol owner;
+
+        /** The local class.
+         */
+        ClassSymbol clazz;
+
+        /** The list of owner's variables accessed from within the local class,
+         *  without any duplicates.
+         */
+        List<VarSymbol> fvs;
+
+        FreeVarCollector(ClassSymbol clazz) {
+            this.clazz = clazz;
+            this.owner = clazz.owner;
+            this.fvs = List.nil();
+        }
+
+        /** Add free variable to fvs list unless it is already there.
+         */
+        private void addFreeVar(VarSymbol v) {
+            for (List<VarSymbol> l = fvs; l.nonEmpty(); l = l.tail)
+                if (l.head == v) return;
+            fvs = fvs.prepend(v);
+        }
+
+        @Override
+        void addFreeVars(ClassSymbol c) {
+            List<VarSymbol> fvs = freevarCache.get(c);
+            if (fvs != null) {
+                for (List<VarSymbol> l = fvs; l.nonEmpty(); l = l.tail) {
+                    addFreeVar(l.head);
+                }
+            }
+        }
+
+        @Override
+        void visitSymbol(Symbol _sym) {
+            Symbol sym = _sym;
+            if (sym.kind == VAR || sym.kind == MTH) {
+                while (sym != null && sym.owner != owner)
+                    sym = proxies.lookup(proxyName(sym.name)).sym;
+                if (sym != null && sym.owner == owner) {
+                    VarSymbol v = (VarSymbol)sym;
+                    if (v.getConstValue() == null) {
+                        addFreeVar(v);
+                    }
+                } else {
+                    if (outerThisStack.head != null &&
+                        outerThisStack.head != _sym)
+                        visitSymbol(outerThisStack.head);
+                }
+            }
+        }
+
+        /** If tree refers to a class instance creation expression
+         *  add all free variables of the freshly created class.
+         */
+        public void visitNewClass(JCNewClass tree) {
+            ClassSymbol c = (ClassSymbol)tree.constructor.owner;
+            if (tree.encl == null &&
+                c.hasOuterInstance() &&
+                outerThisStack.head != null)
+                visitSymbol(outerThisStack.head);
+            super.visitNewClass(tree);
+        }
+
+        /** If tree refers to a qualified this or super expression
+         *  for anything but the current class, add the outer this
+         *  stack as a free variable.
+         */
+        public void visitSelect(JCFieldAccess tree) {
+            if ((tree.name == names._this || tree.name == names._super) &&
+                tree.selected.type.tsym != clazz &&
+                outerThisStack.head != null)
+                visitSymbol(outerThisStack.head);
+            super.visitSelect(tree);
+        }
+
+        /** If tree refers to a superclass constructor call,
+         *  add all free variables of the superclass.
+         */
+        public void visitApply(JCMethodInvocation tree) {
+            if (TreeInfo.name(tree.meth) == names._super) {
+                Symbol constructor = TreeInfo.symbol(tree.meth);
+                ClassSymbol c = (ClassSymbol)constructor.owner;
+                if (c.hasOuterInstance() &&
+                    !tree.meth.hasTag(SELECT) &&
+                    outerThisStack.head != null)
+                    visitSymbol(outerThisStack.head);
+            }
+            super.visitApply(tree);
+        }
+    }
+
+    ClassSymbol ownerToCopyFreeVarsFrom(ClassSymbol c) {
+        if (!c.isLocal()) {
+            return null;
+        }
+        Symbol currentOwner = c.owner;
+        while ((currentOwner.owner.kind & TYP) != 0 && currentOwner.isLocal()) {
+            currentOwner = currentOwner.owner;
+        }
+        if ((currentOwner.owner.kind & (VAR | MTH)) != 0 && c.isSubClass(currentOwner, types)) {
+            return (ClassSymbol)currentOwner;
+        }
+        return null;
+    }
+
+    /** Return the variables accessed from within a local class, which
+     *  are declared in the local class' owner.
+     *  (in reverse order of first access).
+     */
+    List<VarSymbol> freevars(ClassSymbol c)  {
+        List<VarSymbol> fvs = freevarCache.get(c);
+        if (fvs != null) {
+            return fvs;
+        }
+        if ((c.owner.kind & (VAR | MTH)) != 0) {
+            FreeVarCollector collector = new FreeVarCollector(c);
+            collector.scan(classDef(c));
+            fvs = collector.fvs;
+            freevarCache.put(c, fvs);
+            return fvs;
+        } else {
+            ClassSymbol owner = ownerToCopyFreeVarsFrom(c);
+            if (owner != null) {
+                fvs = freevarCache.get(owner);
+                freevarCache.put(c, fvs);
+                return fvs;
+            } else {
+                return List.nil();
+            }
+        }
+    }
+
+    Map<TypeSymbol,EnumMapping> enumSwitchMap = new LinkedHashMap<TypeSymbol,EnumMapping>();
+
+    EnumMapping mapForEnum(DiagnosticPosition pos, TypeSymbol enumClass) {
+        EnumMapping map = enumSwitchMap.get(enumClass);
+        if (map == null)
+            enumSwitchMap.put(enumClass, map = new EnumMapping(pos, enumClass));
+        return map;
+    }
+
+    /** This map gives a translation table to be used for enum
+     *  switches.
+     *
+     *  <p>For each enum that appears as the type of a switch
+     *  expression, we maintain an EnumMapping to assist in the
+     *  translation, as exemplified by the following example:
+     *
+     *  <p>we translate
+     *  <pre>
+     *          switch(colorExpression) {
+     *          case red: stmt1;
+     *          case green: stmt2;
+     *          }
+     *  </pre>
+     *  into
+     *  <pre>
+     *          switch(Outer$0.$EnumMap$Color[colorExpression.ordinal()]) {
+     *          case 1: stmt1;
+     *          case 2: stmt2
+     *          }
+     *  </pre>
+     *  with the auxiliary table initialized as follows:
+     *  <pre>
+     *          class Outer$0 {
+     *              synthetic final int[] $EnumMap$Color = new int[Color.values().length];
+     *              static {
+     *                  try { $EnumMap$Color[red.ordinal()] = 1; } catch (NoSuchFieldError ex) {}
+     *                  try { $EnumMap$Color[green.ordinal()] = 2; } catch (NoSuchFieldError ex) {}
+     *              }
+     *          }
+     *  </pre>
+     *  class EnumMapping provides mapping data and support methods for this translation.
+     */
+    class EnumMapping {
+        EnumMapping(DiagnosticPosition pos, TypeSymbol forEnum) {
+            this.forEnum = forEnum;
+            this.values = new LinkedHashMap<VarSymbol,Integer>();
+            this.pos = pos;
+            Name varName = names
+                .fromString(target.syntheticNameChar() +
+                            "SwitchMap" +
+                            target.syntheticNameChar() +
+                            writer.xClassName(forEnum.type).toString()
+                            .replace('/', '.')
+                            .replace('.', target.syntheticNameChar()));
+            ClassSymbol outerCacheClass = outerCacheClass();
+            this.mapVar = new VarSymbol(STATIC | SYNTHETIC | FINAL,
+                                        varName,
+                                        new ArrayType(syms.intType, syms.arrayClass),
+                                        outerCacheClass);
+            enterSynthetic(pos, mapVar, outerCacheClass.members());
+        }
+
+        DiagnosticPosition pos = null;
+
+        // the next value to use
+        int next = 1; // 0 (unused map elements) go to the default label
+
+        // the enum for which this is a map
+        final TypeSymbol forEnum;
+
+        // the field containing the map
+        final VarSymbol mapVar;
+
+        // the mapped values
+        final Map<VarSymbol,Integer> values;
+
+        JCLiteral forConstant(VarSymbol v) {
+            Integer result = values.get(v);
+            if (result == null)
+                values.put(v, result = next++);
+            return make.Literal(result);
+        }
+
+        // generate the field initializer for the map
+        void translate() {
+            make.at(pos.getStartPosition());
+            JCClassDecl owner = classDef((ClassSymbol)mapVar.owner);
+
+            // synthetic static final int[] $SwitchMap$Color = new int[Color.values().length];
+            MethodSymbol valuesMethod = lookupMethod(pos,
+                                                     names.values,
+                                                     forEnum.type,
+                                                     List.<Type>nil());
+            JCExpression size = make // Color.values().length
+                .Select(make.App(make.QualIdent(valuesMethod)),
+                        syms.lengthVar);
+            JCExpression mapVarInit = make
+                .NewArray(make.Type(syms.intType), List.of(size), null)
+                .setType(new ArrayType(syms.intType, syms.arrayClass));
+
+            // try { $SwitchMap$Color[red.ordinal()] = 1; } catch (java.lang.NoSuchFieldError ex) {}
+            ListBuffer<JCStatement> stmts = new ListBuffer<JCStatement>();
+            Symbol ordinalMethod = lookupMethod(pos,
+                                                names.ordinal,
+                                                forEnum.type,
+                                                List.<Type>nil());
+            List<JCCatch> catcher = List.<JCCatch>nil()
+                .prepend(make.Catch(make.VarDef(new VarSymbol(PARAMETER, names.ex,
+                                                              syms.noSuchFieldErrorType,
+                                                              syms.noSymbol),
+                                                null),
+                                    make.Block(0, List.<JCStatement>nil())));
+            for (Map.Entry<VarSymbol,Integer> e : values.entrySet()) {
+                VarSymbol enumerator = e.getKey();
+                Integer mappedValue = e.getValue();
+                JCExpression assign = make
+                    .Assign(make.Indexed(mapVar,
+                                         make.App(make.Select(make.QualIdent(enumerator),
+                                                              ordinalMethod))),
+                            make.Literal(mappedValue))
+                    .setType(syms.intType);
+                JCStatement exec = make.Exec(assign);
+                JCStatement _try = make.Try(make.Block(0, List.of(exec)), catcher, null);
+                stmts.append(_try);
+            }
+
+            owner.defs = owner.defs
+                .prepend(make.Block(STATIC, stmts.toList()))
+                .prepend(make.VarDef(mapVar, mapVarInit));
+        }
+    }
+
+
+/**************************************************************************
+ * Tree building blocks
+ *************************************************************************/
+
+    /** Equivalent to make.at(pos.getStartPosition()) with side effect of caching
+     *  pos as make_pos, for use in diagnostics.
+     **/
+    TreeMaker make_at(DiagnosticPosition pos) {
+        make_pos = pos;
+        return make.at(pos);
+    }
+
+    /** Make an attributed tree representing a literal. This will be an
+     *  Ident node in the case of boolean literals, a Literal node in all
+     *  other cases.
+     *  @param type       The literal's type.
+     *  @param value      The literal's value.
+     */
+    JCExpression makeLit(Type type, Object value) {
+        return make.Literal(type.getTag(), value).setType(type.constType(value));
+    }
+
+    /** Make an attributed tree representing null.
+     */
+    JCExpression makeNull() {
+        return makeLit(syms.botType, null);
+    }
+
+    /** Make an attributed class instance creation expression.
+     *  @param ctype    The class type.
+     *  @param args     The constructor arguments.
+     */
+    JCNewClass makeNewClass(Type ctype, List<JCExpression> args) {
+        JCNewClass tree = make.NewClass(null,
+            null, make.QualIdent(ctype.tsym), args, null);
+        tree.constructor = rs.resolveConstructor(
+            make_pos, attrEnv, ctype, TreeInfo.types(args), List.<Type>nil());
+        tree.type = ctype;
+        return tree;
+    }
+
+    /** Make an attributed unary expression.
+     *  @param optag    The operators tree tag.
+     *  @param arg      The operator's argument.
+     */
+    JCUnary makeUnary(Tag optag, JCExpression arg) {
+        JCUnary tree = make.Unary(optag, arg);
+        tree.operator = rs.resolveUnaryOperator(
+            make_pos, optag, attrEnv, arg.type);
+        tree.type = tree.operator.type.getReturnType();
+        return tree;
+    }
+
+    /** Make an attributed binary expression.
+     *  @param optag    The operators tree tag.
+     *  @param lhs      The operator's left argument.
+     *  @param rhs      The operator's right argument.
+     */
+    JCBinary makeBinary(Tag optag, JCExpression lhs, JCExpression rhs) {
+        JCBinary tree = make.Binary(optag, lhs, rhs);
+        tree.operator = rs.resolveBinaryOperator(
+            make_pos, optag, attrEnv, lhs.type, rhs.type);
+        tree.type = tree.operator.type.getReturnType();
+        return tree;
+    }
+
+    /** Make an attributed assignop expression.
+     *  @param optag    The operators tree tag.
+     *  @param lhs      The operator's left argument.
+     *  @param rhs      The operator's right argument.
+     */
+    JCAssignOp makeAssignop(Tag optag, JCTree lhs, JCTree rhs) {
+        JCAssignOp tree = make.Assignop(optag, lhs, rhs);
+        tree.operator = rs.resolveBinaryOperator(
+            make_pos, tree.getTag().noAssignOp(), attrEnv, lhs.type, rhs.type);
+        tree.type = lhs.type;
+        return tree;
+    }
+
+    /** Convert tree into string object, unless it has already a
+     *  reference type..
+     */
+    JCExpression makeString(JCExpression tree) {
+        if (!tree.type.isPrimitiveOrVoid()) {
+            return tree;
+        } else {
+            Symbol valueOfSym = lookupMethod(tree.pos(),
+                                             names.valueOf,
+                                             syms.stringType,
+                                             List.of(tree.type));
+            return make.App(make.QualIdent(valueOfSym), List.of(tree));
+        }
+    }
+
+    /** Create an empty anonymous class definition and enter and complete
+     *  its symbol. Return the class definition's symbol.
+     *  and create
+     *  @param flags    The class symbol's flags
+     *  @param owner    The class symbol's owner
+     */
+    JCClassDecl makeEmptyClass(long flags, ClassSymbol owner) {
+        return makeEmptyClass(flags, owner, null, true);
+    }
+
+    JCClassDecl makeEmptyClass(long flags, ClassSymbol owner, Name flatname,
+            boolean addToDefs) {
+        // Create class symbol.
+        ClassSymbol c = reader.defineClass(names.empty, owner);
+        if (flatname != null) {
+            c.flatname = flatname;
+        } else {
+            c.flatname = chk.localClassName(c);
+        }
+        c.sourcefile = owner.sourcefile;
+        c.completer = null;
+        c.members_field = new Scope(c);
+        c.flags_field = flags;
+        ClassType ctype = (ClassType) c.type;
+        ctype.supertype_field = syms.objectType;
+        ctype.interfaces_field = List.nil();
+
+        JCClassDecl odef = classDef(owner);
+
+        // Enter class symbol in owner scope and compiled table.
+        enterSynthetic(odef.pos(), c, owner.members());
+        chk.compiled.put(c.flatname, c);
+
+        // Create class definition tree.
+        JCClassDecl cdef = make.ClassDef(
+            make.Modifiers(flags), names.empty,
+            List.<JCTypeParameter>nil(),
+            null, List.<JCExpression>nil(), List.<JCTree>nil());
+        cdef.sym = c;
+        cdef.type = c.type;
+
+        // Append class definition tree to owner's definitions.
+        if (addToDefs) odef.defs = odef.defs.prepend(cdef);
+        return cdef;
+    }
+
+/**************************************************************************
+ * Symbol manipulation utilities
+ *************************************************************************/
+
+    /** Enter a synthetic symbol in a given scope, but complain if there was already one there.
+     *  @param pos           Position for error reporting.
+     *  @param sym           The symbol.
+     *  @param s             The scope.
+     */
+    private void enterSynthetic(DiagnosticPosition pos, Symbol sym, Scope s) {
+        s.enter(sym);
+    }
+
+    /** Create a fresh synthetic name within a given scope - the unique name is
+     *  obtained by appending '$' chars at the end of the name until no match
+     *  is found.
+     *
+     * @param name base name
+     * @param s scope in which the name has to be unique
+     * @return fresh synthetic name
+     */
+    private Name makeSyntheticName(Name name, Scope s) {
+        do {
+            name = name.append(
+                    target.syntheticNameChar(),
+                    names.empty);
+        } while (lookupSynthetic(name, s) != null);
+        return name;
+    }
+
+    /** Check whether synthetic symbols generated during lowering conflict
+     *  with user-defined symbols.
+     *
+     *  @param translatedTrees lowered class trees
+     */
+    void checkConflicts(List<JCTree> translatedTrees) {
+        for (JCTree t : translatedTrees) {
+            t.accept(conflictsChecker);
+        }
+    }
+
+    JCTree.Visitor conflictsChecker = new TreeScanner() {
+
+        TypeSymbol currentClass;
+
+        @Override
+        public void visitMethodDef(JCMethodDecl that) {
+            chk.checkConflicts(that.pos(), that.sym, currentClass);
+            super.visitMethodDef(that);
+        }
+
+        @Override
+        public void visitVarDef(JCVariableDecl that) {
+            if (that.sym.owner.kind == TYP) {
+                chk.checkConflicts(that.pos(), that.sym, currentClass);
+            }
+            super.visitVarDef(that);
+        }
+
+        @Override
+        public void visitClassDef(JCClassDecl that) {
+            TypeSymbol prevCurrentClass = currentClass;
+            currentClass = that.sym;
+            try {
+                super.visitClassDef(that);
+            }
+            finally {
+                currentClass = prevCurrentClass;
+            }
+        }
+    };
+
+    /** Look up a synthetic name in a given scope.
+     *  @param s            The scope.
+     *  @param name         The name.
+     */
+    private Symbol lookupSynthetic(Name name, Scope s) {
+        Symbol sym = s.lookup(name).sym;
+        return (sym==null || (sym.flags()&SYNTHETIC)==0) ? null : sym;
+    }
+
+    /** Look up a method in a given scope.
+     */
+    private MethodSymbol lookupMethod(DiagnosticPosition pos, Name name, Type qual, List<Type> args) {
+        return rs.resolveInternalMethod(pos, attrEnv, qual, name, args, List.<Type>nil());
+    }
+
+    /** Look up a constructor.
+     */
+    private MethodSymbol lookupConstructor(DiagnosticPosition pos, Type qual, List<Type> args) {
+        return rs.resolveInternalConstructor(pos, attrEnv, qual, args, null);
+    }
+
+    /** Look up a field.
+     */
+    private VarSymbol lookupField(DiagnosticPosition pos, Type qual, Name name) {
+        return rs.resolveInternalField(pos, attrEnv, qual, name);
+    }
+
+    /** Anon inner classes are used as access constructor tags.
+     * accessConstructorTag will use an existing anon class if one is available,
+     * and synthethise a class (with makeEmptyClass) if one is not available.
+     * However, there is a small possibility that an existing class will not
+     * be generated as expected if it is inside a conditional with a constant
+     * expression. If that is found to be the case, create an empty class tree here.
+     */
+    private void checkAccessConstructorTags() {
+        for (List<ClassSymbol> l = accessConstrTags; l.nonEmpty(); l = l.tail) {
+            ClassSymbol c = l.head;
+            if (isTranslatedClassAvailable(c))
+                continue;
+            // Create class definition tree.
+            JCClassDecl cdec = makeEmptyClass(STATIC | SYNTHETIC,
+                    c.outermostClass(), c.flatname, false);
+            swapAccessConstructorTag(c, cdec.sym);
+            translated.append(cdec);
+        }
+    }
+    // where
+    private boolean isTranslatedClassAvailable(ClassSymbol c) {
+        for (JCTree tree: translated) {
+            if (tree.hasTag(CLASSDEF)
+                    && ((JCClassDecl) tree).sym == c) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void swapAccessConstructorTag(ClassSymbol oldCTag, ClassSymbol newCTag) {
+        for (MethodSymbol methodSymbol : accessConstrs.values()) {
+            Assert.check(methodSymbol.type.hasTag(METHOD));
+            MethodType oldMethodType =
+                    (MethodType)methodSymbol.type;
+            if (oldMethodType.argtypes.head.tsym == oldCTag)
+                methodSymbol.type =
+                    types.createMethodTypeWithParameters(oldMethodType,
+                        oldMethodType.getParameterTypes().tail
+                            .prepend(newCTag.erasure(types)));
+        }
+    }
+
+/**************************************************************************
+ * Access methods
+ *************************************************************************/
+
+    /** Access codes for dereferencing, assignment,
+     *  and pre/post increment/decrement.
+     *  Access codes for assignment operations are determined by method accessCode
+     *  below.
+     *
+     *  All access codes for accesses to the current class are even.
+     *  If a member of the superclass should be accessed instead (because
+     *  access was via a qualified super), add one to the corresponding code
+     *  for the current class, making the number odd.
+     *  This numbering scheme is used by the backend to decide whether
+     *  to issue an invokevirtual or invokespecial call.
+     *
+     *  @see Gen#visitSelect(JCFieldAccess tree)
+     */
+    private static final int
+        DEREFcode = 0,
+        ASSIGNcode = 2,
+        PREINCcode = 4,
+        PREDECcode = 6,
+        POSTINCcode = 8,
+        POSTDECcode = 10,
+        FIRSTASGOPcode = 12;
+
+    /** Number of access codes
+     */
+    private static final int NCODES = accessCode(ByteCodes.lushrl) + 2;
+
+    /** A mapping from symbols to their access numbers.
+     */
+    private Map<Symbol,Integer> accessNums;
+
+    /** A mapping from symbols to an array of access symbols, indexed by
+     *  access code.
+     */
+    private Map<Symbol,MethodSymbol[]> accessSyms;
+
+    /** A mapping from (constructor) symbols to access constructor symbols.
+     */
+    private Map<Symbol,MethodSymbol> accessConstrs;
+
+    /** A list of all class symbols used for access constructor tags.
+     */
+    private List<ClassSymbol> accessConstrTags;
+
+    /** A queue for all accessed symbols.
+     */
+    private ListBuffer<Symbol> accessed;
+
+    /** Map bytecode of binary operation to access code of corresponding
+     *  assignment operation. This is always an even number.
+     */
+    private static int accessCode(int bytecode) {
+        if (ByteCodes.iadd <= bytecode && bytecode <= ByteCodes.lxor)
+            return (bytecode - iadd) * 2 + FIRSTASGOPcode;
+        else if (bytecode == ByteCodes.string_add)
+            return (ByteCodes.lxor + 1 - iadd) * 2 + FIRSTASGOPcode;
+        else if (ByteCodes.ishll <= bytecode && bytecode <= ByteCodes.lushrl)
+            return (bytecode - ishll + ByteCodes.lxor + 2 - iadd) * 2 + FIRSTASGOPcode;
+        else
+            return -1;
+    }
+
+    /** return access code for identifier,
+     *  @param tree     The tree representing the identifier use.
+     *  @param enclOp   The closest enclosing operation node of tree,
+     *                  null if tree is not a subtree of an operation.
+     */
+    private static int accessCode(JCTree tree, JCTree enclOp) {
+        if (enclOp == null)
+            return DEREFcode;
+        else if (enclOp.hasTag(ASSIGN) &&
+                 tree == TreeInfo.skipParens(((JCAssign) enclOp).lhs))
+            return ASSIGNcode;
+        else if (enclOp.getTag().isIncOrDecUnaryOp() &&
+                 tree == TreeInfo.skipParens(((JCUnary) enclOp).arg))
+            return mapTagToUnaryOpCode(enclOp.getTag());
+        else if (enclOp.getTag().isAssignop() &&
+                 tree == TreeInfo.skipParens(((JCAssignOp) enclOp).lhs))
+            return accessCode(((OperatorSymbol) ((JCAssignOp) enclOp).operator).opcode);
+        else
+            return DEREFcode;
+    }
+
+    /** Return binary operator that corresponds to given access code.
+     */
+    private OperatorSymbol binaryAccessOperator(int acode) {
+        for (Scope.Entry e = syms.predefClass.members().elems;
+             e != null;
+             e = e.sibling) {
+            if (e.sym instanceof OperatorSymbol) {
+                OperatorSymbol op = (OperatorSymbol)e.sym;
+                if (accessCode(op.opcode) == acode) return op;
+            }
+        }
+        return null;
+    }
+
+    /** Return tree tag for assignment operation corresponding
+     *  to given binary operator.
+     */
+    private static Tag treeTag(OperatorSymbol operator) {
+        switch (operator.opcode) {
+        case ByteCodes.ior: case ByteCodes.lor:
+            return BITOR_ASG;
+        case ByteCodes.ixor: case ByteCodes.lxor:
+            return BITXOR_ASG;
+        case ByteCodes.iand: case ByteCodes.land:
+            return BITAND_ASG;
+        case ByteCodes.ishl: case ByteCodes.lshl:
+        case ByteCodes.ishll: case ByteCodes.lshll:
+            return SL_ASG;
+        case ByteCodes.ishr: case ByteCodes.lshr:
+        case ByteCodes.ishrl: case ByteCodes.lshrl:
+            return SR_ASG;
+        case ByteCodes.iushr: case ByteCodes.lushr:
+        case ByteCodes.iushrl: case ByteCodes.lushrl:
+            return USR_ASG;
+        case ByteCodes.iadd: case ByteCodes.ladd:
+        case ByteCodes.fadd: case ByteCodes.dadd:
+        case ByteCodes.string_add:
+            return PLUS_ASG;
+        case ByteCodes.isub: case ByteCodes.lsub:
+        case ByteCodes.fsub: case ByteCodes.dsub:
+            return MINUS_ASG;
+        case ByteCodes.imul: case ByteCodes.lmul:
+        case ByteCodes.fmul: case ByteCodes.dmul:
+            return MUL_ASG;
+        case ByteCodes.idiv: case ByteCodes.ldiv:
+        case ByteCodes.fdiv: case ByteCodes.ddiv:
+            return DIV_ASG;
+        case ByteCodes.imod: case ByteCodes.lmod:
+        case ByteCodes.fmod: case ByteCodes.dmod:
+            return MOD_ASG;
+        default:
+            throw new AssertionError();
+        }
+    }
+
+    /** The name of the access method with number `anum' and access code `acode'.
+     */
+    Name accessName(int anum, int acode) {
+        return names.fromString(
+            "access" + target.syntheticNameChar() + anum + acode / 10 + acode % 10);
+    }
+
+    /** Return access symbol for a private or protected symbol from an inner class.
+     *  @param sym        The accessed private symbol.
+     *  @param tree       The accessing tree.
+     *  @param enclOp     The closest enclosing operation node of tree,
+     *                    null if tree is not a subtree of an operation.
+     *  @param protAccess Is access to a protected symbol in another
+     *                    package?
+     *  @param refSuper   Is access via a (qualified) C.super?
+     */
+    MethodSymbol accessSymbol(Symbol sym, JCTree tree, JCTree enclOp,
+                              boolean protAccess, boolean refSuper) {
+        ClassSymbol accOwner = refSuper && protAccess
+            // For access via qualified super (T.super.x), place the
+            // access symbol on T.
+            ? (ClassSymbol)((JCFieldAccess) tree).selected.type.tsym
+            // Otherwise pretend that the owner of an accessed
+            // protected symbol is the enclosing class of the current
+            // class which is a subclass of the symbol's owner.
+            : accessClass(sym, protAccess, tree);
+
+        Symbol vsym = sym;
+        if (sym.owner != accOwner) {
+            vsym = sym.clone(accOwner);
+            actualSymbols.put(vsym, sym);
+        }
+
+        Integer anum              // The access number of the access method.
+            = accessNums.get(vsym);
+        if (anum == null) {
+            anum = accessed.length();
+            accessNums.put(vsym, anum);
+            accessSyms.put(vsym, new MethodSymbol[NCODES]);
+            accessed.append(vsym);
+            // System.out.println("accessing " + vsym + " in " + vsym.location());
+        }
+
+        int acode;                // The access code of the access method.
+        List<Type> argtypes;      // The argument types of the access method.
+        Type restype;             // The result type of the access method.
+        List<Type> thrown;        // The thrown exceptions of the access method.
+        switch (vsym.kind) {
+        case VAR:
+            acode = accessCode(tree, enclOp);
+            if (acode >= FIRSTASGOPcode) {
+                OperatorSymbol operator = binaryAccessOperator(acode);
+                if (operator.opcode == string_add)
+                    argtypes = List.of(syms.objectType);
+                else
+                    argtypes = operator.type.getParameterTypes().tail;
+            } else if (acode == ASSIGNcode)
+                argtypes = List.of(vsym.erasure(types));
+            else
+                argtypes = List.nil();
+            restype = vsym.erasure(types);
+            thrown = List.nil();
+            break;
+        case MTH:
+            acode = DEREFcode;
+            argtypes = vsym.erasure(types).getParameterTypes();
+            restype = vsym.erasure(types).getReturnType();
+            thrown = vsym.type.getThrownTypes();
+            break;
+        default:
+            throw new AssertionError();
+        }
+
+        // For references via qualified super, increment acode by one,
+        // making it odd.
+        if (protAccess && refSuper) acode++;
+
+        // Instance access methods get instance as first parameter.
+        // For protected symbols this needs to be the instance as a member
+        // of the type containing the accessed symbol, not the class
+        // containing the access method.
+        if ((vsym.flags() & STATIC) == 0) {
+            argtypes = argtypes.prepend(vsym.owner.erasure(types));
+        }
+        MethodSymbol[] accessors = accessSyms.get(vsym);
+        MethodSymbol accessor = accessors[acode];
+        if (accessor == null) {
+            accessor = new MethodSymbol(
+                STATIC | SYNTHETIC,
+                accessName(anum.intValue(), acode),
+                new MethodType(argtypes, restype, thrown, syms.methodClass),
+                accOwner);
+            enterSynthetic(tree.pos(), accessor, accOwner.members());
+            accessors[acode] = accessor;
+        }
+        return accessor;
+    }
+
+    /** The qualifier to be used for accessing a symbol in an outer class.
+     *  This is either C.sym or C.this.sym, depending on whether or not
+     *  sym is static.
+     *  @param sym   The accessed symbol.
+     */
+    JCExpression accessBase(DiagnosticPosition pos, Symbol sym) {
+        return (sym.flags() & STATIC) != 0
+            ? access(make.at(pos.getStartPosition()).QualIdent(sym.owner))
+            : makeOwnerThis(pos, sym, true);
+    }
+
+    /** Do we need an access method to reference private symbol?
+     */
+    boolean needsPrivateAccess(Symbol sym) {
+        if ((sym.flags() & PRIVATE) == 0 || sym.owner == currentClass) {
+            return false;
+        } else if (sym.name == names.init && sym.owner.isLocal()) {
+            // private constructor in local class: relax protection
+            sym.flags_field &= ~PRIVATE;
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    /** Do we need an access method to reference symbol in other package?
+     */
+    boolean needsProtectedAccess(Symbol sym, JCTree tree) {
+        if ((sym.flags() & PROTECTED) == 0 ||
+            sym.owner.owner == currentClass.owner || // fast special case
+            sym.packge() == currentClass.packge())
+            return false;
+        if (!currentClass.isSubClass(sym.owner, types))
+            return true;
+        if ((sym.flags() & STATIC) != 0 ||
+            !tree.hasTag(SELECT) ||
+            TreeInfo.name(((JCFieldAccess) tree).selected) == names._super)
+            return false;
+        return !((JCFieldAccess) tree).selected.type.tsym.isSubClass(currentClass, types);
+    }
+
+    /** The class in which an access method for given symbol goes.
+     *  @param sym        The access symbol
+     *  @param protAccess Is access to a protected symbol in another
+     *                    package?
+     */
+    ClassSymbol accessClass(Symbol sym, boolean protAccess, JCTree tree) {
+        if (protAccess) {
+            Symbol qualifier = null;
+            ClassSymbol c = currentClass;
+            if (tree.hasTag(SELECT) && (sym.flags() & STATIC) == 0) {
+                qualifier = ((JCFieldAccess) tree).selected.type.tsym;
+                while (!qualifier.isSubClass(c, types)) {
+                    c = c.owner.enclClass();
+                }
+                return c;
+            } else {
+                while (!c.isSubClass(sym.owner, types)) {
+                    c = c.owner.enclClass();
+                }
+            }
+            return c;
+        } else {
+            // the symbol is private
+            return sym.owner.enclClass();
+        }
+    }
+
+    private void addPrunedInfo(JCTree tree) {
+        List<JCTree> infoList = prunedTree.get(currentClass);
+        infoList = (infoList == null) ? List.of(tree) : infoList.prepend(tree);
+        prunedTree.put(currentClass, infoList);
+    }
+
+    /** Ensure that identifier is accessible, return tree accessing the identifier.
+     *  @param sym      The accessed symbol.
+     *  @param tree     The tree referring to the symbol.
+     *  @param enclOp   The closest enclosing operation node of tree,
+     *                  null if tree is not a subtree of an operation.
+     *  @param refSuper Is access via a (qualified) C.super?
+     */
+    JCExpression access(Symbol sym, JCExpression tree, JCExpression enclOp, boolean refSuper) {
+        // Access a free variable via its proxy, or its proxy's proxy
+        while (sym.kind == VAR && sym.owner.kind == MTH &&
+            sym.owner.enclClass() != currentClass) {
+            // A constant is replaced by its constant value.
+            Object cv = ((VarSymbol)sym).getConstValue();
+            if (cv != null) {
+                make.at(tree.pos);
+                return makeLit(sym.type, cv);
+            }
+            // Otherwise replace the variable by its proxy.
+            sym = proxies.lookup(proxyName(sym.name)).sym;
+            Assert.check(sym != null && (sym.flags_field & FINAL) != 0);
+            tree = make.at(tree.pos).Ident(sym);
+        }
+        JCExpression base = (tree.hasTag(SELECT)) ? ((JCFieldAccess) tree).selected : null;
+        switch (sym.kind) {
+        case TYP:
+            if (sym.owner.kind != PCK) {
+                // Convert type idents to
+                // <flat name> or <package name> . <flat name>
+                Name flatname = Convert.shortName(sym.flatName());
+                while (base != null &&
+                       TreeInfo.symbol(base) != null &&
+                       TreeInfo.symbol(base).kind != PCK) {
+                    base = (base.hasTag(SELECT))
+                        ? ((JCFieldAccess) base).selected
+                        : null;
+                }
+                if (tree.hasTag(IDENT)) {
+                    ((JCIdent) tree).name = flatname;
+                } else if (base == null) {
+                    tree = make.at(tree.pos).Ident(sym);
+                    ((JCIdent) tree).name = flatname;
+                } else {
+                    ((JCFieldAccess) tree).selected = base;
+                    ((JCFieldAccess) tree).name = flatname;
+                }
+            }
+            break;
+        case MTH: case VAR:
+            if (sym.owner.kind == TYP) {
+
+                // Access methods are required for
+                //  - private members,
+                //  - protected members in a superclass of an
+                //    enclosing class contained in another package.
+                //  - all non-private members accessed via a qualified super.
+                boolean protAccess = refSuper && !needsPrivateAccess(sym)
+                    || needsProtectedAccess(sym, tree);
+                boolean accReq = protAccess || needsPrivateAccess(sym);
+
+                // A base has to be supplied for
+                //  - simple identifiers accessing variables in outer classes.
+                boolean baseReq =
+                    base == null &&
+                    sym.owner != syms.predefClass &&
+                    !sym.isMemberOf(currentClass, types);
+
+                if (accReq || baseReq) {
+                    make.at(tree.pos);
+
+                    // Constants are replaced by their constant value.
+                    if (sym.kind == VAR) {
+                        Object cv = ((VarSymbol)sym).getConstValue();
+                        if (cv != null) {
+                            addPrunedInfo(tree);
+                            return makeLit(sym.type, cv);
+                        }
+                    }
+
+                    // Private variables and methods are replaced by calls
+                    // to their access methods.
+                    if (accReq) {
+                        List<JCExpression> args = List.nil();
+                        if ((sym.flags() & STATIC) == 0) {
+                            // Instance access methods get instance
+                            // as first parameter.
+                            if (base == null)
+                                base = makeOwnerThis(tree.pos(), sym, true);
+                            args = args.prepend(base);
+                            base = null;   // so we don't duplicate code
+                        }
+                        Symbol access = accessSymbol(sym, tree,
+                                                     enclOp, protAccess,
+                                                     refSuper);
+                        JCExpression receiver = make.Select(
+                            base != null ? base : make.QualIdent(access.owner),
+                            access);
+                        return make.App(receiver, args);
+
+                    // Other accesses to members of outer classes get a
+                    // qualifier.
+                    } else if (baseReq) {
+                        return make.at(tree.pos).Select(
+                            accessBase(tree.pos(), sym), sym).setType(tree.type);
+                    }
+                }
+            } else if (sym.owner.kind == MTH && lambdaTranslationMap != null) {
+                //sym is a local variable - check the lambda translation map to
+                //see if sym has been translated to something else in the current
+                //scope (by LambdaToMethod)
+                Symbol translatedSym = lambdaTranslationMap.get(sym);
+                if (translatedSym != null) {
+                    tree = make.at(tree.pos).Ident(translatedSym);
+                }
+            }
+        }
+        return tree;
+    }
+
+    /** Ensure that identifier is accessible, return tree accessing the identifier.
+     *  @param tree     The identifier tree.
+     */
+    JCExpression access(JCExpression tree) {
+        Symbol sym = TreeInfo.symbol(tree);
+        return sym == null ? tree : access(sym, tree, null, false);
+    }
+
+    /** Return access constructor for a private constructor,
+     *  or the constructor itself, if no access constructor is needed.
+     *  @param pos       The position to report diagnostics, if any.
+     *  @param constr    The private constructor.
+     */
+    Symbol accessConstructor(DiagnosticPosition pos, Symbol constr) {
+        if (needsPrivateAccess(constr)) {
+            ClassSymbol accOwner = constr.owner.enclClass();
+            MethodSymbol aconstr = accessConstrs.get(constr);
+            if (aconstr == null) {
+                List<Type> argtypes = constr.type.getParameterTypes();
+                if ((accOwner.flags_field & ENUM) != 0)
+                    argtypes = argtypes
+                        .prepend(syms.intType)
+                        .prepend(syms.stringType);
+                aconstr = new MethodSymbol(
+                    SYNTHETIC,
+                    names.init,
+                    new MethodType(
+                        argtypes.append(
+                            accessConstructorTag().erasure(types)),
+                        constr.type.getReturnType(),
+                        constr.type.getThrownTypes(),
+                        syms.methodClass),
+                    accOwner);
+                enterSynthetic(pos, aconstr, accOwner.members());
+                accessConstrs.put(constr, aconstr);
+                accessed.append(constr);
+            }
+            return aconstr;
+        } else {
+            return constr;
+        }
+    }
+
+    /** Return an anonymous class nested in this toplevel class.
+     */
+    ClassSymbol accessConstructorTag() {
+        ClassSymbol topClass = currentClass.outermostClass();
+        Name flatname = names.fromString("" + topClass.getQualifiedName() +
+                                         target.syntheticNameChar() +
+                                         "1");
+        ClassSymbol ctag = chk.compiled.get(flatname);
+        if (ctag == null)
+            ctag = makeEmptyClass(STATIC | SYNTHETIC, topClass).sym;
+        // keep a record of all tags, to verify that all are generated as required
+        accessConstrTags = accessConstrTags.prepend(ctag);
+        return ctag;
+    }
+
+    /** Add all required access methods for a private symbol to enclosing class.
+     *  @param sym       The symbol.
+     */
+    void makeAccessible(Symbol sym) {
+        JCClassDecl cdef = classDef(sym.owner.enclClass());
+        if (cdef == null) Assert.error("class def not found: " + sym + " in " + sym.owner);
+        if (sym.name == names.init) {
+            cdef.defs = cdef.defs.prepend(
+                accessConstructorDef(cdef.pos, sym, accessConstrs.get(sym)));
+        } else {
+            MethodSymbol[] accessors = accessSyms.get(sym);
+            for (int i = 0; i < NCODES; i++) {
+                if (accessors[i] != null)
+                    cdef.defs = cdef.defs.prepend(
+                        accessDef(cdef.pos, sym, accessors[i], i));
+            }
+        }
+    }
+
+    /** Maps unary operator integer codes to JCTree.Tag objects
+     *  @param unaryOpCode the unary operator code
+     */
+    private static Tag mapUnaryOpCodeToTag(int unaryOpCode){
+        switch (unaryOpCode){
+            case PREINCcode:
+                return PREINC;
+            case PREDECcode:
+                return PREDEC;
+            case POSTINCcode:
+                return POSTINC;
+            case POSTDECcode:
+                return POSTDEC;
+            default:
+                return NO_TAG;
+        }
+    }
+
+    /** Maps JCTree.Tag objects to unary operator integer codes
+     *  @param tag the JCTree.Tag
+     */
+    private static int mapTagToUnaryOpCode(Tag tag){
+        switch (tag){
+            case PREINC:
+                return PREINCcode;
+            case PREDEC:
+                return PREDECcode;
+            case POSTINC:
+                return POSTINCcode;
+            case POSTDEC:
+                return POSTDECcode;
+            default:
+                return -1;
+        }
+    }
+
+    /** Construct definition of an access method.
+     *  @param pos        The source code position of the definition.
+     *  @param vsym       The private or protected symbol.
+     *  @param accessor   The access method for the symbol.
+     *  @param acode      The access code.
+     */
+    JCTree accessDef(int pos, Symbol vsym, MethodSymbol accessor, int acode) {
+//      System.err.println("access " + vsym + " with " + accessor);//DEBUG
+        currentClass = vsym.owner.enclClass();
+        make.at(pos);
+        JCMethodDecl md = make.MethodDef(accessor, null);
+
+        // Find actual symbol
+        Symbol sym = actualSymbols.get(vsym);
+        if (sym == null) sym = vsym;
+
+        JCExpression ref;           // The tree referencing the private symbol.
+        List<JCExpression> args;    // Any additional arguments to be passed along.
+        if ((sym.flags() & STATIC) != 0) {
+            ref = make.Ident(sym);
+            args = make.Idents(md.params);
+        } else {
+            JCExpression site = make.Ident(md.params.head);
+            if (acode % 2 != 0) {
+                //odd access codes represent qualified super accesses - need to
+                //emit reference to the direct superclass, even if the refered
+                //member is from an indirect superclass (JLS 13.1)
+                site.setType(types.erasure(types.supertype(vsym.owner.enclClass().type)));
+            }
+            ref = make.Select(site, sym);
+            args = make.Idents(md.params.tail);
+        }
+        JCStatement stat;          // The statement accessing the private symbol.
+        if (sym.kind == VAR) {
+            // Normalize out all odd access codes by taking floor modulo 2:
+            int acode1 = acode - (acode & 1);
+
+            JCExpression expr;      // The access method's return value.
+            switch (acode1) {
+            case DEREFcode:
+                expr = ref;
+                break;
+            case ASSIGNcode:
+                expr = make.Assign(ref, args.head);
+                break;
+            case PREINCcode: case POSTINCcode: case PREDECcode: case POSTDECcode:
+                expr = makeUnary(mapUnaryOpCodeToTag(acode1), ref);
+                break;
+            default:
+                expr = make.Assignop(
+                    treeTag(binaryAccessOperator(acode1)), ref, args.head);
+                ((JCAssignOp) expr).operator = binaryAccessOperator(acode1);
+            }
+            stat = make.Return(expr.setType(sym.type));
+        } else {
+            stat = make.Call(make.App(ref, args));
+        }
+        md.body = make.Block(0, List.of(stat));
+
+        // Make sure all parameters, result types and thrown exceptions
+        // are accessible.
+        for (List<JCVariableDecl> l = md.params; l.nonEmpty(); l = l.tail)
+            l.head.vartype = access(l.head.vartype);
+        md.restype = access(md.restype);
+        for (List<JCExpression> l = md.thrown; l.nonEmpty(); l = l.tail)
+            l.head = access(l.head);
+
+        return md;
+    }
+
+    /** Construct definition of an access constructor.
+     *  @param pos        The source code position of the definition.
+     *  @param constr     The private constructor.
+     *  @param accessor   The access method for the constructor.
+     */
+    JCTree accessConstructorDef(int pos, Symbol constr, MethodSymbol accessor) {
+        make.at(pos);
+        JCMethodDecl md = make.MethodDef(accessor,
+                                      accessor.externalType(types),
+                                      null);
+        JCIdent callee = make.Ident(names._this);
+        callee.sym = constr;
+        callee.type = constr.type;
+        md.body =
+            make.Block(0, List.<JCStatement>of(
+                make.Call(
+                    make.App(
+                        callee,
+                        make.Idents(md.params.reverse().tail.reverse())))));
+        return md;
+    }
+
+/**************************************************************************
+ * Free variables proxies and this$n
+ *************************************************************************/
+
+    /** A scope containing all free variable proxies for currently translated
+     *  class, as well as its this$n symbol (if needed).
+     *  Proxy scopes are nested in the same way classes are.
+     *  Inside a constructor, proxies and any this$n symbol are duplicated
+     *  in an additional innermost scope, where they represent the constructor
+     *  parameters.
+     */
+    Scope proxies;
+
+    /** A scope containing all unnamed resource variables/saved
+     *  exception variables for translated TWR blocks
+     */
+    Scope twrVars;
+
+    /** A stack containing the this$n field of the currently translated
+     *  classes (if needed) in innermost first order.
+     *  Inside a constructor, proxies and any this$n symbol are duplicated
+     *  in an additional innermost scope, where they represent the constructor
+     *  parameters.
+     */
+    List<VarSymbol> outerThisStack;
+
+    /** The name of a free variable proxy.
+     */
+    Name proxyName(Name name) {
+        return names.fromString("val" + target.syntheticNameChar() + name);
+    }
+
+    /** Proxy definitions for all free variables in given list, in reverse order.
+     *  @param pos        The source code position of the definition.
+     *  @param freevars   The free variables.
+     *  @param owner      The class in which the definitions go.
+     */
+    List<JCVariableDecl> freevarDefs(int pos, List<VarSymbol> freevars, Symbol owner) {
+        return freevarDefs(pos, freevars, owner, 0);
+    }
+
+    List<JCVariableDecl> freevarDefs(int pos, List<VarSymbol> freevars, Symbol owner,
+            long additionalFlags) {
+        long flags = FINAL | SYNTHETIC | additionalFlags;
+        if (owner.kind == TYP &&
+            target.usePrivateSyntheticFields())
+            flags |= PRIVATE;
+        List<JCVariableDecl> defs = List.nil();
+        for (List<VarSymbol> l = freevars; l.nonEmpty(); l = l.tail) {
+            VarSymbol v = l.head;
+            VarSymbol proxy = new VarSymbol(
+                flags, proxyName(v.name), v.erasure(types), owner);
+            proxies.enter(proxy);
+            JCVariableDecl vd = make.at(pos).VarDef(proxy, null);
+            vd.vartype = access(vd.vartype);
+            defs = defs.prepend(vd);
+        }
+        return defs;
+    }
+
+    /** The name of a this$n field
+     *  @param type   The class referenced by the this$n field
+     */
+    Name outerThisName(Type type, Symbol owner) {
+        Type t = type.getEnclosingType();
+        int nestingLevel = 0;
+        while (t.hasTag(CLASS)) {
+            t = t.getEnclosingType();
+            nestingLevel++;
+        }
+        Name result = names.fromString("this" + target.syntheticNameChar() + nestingLevel);
+        while (owner.kind == TYP && ((ClassSymbol)owner).members().lookup(result).scope != null)
+            result = names.fromString(result.toString() + target.syntheticNameChar());
+        return result;
+    }
+
+    private VarSymbol makeOuterThisVarSymbol(Symbol owner, long flags) {
+        if (owner.kind == TYP &&
+            target.usePrivateSyntheticFields())
+            flags |= PRIVATE;
+        Type target = types.erasure(owner.enclClass().type.getEnclosingType());
+        VarSymbol outerThis =
+            new VarSymbol(flags, outerThisName(target, owner), target, owner);
+        outerThisStack = outerThisStack.prepend(outerThis);
+        return outerThis;
+    }
+
+    private JCVariableDecl makeOuterThisVarDecl(int pos, VarSymbol sym) {
+        JCVariableDecl vd = make.at(pos).VarDef(sym, null);
+        vd.vartype = access(vd.vartype);
+        return vd;
+    }
+
+    /** Definition for this$n field.
+     *  @param pos        The source code position of the definition.
+     *  @param owner      The method in which the definition goes.
+     */
+    JCVariableDecl outerThisDef(int pos, MethodSymbol owner) {
+        ClassSymbol c = owner.enclClass();
+        boolean isMandated =
+            // Anonymous constructors
+            (owner.isConstructor() && owner.isAnonymous()) ||
+            // Constructors of non-private inner member classes
+            (owner.isConstructor() && c.isInner() &&
+             !c.isPrivate() && !c.isStatic());
+        long flags =
+            FINAL | (isMandated ? MANDATED : SYNTHETIC) | PARAMETER;
+        VarSymbol outerThis = makeOuterThisVarSymbol(owner, flags);
+        owner.extraParams = owner.extraParams.prepend(outerThis);
+        return makeOuterThisVarDecl(pos, outerThis);
+    }
+
+    /** Definition for this$n field.
+     *  @param pos        The source code position of the definition.
+     *  @param owner      The class in which the definition goes.
+     */
+    JCVariableDecl outerThisDef(int pos, ClassSymbol owner) {
+        VarSymbol outerThis = makeOuterThisVarSymbol(owner, FINAL | SYNTHETIC);
+        return makeOuterThisVarDecl(pos, outerThis);
+    }
+
+    /** Return a list of trees that load the free variables in given list,
+     *  in reverse order.
+     *  @param pos          The source code position to be used for the trees.
+     *  @param freevars     The list of free variables.
+     */
+    List<JCExpression> loadFreevars(DiagnosticPosition pos, List<VarSymbol> freevars) {
+        List<JCExpression> args = List.nil();
+        for (List<VarSymbol> l = freevars; l.nonEmpty(); l = l.tail)
+            args = args.prepend(loadFreevar(pos, l.head));
+        return args;
+    }
+//where
+        JCExpression loadFreevar(DiagnosticPosition pos, VarSymbol v) {
+            return access(v, make.at(pos).Ident(v), null, false);
+        }
+
+    /** Construct a tree simulating the expression {@code C.this}.
+     *  @param pos           The source code position to be used for the tree.
+     *  @param c             The qualifier class.
+     */
+    JCExpression makeThis(DiagnosticPosition pos, TypeSymbol c) {
+        if (currentClass == c) {
+            // in this case, `this' works fine
+            return make.at(pos).This(c.erasure(types));
+        } else {
+            // need to go via this$n
+            return makeOuterThis(pos, c);
+        }
+    }
+
+    /**
+     * Optionally replace a try statement with the desugaring of a
+     * try-with-resources statement.  The canonical desugaring of
+     *
+     * try ResourceSpecification
+     *   Block
+     *
+     * is
+     *
+     * {
+     *   final VariableModifiers_minus_final R #resource = Expression;
+     *   Throwable #primaryException = null;
+     *
+     *   try ResourceSpecificationtail
+     *     Block
+     *   catch (Throwable #t) {
+     *     #primaryException = t;
+     *     throw #t;
+     *   } finally {
+     *     if (#resource != null) {
+     *       if (#primaryException != null) {
+     *         try {
+     *           #resource.close();
+     *         } catch(Throwable #suppressedException) {
+     *           #primaryException.addSuppressed(#suppressedException);
+     *         }
+     *       } else {
+     *         #resource.close();
+     *       }
+     *     }
+     *   }
+     *
+     * @param tree  The try statement to inspect.
+     * @return A a desugared try-with-resources tree, or the original
+     * try block if there are no resources to manage.
+     */
+    JCTree makeTwrTry(JCTry tree) {
+        make_at(tree.pos());
+        twrVars = twrVars.dup();
+        JCBlock twrBlock = makeTwrBlock(tree.resources, tree.body,
+                tree.finallyCanCompleteNormally, 0);
+        if (tree.catchers.isEmpty() && tree.finalizer == null)
+            result = translate(twrBlock);
+        else
+            result = translate(make.Try(twrBlock, tree.catchers, tree.finalizer));
+        twrVars = twrVars.leave();
+        return result;
+    }
+
+    private JCBlock makeTwrBlock(List<JCTree> resources, JCBlock block,
+            boolean finallyCanCompleteNormally, int depth) {
+        if (resources.isEmpty())
+            return block;
+
+        // Add resource declaration or expression to block statements
+        ListBuffer<JCStatement> stats = new ListBuffer<JCStatement>();
+        JCTree resource = resources.head;
+        JCExpression expr = null;
+        if (resource instanceof JCVariableDecl) {
+            JCVariableDecl var = (JCVariableDecl) resource;
+            expr = make.Ident(var.sym).setType(resource.type);
+            stats.add(var);
+        } else {
+            Assert.check(resource instanceof JCExpression);
+            VarSymbol syntheticTwrVar =
+            new VarSymbol(SYNTHETIC | FINAL,
+                          makeSyntheticName(names.fromString("twrVar" +
+                                           depth), twrVars),
+                          (resource.type.hasTag(BOT)) ?
+                          syms.autoCloseableType : resource.type,
+                          currentMethodSym);
+            twrVars.enter(syntheticTwrVar);
+            JCVariableDecl syntheticTwrVarDecl =
+                make.VarDef(syntheticTwrVar, (JCExpression)resource);
+            expr = (JCExpression)make.Ident(syntheticTwrVar);
+            stats.add(syntheticTwrVarDecl);
+        }
+
+        // Add primaryException declaration
+        VarSymbol primaryException =
+            new VarSymbol(SYNTHETIC,
+                          makeSyntheticName(names.fromString("primaryException" +
+                          depth), twrVars),
+                          syms.throwableType,
+                          currentMethodSym);
+        twrVars.enter(primaryException);
+        JCVariableDecl primaryExceptionTreeDecl = make.VarDef(primaryException, makeNull());
+        stats.add(primaryExceptionTreeDecl);
+
+        // Create catch clause that saves exception and then rethrows it
+        VarSymbol param =
+            new VarSymbol(FINAL|SYNTHETIC,
+                          names.fromString("t" +
+                                           target.syntheticNameChar()),
+                          syms.throwableType,
+                          currentMethodSym);
+        JCVariableDecl paramTree = make.VarDef(param, null);
+        JCStatement assign = make.Assignment(primaryException, make.Ident(param));
+        JCStatement rethrowStat = make.Throw(make.Ident(param));
+        JCBlock catchBlock = make.Block(0L, List.<JCStatement>of(assign, rethrowStat));
+        JCCatch catchClause = make.Catch(paramTree, catchBlock);
+
+        int oldPos = make.pos;
+        make.at(TreeInfo.endPos(block));
+        JCBlock finallyClause = makeTwrFinallyClause(primaryException, expr);
+        make.at(oldPos);
+        JCTry outerTry = make.Try(makeTwrBlock(resources.tail, block,
+                                    finallyCanCompleteNormally, depth + 1),
+                                  List.<JCCatch>of(catchClause),
+                                  finallyClause);
+        outerTry.finallyCanCompleteNormally = finallyCanCompleteNormally;
+        stats.add(outerTry);
+        JCBlock newBlock = make.Block(0L, stats.toList());
+        return newBlock;
+    }
+
+    private JCBlock makeTwrFinallyClause(Symbol primaryException, JCExpression resource) {
+        // primaryException.addSuppressed(catchException);
+        VarSymbol catchException =
+            new VarSymbol(SYNTHETIC, make.paramName(2),
+                          syms.throwableType,
+                          currentMethodSym);
+        JCStatement addSuppressionStatement =
+            make.Exec(makeCall(make.Ident(primaryException),
+                               names.addSuppressed,
+                               List.<JCExpression>of(make.Ident(catchException))));
+
+        // try { resource.close(); } catch (e) { primaryException.addSuppressed(e); }
+        JCBlock tryBlock =
+            make.Block(0L, List.<JCStatement>of(makeResourceCloseInvocation(resource)));
+        JCVariableDecl catchExceptionDecl = make.VarDef(catchException, null);
+        JCBlock catchBlock = make.Block(0L, List.<JCStatement>of(addSuppressionStatement));
+        List<JCCatch> catchClauses = List.<JCCatch>of(make.Catch(catchExceptionDecl, catchBlock));
+        JCTry tryTree = make.Try(tryBlock, catchClauses, null);
+        tryTree.finallyCanCompleteNormally = true;
+
+        // if (primaryException != null) {try...} else resourceClose;
+        JCIf closeIfStatement = make.If(makeNonNullCheck(make.Ident(primaryException)),
+                                        tryTree,
+                                        makeResourceCloseInvocation(resource));
+
+        // if (#resource != null) { if (primaryException ...  }
+        return make.Block(0L,
+                          List.<JCStatement>of(make.If(makeNonNullCheck(resource),
+                                                       closeIfStatement,
+                                                       null)));
+    }
+
+    private JCStatement makeResourceCloseInvocation(JCExpression resource) {
+        // convert to AutoCloseable if needed
+        if (types.asSuper(resource.type, syms.autoCloseableType.tsym) == null) {
+            resource = (JCExpression) convert(resource, syms.autoCloseableType);
+        }
+
+        // create resource.close() method invocation
+        JCExpression resourceClose = makeCall(resource,
+                                              names.close,
+                                              List.<JCExpression>nil());
+        return make.Exec(resourceClose);
+    }
+
+    private JCExpression makeNonNullCheck(JCExpression expression) {
+        return makeBinary(NE, expression, makeNull());
+    }
+
+    /** Construct a tree that represents the outer instance
+     *  {@code C.this}. Never pick the current `this'.
+     *  @param pos           The source code position to be used for the tree.
+     *  @param c             The qualifier class.
+     */
+    JCExpression makeOuterThis(DiagnosticPosition pos, TypeSymbol c) {
+        List<VarSymbol> ots = outerThisStack;
+        if (ots.isEmpty()) {
+            log.error(pos, "no.encl.instance.of.type.in.scope", c);
+            Assert.error();
+            return makeNull();
+        }
+        VarSymbol ot = ots.head;
+        JCExpression tree = access(make.at(pos).Ident(ot));
+        TypeSymbol otc = ot.type.tsym;
+        while (otc != c) {
+            do {
+                ots = ots.tail;
+                if (ots.isEmpty()) {
+                    log.error(pos,
+                              "no.encl.instance.of.type.in.scope",
+                              c);
+                    Assert.error(); // should have been caught in Attr
+                    return tree;
+                }
+                ot = ots.head;
+            } while (ot.owner != otc);
+            if (otc.owner.kind != PCK && !otc.hasOuterInstance()) {
+                chk.earlyRefError(pos, c);
+                Assert.error(); // should have been caught in Attr
+                return makeNull();
+            }
+            tree = access(make.at(pos).Select(tree, ot));
+            otc = ot.type.tsym;
+        }
+        return tree;
+    }
+
+    /** Construct a tree that represents the closest outer instance
+     *  {@code C.this} such that the given symbol is a member of C.
+     *  @param pos           The source code position to be used for the tree.
+     *  @param sym           The accessed symbol.
+     *  @param preciseMatch  should we accept a type that is a subtype of
+     *                       sym's owner, even if it doesn't contain sym
+     *                       due to hiding, overriding, or non-inheritance
+     *                       due to protection?
+     */
+    JCExpression makeOwnerThis(DiagnosticPosition pos, Symbol sym, boolean preciseMatch) {
+        Symbol c = sym.owner;
+        if (preciseMatch ? sym.isMemberOf(currentClass, types)
+                         : currentClass.isSubClass(sym.owner, types)) {
+            // in this case, `this' works fine
+            return make.at(pos).This(c.erasure(types));
+        } else {
+            // need to go via this$n
+            return makeOwnerThisN(pos, sym, preciseMatch);
+        }
+    }
+
+    /**
+     * Similar to makeOwnerThis but will never pick "this".
+     */
+    JCExpression makeOwnerThisN(DiagnosticPosition pos, Symbol sym, boolean preciseMatch) {
+        Symbol c = sym.owner;
+        List<VarSymbol> ots = outerThisStack;
+        if (ots.isEmpty()) {
+            log.error(pos, "no.encl.instance.of.type.in.scope", c);
+            Assert.error();
+            return makeNull();
+        }
+        VarSymbol ot = ots.head;
+        JCExpression tree = access(make.at(pos).Ident(ot));
+        TypeSymbol otc = ot.type.tsym;
+        while (!(preciseMatch ? sym.isMemberOf(otc, types) : otc.isSubClass(sym.owner, types))) {
+            do {
+                ots = ots.tail;
+                if (ots.isEmpty()) {
+                    log.error(pos,
+                        "no.encl.instance.of.type.in.scope",
+                        c);
+                    Assert.error();
+                    return tree;
+                }
+                ot = ots.head;
+            } while (ot.owner != otc);
+            tree = access(make.at(pos).Select(tree, ot));
+            otc = ot.type.tsym;
+        }
+        return tree;
+    }
+
+    /** Return tree simulating the assignment {@code this.name = name}, where
+     *  name is the name of a free variable.
+     */
+    JCStatement initField(int pos, Name name) {
+        Scope.Entry e = proxies.lookup(name);
+        Symbol rhs = e.sym;
+        Assert.check(rhs.owner.kind == MTH);
+        Symbol lhs = e.next().sym;
+        Assert.check(rhs.owner.owner == lhs.owner);
+        make.at(pos);
+        return
+            make.Exec(
+                make.Assign(
+                    make.Select(make.This(lhs.owner.erasure(types)), lhs),
+                    make.Ident(rhs)).setType(lhs.erasure(types)));
+    }
+
+    /** Return tree simulating the assignment {@code this.this$n = this$n}.
+     */
+    JCStatement initOuterThis(int pos) {
+        VarSymbol rhs = outerThisStack.head;
+        Assert.check(rhs.owner.kind == MTH);
+        VarSymbol lhs = outerThisStack.tail.head;
+        Assert.check(rhs.owner.owner == lhs.owner);
+        make.at(pos);
+        return
+            make.Exec(
+                make.Assign(
+                    make.Select(make.This(lhs.owner.erasure(types)), lhs),
+                    make.Ident(rhs)).setType(lhs.erasure(types)));
+    }
+
+/**************************************************************************
+ * Code for .class
+ *************************************************************************/
+
+    /** Return the symbol of a class to contain a cache of
+     *  compiler-generated statics such as class$ and the
+     *  $assertionsDisabled flag.  We create an anonymous nested class
+     *  (unless one already exists) and return its symbol.  However,
+     *  for backward compatibility in 1.4 and earlier we use the
+     *  top-level class itself.
+     */
+    private ClassSymbol outerCacheClass() {
+        ClassSymbol clazz = outermostClassDef.sym;
+        if ((clazz.flags() & INTERFACE) == 0 &&
+            !target.useInnerCacheClass()) return clazz;
+        Scope s = clazz.members();
+        for (Scope.Entry e = s.elems; e != null; e = e.sibling)
+            if (e.sym.kind == TYP &&
+                e.sym.name == names.empty &&
+                (e.sym.flags() & INTERFACE) == 0) return (ClassSymbol) e.sym;
+        return makeEmptyClass(STATIC | SYNTHETIC, clazz).sym;
+    }
+
+    /** Return symbol for "class$" method. If there is no method definition
+     *  for class$, construct one as follows:
+     *
+     *    class class$(String x0) {
+     *      try {
+     *        return Class.forName(x0);
+     *      } catch (ClassNotFoundException x1) {
+     *        throw new NoClassDefFoundError(x1.getMessage());
+     *      }
+     *    }
+     */
+    private MethodSymbol classDollarSym(DiagnosticPosition pos) {
+        ClassSymbol outerCacheClass = outerCacheClass();
+        MethodSymbol classDollarSym =
+            (MethodSymbol)lookupSynthetic(classDollar,
+                                          outerCacheClass.members());
+        if (classDollarSym == null) {
+            classDollarSym = new MethodSymbol(
+                STATIC | SYNTHETIC,
+                classDollar,
+                new MethodType(
+                    List.of(syms.stringType),
+                    types.erasure(syms.classType),
+                    List.<Type>nil(),
+                    syms.methodClass),
+                outerCacheClass);
+            enterSynthetic(pos, classDollarSym, outerCacheClass.members());
+
+            JCMethodDecl md = make.MethodDef(classDollarSym, null);
+            try {
+                md.body = classDollarSymBody(pos, md);
+            } catch (CompletionFailure ex) {
+                md.body = make.Block(0, List.<JCStatement>nil());
+                chk.completionError(pos, ex);
+            }
+            JCClassDecl outerCacheClassDef = classDef(outerCacheClass);
+            outerCacheClassDef.defs = outerCacheClassDef.defs.prepend(md);
+        }
+        return classDollarSym;
+    }
+
+    /** Generate code for class$(String name). */
+    JCBlock classDollarSymBody(DiagnosticPosition pos, JCMethodDecl md) {
+        MethodSymbol classDollarSym = md.sym;
+        ClassSymbol outerCacheClass = (ClassSymbol)classDollarSym.owner;
+
+        JCBlock returnResult;
+
+        // in 1.4.2 and above, we use
+        // Class.forName(String name, boolean init, ClassLoader loader);
+        // which requires we cache the current loader in cl$
+        if (target.classLiteralsNoInit()) {
+            // clsym = "private static ClassLoader cl$"
+            VarSymbol clsym = new VarSymbol(STATIC|SYNTHETIC,
+                                            names.fromString("cl" + target.syntheticNameChar()),
+                                            syms.classLoaderType,
+                                            outerCacheClass);
+            enterSynthetic(pos, clsym, outerCacheClass.members());
+
+            // emit "private static ClassLoader cl$;"
+            JCVariableDecl cldef = make.VarDef(clsym, null);
+            JCClassDecl outerCacheClassDef = classDef(outerCacheClass);
+            outerCacheClassDef.defs = outerCacheClassDef.defs.prepend(cldef);
+
+            // newcache := "new cache$1[0]"
+            JCNewArray newcache = make.
+                NewArray(make.Type(outerCacheClass.type),
+                         List.<JCExpression>of(make.Literal(INT, 0).setType(syms.intType)),
+                         null);
+            newcache.type = new ArrayType(types.erasure(outerCacheClass.type),
+                                          syms.arrayClass);
+
+            // forNameSym := java.lang.Class.forName(
+            //     String s,boolean init,ClassLoader loader)
+            Symbol forNameSym = lookupMethod(make_pos, names.forName,
+                                             types.erasure(syms.classType),
+                                             List.of(syms.stringType,
+                                                     syms.booleanType,
+                                                     syms.classLoaderType));
+            // clvalue := "(cl$ == null) ?
+            // $newcache.getClass().getComponentType().getClassLoader() : cl$"
+            JCExpression clvalue =
+                make.Conditional(
+                    makeBinary(EQ, make.Ident(clsym), makeNull()),
+                    make.Assign(
+                        make.Ident(clsym),
+                        makeCall(
+                            makeCall(makeCall(newcache,
+                                              names.getClass,
+                                              List.<JCExpression>nil()),
+                                     names.getComponentType,
+                                     List.<JCExpression>nil()),
+                            names.getClassLoader,
+                            List.<JCExpression>nil())).setType(syms.classLoaderType),
+                    make.Ident(clsym)).setType(syms.classLoaderType);
+
+            // returnResult := "{ return Class.forName(param1, false, cl$); }"
+            List<JCExpression> args = List.of(make.Ident(md.params.head.sym),
+                                              makeLit(syms.booleanType, 0),
+                                              clvalue);
+            returnResult = make.
+                Block(0, List.<JCStatement>of(make.
+                              Call(make. // return
+                                   App(make.
+                                       Ident(forNameSym), args))));
+        } else {
+            // forNameSym := java.lang.Class.forName(String s)
+            Symbol forNameSym = lookupMethod(make_pos,
+                                             names.forName,
+                                             types.erasure(syms.classType),
+                                             List.of(syms.stringType));
+            // returnResult := "{ return Class.forName(param1); }"
+            returnResult = make.
+                Block(0, List.of(make.
+                          Call(make. // return
+                              App(make.
+                                  QualIdent(forNameSym),
+                                  List.<JCExpression>of(make.
+                                                        Ident(md.params.
+                                                              head.sym))))));
+        }
+
+        // catchParam := ClassNotFoundException e1
+        VarSymbol catchParam =
+            new VarSymbol(SYNTHETIC, make.paramName(1),
+                          syms.classNotFoundExceptionType,
+                          classDollarSym);
+
+        JCStatement rethrow;
+        if (target.hasInitCause()) {
+            // rethrow = "throw new NoClassDefFoundError().initCause(e);
+            JCExpression throwExpr =
+                makeCall(makeNewClass(syms.noClassDefFoundErrorType,
+                                      List.<JCExpression>nil()),
+                         names.initCause,
+                         List.<JCExpression>of(make.Ident(catchParam)));
+            rethrow = make.Throw(throwExpr);
+        } else {
+            // getMessageSym := ClassNotFoundException.getMessage()
+            Symbol getMessageSym = lookupMethod(make_pos,
+                                                names.getMessage,
+                                                syms.classNotFoundExceptionType,
+                                                List.<Type>nil());
+            // rethrow = "throw new NoClassDefFoundError(e.getMessage());"
+            rethrow = make.
+                Throw(makeNewClass(syms.noClassDefFoundErrorType,
+                          List.<JCExpression>of(make.App(make.Select(make.Ident(catchParam),
+                                                                     getMessageSym),
+                                                         List.<JCExpression>nil()))));
+        }
+
+        // rethrowStmt := "( $rethrow )"
+        JCBlock rethrowStmt = make.Block(0, List.of(rethrow));
+
+        // catchBlock := "catch ($catchParam) $rethrowStmt"
+        JCCatch catchBlock = make.Catch(make.VarDef(catchParam, null),
+                                      rethrowStmt);
+
+        // tryCatch := "try $returnResult $catchBlock"
+        JCStatement tryCatch = make.Try(returnResult,
+                                        List.of(catchBlock), null);
+
+        return make.Block(0, List.of(tryCatch));
+    }
+    // where
+        /** Create an attributed tree of the form left.name(). */
+        private JCMethodInvocation makeCall(JCExpression left, Name name, List<JCExpression> args) {
+            Assert.checkNonNull(left.type);
+            Symbol funcsym = lookupMethod(make_pos, name, left.type,
+                                          TreeInfo.types(args));
+            return make.App(make.Select(left, funcsym), args);
+        }
+
+    /** The Name Of The variable to cache T.class values.
+     *  @param sig      The signature of type T.
+     */
+    private Name cacheName(String sig) {
+        StringBuilder buf = new StringBuilder();
+        if (sig.startsWith("[")) {
+            buf = buf.append("array");
+            while (sig.startsWith("[")) {
+                buf = buf.append(target.syntheticNameChar());
+                sig = sig.substring(1);
+            }
+            if (sig.startsWith("L")) {
+                sig = sig.substring(0, sig.length() - 1);
+            }
+        } else {
+            buf = buf.append("class" + target.syntheticNameChar());
+        }
+        buf = buf.append(sig.replace('.', target.syntheticNameChar()));
+        return names.fromString(buf.toString());
+    }
+
+    /** The variable symbol that caches T.class values.
+     *  If none exists yet, create a definition.
+     *  @param sig      The signature of type T.
+     *  @param pos      The position to report diagnostics, if any.
+     */
+    private VarSymbol cacheSym(DiagnosticPosition pos, String sig) {
+        ClassSymbol outerCacheClass = outerCacheClass();
+        Name cname = cacheName(sig);
+        VarSymbol cacheSym =
+            (VarSymbol)lookupSynthetic(cname, outerCacheClass.members());
+        if (cacheSym == null) {
+            cacheSym = new VarSymbol(
+                STATIC | SYNTHETIC, cname, types.erasure(syms.classType), outerCacheClass);
+            enterSynthetic(pos, cacheSym, outerCacheClass.members());
+
+            JCVariableDecl cacheDef = make.VarDef(cacheSym, null);
+            JCClassDecl outerCacheClassDef = classDef(outerCacheClass);
+            outerCacheClassDef.defs = outerCacheClassDef.defs.prepend(cacheDef);
+        }
+        return cacheSym;
+    }
+
+    /** The tree simulating a T.class expression.
+     *  @param clazz      The tree identifying type T.
+     */
+    private JCExpression classOf(JCTree clazz) {
+        return classOfType(clazz.type, clazz.pos());
+    }
+
+    private JCExpression classOfType(Type type, DiagnosticPosition pos) {
+        switch (type.getTag()) {
+        case BYTE: case SHORT: case CHAR: case INT: case LONG: case FLOAT:
+        case DOUBLE: case BOOLEAN: case VOID:
+            // replace with <BoxedClass>.TYPE
+            ClassSymbol c = types.boxedClass(type);
+            Symbol typeSym =
+                rs.accessBase(
+                    rs.findIdentInType(attrEnv, c.type, names.TYPE, VAR),
+                    pos, c.type, names.TYPE, true);
+            if (typeSym.kind == VAR)
+                ((VarSymbol)typeSym).getConstValue(); // ensure initializer is evaluated
+            return make.QualIdent(typeSym);
+        case CLASS: case ARRAY:
+            if (target.hasClassLiterals()) {
+                VarSymbol sym = new VarSymbol(
+                        STATIC | PUBLIC | FINAL, names._class,
+                        syms.classType, type.tsym);
+                return make_at(pos).Select(make.Type(type), sym);
+            }
+            // replace with <cache == null ? cache = class$(tsig) : cache>
+            // where
+            //  - <tsig>  is the type signature of T,
+            //  - <cache> is the cache variable for tsig.
+            String sig =
+                writer.xClassName(type).toString().replace('/', '.');
+            Symbol cs = cacheSym(pos, sig);
+            return make_at(pos).Conditional(
+                makeBinary(EQ, make.Ident(cs), makeNull()),
+                make.Assign(
+                    make.Ident(cs),
+                    make.App(
+                        make.Ident(classDollarSym(pos)),
+                        List.<JCExpression>of(make.Literal(CLASS, sig)
+                                              .setType(syms.stringType))))
+                .setType(types.erasure(syms.classType)),
+                make.Ident(cs)).setType(types.erasure(syms.classType));
+        default:
+            throw new AssertionError();
+        }
+    }
+
+/**************************************************************************
+ * Code for enabling/disabling assertions.
+ *************************************************************************/
+
+    private ClassSymbol assertionsDisabledClassCache;
+
+    /**Used to create an auxiliary class to hold $assertionsDisabled for interfaces.
+     */
+    private ClassSymbol assertionsDisabledClass() {
+        if (assertionsDisabledClassCache != null) return assertionsDisabledClassCache;
+
+        assertionsDisabledClassCache = makeEmptyClass(STATIC | SYNTHETIC, outermostClassDef.sym).sym;
+
+        return assertionsDisabledClassCache;
+    }
+
+    // This code is not particularly robust if the user has
+    // previously declared a member named '$assertionsDisabled'.
+    // The same faulty idiom also appears in the translation of
+    // class literals above.  We should report an error if a
+    // previous declaration is not synthetic.
+
+    private JCExpression assertFlagTest(DiagnosticPosition pos) {
+        // Outermost class may be either true class or an interface.
+        ClassSymbol outermostClass = outermostClassDef.sym;
+
+        //only classes can hold a non-public field, look for a usable one:
+        ClassSymbol container = !currentClass.isInterface() ? currentClass :
+                assertionsDisabledClass();
+
+        VarSymbol assertDisabledSym =
+            (VarSymbol)lookupSynthetic(dollarAssertionsDisabled,
+                                       container.members());
+        if (assertDisabledSym == null) {
+            assertDisabledSym =
+                new VarSymbol(STATIC | FINAL | SYNTHETIC,
+                              dollarAssertionsDisabled,
+                              syms.booleanType,
+                              container);
+            enterSynthetic(pos, assertDisabledSym, container.members());
+            Symbol desiredAssertionStatusSym = lookupMethod(pos,
+                                                            names.desiredAssertionStatus,
+                                                            types.erasure(syms.classType),
+                                                            List.<Type>nil());
+            JCClassDecl containerDef = classDef(container);
+            make_at(containerDef.pos());
+            JCExpression notStatus = makeUnary(NOT, make.App(make.Select(
+                    classOfType(types.erasure(outermostClass.type),
+                                containerDef.pos()),
+                    desiredAssertionStatusSym)));
+            JCVariableDecl assertDisabledDef = make.VarDef(assertDisabledSym,
+                                                   notStatus);
+            containerDef.defs = containerDef.defs.prepend(assertDisabledDef);
+
+            if (currentClass.isInterface()) {
+                //need to load the assertions enabled/disabled state while
+                //initializing the interface:
+                JCClassDecl currentClassDef = classDef(currentClass);
+                make_at(currentClassDef.pos());
+                JCStatement dummy = make.If(make.QualIdent(assertDisabledSym), make.Skip(), null);
+                JCBlock clinit = make.Block(STATIC, List.<JCStatement>of(dummy));
+                currentClassDef.defs = currentClassDef.defs.prepend(clinit);
+            }
+        }
+        make_at(pos);
+        return makeUnary(NOT, make.Ident(assertDisabledSym));
+    }
+
+
+/**************************************************************************
+ * Building blocks for let expressions
+ *************************************************************************/
+
+    interface TreeBuilder {
+        JCTree build(JCTree arg);
+    }
+
+    /** Construct an expression using the builder, with the given rval
+     *  expression as an argument to the builder.  However, the rval
+     *  expression must be computed only once, even if used multiple
+     *  times in the result of the builder.  We do that by
+     *  constructing a "let" expression that saves the rvalue into a
+     *  temporary variable and then uses the temporary variable in
+     *  place of the expression built by the builder.  The complete
+     *  resulting expression is of the form
+     *  <pre>
+     *    (let <b>TYPE</b> <b>TEMP</b> = <b>RVAL</b>;
+     *     in (<b>BUILDER</b>(<b>TEMP</b>)))
+     *  </pre>
+     *  where <code><b>TEMP</b></code> is a newly declared variable
+     *  in the let expression.
+     */
+    JCTree abstractRval(JCTree rval, Type type, TreeBuilder builder) {
+        rval = TreeInfo.skipParens(rval);
+        switch (rval.getTag()) {
+        case LITERAL:
+            return builder.build(rval);
+        case IDENT:
+            JCIdent id = (JCIdent) rval;
+            if ((id.sym.flags() & FINAL) != 0 && id.sym.owner.kind == MTH)
+                return builder.build(rval);
+        }
+        VarSymbol var =
+            new VarSymbol(FINAL|SYNTHETIC,
+                          names.fromString(
+                                          target.syntheticNameChar()
+                                          + "" + rval.hashCode()),
+                                      type,
+                                      currentMethodSym);
+        rval = convert(rval,type);
+        JCVariableDecl def = make.VarDef(var, (JCExpression)rval); // XXX cast
+        JCTree built = builder.build(make.Ident(var));
+        JCTree res = make.LetExpr(def, built);
+        res.type = built.type;
+        return res;
+    }
+
+    // same as above, with the type of the temporary variable computed
+    JCTree abstractRval(JCTree rval, TreeBuilder builder) {
+        return abstractRval(rval, rval.type, builder);
+    }
+
+    // same as above, but for an expression that may be used as either
+    // an rvalue or an lvalue.  This requires special handling for
+    // Select expressions, where we place the left-hand-side of the
+    // select in a temporary, and for Indexed expressions, where we
+    // place both the indexed expression and the index value in temps.
+    JCTree abstractLval(JCTree lval, final TreeBuilder builder) {
+        lval = TreeInfo.skipParens(lval);
+        switch (lval.getTag()) {
+        case IDENT:
+            return builder.build(lval);
+        case SELECT: {
+            final JCFieldAccess s = (JCFieldAccess)lval;
+            JCTree selected = TreeInfo.skipParens(s.selected);
+            Symbol lid = TreeInfo.symbol(s.selected);
+            if (lid != null && lid.kind == TYP) return builder.build(lval);
+            return abstractRval(s.selected, new TreeBuilder() {
+                    public JCTree build(final JCTree selected) {
+                        return builder.build(make.Select((JCExpression)selected, s.sym));
+                    }
+                });
+        }
+        case INDEXED: {
+            final JCArrayAccess i = (JCArrayAccess)lval;
+            return abstractRval(i.indexed, new TreeBuilder() {
+                    public JCTree build(final JCTree indexed) {
+                        return abstractRval(i.index, syms.intType, new TreeBuilder() {
+                                public JCTree build(final JCTree index) {
+                                    JCTree newLval = make.Indexed((JCExpression)indexed,
+                                                                (JCExpression)index);
+                                    newLval.setType(i.type);
+                                    return builder.build(newLval);
+                                }
+                            });
+                    }
+                });
+        }
+        case TYPECAST: {
+            return abstractLval(((JCTypeCast)lval).expr, builder);
+        }
+        }
+        throw new AssertionError(lval);
+    }
+
+    // evaluate and discard the first expression, then evaluate the second.
+    JCTree makeComma(final JCTree expr1, final JCTree expr2) {
+        return abstractRval(expr1, new TreeBuilder() {
+                public JCTree build(final JCTree discarded) {
+                    return expr2;
+                }
+            });
+    }
+
+/**************************************************************************
+ * Translation methods
+ *************************************************************************/
+
+    /** Visitor argument: enclosing operator node.
+     */
+    private JCExpression enclOp;
+
+    /** Visitor method: Translate a single node.
+     *  Attach the source position from the old tree to its replacement tree.
+     */
+    @Override
+    public <T extends JCTree> T translate(T tree) {
+        if (tree == null) {
+            return null;
+        } else {
+            make_at(tree.pos());
+            T result = super.translate(tree);
+            if (endPosTable != null && result != tree) {
+                endPosTable.replaceTree(tree, result);
+            }
+            return result;
+        }
+    }
+
+    /** Visitor method: Translate a single node, boxing or unboxing if needed.
+     */
+    public <T extends JCTree> T translate(T tree, Type type) {
+        return (tree == null) ? null : boxIfNeeded(translate(tree), type);
+    }
+
+    /** Visitor method: Translate tree.
+     */
+    public <T extends JCTree> T translate(T tree, JCExpression enclOp) {
+        JCExpression prevEnclOp = this.enclOp;
+        this.enclOp = enclOp;
+        T res = translate(tree);
+        this.enclOp = prevEnclOp;
+        return res;
+    }
+
+    /** Visitor method: Translate list of trees.
+     */
+    public <T extends JCTree> List<T> translate(List<T> trees, JCExpression enclOp) {
+        JCExpression prevEnclOp = this.enclOp;
+        this.enclOp = enclOp;
+        List<T> res = translate(trees);
+        this.enclOp = prevEnclOp;
+        return res;
+    }
+
+    /** Visitor method: Translate list of trees.
+     */
+    public <T extends JCTree> List<T> translate(List<T> trees, Type type) {
+        if (trees == null) return null;
+        for (List<T> l = trees; l.nonEmpty(); l = l.tail)
+            l.head = translate(l.head, type);
+        return trees;
+    }
+
+    public void visitTopLevel(JCCompilationUnit tree) {
+        if (needPackageInfoClass(tree)) {
+            Name name = names.package_info;
+            long flags = Flags.ABSTRACT | Flags.INTERFACE;
+            if (target.isPackageInfoSynthetic())
+                // package-info is marked SYNTHETIC in JDK 1.6 and later releases
+                flags = flags | Flags.SYNTHETIC;
+            JCClassDecl packageAnnotationsClass
+                = make.ClassDef(make.Modifiers(flags,
+                                               tree.packageAnnotations),
+                                name, List.<JCTypeParameter>nil(),
+                                null, List.<JCExpression>nil(), List.<JCTree>nil());
+            ClassSymbol c = tree.packge.package_info;
+            c.flags_field |= flags;
+            c.setAttributes(tree.packge);
+            ClassType ctype = (ClassType) c.type;
+            ctype.supertype_field = syms.objectType;
+            ctype.interfaces_field = List.nil();
+            packageAnnotationsClass.sym = c;
+
+            translated.append(packageAnnotationsClass);
+        }
+    }
+    // where
+    private boolean needPackageInfoClass(JCCompilationUnit tree) {
+        switch (pkginfoOpt) {
+            case ALWAYS:
+                return true;
+            case LEGACY:
+                return tree.packageAnnotations.nonEmpty();
+            case NONEMPTY:
+                for (Attribute.Compound a :
+                         tree.packge.getDeclarationAttributes()) {
+                    Attribute.RetentionPolicy p = types.getRetention(a);
+                    if (p != Attribute.RetentionPolicy.SOURCE)
+                        return true;
+                }
+                return false;
+        }
+        throw new AssertionError();
+    }
+
+    public void visitClassDef(JCClassDecl tree) {
+        Env<AttrContext> prevEnv = attrEnv;
+        ClassSymbol currentClassPrev = currentClass;
+        MethodSymbol currentMethodSymPrev = currentMethodSym;
+
+        currentClass = tree.sym;
+        currentMethodSym = null;
+        attrEnv = typeEnvs.remove(currentClass);
+        if (attrEnv == null)
+            attrEnv = prevEnv;
+
+        classdefs.put(currentClass, tree);
+
+        proxies = proxies.dup(currentClass);
+        List<VarSymbol> prevOuterThisStack = outerThisStack;
+
+        // If this is an enum definition
+        if ((tree.mods.flags & ENUM) != 0 &&
+            (types.supertype(currentClass.type).tsym.flags() & ENUM) == 0)
+            visitEnumDef(tree);
+
+        // If this is a nested class, define a this$n field for
+        // it and add to proxies.
+        JCVariableDecl otdef = null;
+        if (currentClass.hasOuterInstance())
+            otdef = outerThisDef(tree.pos, currentClass);
+
+        // If this is a local class, define proxies for all its free variables.
+        List<JCVariableDecl> fvdefs = freevarDefs(
+            tree.pos, freevars(currentClass), currentClass);
+
+        // Recursively translate superclass, interfaces.
+        tree.extending = translate(tree.extending);
+        tree.implementing = translate(tree.implementing);
+
+        if (currentClass.isLocal()) {
+            ClassSymbol encl = currentClass.owner.enclClass();
+            if (encl.trans_local == null) {
+                encl.trans_local = List.nil();
+            }
+            encl.trans_local = encl.trans_local.prepend(currentClass);
+        }
+
+        // Recursively translate members, taking into account that new members
+        // might be created during the translation and prepended to the member
+        // list `tree.defs'.
+        List<JCTree> seen = List.nil();
+        while (tree.defs != seen) {
+            List<JCTree> unseen = tree.defs;
+            for (List<JCTree> l = unseen; l.nonEmpty() && l != seen; l = l.tail) {
+                JCTree outermostMemberDefPrev = outermostMemberDef;
+                if (outermostMemberDefPrev == null) outermostMemberDef = l.head;
+                l.head = translate(l.head);
+                outermostMemberDef = outermostMemberDefPrev;
+            }
+            seen = unseen;
+        }
+
+        // Convert a protected modifier to public, mask static modifier.
+        if ((tree.mods.flags & PROTECTED) != 0) tree.mods.flags |= PUBLIC;
+        tree.mods.flags &= ClassFlags;
+
+        // Convert name to flat representation, replacing '.' by '$'.
+        tree.name = Convert.shortName(currentClass.flatName());
+
+        // Add this$n and free variables proxy definitions to class.
+
+        for (List<JCVariableDecl> l = fvdefs; l.nonEmpty(); l = l.tail) {
+            tree.defs = tree.defs.prepend(l.head);
+            enterSynthetic(tree.pos(), l.head.sym, currentClass.members());
+        }
+        if (currentClass.hasOuterInstance()) {
+            tree.defs = tree.defs.prepend(otdef);
+            enterSynthetic(tree.pos(), otdef.sym, currentClass.members());
+        }
+
+        proxies = proxies.leave();
+        outerThisStack = prevOuterThisStack;
+
+        // Append translated tree to `translated' queue.
+        translated.append(tree);
+
+        attrEnv = prevEnv;
+        currentClass = currentClassPrev;
+        currentMethodSym = currentMethodSymPrev;
+
+        // Return empty block {} as a placeholder for an inner class.
+        result = make_at(tree.pos()).Block(SYNTHETIC, List.<JCStatement>nil());
+    }
+
+    /** Translate an enum class. */
+    private void visitEnumDef(JCClassDecl tree) {
+        make_at(tree.pos());
+
+        // add the supertype, if needed
+        if (tree.extending == null)
+            tree.extending = make.Type(types.supertype(tree.type));
+
+        // classOfType adds a cache field to tree.defs unless
+        // target.hasClassLiterals().
+        JCExpression e_class = classOfType(tree.sym.type, tree.pos()).
+            setType(types.erasure(syms.classType));
+
+        // process each enumeration constant, adding implicit constructor parameters
+        int nextOrdinal = 0;
+        ListBuffer<JCExpression> values = new ListBuffer<JCExpression>();
+        ListBuffer<JCTree> enumDefs = new ListBuffer<JCTree>();
+        ListBuffer<JCTree> otherDefs = new ListBuffer<JCTree>();
+        for (List<JCTree> defs = tree.defs;
+             defs.nonEmpty();
+             defs=defs.tail) {
+            if (defs.head.hasTag(VARDEF) && (((JCVariableDecl) defs.head).mods.flags & ENUM) != 0) {
+                JCVariableDecl var = (JCVariableDecl)defs.head;
+                visitEnumConstantDef(var, nextOrdinal++);
+                values.append(make.QualIdent(var.sym));
+                enumDefs.append(var);
+            } else {
+                otherDefs.append(defs.head);
+            }
+        }
+
+        // private static final T[] #VALUES = { a, b, c };
+        Name valuesName = names.fromString(target.syntheticNameChar() + "VALUES");
+        while (tree.sym.members().lookup(valuesName).scope != null) // avoid name clash
+            valuesName = names.fromString(valuesName + "" + target.syntheticNameChar());
+        Type arrayType = new ArrayType(types.erasure(tree.type), syms.arrayClass);
+        VarSymbol valuesVar = new VarSymbol(PRIVATE|FINAL|STATIC|SYNTHETIC,
+                                            valuesName,
+                                            arrayType,
+                                            tree.type.tsym);
+        JCNewArray newArray = make.NewArray(make.Type(types.erasure(tree.type)),
+                                          List.<JCExpression>nil(),
+                                          values.toList());
+        newArray.type = arrayType;
+        enumDefs.append(make.VarDef(valuesVar, newArray));
+        tree.sym.members().enter(valuesVar);
+
+        Symbol valuesSym = lookupMethod(tree.pos(), names.values,
+                                        tree.type, List.<Type>nil());
+        List<JCStatement> valuesBody;
+        if (useClone()) {
+            // return (T[]) $VALUES.clone();
+            JCTypeCast valuesResult =
+                make.TypeCast(valuesSym.type.getReturnType(),
+                              make.App(make.Select(make.Ident(valuesVar),
+                                                   syms.arrayCloneMethod)));
+            valuesBody = List.<JCStatement>of(make.Return(valuesResult));
+        } else {
+            // template: T[] $result = new T[$values.length];
+            Name resultName = names.fromString(target.syntheticNameChar() + "result");
+            while (tree.sym.members().lookup(resultName).scope != null) // avoid name clash
+                resultName = names.fromString(resultName + "" + target.syntheticNameChar());
+            VarSymbol resultVar = new VarSymbol(FINAL|SYNTHETIC,
+                                                resultName,
+                                                arrayType,
+                                                valuesSym);
+            JCNewArray resultArray = make.NewArray(make.Type(types.erasure(tree.type)),
+                                  List.of(make.Select(make.Ident(valuesVar), syms.lengthVar)),
+                                  null);
+            resultArray.type = arrayType;
+            JCVariableDecl decl = make.VarDef(resultVar, resultArray);
+
+            // template: System.arraycopy($VALUES, 0, $result, 0, $VALUES.length);
+            if (systemArraycopyMethod == null) {
+                systemArraycopyMethod =
+                    new MethodSymbol(PUBLIC | STATIC,
+                                     names.fromString("arraycopy"),
+                                     new MethodType(List.<Type>of(syms.objectType,
+                                                            syms.intType,
+                                                            syms.objectType,
+                                                            syms.intType,
+                                                            syms.intType),
+                                                    syms.voidType,
+                                                    List.<Type>nil(),
+                                                    syms.methodClass),
+                                     syms.systemType.tsym);
+            }
+            JCStatement copy =
+                make.Exec(make.App(make.Select(make.Ident(syms.systemType.tsym),
+                                               systemArraycopyMethod),
+                          List.of(make.Ident(valuesVar), make.Literal(0),
+                                  make.Ident(resultVar), make.Literal(0),
+                                  make.Select(make.Ident(valuesVar), syms.lengthVar))));
+
+            // template: return $result;
+            JCStatement ret = make.Return(make.Ident(resultVar));
+            valuesBody = List.<JCStatement>of(decl, copy, ret);
+        }
+
+        JCMethodDecl valuesDef =
+             make.MethodDef((MethodSymbol)valuesSym, make.Block(0, valuesBody));
+
+        enumDefs.append(valuesDef);
+
+        if (debugLower)
+            System.err.println(tree.sym + ".valuesDef = " + valuesDef);
+
+        /** The template for the following code is:
+         *
+         *     public static E valueOf(String name) {
+         *         return (E)Enum.valueOf(E.class, name);
+         *     }
+         *
+         *  where E is tree.sym
+         */
+        MethodSymbol valueOfSym = lookupMethod(tree.pos(),
+                         names.valueOf,
+                         tree.sym.type,
+                         List.of(syms.stringType));
+        Assert.check((valueOfSym.flags() & STATIC) != 0);
+        VarSymbol nameArgSym = valueOfSym.params.head;
+        JCIdent nameVal = make.Ident(nameArgSym);
+        JCStatement enum_ValueOf =
+            make.Return(make.TypeCast(tree.sym.type,
+                                      makeCall(make.Ident(syms.enumSym),
+                                               names.valueOf,
+                                               List.of(e_class, nameVal))));
+        JCMethodDecl valueOf = make.MethodDef(valueOfSym,
+                                           make.Block(0, List.of(enum_ValueOf)));
+        nameVal.sym = valueOf.params.head.sym;
+        if (debugLower)
+            System.err.println(tree.sym + ".valueOf = " + valueOf);
+        enumDefs.append(valueOf);
+
+        enumDefs.appendList(otherDefs.toList());
+        tree.defs = enumDefs.toList();
+    }
+        // where
+        private MethodSymbol systemArraycopyMethod;
+        private boolean useClone() {
+            try {
+                Scope.Entry e = syms.objectType.tsym.members().lookup(names.clone);
+                return (e.sym != null);
+            }
+            catch (CompletionFailure e) {
+                return false;
+            }
+        }
+
+    /** Translate an enumeration constant and its initializer. */
+    private void visitEnumConstantDef(JCVariableDecl var, int ordinal) {
+        JCNewClass varDef = (JCNewClass)var.init;
+        varDef.args = varDef.args.
+            prepend(makeLit(syms.intType, ordinal)).
+            prepend(makeLit(syms.stringType, var.name.toString()));
+    }
+
+    public void visitMethodDef(JCMethodDecl tree) {
+        if (tree.name == names.init && (currentClass.flags_field&ENUM) != 0) {
+            // Add "String $enum$name, int $enum$ordinal" to the beginning of the
+            // argument list for each constructor of an enum.
+            JCVariableDecl nameParam = make_at(tree.pos()).
+                Param(names.fromString(target.syntheticNameChar() +
+                                       "enum" + target.syntheticNameChar() + "name"),
+                      syms.stringType, tree.sym);
+            nameParam.mods.flags |= SYNTHETIC; nameParam.sym.flags_field |= SYNTHETIC;
+            JCVariableDecl ordParam = make.
+                Param(names.fromString(target.syntheticNameChar() +
+                                       "enum" + target.syntheticNameChar() +
+                                       "ordinal"),
+                      syms.intType, tree.sym);
+            ordParam.mods.flags |= SYNTHETIC; ordParam.sym.flags_field |= SYNTHETIC;
+
+            tree.params = tree.params.prepend(ordParam).prepend(nameParam);
+
+            MethodSymbol m = tree.sym;
+            m.extraParams = m.extraParams.prepend(ordParam.sym);
+            m.extraParams = m.extraParams.prepend(nameParam.sym);
+            Type olderasure = m.erasure(types);
+            m.erasure_field = new MethodType(
+                olderasure.getParameterTypes().prepend(syms.intType).prepend(syms.stringType),
+                olderasure.getReturnType(),
+                olderasure.getThrownTypes(),
+                syms.methodClass);
+        }
+
+        JCMethodDecl prevMethodDef = currentMethodDef;
+        MethodSymbol prevMethodSym = currentMethodSym;
+        try {
+            currentMethodDef = tree;
+            currentMethodSym = tree.sym;
+            visitMethodDefInternal(tree);
+        } finally {
+            currentMethodDef = prevMethodDef;
+            currentMethodSym = prevMethodSym;
+        }
+    }
+    //where
+    private void visitMethodDefInternal(JCMethodDecl tree) {
+        if (tree.name == names.init &&
+            (currentClass.isInner() || currentClass.isLocal())) {
+            // We are seeing a constructor of an inner class.
+            MethodSymbol m = tree.sym;
+
+            // Push a new proxy scope for constructor parameters.
+            // and create definitions for any this$n and proxy parameters.
+            proxies = proxies.dup(m);
+            List<VarSymbol> prevOuterThisStack = outerThisStack;
+            List<VarSymbol> fvs = freevars(currentClass);
+            JCVariableDecl otdef = null;
+            if (currentClass.hasOuterInstance())
+                otdef = outerThisDef(tree.pos, m);
+            List<JCVariableDecl> fvdefs = freevarDefs(tree.pos, fvs, m, PARAMETER);
+
+            // Recursively translate result type, parameters and thrown list.
+            tree.restype = translate(tree.restype);
+            tree.params = translateVarDefs(tree.params);
+            tree.thrown = translate(tree.thrown);
+
+            // when compiling stubs, don't process body
+            if (tree.body == null) {
+                result = tree;
+                return;
+            }
+
+            // Add this$n (if needed) in front of and free variables behind
+            // constructor parameter list.
+            tree.params = tree.params.appendList(fvdefs);
+            if (currentClass.hasOuterInstance())
+                tree.params = tree.params.prepend(otdef);
+
+            // If this is an initial constructor, i.e., it does not start with
+            // this(...), insert initializers for this$n and proxies
+            // before (pre-1.4, after) the call to superclass constructor.
+            JCStatement selfCall = translate(tree.body.stats.head);
+
+            List<JCStatement> added = List.nil();
+            if (fvs.nonEmpty()) {
+                List<Type> addedargtypes = List.nil();
+                for (List<VarSymbol> l = fvs; l.nonEmpty(); l = l.tail) {
+                    if (TreeInfo.isInitialConstructor(tree)) {
+                        final Name pName = proxyName(l.head.name);
+                        m.capturedLocals =
+                            m.capturedLocals.append((VarSymbol)
+                                                    (proxies.lookup(pName).sym));
+                        added = added.prepend(
+                          initField(tree.body.pos, pName));
+                    }
+                    addedargtypes = addedargtypes.prepend(l.head.erasure(types));
+                }
+                Type olderasure = m.erasure(types);
+                m.erasure_field = new MethodType(
+                    olderasure.getParameterTypes().appendList(addedargtypes),
+                    olderasure.getReturnType(),
+                    olderasure.getThrownTypes(),
+                    syms.methodClass);
+            }
+            if (currentClass.hasOuterInstance() &&
+                TreeInfo.isInitialConstructor(tree))
+            {
+                added = added.prepend(initOuterThis(tree.body.pos));
+            }
+
+            // pop local variables from proxy stack
+            proxies = proxies.leave();
+
+            // recursively translate following local statements and
+            // combine with this- or super-call
+            List<JCStatement> stats = translate(tree.body.stats.tail);
+            if (target.initializeFieldsBeforeSuper())
+                tree.body.stats = stats.prepend(selfCall).prependList(added);
+            else
+                tree.body.stats = stats.prependList(added).prepend(selfCall);
+
+            outerThisStack = prevOuterThisStack;
+        } else {
+            Map<Symbol, Symbol> prevLambdaTranslationMap =
+                    lambdaTranslationMap;
+            try {
+                lambdaTranslationMap = (tree.sym.flags() & SYNTHETIC) != 0 &&
+                        tree.sym.name.startsWith(names.lambda) ?
+                        makeTranslationMap(tree) : null;
+                super.visitMethodDef(tree);
+            } finally {
+                lambdaTranslationMap = prevLambdaTranslationMap;
+            }
+        }
+        result = tree;
+    }
+    //where
+        private Map<Symbol, Symbol> makeTranslationMap(JCMethodDecl tree) {
+            Map<Symbol, Symbol> translationMap = new HashMap<Symbol,Symbol>();
+            for (JCVariableDecl vd : tree.params) {
+                Symbol p = vd.sym;
+                if (p != p.baseSymbol()) {
+                    translationMap.put(p.baseSymbol(), p);
+                }
+            }
+            return translationMap;
+        }
+
+    public void visitAnnotatedType(JCAnnotatedType tree) {
+        // No need to retain type annotations in the tree
+        // tree.annotations = translate(tree.annotations);
+        tree.annotations = List.nil();
+        tree.underlyingType = translate(tree.underlyingType);
+        // but maintain type annotations in the type.
+        if (tree.type.isAnnotated()) {
+            tree.type = tree.underlyingType.type.unannotatedType().annotatedType(tree.type.getAnnotationMirrors());
+        } else if (tree.underlyingType.type.isAnnotated()) {
+            tree.type = tree.underlyingType.type;
+        }
+        result = tree;
+    }
+
+    public void visitTypeCast(JCTypeCast tree) {
+        tree.clazz = translate(tree.clazz);
+        if (tree.type.isPrimitive() != tree.expr.type.isPrimitive())
+            tree.expr = translate(tree.expr, tree.type);
+        else
+            tree.expr = translate(tree.expr);
+        result = tree;
+    }
+
+    public void visitNewClass(JCNewClass tree) {
+        ClassSymbol c = (ClassSymbol)tree.constructor.owner;
+
+        // Box arguments, if necessary
+        boolean isEnum = (tree.constructor.owner.flags() & ENUM) != 0;
+        List<Type> argTypes = tree.constructor.type.getParameterTypes();
+        if (isEnum) argTypes = argTypes.prepend(syms.intType).prepend(syms.stringType);
+        tree.args = boxArgs(argTypes, tree.args, tree.varargsElement);
+        tree.varargsElement = null;
+
+        // If created class is local, add free variables after
+        // explicit constructor arguments.
+        if (c.isLocal()) {
+            tree.args = tree.args.appendList(loadFreevars(tree.pos(), freevars(c)));
+        }
+
+        // If an access constructor is used, append null as a last argument.
+        Symbol constructor = accessConstructor(tree.pos(), tree.constructor);
+        if (constructor != tree.constructor) {
+            tree.args = tree.args.append(makeNull());
+            tree.constructor = constructor;
+        }
+
+        // If created class has an outer instance, and new is qualified, pass
+        // qualifier as first argument. If new is not qualified, pass the
+        // correct outer instance as first argument.
+        if (c.hasOuterInstance()) {
+            JCExpression thisArg;
+            if (tree.encl != null) {
+                thisArg = attr.makeNullCheck(translate(tree.encl));
+                thisArg.type = tree.encl.type;
+            } else if (c.isLocal()) {
+                // local class
+                thisArg = makeThis(tree.pos(), c.type.getEnclosingType().tsym);
+            } else {
+                // nested class
+                thisArg = makeOwnerThis(tree.pos(), c, false);
+            }
+            tree.args = tree.args.prepend(thisArg);
+        }
+        tree.encl = null;
+
+        // If we have an anonymous class, create its flat version, rather
+        // than the class or interface following new.
+        if (tree.def != null) {
+            translate(tree.def);
+            tree.clazz = access(make_at(tree.clazz.pos()).Ident(tree.def.sym));
+            tree.def = null;
+        } else {
+            tree.clazz = access(c, tree.clazz, enclOp, false);
+        }
+        result = tree;
+    }
+
+    // Simplify conditionals with known constant controlling expressions.
+    // This allows us to avoid generating supporting declarations for
+    // the dead code, which will not be eliminated during code generation.
+    // Note that Flow.isFalse and Flow.isTrue only return true
+    // for constant expressions in the sense of JLS 15.27, which
+    // are guaranteed to have no side-effects.  More aggressive
+    // constant propagation would require that we take care to
+    // preserve possible side-effects in the condition expression.
+
+    /** Visitor method for conditional expressions.
+     */
+    @Override
+    public void visitConditional(JCConditional tree) {
+        JCTree cond = tree.cond = translate(tree.cond, syms.booleanType);
+        if (cond.type.isTrue()) {
+            result = convert(translate(tree.truepart, tree.type), tree.type);
+            addPrunedInfo(cond);
+        } else if (cond.type.isFalse()) {
+            result = convert(translate(tree.falsepart, tree.type), tree.type);
+            addPrunedInfo(cond);
+        } else {
+            // Condition is not a compile-time constant.
+            tree.truepart = translate(tree.truepart, tree.type);
+            tree.falsepart = translate(tree.falsepart, tree.type);
+            result = tree;
+        }
+    }
+//where
+    private JCTree convert(JCTree tree, Type pt) {
+        if (tree.type == pt || tree.type.hasTag(BOT))
+            return tree;
+        JCTree result = make_at(tree.pos()).TypeCast(make.Type(pt), (JCExpression)tree);
+        result.type = (tree.type.constValue() != null) ? cfolder.coerce(tree.type, pt)
+                                                       : pt;
+        return result;
+    }
+
+    /** Visitor method for if statements.
+     */
+    public void visitIf(JCIf tree) {
+        JCTree cond = tree.cond = translate(tree.cond, syms.booleanType);
+        if (cond.type.isTrue()) {
+            result = translate(tree.thenpart);
+            addPrunedInfo(cond);
+        } else if (cond.type.isFalse()) {
+            if (tree.elsepart != null) {
+                result = translate(tree.elsepart);
+            } else {
+                result = make.Skip();
+            }
+            addPrunedInfo(cond);
+        } else {
+            // Condition is not a compile-time constant.
+            tree.thenpart = translate(tree.thenpart);
+            tree.elsepart = translate(tree.elsepart);
+            result = tree;
+        }
+    }
+
+    /** Visitor method for assert statements. Translate them away.
+     */
+    public void visitAssert(JCAssert tree) {
+        DiagnosticPosition detailPos = (tree.detail == null) ? tree.pos() : tree.detail.pos();
+        tree.cond = translate(tree.cond, syms.booleanType);
+        if (!tree.cond.type.isTrue()) {
+            JCExpression cond = assertFlagTest(tree.pos());
+            List<JCExpression> exnArgs = (tree.detail == null) ?
+                List.<JCExpression>nil() : List.of(translate(tree.detail));
+            if (!tree.cond.type.isFalse()) {
+                cond = makeBinary
+                    (AND,
+                     cond,
+                     makeUnary(NOT, tree.cond));
+            }
+            result =
+                make.If(cond,
+                        make_at(tree).
+                           Throw(makeNewClass(syms.assertionErrorType, exnArgs)),
+                        null);
+        } else {
+            result = make.Skip();
+        }
+    }
+
+    public void visitApply(JCMethodInvocation tree) {
+        Symbol meth = TreeInfo.symbol(tree.meth);
+        List<Type> argtypes = meth.type.getParameterTypes();
+        if (allowEnums &&
+            meth.name==names.init &&
+            meth.owner == syms.enumSym)
+            argtypes = argtypes.tail.tail;
+        tree.args = boxArgs(argtypes, tree.args, tree.varargsElement);
+        tree.varargsElement = null;
+        Name methName = TreeInfo.name(tree.meth);
+        if (meth.name==names.init) {
+            // We are seeing a this(...) or super(...) constructor call.
+            // If an access constructor is used, append null as a last argument.
+            Symbol constructor = accessConstructor(tree.pos(), meth);
+            if (constructor != meth) {
+                tree.args = tree.args.append(makeNull());
+                TreeInfo.setSymbol(tree.meth, constructor);
+            }
+
+            // If we are calling a constructor of a local class, add
+            // free variables after explicit constructor arguments.
+            ClassSymbol c = (ClassSymbol)constructor.owner;
+            if (c.isLocal()) {
+                tree.args = tree.args.appendList(loadFreevars(tree.pos(), freevars(c)));
+            }
+
+            // If we are calling a constructor of an enum class, pass
+            // along the name and ordinal arguments
+            if ((c.flags_field&ENUM) != 0 || c.getQualifiedName() == names.java_lang_Enum) {
+                List<JCVariableDecl> params = currentMethodDef.params;
+                if (currentMethodSym.owner.hasOuterInstance())
+                    params = params.tail; // drop this$n
+                tree.args = tree.args
+                    .prepend(make_at(tree.pos()).Ident(params.tail.head.sym)) // ordinal
+                    .prepend(make.Ident(params.head.sym)); // name
+            }
+
+            // If we are calling a constructor of a class with an outer
+            // instance, and the call
+            // is qualified, pass qualifier as first argument in front of
+            // the explicit constructor arguments. If the call
+            // is not qualified, pass the correct outer instance as
+            // first argument.
+            if (c.hasOuterInstance()) {
+                JCExpression thisArg;
+                if (tree.meth.hasTag(SELECT)) {
+                    thisArg = attr.
+                        makeNullCheck(translate(((JCFieldAccess) tree.meth).selected));
+                    tree.meth = make.Ident(constructor);
+                    ((JCIdent) tree.meth).name = methName;
+                } else if (c.isLocal() || methName == names._this){
+                    // local class or this() call
+                    thisArg = makeThis(tree.meth.pos(), c.type.getEnclosingType().tsym);
+                } else {
+                    // super() call of nested class - never pick 'this'
+                    thisArg = makeOwnerThisN(tree.meth.pos(), c, false);
+                }
+                tree.args = tree.args.prepend(thisArg);
+            }
+        } else {
+            // We are seeing a normal method invocation; translate this as usual.
+            tree.meth = translate(tree.meth);
+
+            // If the translated method itself is an Apply tree, we are
+            // seeing an access method invocation. In this case, append
+            // the method arguments to the arguments of the access method.
+            if (tree.meth.hasTag(APPLY)) {
+                JCMethodInvocation app = (JCMethodInvocation)tree.meth;
+                app.args = tree.args.prependList(app.args);
+                result = app;
+                return;
+            }
+        }
+        result = tree;
+    }
+
+    List<JCExpression> boxArgs(List<Type> parameters, List<JCExpression> _args, Type varargsElement) {
+        List<JCExpression> args = _args;
+        if (parameters.isEmpty()) return args;
+        boolean anyChanges = false;
+        ListBuffer<JCExpression> result = new ListBuffer<JCExpression>();
+        while (parameters.tail.nonEmpty()) {
+            JCExpression arg = translate(args.head, parameters.head);
+            anyChanges |= (arg != args.head);
+            result.append(arg);
+            args = args.tail;
+            parameters = parameters.tail;
+        }
+        Type parameter = parameters.head;
+        if (varargsElement != null) {
+            anyChanges = true;
+            ListBuffer<JCExpression> elems = new ListBuffer<JCExpression>();
+            while (args.nonEmpty()) {
+                JCExpression arg = translate(args.head, varargsElement);
+                elems.append(arg);
+                args = args.tail;
+            }
+            JCNewArray boxedArgs = make.NewArray(make.Type(varargsElement),
+                                               List.<JCExpression>nil(),
+                                               elems.toList());
+            boxedArgs.type = new ArrayType(varargsElement, syms.arrayClass);
+            result.append(boxedArgs);
+        } else {
+            if (args.length() != 1) throw new AssertionError(args);
+            JCExpression arg = translate(args.head, parameter);
+            anyChanges |= (arg != args.head);
+            result.append(arg);
+            if (!anyChanges) return _args;
+        }
+        return result.toList();
+    }
+
+    /** Expand a boxing or unboxing conversion if needed. */
+    @SuppressWarnings("unchecked") // XXX unchecked
+    <T extends JCTree> T boxIfNeeded(T tree, Type type) {
+        boolean havePrimitive = tree.type.isPrimitive();
+        if (havePrimitive == type.isPrimitive())
+            return tree;
+        if (havePrimitive) {
+            Type unboxedTarget = types.unboxedType(type);
+            if (!unboxedTarget.hasTag(NONE)) {
+                if (!types.isSubtype(tree.type, unboxedTarget)) //e.g. Character c = 89;
+                    tree.type = unboxedTarget.constType(tree.type.constValue());
+                return (T)boxPrimitive((JCExpression)tree, type);
+            } else {
+                tree = (T)boxPrimitive((JCExpression)tree);
+            }
+        } else {
+            tree = (T)unbox((JCExpression)tree, type);
+        }
+        return tree;
+    }
+
+    /** Box up a single primitive expression. */
+    JCExpression boxPrimitive(JCExpression tree) {
+        return boxPrimitive(tree, types.boxedClass(tree.type).type);
+    }
+
+    /** Box up a single primitive expression. */
+    JCExpression boxPrimitive(JCExpression tree, Type box) {
+        make_at(tree.pos());
+        if (target.boxWithConstructors()) {
+            Symbol ctor = lookupConstructor(tree.pos(),
+                                            box,
+                                            List.<Type>nil()
+                                            .prepend(tree.type));
+            return make.Create(ctor, List.of(tree));
+        } else {
+            Symbol valueOfSym = lookupMethod(tree.pos(),
+                                             names.valueOf,
+                                             box,
+                                             List.<Type>nil()
+                                             .prepend(tree.type));
+            return make.App(make.QualIdent(valueOfSym), List.of(tree));
+        }
+    }
+
+    /** Unbox an object to a primitive value. */
+    JCExpression unbox(JCExpression tree, Type primitive) {
+        Type unboxedType = types.unboxedType(tree.type);
+        if (unboxedType.hasTag(NONE)) {
+            unboxedType = primitive;
+            if (!unboxedType.isPrimitive())
+                throw new AssertionError(unboxedType);
+            make_at(tree.pos());
+            tree = make.TypeCast(types.boxedClass(unboxedType).type, tree);
+        } else {
+            // There must be a conversion from unboxedType to primitive.
+            if (!types.isSubtype(unboxedType, primitive))
+                throw new AssertionError(tree);
+        }
+        make_at(tree.pos());
+        Symbol valueSym = lookupMethod(tree.pos(),
+                                       unboxedType.tsym.name.append(names.Value), // x.intValue()
+                                       tree.type,
+                                       List.<Type>nil());
+        return make.App(make.Select(tree, valueSym));
+    }
+
+    /** Visitor method for parenthesized expressions.
+     *  If the subexpression has changed, omit the parens.
+     */
+    public void visitParens(JCParens tree) {
+        JCTree expr = translate(tree.expr);
+        result = ((expr == tree.expr) ? tree : expr);
+    }
+
+    public void visitIndexed(JCArrayAccess tree) {
+        tree.indexed = translate(tree.indexed);
+        tree.index = translate(tree.index, syms.intType);
+        result = tree;
+    }
+
+    public void visitAssign(JCAssign tree) {
+        tree.lhs = translate(tree.lhs, tree);
+        tree.rhs = translate(tree.rhs, tree.lhs.type);
+
+        // If translated left hand side is an Apply, we are
+        // seeing an access method invocation. In this case, append
+        // right hand side as last argument of the access method.
+        if (tree.lhs.hasTag(APPLY)) {
+            JCMethodInvocation app = (JCMethodInvocation)tree.lhs;
+            app.args = List.of(tree.rhs).prependList(app.args);
+            result = app;
+        } else {
+            result = tree;
+        }
+    }
+
+    public void visitAssignop(final JCAssignOp tree) {
+        JCTree lhsAccess = access(TreeInfo.skipParens(tree.lhs));
+        final boolean boxingReq = !tree.lhs.type.isPrimitive() &&
+            tree.operator.type.getReturnType().isPrimitive();
+
+        if (boxingReq || lhsAccess.hasTag(APPLY)) {
+            // boxing required; need to rewrite as x = (unbox typeof x)(x op y);
+            // or if x == (typeof x)z then z = (unbox typeof x)((typeof x)z op y)
+            // (but without recomputing x)
+            JCTree newTree = abstractLval(tree.lhs, new TreeBuilder() {
+                    public JCTree build(final JCTree lhs) {
+                        Tag newTag = tree.getTag().noAssignOp();
+                        // Erasure (TransTypes) can change the type of
+                        // tree.lhs.  However, we can still get the
+                        // unerased type of tree.lhs as it is stored
+                        // in tree.type in Attr.
+                        Symbol newOperator = rs.resolveBinaryOperator(tree.pos(),
+                                                                      newTag,
+                                                                      attrEnv,
+                                                                      tree.type,
+                                                                      tree.rhs.type);
+                        JCExpression expr = (JCExpression)lhs;
+                        if (expr.type != tree.type)
+                            expr = make.TypeCast(tree.type, expr);
+                        JCBinary opResult = make.Binary(newTag, expr, tree.rhs);
+                        opResult.operator = newOperator;
+                        opResult.type = newOperator.type.getReturnType();
+                        JCExpression newRhs = boxingReq ?
+                            make.TypeCast(types.unboxedType(tree.type), opResult) :
+                            opResult;
+                        return make.Assign((JCExpression)lhs, newRhs).setType(tree.type);
+                    }
+                });
+            result = translate(newTree);
+            return;
+        }
+        tree.lhs = translate(tree.lhs, tree);
+        tree.rhs = translate(tree.rhs, tree.operator.type.getParameterTypes().tail.head);
+
+        // If translated left hand side is an Apply, we are
+        // seeing an access method invocation. In this case, append
+        // right hand side as last argument of the access method.
+        if (tree.lhs.hasTag(APPLY)) {
+            JCMethodInvocation app = (JCMethodInvocation)tree.lhs;
+            // if operation is a += on strings,
+            // make sure to convert argument to string
+            JCExpression rhs = (((OperatorSymbol)tree.operator).opcode == string_add)
+              ? makeString(tree.rhs)
+              : tree.rhs;
+            app.args = List.of(rhs).prependList(app.args);
+            result = app;
+        } else {
+            result = tree;
+        }
+    }
+
+    /** Lower a tree of the form e++ or e-- where e is an object type */
+    JCTree lowerBoxedPostop(final JCUnary tree) {
+        // translate to tmp1=lval(e); tmp2=tmp1; tmp1 OP 1; tmp2
+        // or
+        // translate to tmp1=lval(e); tmp2=tmp1; (typeof tree)tmp1 OP 1; tmp2
+        // where OP is += or -=
+        final boolean cast = TreeInfo.skipParens(tree.arg).hasTag(TYPECAST);
+        return abstractLval(tree.arg, new TreeBuilder() {
+                public JCTree build(final JCTree tmp1) {
+                    return abstractRval(tmp1, tree.arg.type, new TreeBuilder() {
+                            public JCTree build(final JCTree tmp2) {
+                                Tag opcode = (tree.hasTag(POSTINC))
+                                    ? PLUS_ASG : MINUS_ASG;
+                                JCTree lhs = cast
+                                    ? make.TypeCast(tree.arg.type, (JCExpression)tmp1)
+                                    : tmp1;
+                                JCTree update = makeAssignop(opcode,
+                                                             lhs,
+                                                             make.Literal(1));
+                                return makeComma(update, tmp2);
+                            }
+                        });
+                }
+            });
+    }
+
+    public void visitUnary(JCUnary tree) {
+        boolean isUpdateOperator = tree.getTag().isIncOrDecUnaryOp();
+        if (isUpdateOperator && !tree.arg.type.isPrimitive()) {
+            switch(tree.getTag()) {
+            case PREINC:            // ++ e
+                    // translate to e += 1
+            case PREDEC:            // -- e
+                    // translate to e -= 1
+                {
+                    Tag opcode = (tree.hasTag(PREINC))
+                        ? PLUS_ASG : MINUS_ASG;
+                    JCAssignOp newTree = makeAssignop(opcode,
+                                                    tree.arg,
+                                                    make.Literal(1));
+                    result = translate(newTree, tree.type);
+                    return;
+                }
+            case POSTINC:           // e ++
+            case POSTDEC:           // e --
+                {
+                    result = translate(lowerBoxedPostop(tree), tree.type);
+                    return;
+                }
+            }
+            throw new AssertionError(tree);
+        }
+
+        tree.arg = boxIfNeeded(translate(tree.arg, tree), tree.type);
+
+        if (tree.hasTag(NOT) && tree.arg.type.constValue() != null) {
+            tree.type = cfolder.fold1(bool_not, tree.arg.type);
+        }
+
+        // If translated left hand side is an Apply, we are
+        // seeing an access method invocation. In this case, return
+        // that access method invocation as result.
+        if (isUpdateOperator && tree.arg.hasTag(APPLY)) {
+            result = tree.arg;
+        } else {
+            result = tree;
+        }
+    }
+
+    public void visitBinary(JCBinary tree) {
+        List<Type> formals = tree.operator.type.getParameterTypes();
+        JCTree lhs = tree.lhs = translate(tree.lhs, formals.head);
+        switch (tree.getTag()) {
+        case OR:
+            if (lhs.type.isTrue()) {
+                result = lhs;
+                return;
+            }
+            if (lhs.type.isFalse()) {
+                result = translate(tree.rhs, formals.tail.head);
+                return;
+            }
+            break;
+        case AND:
+            if (lhs.type.isFalse()) {
+                result = lhs;
+                return;
+            }
+            if (lhs.type.isTrue()) {
+                result = translate(tree.rhs, formals.tail.head);
+                return;
+            }
+            break;
+        }
+        tree.rhs = translate(tree.rhs, formals.tail.head);
+        result = tree;
+    }
+
+    public void visitIdent(JCIdent tree) {
+        result = access(tree.sym, tree, enclOp, false);
+    }
+
+    /** Translate away the foreach loop.  */
+    public void visitForeachLoop(JCEnhancedForLoop tree) {
+        if (types.elemtype(tree.expr.type) == null)
+            visitIterableForeachLoop(tree);
+        else
+            visitArrayForeachLoop(tree);
+    }
+        // where
+        /**
+         * A statement of the form
+         *
+         * <pre>
+         *     for ( T v : arrayexpr ) stmt;
+         * </pre>
+         *
+         * (where arrayexpr is of an array type) gets translated to
+         *
+         * <pre>{@code
+         *     for ( { arraytype #arr = arrayexpr;
+         *             int #len = array.length;
+         *             int #i = 0; };
+         *           #i < #len; i$++ ) {
+         *         T v = arr$[#i];
+         *         stmt;
+         *     }
+         * }</pre>
+         *
+         * where #arr, #len, and #i are freshly named synthetic local variables.
+         */
+        private void visitArrayForeachLoop(JCEnhancedForLoop tree) {
+            make_at(tree.expr.pos());
+            VarSymbol arraycache = new VarSymbol(SYNTHETIC,
+                                                 names.fromString("arr" + target.syntheticNameChar()),
+                                                 tree.expr.type,
+                                                 currentMethodSym);
+            JCStatement arraycachedef = make.VarDef(arraycache, tree.expr);
+            VarSymbol lencache = new VarSymbol(SYNTHETIC,
+                                               names.fromString("len" + target.syntheticNameChar()),
+                                               syms.intType,
+                                               currentMethodSym);
+            JCStatement lencachedef = make.
+                VarDef(lencache, make.Select(make.Ident(arraycache), syms.lengthVar));
+            VarSymbol index = new VarSymbol(SYNTHETIC,
+                                            names.fromString("i" + target.syntheticNameChar()),
+                                            syms.intType,
+                                            currentMethodSym);
+
+            JCVariableDecl indexdef = make.VarDef(index, make.Literal(INT, 0));
+            indexdef.init.type = indexdef.type = syms.intType.constType(0);
+
+            List<JCStatement> loopinit = List.of(arraycachedef, lencachedef, indexdef);
+            JCBinary cond = makeBinary(LT, make.Ident(index), make.Ident(lencache));
+
+            JCExpressionStatement step = make.Exec(makeUnary(PREINC, make.Ident(index)));
+
+            Type elemtype = types.elemtype(tree.expr.type);
+            JCExpression loopvarinit = make.Indexed(make.Ident(arraycache),
+                                                    make.Ident(index)).setType(elemtype);
+            JCVariableDecl loopvardef = (JCVariableDecl)make.VarDef(tree.var.mods,
+                                                  tree.var.name,
+                                                  tree.var.vartype,
+                                                  loopvarinit).setType(tree.var.type);
+            loopvardef.sym = tree.var.sym;
+            JCBlock body = make.
+                Block(0, List.of(loopvardef, tree.body));
+
+            result = translate(make.
+                               ForLoop(loopinit,
+                                       cond,
+                                       List.of(step),
+                                       body));
+            patchTargets(body, tree, result);
+        }
+        /** Patch up break and continue targets. */
+        private void patchTargets(JCTree body, final JCTree src, final JCTree dest) {
+            class Patcher extends TreeScanner {
+                public void visitBreak(JCBreak tree) {
+                    if (tree.target == src)
+                        tree.target = dest;
+                }
+                public void visitContinue(JCContinue tree) {
+                    if (tree.target == src)
+                        tree.target = dest;
+                }
+                public void visitClassDef(JCClassDecl tree) {}
+            }
+            new Patcher().scan(body);
+        }
+        /**
+         * A statement of the form
+         *
+         * <pre>
+         *     for ( T v : coll ) stmt ;
+         * </pre>
+         *
+         * (where coll implements {@code Iterable<? extends T>}) gets translated to
+         *
+         * <pre>{@code
+         *     for ( Iterator<? extends T> #i = coll.iterator(); #i.hasNext(); ) {
+         *         T v = (T) #i.next();
+         *         stmt;
+         *     }
+         * }</pre>
+         *
+         * where #i is a freshly named synthetic local variable.
+         */
+        private void visitIterableForeachLoop(JCEnhancedForLoop tree) {
+            make_at(tree.expr.pos());
+            Type iteratorTarget = syms.objectType;
+            Type iterableType = types.asSuper(types.cvarUpperBound(tree.expr.type),
+                                              syms.iterableType.tsym);
+            if (iterableType.getTypeArguments().nonEmpty())
+                iteratorTarget = types.erasure(iterableType.getTypeArguments().head);
+            Type eType = tree.expr.type;
+            while (eType.hasTag(TYPEVAR)) {
+                eType = eType.getUpperBound();
+            }
+            tree.expr.type = types.erasure(eType);
+            if (eType.isCompound())
+                tree.expr = make.TypeCast(types.erasure(iterableType), tree.expr);
+            Symbol iterator = lookupMethod(tree.expr.pos(),
+                                           names.iterator,
+                                           eType,
+                                           List.<Type>nil());
+            VarSymbol itvar = new VarSymbol(SYNTHETIC, names.fromString("i" + target.syntheticNameChar()),
+                                            types.erasure(types.asSuper(iterator.type.getReturnType(), syms.iteratorType.tsym)),
+                                            currentMethodSym);
+
+             JCStatement init = make.
+                VarDef(itvar, make.App(make.Select(tree.expr, iterator)
+                     .setType(types.erasure(iterator.type))));
+
+            Symbol hasNext = lookupMethod(tree.expr.pos(),
+                                          names.hasNext,
+                                          itvar.type,
+                                          List.<Type>nil());
+            JCMethodInvocation cond = make.App(make.Select(make.Ident(itvar), hasNext));
+            Symbol next = lookupMethod(tree.expr.pos(),
+                                       names.next,
+                                       itvar.type,
+                                       List.<Type>nil());
+            JCExpression vardefinit = make.App(make.Select(make.Ident(itvar), next));
+            if (tree.var.type.isPrimitive())
+                vardefinit = make.TypeCast(types.cvarUpperBound(iteratorTarget), vardefinit);
+            else
+                vardefinit = make.TypeCast(tree.var.type, vardefinit);
+            JCVariableDecl indexDef = (JCVariableDecl)make.VarDef(tree.var.mods,
+                                                  tree.var.name,
+                                                  tree.var.vartype,
+                                                  vardefinit).setType(tree.var.type);
+            indexDef.sym = tree.var.sym;
+            JCBlock body = make.Block(0, List.of(indexDef, tree.body));
+            body.endpos = TreeInfo.endPos(tree.body);
+            result = translate(make.
+                ForLoop(List.of(init),
+                        cond,
+                        List.<JCExpressionStatement>nil(),
+                        body));
+            patchTargets(body, tree, result);
+        }
+
+    public void visitVarDef(JCVariableDecl tree) {
+        MethodSymbol oldMethodSym = currentMethodSym;
+        tree.mods = translate(tree.mods);
+        tree.vartype = translate(tree.vartype);
+        if (currentMethodSym == null) {
+            // A class or instance field initializer.
+            currentMethodSym =
+                new MethodSymbol((tree.mods.flags&STATIC) | BLOCK,
+                                 names.empty, null,
+                                 currentClass);
+        }
+        if (tree.init != null) tree.init = translate(tree.init, tree.type);
+        result = tree;
+        currentMethodSym = oldMethodSym;
+    }
+
+    public void visitBlock(JCBlock tree) {
+        MethodSymbol oldMethodSym = currentMethodSym;
+        if (currentMethodSym == null) {
+            // Block is a static or instance initializer.
+            currentMethodSym =
+                new MethodSymbol(tree.flags | BLOCK,
+                                 names.empty, null,
+                                 currentClass);
+        }
+        super.visitBlock(tree);
+        currentMethodSym = oldMethodSym;
+    }
+
+    public void visitDoLoop(JCDoWhileLoop tree) {
+        tree.body = translate(tree.body);
+        tree.cond = translate(tree.cond, syms.booleanType);
+        result = tree;
+    }
+
+    public void visitWhileLoop(JCWhileLoop tree) {
+        tree.cond = translate(tree.cond, syms.booleanType);
+        tree.body = translate(tree.body);
+        result = tree;
+    }
+
+    public void visitForLoop(JCForLoop tree) {
+        tree.init = translate(tree.init);
+        if (tree.cond != null)
+            tree.cond = translate(tree.cond, syms.booleanType);
+        tree.step = translate(tree.step);
+        tree.body = translate(tree.body);
+        result = tree;
+    }
+
+    public void visitReturn(JCReturn tree) {
+        if (tree.expr != null)
+            tree.expr = translate(tree.expr,
+                                  types.erasure(currentMethodDef
+                                                .restype.type));
+        result = tree;
+    }
+
+    public void visitSwitch(JCSwitch tree) {
+        Type selsuper = types.supertype(tree.selector.type);
+        boolean enumSwitch = selsuper != null &&
+            (tree.selector.type.tsym.flags() & ENUM) != 0;
+        boolean stringSwitch = selsuper != null &&
+            types.isSameType(tree.selector.type, syms.stringType);
+        Type target = enumSwitch ? tree.selector.type :
+            (stringSwitch? syms.stringType : syms.intType);
+        tree.selector = translate(tree.selector, target);
+        tree.cases = translateCases(tree.cases);
+        if (enumSwitch) {
+            result = visitEnumSwitch(tree);
+        } else if (stringSwitch) {
+            result = visitStringSwitch(tree);
+        } else {
+            result = tree;
+        }
+    }
+
+    public JCTree visitEnumSwitch(JCSwitch tree) {
+        TypeSymbol enumSym = tree.selector.type.tsym;
+        EnumMapping map = mapForEnum(tree.pos(), enumSym);
+        make_at(tree.pos());
+        Symbol ordinalMethod = lookupMethod(tree.pos(),
+                                            names.ordinal,
+                                            tree.selector.type,
+                                            List.<Type>nil());
+        JCArrayAccess selector = make.Indexed(map.mapVar,
+                                        make.App(make.Select(tree.selector,
+                                                             ordinalMethod)));
+        ListBuffer<JCCase> cases = new ListBuffer<JCCase>();
+        for (JCCase c : tree.cases) {
+            if (c.pat != null) {
+                VarSymbol label = (VarSymbol)TreeInfo.symbol(c.pat);
+                JCLiteral pat = map.forConstant(label);
+                cases.append(make.Case(pat, c.stats));
+            } else {
+                cases.append(c);
+            }
+        }
+        JCSwitch enumSwitch = make.Switch(selector, cases.toList());
+        patchTargets(enumSwitch, tree, enumSwitch);
+        return enumSwitch;
+    }
+
+    public JCTree visitStringSwitch(JCSwitch tree) {
+        List<JCCase> caseList = tree.getCases();
+        int alternatives = caseList.size();
+
+        if (alternatives == 0) { // Strange but legal possibility
+            return make.at(tree.pos()).Exec(attr.makeNullCheck(tree.getExpression()));
+        } else {
+            /*
+             * The general approach used is to translate a single
+             * string switch statement into a series of two chained
+             * switch statements: the first a synthesized statement
+             * switching on the argument string's hash value and
+             * computing a string's position in the list of original
+             * case labels, if any, followed by a second switch on the
+             * computed integer value.  The second switch has the same
+             * code structure as the original string switch statement
+             * except that the string case labels are replaced with
+             * positional integer constants starting at 0.
+             *
+             * The first switch statement can be thought of as an
+             * inlined map from strings to their position in the case
+             * label list.  An alternate implementation would use an
+             * actual Map for this purpose, as done for enum switches.
+             *
+             * With some additional effort, it would be possible to
+             * use a single switch statement on the hash code of the
+             * argument, but care would need to be taken to preserve
+             * the proper control flow in the presence of hash
+             * collisions and other complications, such as
+             * fallthroughs.  Switch statements with one or two
+             * alternatives could also be specially translated into
+             * if-then statements to omit the computation of the hash
+             * code.
+             *
+             * The generated code assumes that the hashing algorithm
+             * of String is the same in the compilation environment as
+             * in the environment the code will run in.  The string
+             * hashing algorithm in the SE JDK has been unchanged
+             * since at least JDK 1.2.  Since the algorithm has been
+             * specified since that release as well, it is very
+             * unlikely to be changed in the future.
+             *
+             * Different hashing algorithms, such as the length of the
+             * strings or a perfect hashing algorithm over the
+             * particular set of case labels, could potentially be
+             * used instead of String.hashCode.
+             */
+
+            ListBuffer<JCStatement> stmtList = new ListBuffer<JCStatement>();
+
+            // Map from String case labels to their original position in
+            // the list of case labels.
+            Map<String, Integer> caseLabelToPosition =
+                new LinkedHashMap<String, Integer>(alternatives + 1, 1.0f);
+
+            // Map of hash codes to the string case labels having that hashCode.
+            Map<Integer, Set<String>> hashToString =
+                new LinkedHashMap<Integer, Set<String>>(alternatives + 1, 1.0f);
+
+            int casePosition = 0;
+            for(JCCase oneCase : caseList) {
+                JCExpression expression = oneCase.getExpression();
+
+                if (expression != null) { // expression for a "default" case is null
+                    String labelExpr = (String) expression.type.constValue();
+                    Integer mapping = caseLabelToPosition.put(labelExpr, casePosition);
+                    Assert.checkNull(mapping);
+                    int hashCode = labelExpr.hashCode();
+
+                    Set<String> stringSet = hashToString.get(hashCode);
+                    if (stringSet == null) {
+                        stringSet = new LinkedHashSet<String>(1, 1.0f);
+                        stringSet.add(labelExpr);
+                        hashToString.put(hashCode, stringSet);
+                    } else {
+                        boolean added = stringSet.add(labelExpr);
+                        Assert.check(added);
+                    }
+                }
+                casePosition++;
+            }
+
+            // Synthesize a switch statement that has the effect of
+            // mapping from a string to the integer position of that
+            // string in the list of case labels.  This is done by
+            // switching on the hashCode of the string followed by an
+            // if-then-else chain comparing the input for equality
+            // with all the case labels having that hash value.
+
+            /*
+             * s$ = top of stack;
+             * tmp$ = -1;
+             * switch($s.hashCode()) {
+             *     case caseLabel.hashCode:
+             *         if (s$.equals("caseLabel_1")
+             *           tmp$ = caseLabelToPosition("caseLabel_1");
+             *         else if (s$.equals("caseLabel_2"))
+             *           tmp$ = caseLabelToPosition("caseLabel_2");
+             *         ...
+             *         break;
+             * ...
+             * }
+             */
+
+            VarSymbol dollar_s = new VarSymbol(FINAL|SYNTHETIC,
+                                               names.fromString("s" + tree.pos + target.syntheticNameChar()),
+                                               syms.stringType,
+                                               currentMethodSym);
+            stmtList.append(make.at(tree.pos()).VarDef(dollar_s, tree.getExpression()).setType(dollar_s.type));
+
+            VarSymbol dollar_tmp = new VarSymbol(SYNTHETIC,
+                                                 names.fromString("tmp" + tree.pos + target.syntheticNameChar()),
+                                                 syms.intType,
+                                                 currentMethodSym);
+            JCVariableDecl dollar_tmp_def =
+                (JCVariableDecl)make.VarDef(dollar_tmp, make.Literal(INT, -1)).setType(dollar_tmp.type);
+            dollar_tmp_def.init.type = dollar_tmp.type = syms.intType;
+            stmtList.append(dollar_tmp_def);
+            ListBuffer<JCCase> caseBuffer = new ListBuffer<>();
+            // hashCode will trigger nullcheck on original switch expression
+            JCMethodInvocation hashCodeCall = makeCall(make.Ident(dollar_s),
+                                                       names.hashCode,
+                                                       List.<JCExpression>nil()).setType(syms.intType);
+            JCSwitch switch1 = make.Switch(hashCodeCall,
+                                        caseBuffer.toList());
+            for(Map.Entry<Integer, Set<String>> entry : hashToString.entrySet()) {
+                int hashCode = entry.getKey();
+                Set<String> stringsWithHashCode = entry.getValue();
+                Assert.check(stringsWithHashCode.size() >= 1);
+
+                JCStatement elsepart = null;
+                for(String caseLabel : stringsWithHashCode ) {
+                    JCMethodInvocation stringEqualsCall = makeCall(make.Ident(dollar_s),
+                                                                   names.equals,
+                                                                   List.<JCExpression>of(make.Literal(caseLabel)));
+                    elsepart = make.If(stringEqualsCall,
+                                       make.Exec(make.Assign(make.Ident(dollar_tmp),
+                                                             make.Literal(caseLabelToPosition.get(caseLabel))).
+                                                 setType(dollar_tmp.type)),
+                                       elsepart);
+                }
+
+                ListBuffer<JCStatement> lb = new ListBuffer<>();
+                JCBreak breakStmt = make.Break(null);
+                breakStmt.target = switch1;
+                lb.append(elsepart).append(breakStmt);
+
+                caseBuffer.append(make.Case(make.Literal(hashCode), lb.toList()));
+            }
+
+            switch1.cases = caseBuffer.toList();
+            stmtList.append(switch1);
+
+            // Make isomorphic switch tree replacing string labels
+            // with corresponding integer ones from the label to
+            // position map.
+
+            ListBuffer<JCCase> lb = new ListBuffer<>();
+            JCSwitch switch2 = make.Switch(make.Ident(dollar_tmp), lb.toList());
+            for(JCCase oneCase : caseList ) {
+                // Rewire up old unlabeled break statements to the
+                // replacement switch being created.
+                patchTargets(oneCase, tree, switch2);
+
+                boolean isDefault = (oneCase.getExpression() == null);
+                JCExpression caseExpr;
+                if (isDefault)
+                    caseExpr = null;
+                else {
+                    caseExpr = make.Literal(caseLabelToPosition.get((String)TreeInfo.skipParens(oneCase.
+                                                                                                getExpression()).
+                                                                    type.constValue()));
+                }
+
+                lb.append(make.Case(caseExpr,
+                                    oneCase.getStatements()));
+            }
+
+            switch2.cases = lb.toList();
+            stmtList.append(switch2);
+
+            return make.Block(0L, stmtList.toList());
+        }
+    }
+
+    public void visitNewArray(JCNewArray tree) {
+        tree.elemtype = translate(tree.elemtype);
+        for (List<JCExpression> t = tree.dims; t.tail != null; t = t.tail)
+            if (t.head != null) t.head = translate(t.head, syms.intType);
+        tree.elems = translate(tree.elems, types.elemtype(tree.type));
+        result = tree;
+    }
+
+    public void visitSelect(JCFieldAccess tree) {
+        // need to special case-access of the form C.super.x
+        // these will always need an access method, unless C
+        // is a default interface subclassed by the current class.
+        boolean qualifiedSuperAccess =
+            tree.selected.hasTag(SELECT) &&
+            TreeInfo.name(tree.selected) == names._super &&
+            !types.isDirectSuperInterface(((JCFieldAccess)tree.selected).selected.type.tsym, currentClass);
+        tree.selected = translate(tree.selected);
+        if (tree.name == names._class) {
+            result = classOf(tree.selected);
+        }
+        else if (tree.name == names._super &&
+                types.isDirectSuperInterface(tree.selected.type.tsym, currentClass)) {
+            //default super call!! Not a classic qualified super call
+            TypeSymbol supSym = tree.selected.type.tsym;
+            Assert.checkNonNull(types.asSuper(currentClass.type, supSym));
+            result = tree;
+        }
+        else if (tree.name == names._this || tree.name == names._super) {
+            result = makeThis(tree.pos(), tree.selected.type.tsym);
+        }
+        else
+            result = access(tree.sym, tree, enclOp, qualifiedSuperAccess);
+    }
+
+    public void visitLetExpr(LetExpr tree) {
+        tree.defs = translateVarDefs(tree.defs);
+        tree.expr = translate(tree.expr, tree.type);
+        result = tree;
+    }
+
+    // There ought to be nothing to rewrite here;
+    // we don't generate code.
+    public void visitAnnotation(JCAnnotation tree) {
+        result = tree;
+    }
+
+    @Override
+    public void visitTry(JCTry tree) {
+        if (tree.resources.nonEmpty()) {
+            result = makeTwrTry(tree);
+            return;
+        }
+
+        boolean hasBody = tree.body.getStatements().nonEmpty();
+        boolean hasCatchers = tree.catchers.nonEmpty();
+        boolean hasFinally = tree.finalizer != null &&
+                tree.finalizer.getStatements().nonEmpty();
+
+        if (!hasCatchers && !hasFinally) {
+            result = translate(tree.body);
+            return;
+        }
+
+        if (!hasBody) {
+            if (hasFinally) {
+                result = translate(tree.finalizer);
+            } else {
+                result = translate(tree.body);
+            }
+            return;
+        }
+
+        // no optimizations possible
+        super.visitTry(tree);
+    }
+
+/**************************************************************************
+ * main method
+ *************************************************************************/
+
+    /** Translate a toplevel class and return a list consisting of
+     *  the translated class and translated versions of all inner classes.
+     *  @param env   The attribution environment current at the class definition.
+     *               We need this for resolving some additional symbols.
+     *  @param cdef  The tree representing the class definition.
+     */
+    public List<JCTree> translateTopLevelClass(Env<AttrContext> env, JCTree cdef, TreeMaker make) {
+        ListBuffer<JCTree> translated = null;
+        try {
+            attrEnv = env;
+            this.make = make;
+            endPosTable = env.toplevel.endPositions;
+            currentClass = null;
+            currentMethodDef = null;
+            outermostClassDef = (cdef.hasTag(CLASSDEF)) ? (JCClassDecl)cdef : null;
+            outermostMemberDef = null;
+            this.translated = new ListBuffer<JCTree>();
+            classdefs = new HashMap<ClassSymbol,JCClassDecl>();
+            actualSymbols = new HashMap<Symbol,Symbol>();
+            freevarCache = new HashMap<ClassSymbol,List<VarSymbol>>();
+            proxies = new Scope(syms.noSymbol);
+            twrVars = new Scope(syms.noSymbol);
+            outerThisStack = List.nil();
+            accessNums = new HashMap<Symbol,Integer>();
+            accessSyms = new HashMap<Symbol,MethodSymbol[]>();
+            accessConstrs = new HashMap<Symbol,MethodSymbol>();
+            accessConstrTags = List.nil();
+            accessed = new ListBuffer<Symbol>();
+            translate(cdef, (JCExpression)null);
+            for (List<Symbol> l = accessed.toList(); l.nonEmpty(); l = l.tail)
+                makeAccessible(l.head);
+            for (EnumMapping map : enumSwitchMap.values())
+                map.translate();
+            checkConflicts(this.translated.toList());
+            checkAccessConstructorTags();
+            translated = this.translated;
+        } finally {
+            // note that recursive invocations of this method fail hard
+            attrEnv = null;
+            this.make = null;
+            endPosTable = null;
+            currentClass = null;
+            currentMethodDef = null;
+            outermostClassDef = null;
+            outermostMemberDef = null;
+            this.translated = null;
+            classdefs = null;
+            actualSymbols = null;
+            freevarCache = null;
+            proxies = null;
+            outerThisStack = null;
+            accessNums = null;
+            accessSyms = null;
+            accessConstrs = null;
+            accessConstrTags = null;
+            accessed = null;
+            enumSwitchMap.clear();
+            assertionsDisabledClassCache = null;
+        }
+        return translated.toList();
+    }
+}

@@ -1,166 +1,160 @@
-/*     */ package com.sun.tools.doclets.formats.html.markup;
-/*     */ 
-/*     */ import com.sun.tools.doclets.internal.toolkit.Content;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocletAbortException;
-/*     */ import com.sun.tools.doclets.internal.toolkit.util.DocletConstants;
-/*     */ import java.io.IOException;
-/*     */ import java.io.Writer;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class RawHtml
-/*     */   extends Content
-/*     */ {
-/*     */   private String rawHtmlContent;
-/*  48 */   public static final Content nbsp = new RawHtml("&nbsp;");
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public RawHtml(String paramString) {
-/*  56 */     this.rawHtmlContent = (String)nullCheck(paramString);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addContent(Content paramContent) {
-/*  68 */     throw new DocletAbortException("not supported");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public void addContent(String paramString) {
-/*  80 */     throw new DocletAbortException("not supported");
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean isEmpty() {
-/*  87 */     return this.rawHtmlContent.isEmpty();
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String toString() {
-/*  95 */     return this.rawHtmlContent;
-/*     */   }
-/*     */   
-/*  98 */   private enum State { TEXT, ENTITY, TAG, STRING; }
-/*     */ 
-/*     */   
-/*     */   public int charCount() {
-/* 102 */     return charCount(this.rawHtmlContent);
-/*     */   }
-/*     */   
-/*     */   static int charCount(String paramString) {
-/* 106 */     State state = State.TEXT;
-/* 107 */     byte b1 = 0;
-/* 108 */     for (byte b2 = 0; b2 < paramString.length(); b2++) {
-/* 109 */       char c = paramString.charAt(b2);
-/* 110 */       switch (state) {
-/*     */         case TEXT:
-/* 112 */           switch (c) {
-/*     */             case '<':
-/* 114 */               state = State.TAG;
-/*     */               break;
-/*     */             case '&':
-/* 117 */               state = State.ENTITY;
-/* 118 */               b1++;
-/*     */               break;
-/*     */           } 
-/* 121 */           b1++;
-/*     */           break;
-/*     */ 
-/*     */         
-/*     */         case ENTITY:
-/* 126 */           if (!Character.isLetterOrDigit(c)) {
-/* 127 */             state = State.TEXT;
-/*     */           }
-/*     */           break;
-/*     */         case TAG:
-/* 131 */           switch (c) {
-/*     */             case '"':
-/* 133 */               state = State.STRING;
-/*     */               break;
-/*     */             case '>':
-/* 136 */               state = State.TEXT;
-/*     */               break;
-/*     */           } 
-/*     */           
-/*     */           break;
-/*     */         case STRING:
-/* 142 */           switch (c) {
-/*     */             case '"':
-/* 144 */               state = State.TAG; break;
-/*     */           } 
-/*     */           break;
-/*     */       } 
-/*     */     } 
-/* 149 */     return b1;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public boolean write(Writer paramWriter, boolean paramBoolean) throws IOException {
-/* 157 */     paramWriter.write(this.rawHtmlContent);
-/* 158 */     return this.rawHtmlContent.endsWith(DocletConstants.NL);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\doclets\formats\html\markup\RawHtml.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2010, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.doclets.formats.html.markup;
+
+import java.io.IOException;
+import java.io.Writer;
+
+import com.sun.tools.doclets.internal.toolkit.Content;
+import com.sun.tools.doclets.internal.toolkit.util.*;
+
+/**
+ * Class for generating raw HTML content to be added to HTML pages of javadoc output.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ *
+ * @author Bhavesh Patel
+ */
+public class RawHtml extends Content {
+
+    private String rawHtmlContent;
+
+    public static final Content nbsp = new RawHtml("&nbsp;");
+
+    /**
+     * Constructor to construct a RawHtml object.
+     *
+     * @param rawHtml raw HTML text to be added
+     */
+    public RawHtml(String rawHtml) {
+        rawHtmlContent = nullCheck(rawHtml);
+    }
+
+    /**
+     * This method is not supported by the class.
+     *
+     * @param content content that needs to be added
+     * @throws DocletAbortException this method will always throw a
+     *                              DocletAbortException because it
+     *                              is not supported.
+     */
+    public void addContent(Content content) {
+        throw new DocletAbortException("not supported");
+    }
+
+    /**
+     * This method is not supported by the class.
+     *
+     * @param stringContent string content that needs to be added
+     * @throws DocletAbortException this method will always throw a
+     *                              DocletAbortException because it
+     *                              is not supported.
+     */
+    public void addContent(String stringContent) {
+        throw new DocletAbortException("not supported");
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean isEmpty() {
+        return rawHtmlContent.isEmpty();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+        return rawHtmlContent;
+    }
+
+    private enum State { TEXT, ENTITY, TAG, STRING };
+
+    @Override
+    public int charCount() {
+        return charCount(rawHtmlContent);
+    }
+
+    static int charCount(String htmlText) {
+        State state = State.TEXT;
+        int count = 0;
+        for (int i = 0; i < htmlText.length(); i++) {
+            char c = htmlText.charAt(i);
+            switch (state) {
+                case TEXT:
+                    switch (c) {
+                        case '<':
+                            state = State.TAG;
+                            break;
+                        case '&':
+                            state = State.ENTITY;
+                            count++;
+                            break;
+                        default:
+                            count++;
+                    }
+                    break;
+
+                case ENTITY:
+                    if (!Character.isLetterOrDigit(c))
+                        state = State.TEXT;
+                    break;
+
+                case TAG:
+                    switch (c) {
+                        case '"':
+                            state = State.STRING;
+                            break;
+                        case '>':
+                            state = State.TEXT;
+                            break;
+                    }
+                    break;
+
+                case STRING:
+                    switch (c) {
+                        case '"':
+                            state = State.TAG;
+                            break;
+                    }
+            }
+        }
+        return count;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean write(Writer out, boolean atNewline) throws IOException {
+        out.write(rawHtmlContent);
+        return rawHtmlContent.endsWith(DocletConstants.NL);
+    }
+}

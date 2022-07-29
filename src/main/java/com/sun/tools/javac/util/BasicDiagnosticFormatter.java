@@ -1,417 +1,412 @@
-/*     */ package com.sun.tools.javac.util;
-/*     */
-/*     */ import com.sun.tools.javac.api.DiagnosticFormatter;
-/*     */ import java.util.Collection;
-/*     */ import java.util.EnumMap;
-/*     */ import java.util.EnumSet;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.Locale;
-/*     */ import java.util.Map;
-/*     */ import java.util.regex.Matcher;
-/*     */ import javax.tools.Diagnostic;
-/*     */ import javax.tools.JavaFileObject;
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */ public class BasicDiagnosticFormatter
-/*     */   extends AbstractDiagnosticFormatter
-/*     */ {
-/*     */   public BasicDiagnosticFormatter(Options paramOptions, JavacMessages paramJavacMessages) {
-/*  76 */     super(paramJavacMessages, new BasicConfiguration(paramOptions));
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */   public BasicDiagnosticFormatter(JavacMessages paramJavacMessages) {
-/*  85 */     super(paramJavacMessages, new BasicConfiguration());
-/*     */   }
-/*     */
-/*     */   public String formatDiagnostic(JCDiagnostic paramJCDiagnostic, Locale paramLocale) {
-/*  89 */     if (paramLocale == null)
-/*  90 */       paramLocale = this.messages.getCurrentLocale();
-/*  91 */     String str = selectFormat(paramJCDiagnostic);
-/*  92 */     StringBuilder stringBuilder = new StringBuilder();
-/*  93 */     for (byte b = 0; b < str.length(); b++) {
-/*  94 */       char c = str.charAt(b);
-/*  95 */       boolean bool = false;
-/*  96 */       if (c == '%' && b < str.length() - 1) {
-/*  97 */         bool = true;
-/*  98 */         c = str.charAt(++b);
-/*     */       }
-/* 100 */       stringBuilder.append(bool ? formatMeta(c, paramJCDiagnostic, paramLocale) : String.valueOf(c));
-/*     */     }
-/* 102 */     if (this.depth == 0) {
-/* 103 */       return addSourceLineIfNeeded(paramJCDiagnostic, stringBuilder.toString());
-/*     */     }
-/* 105 */     return stringBuilder.toString();
-/*     */   }
-/*     */
-/*     */   public String formatMessage(JCDiagnostic paramJCDiagnostic, Locale paramLocale) {
-/* 109 */     int i = 0;
-/* 110 */     StringBuilder stringBuilder = new StringBuilder();
-/* 111 */     Collection<String> collection = formatArguments(paramJCDiagnostic, paramLocale);
-/* 112 */     String str = localize(paramLocale, paramJCDiagnostic.getCode(), collection.toArray());
-/* 113 */     String[] arrayOfString = str.split("\n");
-/* 114 */     if (getConfiguration().getVisible().contains(Configuration.DiagnosticPart.SUMMARY)) {
-/* 115 */       i += getConfiguration().getIndentation(Configuration.DiagnosticPart.SUMMARY);
-/* 116 */       stringBuilder.append(indent(arrayOfString[0], i));
-/*     */     }
-/* 118 */     if (arrayOfString.length > 1 && getConfiguration().getVisible().contains(Configuration.DiagnosticPart.DETAILS)) {
-/* 119 */       i += getConfiguration().getIndentation(Configuration.DiagnosticPart.DETAILS);
-/* 120 */       for (byte b = 1; b < arrayOfString.length; b++) {
-/* 121 */         stringBuilder.append("\n" + indent(arrayOfString[b], i));
-/*     */       }
-/*     */     }
-/* 124 */     if (paramJCDiagnostic.isMultiline() && getConfiguration().getVisible().contains(Configuration.DiagnosticPart.SUBDIAGNOSTICS)) {
-/* 125 */       i += getConfiguration().getIndentation(Configuration.DiagnosticPart.SUBDIAGNOSTICS);
-/* 126 */       for (String str1 : formatSubdiagnostics(paramJCDiagnostic, paramLocale)) {
-/* 127 */         stringBuilder.append("\n" + indent(str1, i));
-/*     */       }
-/*     */     }
-/* 130 */     return stringBuilder.toString();
-/*     */   }
-/*     */
-/*     */   protected String addSourceLineIfNeeded(JCDiagnostic paramJCDiagnostic, String paramString) {
-/* 134 */     if (!displaySource(paramJCDiagnostic)) {
-/* 135 */       return paramString;
-/*     */     }
-/* 137 */     BasicConfiguration basicConfiguration = getConfiguration();
-/* 138 */     int i = basicConfiguration.getIndentation(Configuration.DiagnosticPart.SOURCE);
-/* 139 */     String str = "\n" + formatSourceLine(paramJCDiagnostic, i);
-/* 140 */     boolean bool = (paramString.indexOf("\n") == -1) ? true : false;
-/* 141 */     if (bool || getConfiguration().getSourcePosition() == BasicConfiguration.SourcePosition.BOTTOM) {
-/* 142 */       return paramString + str;
-/*     */     }
-/* 144 */     return paramString.replaceFirst("\n", Matcher.quoteReplacement(str) + "\n");
-/*     */   }
-/*     */
-/*     */   protected String formatMeta(char paramChar, JCDiagnostic paramJCDiagnostic, Locale paramLocale) {
-/*     */     boolean bool;
-/* 149 */     switch (paramChar) {
-/*     */       case 'b':
-/* 151 */         return formatSource(paramJCDiagnostic, false, paramLocale);
-/*     */       case 'e':
-/* 153 */         return formatPosition(paramJCDiagnostic, PositionKind.END, paramLocale);
-/*     */       case 'f':
-/* 155 */         return formatSource(paramJCDiagnostic, true, paramLocale);
-/*     */       case 'l':
-/* 157 */         return formatPosition(paramJCDiagnostic, PositionKind.LINE, paramLocale);
-/*     */       case 'c':
-/* 159 */         return formatPosition(paramJCDiagnostic, PositionKind.COLUMN, paramLocale);
-/*     */       case 'o':
-/* 161 */         return formatPosition(paramJCDiagnostic, PositionKind.OFFSET, paramLocale);
-/*     */       case 'p':
-/* 163 */         return formatKind(paramJCDiagnostic, paramLocale);
-/*     */       case 's':
-/* 165 */         return formatPosition(paramJCDiagnostic, PositionKind.START, paramLocale);
-/*     */
-/*     */       case 't':
-/* 168 */         switch (paramJCDiagnostic.getType()) {
-/*     */           case FRAGMENT:
-/* 170 */             bool = false;
-/*     */             break;
-/*     */           case ERROR:
-/* 173 */             bool = (paramJCDiagnostic.getIntPosition() == -1) ? true : false;
-/*     */             break;
-/*     */           default:
-/* 176 */             bool = true; break;
-/*     */         }
-/* 178 */         if (bool) {
-/* 179 */           return formatKind(paramJCDiagnostic, paramLocale);
-/*     */         }
-/* 181 */         return "";
-/*     */
-/*     */       case 'm':
-/* 184 */         return formatMessage(paramJCDiagnostic, paramLocale);
-/*     */       case 'L':
-/* 186 */         return formatLintCategory(paramJCDiagnostic, paramLocale);
-/*     */       case '_':
-/* 188 */         return " ";
-/*     */       case '%':
-/* 190 */         return "%";
-/*     */     }
-/* 192 */     return String.valueOf(paramChar);
-/*     */   }
-/*     */
-/*     */
-/*     */   private String selectFormat(JCDiagnostic paramJCDiagnostic) {
-/* 197 */     DiagnosticSource diagnosticSource = paramJCDiagnostic.getDiagnosticSource();
-/* 198 */     String str = getConfiguration().getFormat(BasicConfiguration.BasicFormatKind.DEFAULT_NO_POS_FORMAT);
-/* 199 */     if (diagnosticSource != null && diagnosticSource != DiagnosticSource.NO_SOURCE) {
-/* 200 */       if (paramJCDiagnostic.getIntPosition() != -1) {
-/* 201 */         str = getConfiguration().getFormat(BasicConfiguration.BasicFormatKind.DEFAULT_POS_FORMAT);
-/* 202 */       } else if (diagnosticSource.getFile() != null && diagnosticSource
-/* 203 */         .getFile().getKind() == JavaFileObject.Kind.CLASS) {
-/* 204 */         str = getConfiguration().getFormat(BasicConfiguration.BasicFormatKind.DEFAULT_CLASS_FORMAT);
-/*     */       }
-/*     */     }
-/* 207 */     return str;
-/*     */   }
-/*     */
-/*     */
-/*     */
-/*     */   public BasicConfiguration getConfiguration() {
-/* 213 */     return (BasicConfiguration)super.getConfiguration();
-/*     */   }
-/*     */
-/*     */   public static class BasicConfiguration
-/*     */     extends SimpleConfiguration
-/*     */   {
-/*     */     protected Map<DiagnosticPart, Integer> indentationLevels;
-/*     */     protected Map<BasicFormatKind, String> availableFormats;
-/*     */     protected SourcePosition sourcePosition;
-/*     */
-/*     */     public BasicConfiguration(Options param1Options) {
-/* 224 */       super(param1Options, EnumSet.of(DiagnosticPart.SUMMARY, DiagnosticPart.DETAILS, DiagnosticPart.SUBDIAGNOSTICS, DiagnosticPart.SOURCE));
-/*     */
-/*     */
-/*     */
-/* 228 */       initFormat();
-/* 229 */       initIndentation();
-/* 230 */       if (param1Options.isSet("oldDiags"))
-/* 231 */         initOldFormat();
-/* 232 */       String str1 = param1Options.get("diagsFormat");
-/* 233 */       if (str1 != null)
-/* 234 */         if (str1.equals("OLD")) {
-/* 235 */           initOldFormat();
-/*     */         } else {
-/* 237 */           initFormats(str1);
-/*     */         }
-/* 239 */       String str2 = null;
-/* 240 */       if ((str2 = param1Options.get("sourcePosition")) != null && str2
-/* 241 */         .equals("bottom")) {
-/* 242 */         setSourcePosition(SourcePosition.BOTTOM);
-/*     */       } else {
-/* 244 */         setSourcePosition(SourcePosition.AFTER_SUMMARY);
-/* 245 */       }  String str3 = param1Options.get("diagsIndentation");
-/* 246 */       if (str3 != null) {
-/* 247 */         String[] arrayOfString = str3.split("\\|");
-/*     */         try {
-/* 249 */           switch (arrayOfString.length) {
-/*     */             case 5:
-/* 251 */               setIndentation(DiagnosticPart.JLS,
-/* 252 */                   Integer.parseInt(arrayOfString[4]));
-/*     */             case 4:
-/* 254 */               setIndentation(DiagnosticPart.SUBDIAGNOSTICS,
-/* 255 */                   Integer.parseInt(arrayOfString[3]));
-/*     */             case 3:
-/* 257 */               setIndentation(DiagnosticPart.SOURCE,
-/* 258 */                   Integer.parseInt(arrayOfString[2]));
-/*     */             case 2:
-/* 260 */               setIndentation(DiagnosticPart.DETAILS,
-/* 261 */                   Integer.parseInt(arrayOfString[1])); break;
-/*     */           }
-/* 263 */           setIndentation(DiagnosticPart.SUMMARY,
-/* 264 */               Integer.parseInt(arrayOfString[0]));
-/*     */
-/*     */         }
-/* 267 */         catch (NumberFormatException numberFormatException) {
-/* 268 */           initIndentation();
-/*     */         }
-/*     */       }
-/*     */     }
-/*     */
-/*     */     public BasicConfiguration() {
-/* 274 */       super(EnumSet.of(DiagnosticPart.SUMMARY, DiagnosticPart.DETAILS, DiagnosticPart.SUBDIAGNOSTICS, DiagnosticPart.SOURCE));
-/*     */
-/*     */
-/*     */
-/* 278 */       initFormat();
-/* 279 */       initIndentation();
-/*     */     }
-/*     */
-/*     */     private void initFormat() {
-/* 283 */       initFormats("%f:%l:%_%p%L%m", "%p%L%m", "%f:%_%p%L%m");
-/*     */     }
-/*     */
-/*     */     private void initOldFormat() {
-/* 287 */       initFormats("%f:%l:%_%t%L%m", "%p%L%m", "%f:%_%t%L%m");
-/*     */     }
-/*     */
-/*     */     private void initFormats(String param1String1, String param1String2, String param1String3) {
-/* 291 */       this.availableFormats = new EnumMap<>(BasicFormatKind.class);
-/* 292 */       setFormat(BasicFormatKind.DEFAULT_POS_FORMAT, param1String1);
-/* 293 */       setFormat(BasicFormatKind.DEFAULT_NO_POS_FORMAT, param1String2);
-/* 294 */       setFormat(BasicFormatKind.DEFAULT_CLASS_FORMAT, param1String3);
-/*     */     }
-/*     */
-/*     */
-/*     */     private void initFormats(String param1String) {
-/* 299 */       String[] arrayOfString = param1String.split("\\|");
-/* 300 */       switch (arrayOfString.length) {
-/*     */         case 3:
-/* 302 */           setFormat(BasicFormatKind.DEFAULT_CLASS_FORMAT, arrayOfString[2]);
-/*     */         case 2:
-/* 304 */           setFormat(BasicFormatKind.DEFAULT_NO_POS_FORMAT, arrayOfString[1]); break;
-/*     */       }
-/* 306 */       setFormat(BasicFormatKind.DEFAULT_POS_FORMAT, arrayOfString[0]);
-/*     */     }
-/*     */
-/*     */
-/*     */     private void initIndentation() {
-/* 311 */       this.indentationLevels = new HashMap<>();
-/* 312 */       setIndentation(DiagnosticPart.SUMMARY, 0);
-/* 313 */       setIndentation(DiagnosticPart.DETAILS, 2);
-/* 314 */       setIndentation(DiagnosticPart.SUBDIAGNOSTICS, 4);
-/* 315 */       setIndentation(DiagnosticPart.SOURCE, 0);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public int getIndentation(DiagnosticPart param1DiagnosticPart) {
-/* 325 */       return ((Integer)this.indentationLevels.get(param1DiagnosticPart)).intValue();
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public void setIndentation(DiagnosticPart param1DiagnosticPart, int param1Int) {
-/* 336 */       this.indentationLevels.put(param1DiagnosticPart, Integer.valueOf(param1Int));
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public void setSourcePosition(SourcePosition param1SourcePosition) {
-/* 345 */       this.sourcePosition = param1SourcePosition;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public SourcePosition getSourcePosition() {
-/* 354 */       return this.sourcePosition;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public enum SourcePosition
-/*     */     {
-/* 366 */       BOTTOM,
-/*     */
-/*     */
-/*     */
-/*     */
-/* 371 */       AFTER_SUMMARY;
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public void setFormat(BasicFormatKind param1BasicFormatKind, String param1String) {
-/* 381 */       this.availableFormats.put(param1BasicFormatKind, param1String);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public String getFormat(BasicFormatKind param1BasicFormatKind) {
-/* 390 */       return this.availableFormats.get(param1BasicFormatKind);
-/*     */     }
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */
-/*     */     public enum BasicFormatKind
-/*     */     {
-/* 401 */       DEFAULT_POS_FORMAT,
-/*     */
-/*     */
-/*     */
-/* 405 */       DEFAULT_NO_POS_FORMAT,
-/*     */
-/*     */
-/*     */
-/* 409 */       DEFAULT_CLASS_FORMAT; } } public enum SourcePosition { BOTTOM, AFTER_SUMMARY; } public enum BasicFormatKind { DEFAULT_POS_FORMAT, DEFAULT_NO_POS_FORMAT, DEFAULT_CLASS_FORMAT; }
-/*     */
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\java\\util\BasicDiagnosticFormatter.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2005, 2012, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.util;
+
+import java.util.Collection;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Matcher;
+import javax.tools.JavaFileObject;
+
+import com.sun.tools.javac.util.AbstractDiagnosticFormatter.SimpleConfiguration;
+import com.sun.tools.javac.util.BasicDiagnosticFormatter.BasicConfiguration;
+
+import static com.sun.tools.javac.api.DiagnosticFormatter.PositionKind.*;
+import static com.sun.tools.javac.util.BasicDiagnosticFormatter.BasicConfiguration.*;
+import static com.sun.tools.javac.util.LayoutCharacters.*;
+
+/**
+ * A basic formatter for diagnostic messages.
+ * The basic formatter will format a diagnostic according to one of three format patterns, depending on whether
+ * or not the source name and position are set. The formatter supports a printf-like string for patterns
+ * with the following special characters:
+ * <ul>
+ * <li>%b: the base of the source name
+ * <li>%f: the source name (full absolute path)
+ * <li>%l: the line number of the diagnostic, derived from the character offset
+ * <li>%c: the column number of the diagnostic, derived from the character offset
+ * <li>%o: the character offset of the diagnostic if set
+ * <li>%p: the prefix for the diagnostic, derived from the diagnostic type
+ * <li>%t: the prefix as it normally appears in standard diagnostics. In this case, no prefix is
+ *        shown if the type is ERROR and if a source name is set
+ * <li>%m: the text or the diagnostic, including any appropriate arguments
+ * <li>%_: space delimiter, useful for formatting purposes
+ * </ul>
+ *
+ * <p><b>This is NOT part of any supported API.
+ * If you write code that depends on this, you do so at your own risk.
+ * This code and its internal interfaces are subject to change or
+ * deletion without notice.</b>
+ */
+public class BasicDiagnosticFormatter extends AbstractDiagnosticFormatter {
+
+    /**
+     * Create a basic formatter based on the supplied options.
+     *
+     * @param options list of command-line options
+     * @param msgs JavacMessages object used for i18n
+     */
+    public BasicDiagnosticFormatter(Options options, JavacMessages msgs) {
+        super(msgs, new BasicConfiguration(options));
+    }
+
+    /**
+     * Create a standard basic formatter
+     *
+     * @param msgs JavacMessages object used for i18n
+     */
+    public BasicDiagnosticFormatter(JavacMessages msgs) {
+        super(msgs, new BasicConfiguration());
+    }
+
+    public String formatDiagnostic(JCDiagnostic d, Locale l) {
+        if (l == null)
+            l = messages.getCurrentLocale();
+        String format = selectFormat(d);
+        StringBuilder buf = new StringBuilder();
+        for (int i = 0; i < format.length(); i++) {
+            char c = format.charAt(i);
+            boolean meta = false;
+            if (c == '%' && i < format.length() - 1) {
+                meta = true;
+                c = format.charAt(++i);
+            }
+            buf.append(meta ? formatMeta(c, d, l) : String.valueOf(c));
+        }
+        if (depth == 0)
+            return addSourceLineIfNeeded(d, buf.toString());
+        else
+            return buf.toString();
+    }
+
+    public String formatMessage(JCDiagnostic d, Locale l) {
+        int currentIndentation = 0;
+        StringBuilder buf = new StringBuilder();
+        Collection<String> args = formatArguments(d, l);
+        String msg = localize(l, d.getCode(), args.toArray());
+        String[] lines = msg.split("\n");
+        if (getConfiguration().getVisible().contains(DiagnosticPart.SUMMARY)) {
+            currentIndentation += getConfiguration().getIndentation(DiagnosticPart.SUMMARY);
+            buf.append(indent(lines[0], currentIndentation)); //summary
+        }
+        if (lines.length > 1 && getConfiguration().getVisible().contains(DiagnosticPart.DETAILS)) {
+            currentIndentation += getConfiguration().getIndentation(DiagnosticPart.DETAILS);
+            for (int i = 1;i < lines.length; i++) {
+                buf.append("\n" + indent(lines[i], currentIndentation));
+            }
+        }
+        if (d.isMultiline() && getConfiguration().getVisible().contains(DiagnosticPart.SUBDIAGNOSTICS)) {
+            currentIndentation += getConfiguration().getIndentation(DiagnosticPart.SUBDIAGNOSTICS);
+                for (String sub : formatSubdiagnostics(d, l)) {
+                    buf.append("\n" + indent(sub, currentIndentation));
+            }
+        }
+        return buf.toString();
+    }
+
+    protected String addSourceLineIfNeeded(JCDiagnostic d, String msg) {
+        if (!displaySource(d))
+            return msg;
+        else {
+            BasicConfiguration conf = getConfiguration();
+            int indentSource = conf.getIndentation(DiagnosticPart.SOURCE);
+            String sourceLine = "\n" + formatSourceLine(d, indentSource);
+            boolean singleLine = msg.indexOf("\n") == -1;
+            if (singleLine || getConfiguration().getSourcePosition() == SourcePosition.BOTTOM)
+                return msg + sourceLine;
+            else
+                return msg.replaceFirst("\n", Matcher.quoteReplacement(sourceLine) + "\n");
+        }
+    }
+
+    protected String formatMeta(char c, JCDiagnostic d, Locale l) {
+        switch (c) {
+            case 'b':
+                return formatSource(d, false, l);
+            case 'e':
+                return formatPosition(d, END, l);
+            case 'f':
+                return formatSource(d, true, l);
+            case 'l':
+                return formatPosition(d, LINE, l);
+            case 'c':
+                return formatPosition(d, COLUMN, l);
+            case 'o':
+                return formatPosition(d, OFFSET, l);
+            case 'p':
+                return formatKind(d, l);
+            case 's':
+                return formatPosition(d, START, l);
+            case 't': {
+                boolean usePrefix;
+                switch (d.getType()) {
+                case FRAGMENT:
+                    usePrefix = false;
+                    break;
+                case ERROR:
+                    usePrefix = (d.getIntPosition() == Position.NOPOS);
+                    break;
+                default:
+                    usePrefix = true;
+                }
+                if (usePrefix)
+                    return formatKind(d, l);
+                else
+                    return "";
+            }
+            case 'm':
+                return formatMessage(d, l);
+            case 'L':
+                return formatLintCategory(d, l);
+            case '_':
+                return " ";
+            case '%':
+                return "%";
+            default:
+                return String.valueOf(c);
+        }
+    }
+
+    private String selectFormat(JCDiagnostic d) {
+        DiagnosticSource source = d.getDiagnosticSource();
+        String format = getConfiguration().getFormat(BasicFormatKind.DEFAULT_NO_POS_FORMAT);
+        if (source != null && source != DiagnosticSource.NO_SOURCE) {
+            if (d.getIntPosition() != Position.NOPOS) {
+                format = getConfiguration().getFormat(BasicFormatKind.DEFAULT_POS_FORMAT);
+            } else if (source.getFile() != null &&
+                       source.getFile().getKind() == JavaFileObject.Kind.CLASS) {
+                format = getConfiguration().getFormat(BasicFormatKind.DEFAULT_CLASS_FORMAT);
+            }
+        }
+        return format;
+    }
+
+    @Override
+    public BasicConfiguration getConfiguration() {
+        //the following cast is always safe - see init
+        return (BasicConfiguration)super.getConfiguration();
+    }
+
+    static public class BasicConfiguration extends SimpleConfiguration {
+
+        protected Map<DiagnosticPart, Integer> indentationLevels;
+        protected Map<BasicFormatKind, String> availableFormats;
+        protected SourcePosition sourcePosition;
+
+        @SuppressWarnings("fallthrough")
+        public BasicConfiguration(Options options) {
+            super(options, EnumSet.of(DiagnosticPart.SUMMARY,
+                            DiagnosticPart.DETAILS,
+                            DiagnosticPart.SUBDIAGNOSTICS,
+                            DiagnosticPart.SOURCE));
+            initFormat();
+            initIndentation();
+            if (options.isSet("oldDiags"))
+                initOldFormat();
+            String fmt = options.get("diagsFormat");
+            if (fmt != null) {
+                if (fmt.equals("OLD"))
+                    initOldFormat();
+                else
+                    initFormats(fmt);
+            }
+            String srcPos = null;
+            if ((((srcPos = options.get("sourcePosition")) != null)) &&
+                    srcPos.equals("bottom"))
+                    setSourcePosition(SourcePosition.BOTTOM);
+            else
+                setSourcePosition(SourcePosition.AFTER_SUMMARY);
+            String indent = options.get("diagsIndentation");
+            if (indent != null) {
+                String[] levels = indent.split("\\|");
+                try {
+                    switch (levels.length) {
+                        case 5:
+                            setIndentation(DiagnosticPart.JLS,
+                                    Integer.parseInt(levels[4]));
+                        case 4:
+                            setIndentation(DiagnosticPart.SUBDIAGNOSTICS,
+                                    Integer.parseInt(levels[3]));
+                        case 3:
+                            setIndentation(DiagnosticPart.SOURCE,
+                                    Integer.parseInt(levels[2]));
+                        case 2:
+                            setIndentation(DiagnosticPart.DETAILS,
+                                    Integer.parseInt(levels[1]));
+                        default:
+                            setIndentation(DiagnosticPart.SUMMARY,
+                                    Integer.parseInt(levels[0]));
+                    }
+                }
+                catch (NumberFormatException ex) {
+                    initIndentation();
+                }
+            }
+        }
+
+        public BasicConfiguration() {
+            super(EnumSet.of(DiagnosticPart.SUMMARY,
+                  DiagnosticPart.DETAILS,
+                  DiagnosticPart.SUBDIAGNOSTICS,
+                  DiagnosticPart.SOURCE));
+            initFormat();
+            initIndentation();
+        }
+
+        private void initFormat() {
+            initFormats("%f:%l:%_%p%L%m", "%p%L%m", "%f:%_%p%L%m");
+        }
+
+        private void initOldFormat() {
+            initFormats("%f:%l:%_%t%L%m", "%p%L%m", "%f:%_%t%L%m");
+        }
+
+        private void initFormats(String pos, String nopos, String clazz) {
+            availableFormats = new EnumMap<BasicFormatKind, String>(BasicFormatKind.class);
+            setFormat(BasicFormatKind.DEFAULT_POS_FORMAT,    pos);
+            setFormat(BasicFormatKind.DEFAULT_NO_POS_FORMAT, nopos);
+            setFormat(BasicFormatKind.DEFAULT_CLASS_FORMAT,  clazz);
+        }
+
+        @SuppressWarnings("fallthrough")
+        private void initFormats(String fmt) {
+            String[] formats = fmt.split("\\|");
+            switch (formats.length) {
+                case 3:
+                    setFormat(BasicFormatKind.DEFAULT_CLASS_FORMAT, formats[2]);
+                case 2:
+                    setFormat(BasicFormatKind.DEFAULT_NO_POS_FORMAT, formats[1]);
+                default:
+                    setFormat(BasicFormatKind.DEFAULT_POS_FORMAT, formats[0]);
+            }
+        }
+
+        private void initIndentation() {
+            indentationLevels = new HashMap<DiagnosticPart, Integer>();
+            setIndentation(DiagnosticPart.SUMMARY, 0);
+            setIndentation(DiagnosticPart.DETAILS, DetailsInc);
+            setIndentation(DiagnosticPart.SUBDIAGNOSTICS, DiagInc);
+            setIndentation(DiagnosticPart.SOURCE, 0);
+        }
+
+        /**
+         * Get the amount of spaces for a given indentation kind
+         * @param diagPart the diagnostic part for which the indentation is
+         * to be retrieved
+         * @return the amount of spaces used for the specified indentation kind
+         */
+        public int getIndentation(DiagnosticPart diagPart) {
+            return indentationLevels.get(diagPart);
+        }
+
+        /**
+         * Set the indentation level for various element of a given diagnostic -
+         * this might lead to more readable diagnostics
+         *
+         * @param diagPart
+         * @param nSpaces amount of spaces for the specified diagnostic part
+         */
+        public void setIndentation(DiagnosticPart diagPart, int nSpaces) {
+            indentationLevels.put(diagPart, nSpaces);
+        }
+
+        /**
+         * Set the source line positioning used by this formatter
+         *
+         * @param sourcePos a positioning value for source line
+         */
+        public void setSourcePosition(SourcePosition sourcePos) {
+            sourcePosition = sourcePos;
+        }
+
+        /**
+         * Get the source line positioning used by this formatter
+         *
+         * @return the positioning value used by this formatter
+         */
+        public SourcePosition getSourcePosition() {
+            return sourcePosition;
+        }
+        //where
+        /**
+         * A source positioning value controls the position (within a given
+         * diagnostic message) in which the source line the diagnostic refers to
+         * should be displayed (if applicable)
+         */
+        public enum SourcePosition {
+            /**
+             * Source line is displayed after the diagnostic message
+             */
+            BOTTOM,
+            /**
+             * Source line is displayed after the first line of the diagnostic
+             * message
+             */
+            AFTER_SUMMARY;
+        }
+
+        /**
+         * Set a metachar string for a specific format
+         *
+         * @param kind the format kind to be set
+         * @param s the metachar string specifying the format
+         */
+        public void setFormat(BasicFormatKind kind, String s) {
+            availableFormats.put(kind, s);
+        }
+
+        /**
+         * Get a metachar string for a specific format
+         *
+         * @param kind the format kind for which to get the metachar string
+         */
+        public String getFormat(BasicFormatKind kind) {
+            return availableFormats.get(kind);
+        }
+        //where
+        /**
+         * This enum contains all the kinds of formatting patterns supported
+         * by a basic diagnostic formatter.
+         */
+        public enum BasicFormatKind {
+            /**
+            * A format string to be used for diagnostics with a given position.
+            */
+            DEFAULT_POS_FORMAT,
+            /**
+            * A format string to be used for diagnostics without a given position.
+            */
+            DEFAULT_NO_POS_FORMAT,
+            /**
+            * A format string to be used for diagnostics regarding classfiles
+            */
+            DEFAULT_CLASS_FORMAT;
+        }
+    }
+}

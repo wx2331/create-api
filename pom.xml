@@ -5,8 +5,8 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.wx2331</groupId>
-    <artifactId>create-api-2</artifactId>
-    <version>1.0.1</version>
+    <artifactId>create-api</artifactId>
+    <version>1.0.2</version>
 
     <packaging>jar</packaging>
     <properties>

@@ -1,208 +1,202 @@
-/*     */ package com.sun.tools.javac.util;
-/*     */ 
-/*     */ import com.sun.tools.javac.api.Messages;
-/*     */ import java.lang.ref.SoftReference;
-/*     */ import java.text.MessageFormat;
-/*     */ import java.util.HashMap;
-/*     */ import java.util.Locale;
-/*     */ import java.util.Map;
-/*     */ import java.util.MissingResourceException;
-/*     */ import java.util.ResourceBundle;
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ public class JavacMessages
-/*     */   implements Messages
-/*     */ {
-/*  47 */   public static final Context.Key<JavacMessages> messagesKey = new Context.Key<>();
-/*     */   
-/*     */   private Map<Locale, SoftReference<List<ResourceBundle>>> bundleCache;
-/*     */   
-/*     */   public static JavacMessages instance(Context paramContext) {
-/*  52 */     JavacMessages javacMessages = paramContext.<JavacMessages>get(messagesKey);
-/*  53 */     if (javacMessages == null)
-/*  54 */       javacMessages = new JavacMessages(paramContext); 
-/*  55 */     return javacMessages;
-/*     */   }
-/*     */   
-/*     */   private List<String> bundleNames;
-/*     */   private Locale currentLocale;
-/*     */   private List<ResourceBundle> currentBundles;
-/*     */   private static final String defaultBundleName = "com.sun.tools.javac.resources.compiler";
-/*     */   private static ResourceBundle defaultBundle;
-/*     */   private static JavacMessages defaultMessages;
-/*     */   
-/*     */   public Locale getCurrentLocale() {
-/*  66 */     return this.currentLocale;
-/*     */   }
-/*     */   
-/*     */   public void setCurrentLocale(Locale paramLocale) {
-/*  70 */     if (paramLocale == null) {
-/*  71 */       paramLocale = Locale.getDefault();
-/*     */     }
-/*  73 */     this.currentBundles = getBundles(paramLocale);
-/*  74 */     this.currentLocale = paramLocale;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public JavacMessages(Context paramContext) {
-/*  80 */     this("com.sun.tools.javac.resources.compiler", paramContext.<Locale>get(Locale.class));
-/*  81 */     paramContext.put(messagesKey, this);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public JavacMessages(String paramString) throws MissingResourceException {
-/*  88 */     this(paramString, null);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public JavacMessages(String paramString, Locale paramLocale) throws MissingResourceException {
-/*  95 */     this.bundleNames = List.nil();
-/*  96 */     this.bundleCache = new HashMap<>();
-/*  97 */     add(paramString);
-/*  98 */     setCurrentLocale(paramLocale);
-/*     */   }
-/*     */   
-/*     */   public JavacMessages() throws MissingResourceException {
-/* 102 */     this("com.sun.tools.javac.resources.compiler");
-/*     */   }
-/*     */   
-/*     */   public void add(String paramString) throws MissingResourceException {
-/* 106 */     this.bundleNames = this.bundleNames.prepend(paramString);
-/* 107 */     if (!this.bundleCache.isEmpty())
-/* 108 */       this.bundleCache.clear(); 
-/* 109 */     this.currentBundles = null;
-/*     */   }
-/*     */   
-/*     */   public List<ResourceBundle> getBundles(Locale paramLocale) {
-/* 113 */     if (paramLocale == this.currentLocale && this.currentBundles != null)
-/* 114 */       return this.currentBundles; 
-/* 115 */     SoftReference<List> softReference = (SoftReference)this.bundleCache.get(paramLocale);
-/* 116 */     List<?> list = (softReference == null) ? null : softReference.get();
-/* 117 */     if (list == null) {
-/* 118 */       list = List.nil();
-/* 119 */       for (String str : this.bundleNames) {
-/*     */         try {
-/* 121 */           ResourceBundle resourceBundle = ResourceBundle.getBundle(str, paramLocale);
-/* 122 */           list = list.prepend(resourceBundle);
-/* 123 */         } catch (MissingResourceException missingResourceException) {
-/* 124 */           throw new InternalError("Cannot find javac resource bundle for locale " + paramLocale);
-/*     */         } 
-/*     */       } 
-/* 127 */       this.bundleCache.put(paramLocale, (SoftReference)new SoftReference<>(list));
-/*     */     } 
-/* 129 */     return (List)list;
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   public String getLocalizedString(String paramString, Object... paramVarArgs) {
-/* 135 */     return getLocalizedString(this.currentLocale, paramString, paramVarArgs);
-/*     */   }
-/*     */   
-/*     */   public String getLocalizedString(Locale paramLocale, String paramString, Object... paramVarArgs) {
-/* 139 */     if (paramLocale == null)
-/* 140 */       paramLocale = getCurrentLocale(); 
-/* 141 */     return getLocalizedString(getBundles(paramLocale), paramString, paramVarArgs);
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   static String getDefaultLocalizedString(String paramString, Object... paramVarArgs) {
-/* 161 */     return getLocalizedString(List.of(getDefaultBundle()), paramString, paramVarArgs);
-/*     */   }
-/*     */ 
-/*     */   
-/*     */   @Deprecated
-/*     */   static JavacMessages getDefaultMessages() {
-/* 167 */     if (defaultMessages == null)
-/* 168 */       defaultMessages = new JavacMessages("com.sun.tools.javac.resources.compiler"); 
-/* 169 */     return defaultMessages;
-/*     */   }
-/*     */   
-/*     */   public static ResourceBundle getDefaultBundle() {
-/*     */     try {
-/* 174 */       if (defaultBundle == null)
-/* 175 */         defaultBundle = ResourceBundle.getBundle("com.sun.tools.javac.resources.compiler"); 
-/* 176 */       return defaultBundle;
-/*     */     }
-/* 178 */     catch (MissingResourceException missingResourceException) {
-/* 179 */       throw new Error("Fatal: Resource for compiler is missing", missingResourceException);
-/*     */     } 
-/*     */   }
-/*     */ 
-/*     */ 
-/*     */   
-/*     */   private static String getLocalizedString(List<ResourceBundle> paramList, String paramString, Object... paramVarArgs) {
-/* 186 */     String str = null;
-/* 187 */     for (List<ResourceBundle> list = paramList; list.nonEmpty() && str == null; list = list.tail) {
-/* 188 */       ResourceBundle resourceBundle = (ResourceBundle)list.head;
-/*     */       try {
-/* 190 */         str = resourceBundle.getString(paramString);
-/*     */       }
-/* 192 */       catch (MissingResourceException missingResourceException) {}
-/*     */     } 
-/*     */ 
-/*     */     
-/* 196 */     if (str == null) {
-/* 197 */       str = "compiler message file broken: key=" + paramString + " arguments={0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}";
-/*     */     }
-/*     */     
-/* 200 */     return MessageFormat.format(str, paramVarArgs);
-/*     */   }
-/*     */ }
-
-
-/* Location:              C:\Program Files\Java\jdk1.8.0_211\lib\tools.jar!\com\sun\tools\java\\util\JavacMessages.class
- * Java compiler version: 8 (52.0)
- * JD-Core Version:       1.1.3
+/*
+ * Copyright (c) 2005, 2013, Oracle and/or its affiliates. All rights reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * This code is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 only, as
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
+ *
+ * This code is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * version 2 for more details (a copy is included in the LICENSE file that
+ * accompanied this code).
+ *
+ * You should have received a copy of the GNU General Public License version
+ * 2 along with this work; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ * or visit www.oracle.com if you need additional information or have any
+ * questions.
  */
+
+package com.sun.tools.javac.util;
+
+import com.sun.tools.javac.api.Messages;
+import java.lang.ref.SoftReference;
+import java.util.ResourceBundle;
+import java.util.MissingResourceException;
+import java.text.MessageFormat;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ *  Support for formatted localized messages.
+ *
+ *  <p><b>This is NOT part of any supported API.
+ *  If you write code that depends on this, you do so at your own risk.
+ *  This code and its internal interfaces are subject to change or
+ *  deletion without notice.</b>
+ */
+public class JavacMessages implements Messages {
+    /** The context key for the JavacMessages object. */
+    public static final Context.Key<JavacMessages> messagesKey =
+        new Context.Key<JavacMessages>();
+
+    /** Get the JavacMessages instance for this context. */
+    public static JavacMessages instance(Context context) {
+        JavacMessages instance = context.get(messagesKey);
+        if (instance == null)
+            instance = new JavacMessages(context);
+        return instance;
+    }
+
+    private Map<Locale, SoftReference<List<ResourceBundle>>> bundleCache;
+
+    private List<String> bundleNames;
+
+    private Locale currentLocale;
+    private List<ResourceBundle> currentBundles;
+
+    public Locale getCurrentLocale() {
+        return currentLocale;
+    }
+
+    public void setCurrentLocale(Locale locale) {
+        if (locale == null) {
+            locale = Locale.getDefault();
+        }
+        this.currentBundles = getBundles(locale);
+        this.currentLocale = locale;
+    }
+
+    /** Creates a JavacMessages object.
+     */
+    public JavacMessages(Context context) {
+        this(defaultBundleName, context.get(Locale.class));
+        context.put(messagesKey, this);
+    }
+
+    /** Creates a JavacMessages object.
+     * @param bundleName the name to identify the resource bundle of localized messages.
+     */
+    public JavacMessages(String bundleName) throws MissingResourceException {
+        this(bundleName, null);
+    }
+
+    /** Creates a JavacMessages object.
+     * @param bundleName the name to identify the resource bundle of localized messages.
+     */
+    public JavacMessages(String bundleName, Locale locale) throws MissingResourceException {
+        bundleNames = List.nil();
+        bundleCache = new HashMap<Locale, SoftReference<List<ResourceBundle>>>();
+        add(bundleName);
+        setCurrentLocale(locale);
+    }
+
+    public JavacMessages() throws MissingResourceException {
+        this(defaultBundleName);
+    }
+
+    public void add(String bundleName) throws MissingResourceException {
+        bundleNames = bundleNames.prepend(bundleName);
+        if (!bundleCache.isEmpty())
+            bundleCache.clear();
+        currentBundles = null;
+    }
+
+    public List<ResourceBundle> getBundles(Locale locale) {
+        if (locale == currentLocale && currentBundles != null)
+            return currentBundles;
+        SoftReference<List<ResourceBundle>> bundles = bundleCache.get(locale);
+        List<ResourceBundle> bundleList = bundles == null ? null : bundles.get();
+        if (bundleList == null) {
+            bundleList = List.nil();
+            for (String bundleName : bundleNames) {
+                try {
+                    ResourceBundle rb = ResourceBundle.getBundle(bundleName, locale);
+                    bundleList = bundleList.prepend(rb);
+                } catch (MissingResourceException e) {
+                    throw new InternalError("Cannot find javac resource bundle for locale " + locale + "\t" + bundleName);
+                }
+            }
+            bundleCache.put(locale, new SoftReference<List<ResourceBundle>>(bundleList));
+        }
+        return bundleList;
+    }
+
+    /** Gets the localized string corresponding to a key, formatted with a set of args.
+     */
+    public String getLocalizedString(String key, Object... args) {
+        return getLocalizedString(currentLocale, key, args);
+    }
+
+    public String getLocalizedString(Locale l, String key, Object... args) {
+        if (l == null)
+            l = getCurrentLocale();
+        return getLocalizedString(getBundles(l), key, args);
+    }
+
+    /* Static access:
+     * javac has a firmly entrenched notion of a default message bundle
+     * which it can access from any static context. This is used to get
+     * easy access to simple localized strings.
+     */
+
+    private static final String defaultBundleName =
+        "com.sun.tools.javac.resources.compiler";
+    private static ResourceBundle defaultBundle;
+    private static JavacMessages defaultMessages;
+
+
+    /**
+     * Gets a localized string from the compiler's default bundle.
+     */
+    // used to support legacy Log.getLocalizedString
+    static String getDefaultLocalizedString(String key, Object... args) {
+        return getLocalizedString(List.of(getDefaultBundle()), key, args);
+    }
+
+    // used to support legacy static Diagnostic.fragment
+    @Deprecated
+    static JavacMessages getDefaultMessages() {
+        if (defaultMessages == null)
+            defaultMessages = new JavacMessages(defaultBundleName);
+        return defaultMessages;
+    }
+
+    public static ResourceBundle getDefaultBundle() {
+        try {
+            if (defaultBundle == null)
+                defaultBundle = ResourceBundle.getBundle(defaultBundleName);
+            return defaultBundle;
+        }
+        catch (MissingResourceException e) {
+            throw new Error("Fatal: Resource for compiler is missing", e);
+        }
+    }
+
+    private static String getLocalizedString(List<ResourceBundle> bundles,
+                                             String key,
+                                             Object... args) {
+       String msg = null;
+       for (List<ResourceBundle> l = bundles; l.nonEmpty() && msg == null; l = l.tail) {
+           ResourceBundle rb = l.head;
+           try {
+               msg = rb.getString(key);
+           }
+           catch (MissingResourceException e) {
+               // ignore, try other bundles in list
+           }
+       }
+       if (msg == null) {
+           msg = "compiler message file broken: key=" + key +
+               " arguments={0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}";
+       }
+       return MessageFormat.format(msg, args);
+    }
+}
